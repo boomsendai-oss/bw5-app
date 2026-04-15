@@ -38,7 +38,7 @@ export default function HeroSection() {
   const [particles, setParticles] = useState<
     { id: number; delay: number; x: number; size: number }[]
   >([]);
-  const [heroImage, setHeroImage] = useState("/images/boomkun.png");
+  const [heroImage, setHeroImage] = useState("/images/upload_1776286511201.png");
   const [settings, setSettings] = useState<Record<string, string>>({});
 
   useEffect(() => {

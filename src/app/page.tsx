@@ -11,6 +11,7 @@ import VoteSection from "@/components/VoteSection";
 import SNSSection from "@/components/SNSSection";
 import Footer from "@/components/Footer";
 import WelcomePopup from "@/components/WelcomePopup";
+import AddToHomeScreen from "@/components/AddToHomeScreen";
 
 const SECTION_IDS = [
   "sns",
@@ -52,6 +53,7 @@ export default function Home() {
   return (
     <>
       <WelcomePopup />
+      <AddToHomeScreen />
       <Navigation
         activeSection={activeSection}
         onNavigate={handleNavigate}
