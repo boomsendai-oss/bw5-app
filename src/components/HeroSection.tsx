@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
-import Image from "next/image";
 
 function Particle({ delay, x, size }: { delay: number; x: number; size: number }) {
   return (
@@ -21,7 +20,7 @@ function Particle({ delay, x, size }: { delay: number; x: number; size: number }
         }, transparent)`,
       }}
       animate={{
-        y: [0, -window.innerHeight * 1.2],
+        y: [0, typeof window !== 'undefined' ? -window.innerHeight * 1.2 : -1000],
         opacity: [0, 1, 1, 0],
         scale: [0.5, 1, 0.8, 0.3],
       }}
@@ -39,6 +38,8 @@ export default function HeroSection() {
   const [particles, setParticles] = useState<
     { id: number; delay: number; x: number; size: number }[]
   >([]);
+  const [heroImage, setHeroImage] = useState("/images/boomkun.png");
+  const [settings, setSettings] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const p = Array.from({ length: 20 }, (_, i) => ({
@@ -48,6 +49,14 @@ export default function HeroSection() {
       size: 4 + Math.random() * 8,
     }));
     setParticles(p);
+
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        setSettings(data);
+        if (data.hero_image) setHeroImage(data.hero_image);
+      })
+      .catch(() => {});
   }, []);
 
   return (
@@ -82,18 +91,21 @@ export default function HeroSection() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
       >
-        {/* BOOMくん */}
+        {/* Hero Image */}
         <motion.div
-          className="mx-auto mb-8 w-32 h-32 relative"
+          className="mx-auto mb-8 relative"
+          style={{
+            width: `${settings.hero_image_size || '200'}px`,
+            height: `${settings.hero_image_size || '200'}px`,
+          }}
           animate={{ y: [0, -12, 0] }}
           transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
         >
-          <Image
-            src="/images/boomkun.png"
-            alt="BOOMくん"
-            fill
-            className="object-contain drop-shadow-[0_0_30px_rgba(230,57,70,0.4)]"
-            priority
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={heroImage}
+            alt="BOOM WOP vol.5"
+            className="w-full h-full object-contain drop-shadow-[0_0_30px_rgba(230,57,70,0.4)]"
           />
         </motion.div>
 
@@ -104,7 +116,7 @@ export default function HeroSection() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.2 }}
         >
-          BOOM WOP
+          {settings.hero_title_line1 || "BOOM WOP"}
         </motion.h1>
 
         <motion.div
@@ -113,7 +125,7 @@ export default function HeroSection() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.3 }}
         >
-          vol.5
+          {settings.hero_title_line2 || "vol.5"}
         </motion.div>
 
         {/* Date */}
@@ -124,7 +136,7 @@ export default function HeroSection() {
           transition={{ delay: 0.5 }}
         >
           <span className="text-2xl sm:text-3xl font-bold tracking-widest text-white">
-            2026.5.5
+            {settings.hero_date || "2026.5.5"}
           </span>
         </motion.div>
 
@@ -135,7 +147,7 @@ export default function HeroSection() {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.7 }}
         >
-          Dance Showcase &amp; Entertainment
+          {settings.hero_subtitle || "Dance Showcase & Entertainment"}
         </motion.p>
       </motion.div>
 

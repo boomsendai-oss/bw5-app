@@ -1,36 +1,42 @@
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import { createClient, type Client, type InStatement, type ResultSet } from '@libsql/client';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'bw5.db');
+let client: Client | null = null;
+let initialized = false;
 
-const dataDir = path.dirname(DB_PATH);
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
-
-let db: Database.Database;
-
-function getDb(): Database.Database {
-  if (!db) {
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    initializeDb(db);
+function getClient(): Client {
+  if (!client) {
+    const url = process.env.TURSO_DATABASE_URL;
+    if (url) {
+      client = createClient({
+        url,
+        authToken: process.env.TURSO_AUTH_TOKEN,
+      });
+    } else {
+      client = createClient({ url: 'file:./data/bw5.db' });
+    }
   }
-  return db;
+  return client;
 }
 
-function initializeDb(db: Database.Database) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS schedule (
+export async function initDb(): Promise<void> {
+  if (initialized) return;
+  initialized = true;
+
+  const c = getClient();
+
+  await c.batch([
+    {
+      sql: `CREATE TABLE IF NOT EXISTS schedule (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       time TEXT NOT NULL DEFAULT '',
       title TEXT NOT NULL,
       description TEXT DEFAULT '',
       sort_order INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS merchandise (
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS merchandise (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       price INTEGER NOT NULL,
@@ -39,9 +45,11 @@ function initializeDb(db: Database.Database) {
       description TEXT DEFAULT '',
       sort_order INTEGER DEFAULT 0,
       active INTEGER DEFAULT 1
-    );
-
-    CREATE TABLE IF NOT EXISTS merch_orders (
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS merch_orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       merch_id INTEGER NOT NULL,
       buyer_name TEXT NOT NULL,
@@ -50,32 +58,40 @@ function initializeDb(db: Database.Database) {
       status TEXT DEFAULT 'pending',
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (merch_id) REFERENCES merchandise(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS video_orders (
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS video_orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       buyer_name TEXT NOT NULL,
       email TEXT NOT NULL,
       payment_method TEXT NOT NULL,
       status TEXT DEFAULT 'pending',
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
-    );
-
-    CREATE TABLE IF NOT EXISTS vote_candidates (
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS vote_candidates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       votes INTEGER DEFAULT 0,
       sort_order INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS vote_records (
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS vote_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       fingerprint TEXT NOT NULL UNIQUE,
       candidate_id INTEGER NOT NULL,
       created_at TEXT DEFAULT (datetime('now', 'localtime'))
-    );
-
-    CREATE TABLE IF NOT EXISTS music_releases (
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS music_releases (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       artist TEXT NOT NULL,
       title TEXT NOT NULL,
@@ -86,31 +102,38 @@ function initializeDb(db: Database.Database) {
       youtube_music_url TEXT DEFAULT '',
       release_at TEXT DEFAULT '',
       sort_order INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS sns_links (
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS sns_links (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       platform TEXT NOT NULL,
       url TEXT NOT NULL,
       sort_order INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS settings (
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS pamphlet_pages (
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS pamphlet_pages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       image_url TEXT NOT NULL,
       sort_order INTEGER DEFAULT 0
-    );
-  `);
+    )`,
+      args: [],
+    },
+  ], 'write');
 
   // Seed defaults if tables empty
-  const scheduleCount = db.prepare('SELECT COUNT(*) as count FROM schedule').get() as { count: number };
-  if (scheduleCount.count === 0) {
-    const ins = db.prepare('INSERT INTO schedule (time, title, description, sort_order) VALUES (?, ?, ?, ?)');
+  const scheduleCount = await c.execute('SELECT COUNT(*) as count FROM schedule');
+  if (Number(scheduleCount.rows[0].count) === 0) {
     const items: [string, string, string, number][] = [
       ['', 'GRAFFITI ナンバー / Ryuki & TARO', 'No.1', 1],
       ['', 'フリースタイル / SAYUKI', 'No.2', 2],
@@ -136,56 +159,92 @@ function initializeDb(db: Database.Database) {
       ['', '長町 KONAMI キッズ / TARO', 'No.22', 22],
       ['', '諏訪キッズ / HARUKA', 'No.23', 23],
     ];
-    for (const item of items) ins.run(...item);
+    await c.batch(
+      items.map(([time, title, description, sort_order]) => ({
+        sql: 'INSERT INTO schedule (time, title, description, sort_order) VALUES (?, ?, ?, ?)',
+        args: [time, title, description, sort_order],
+      })),
+      'write'
+    );
   }
 
-  const merchCount = db.prepare('SELECT COUNT(*) as count FROM merchandise').get() as { count: number };
-  if (merchCount.count === 0) {
-    const ins = db.prepare('INSERT INTO merchandise (name, price, image_url, stock, description, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
-    ins.run('フェルトロゴキャップ ベージュ×グリーン', 4500, '/images/goods/cap_beige_green.png', 10, 'BOOM Dance School オリジナルフェルトロゴキャップ', 1);
-    ins.run('フェルトロゴキャップ ベージュ', 4500, '/images/goods/cap_beige.png', 10, 'BOOM Dance School オリジナルフェルトロゴキャップ', 2);
-    ins.run('コーデュロイキャップ ブラック', 4500, '/images/goods/cap_black.png', 10, 'BOOM Dance School オリジナルコーデュロイキャップ', 3);
+  const merchCount = await c.execute('SELECT COUNT(*) as count FROM merchandise');
+  if (Number(merchCount.rows[0].count) === 0) {
+    await c.batch([
+      { sql: 'INSERT INTO merchandise (name, price, image_url, stock, description, sort_order) VALUES (?, ?, ?, ?, ?, ?)', args: ['フェルトロゴキャップ ベージュ×グリーン', 4500, '/images/goods/cap_beige_green.png', 10, 'BOOM Dance School オリジナルフェルトロゴキャップ', 1] },
+      { sql: 'INSERT INTO merchandise (name, price, image_url, stock, description, sort_order) VALUES (?, ?, ?, ?, ?, ?)', args: ['フェルトロゴキャップ ベージュ', 4500, '/images/goods/cap_beige.png', 10, 'BOOM Dance School オリジナルフェルトロゴキャップ', 2] },
+      { sql: 'INSERT INTO merchandise (name, price, image_url, stock, description, sort_order) VALUES (?, ?, ?, ?, ?, ?)', args: ['コーデュロイキャップ ブラック', 4500, '/images/goods/cap_black.png', 10, 'BOOM Dance School オリジナルコーデュロイキャップ', 3] },
+    ], 'write');
   }
 
-  const voteCount = db.prepare('SELECT COUNT(*) as count FROM vote_candidates').get() as { count: number };
-  if (voteCount.count === 0) {
-    const ins = db.prepare('INSERT INTO vote_candidates (name, votes, sort_order) VALUES (?, 0, ?)');
-    ins.run('ブーミー', 1);
-    ins.run('ボンバー', 2);
-    ins.run('ビーボ', 3);
-    ins.run('ブースケ', 4);
+  const voteCount = await c.execute('SELECT COUNT(*) as count FROM vote_candidates');
+  if (Number(voteCount.rows[0].count) === 0) {
+    await c.batch([
+      { sql: 'INSERT INTO vote_candidates (name, votes, sort_order) VALUES (?, 0, ?)', args: ['ブーミー', 1] },
+      { sql: 'INSERT INTO vote_candidates (name, votes, sort_order) VALUES (?, 0, ?)', args: ['ボンバー', 2] },
+      { sql: 'INSERT INTO vote_candidates (name, votes, sort_order) VALUES (?, 0, ?)', args: ['ビーボ', 3] },
+      { sql: 'INSERT INTO vote_candidates (name, votes, sort_order) VALUES (?, 0, ?)', args: ['ブースケ', 4] },
+    ], 'write');
   }
 
-  const snsCount = db.prepare('SELECT COUNT(*) as count FROM sns_links').get() as { count: number };
-  if (snsCount.count === 0) {
-    const ins = db.prepare('INSERT INTO sns_links (platform, url, sort_order) VALUES (?, ?, ?)');
-    ins.run('youtube', 'https://www.youtube.com/@boom-sendai', 1);
-    ins.run('instagram', 'https://www.instagram.com/boom_sendai/', 2);
-    ins.run('line', 'https://lin.ee/example', 3);
-    ins.run('x', 'https://x.com/boom_sendai', 4);
+  const snsCount = await c.execute('SELECT COUNT(*) as count FROM sns_links');
+  if (Number(snsCount.rows[0].count) === 0) {
+    await c.batch([
+      { sql: 'INSERT INTO sns_links (platform, url, sort_order) VALUES (?, ?, ?)', args: ['youtube', 'https://www.youtube.com/@boom-sendai', 1] },
+      { sql: 'INSERT INTO sns_links (platform, url, sort_order) VALUES (?, ?, ?)', args: ['instagram', 'https://www.instagram.com/boom_sendai/', 2] },
+      { sql: 'INSERT INTO sns_links (platform, url, sort_order) VALUES (?, ?, ?)', args: ['line', 'https://lin.ee/example', 3] },
+      { sql: 'INSERT INTO sns_links (platform, url, sort_order) VALUES (?, ?, ?)', args: ['x', 'https://x.com/boom_sendai', 4] },
+    ], 'write');
   }
 
-  const settingsCount = db.prepare('SELECT COUNT(*) as count FROM settings').get() as { count: number };
-  if (settingsCount.count === 0) {
-    const ins = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
-    ins.run('video_price', '2500');
-    ins.run('admin_password', 'boom2026');
-    ins.run('event_date', '2026-05-05');
-    ins.run('event_name', 'BOOM WOP vol.5');
-    ins.run('venue', '太白区文化センター 楽楽楽ホール');
-    ins.run('venue_address', '仙台市太白区長町5-3-2');
-    ins.run('paypay_link', '');
-    ins.run('square_app_id', 'sandbox-sq0idb-PLACEHOLDER');
-    ins.run('square_location_id', 'PLACEHOLDER');
-    ins.run('video_sale_active', 'true');
+  const settingsCount = await c.execute('SELECT COUNT(*) as count FROM settings');
+  if (Number(settingsCount.rows[0].count) === 0) {
+    await c.batch([
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['video_price', '2500'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['admin_password', 'boom2026'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['event_date', '2026-05-05'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['event_name', 'BOOM WOP vol.5'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['venue', '太白区文化センター 楽楽楽ホール'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['venue_address', '仙台市太白区長町5-3-2'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['paypay_link', ''] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['square_app_id', 'sandbox-sq0idb-PLACEHOLDER'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['square_location_id', 'PLACEHOLDER'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['video_sale_active', 'true'] },
+    ], 'write');
   }
 
-  const musicCount = db.prepare('SELECT COUNT(*) as count FROM music_releases').get() as { count: number };
-  if (musicCount.count === 0) {
-    db.prepare(
-      'INSERT INTO music_releases (artist, title, jacket_url, apple_music_url, spotify_url, amazon_music_url, youtube_music_url, release_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run('BOOM Dance School', 'Give Me A Reason', '/images/character/boomkun_2d.png', '', '', '', '', '2026-05-05T12:00:00', 1);
+  const musicCount = await c.execute('SELECT COUNT(*) as count FROM music_releases');
+  if (Number(musicCount.rows[0].count) === 0) {
+    await c.execute({
+      sql: 'INSERT INTO music_releases (artist, title, jacket_url, apple_music_url, spotify_url, amazon_music_url, youtube_music_url, release_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      args: ['BOOM Dance School', 'Give Me A Reason', '/images/character/boomkun_2d.png', '', '', '', '', '2026-05-05T12:00:00', 1],
+    });
   }
 }
 
-export default getDb;
+export async function query(sql: string, args: any[] = []): Promise<ResultSet> {
+  await initDb();
+  return getClient().execute({ sql, args });
+}
+
+export async function execute(sql: string, args: any[] = []): Promise<ResultSet> {
+  await initDb();
+  return getClient().execute({ sql, args });
+}
+
+export async function getAll(sql: string, args: any[] = []): Promise<any[]> {
+  await initDb();
+  const result = await getClient().execute({ sql, args });
+  return result.rows as any[];
+}
+
+export async function getOne(sql: string, args: any[] = []): Promise<any | null> {
+  await initDb();
+  const result = await getClient().execute({ sql, args });
+  return (result.rows[0] as any) || null;
+}
+
+export async function batch(statements: InStatement[], mode: 'write' | 'read' | 'deferred' = 'write'): Promise<ResultSet[]> {
+  await initDb();
+  return getClient().batch(statements, mode);
+}

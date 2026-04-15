@@ -33,7 +33,8 @@ export default function VoteSection() {
 
   const fetchCandidates = useCallback(async () => {
     try {
-      const data = await fetch("/api/vote").then((r) => r.json());
+      const fp = getFingerprint();
+      const data = await fetch(`/api/vote?fingerprint=${encodeURIComponent(fp)}`).then((r) => r.json());
       setCandidates(data.candidates || []);
       if (data.voted) {
         setHasVoted(true);

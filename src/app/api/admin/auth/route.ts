@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import getDb from '@/lib/db';
+import { getOne } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
-    const db = getDb();
     const body = await req.json();
     const { password } = body;
 
-    const setting = db.prepare("SELECT value FROM settings WHERE key = 'admin_password'").get() as { value: string } | undefined;
+    const setting = await getOne("SELECT value FROM settings WHERE key = 'admin_password'");
     const adminPassword = setting?.value ?? '';
 
     const success = password === adminPassword;

@@ -1,13 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import getDb from '@/lib/db';
+import { getAll, getOne, batch } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const db = getDb();
-    const candidates = db.prepare('SELECT * FROM vote_candidates ORDER BY sort_order ASC').all();
-    return NextResponse.json(candidates);
+    const candidates = await getAll('SELECT * FROM vote_candidates ORDER BY sort_order ASC');
+
+    // Check if fingerprint provided to return vote status
+    const fp = req.nextUrl.searchParams.get('fingerprint');
+    if (fp) {
+      const existing = await getOne('SELECT candidate_id FROM vote_records WHERE fingerprint = ?', [fp]);
+      return NextResponse.json({
+        candidates,
+        voted: !!existing,
+        voted_candidate_id: existing?.candidate_id ?? null,
+      });
+    }
+
+    return NextResponse.json({ candidates });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch vote candidates' }, { status: 500 });
   }
@@ -15,7 +26,6 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const db = getDb();
     const body = await req.json();
     const { candidate_id, fingerprint } = body;
 
@@ -24,26 +34,24 @@ export async function POST(req: NextRequest) {
     }
 
     // Check if this fingerprint already voted
-    const existing = db.prepare('SELECT * FROM vote_records WHERE fingerprint = ?').get(fingerprint);
+    const existing = await getOne('SELECT * FROM vote_records WHERE fingerprint = ?', [fingerprint]);
     if (existing) {
       return NextResponse.json({ error: 'Already voted' }, { status: 409 });
     }
 
     // Check candidate exists
-    const candidate = db.prepare('SELECT * FROM vote_candidates WHERE id = ?').get(candidate_id);
+    const candidate = await getOne('SELECT * FROM vote_candidates WHERE id = ?', [candidate_id]);
     if (!candidate) {
       return NextResponse.json({ error: 'Candidate not found' }, { status: 404 });
     }
 
-    // Cast vote in a transaction
-    const castVote = db.transaction(() => {
-      db.prepare('INSERT INTO vote_records (fingerprint, candidate_id) VALUES (?, ?)').run(fingerprint, candidate_id);
-      db.prepare('UPDATE vote_candidates SET votes = votes + 1 WHERE id = ?').run(candidate_id);
-    });
+    // Cast vote in a batch (transaction)
+    await batch([
+      { sql: 'INSERT INTO vote_records (fingerprint, candidate_id) VALUES (?, ?)', args: [fingerprint, candidate_id] },
+      { sql: 'UPDATE vote_candidates SET votes = votes + 1 WHERE id = ?', args: [candidate_id] },
+    ], 'write');
 
-    castVote();
-
-    const candidates = db.prepare('SELECT * FROM vote_candidates ORDER BY sort_order ASC').all();
+    const candidates = await getAll('SELECT * FROM vote_candidates ORDER BY sort_order ASC');
     return NextResponse.json({ success: true, candidates });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to cast vote' }, { status: 500 });

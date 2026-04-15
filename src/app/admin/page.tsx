@@ -1075,7 +1075,7 @@ function SettingsTab({ notify }: { notify: (m: string) => void }) {
 
   const saveAll = async () => {
     await fetch('/api/settings', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(settings),
     });
     setDirty(false);
@@ -1120,6 +1120,68 @@ function SettingsTab({ notify }: { notify: (m: string) => void }) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Hero section */}
+        <div className="card p-4 md:col-span-2">
+          <h3 className="text-sm font-bold mb-4 pb-2" style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+            ヒーロー画像・テキスト
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-secondary)' }}>メイン画像</label>
+              <div className="flex items-center gap-3 mb-2">
+                {settings.hero_image && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={settings.hero_image} alt="プレビュー" className="w-20 h-20 object-contain rounded" style={{ background: 'var(--bg-secondary)' }} />
+                )}
+                <div className="flex-1">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const fd = new FormData();
+                      fd.append('file', file);
+                      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+                      const data = await res.json();
+                      if (data.url) {
+                        update('hero_image', data.url);
+                        notify('画像をアップロードしました');
+                      }
+                    }}
+                    className="admin-input text-xs"
+                  />
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>PNG/JPG/GIF/WebP対応</p>
+                </div>
+              </div>
+              <Field label="または画像URL" settingsKey="hero_image" />
+              <div className="mt-3">
+                <label className="block text-xs mb-1 font-medium" style={{ color: 'var(--text-secondary)' }}>
+                  画像サイズ: {settings.hero_image_size || '200'}px
+                </label>
+                <input
+                  type="range"
+                  min="80"
+                  max="500"
+                  step="10"
+                  value={settings.hero_image_size || '200'}
+                  onChange={e => update('hero_image_size', e.target.value)}
+                  className="w-full accent-[var(--accent-primary)]"
+                />
+                <div className="flex justify-between text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                  <span>80px</span><span>200px</span><span>350px</span><span>500px</span>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <Field label="タイトル1行目" settingsKey="hero_title_line1" />
+              <Field label="タイトル2行目" settingsKey="hero_title_line2" />
+              <Field label="日付表示" settingsKey="hero_date" />
+              <Field label="サブタイトル" settingsKey="hero_subtitle" />
+            </div>
+          </div>
+        </div>
+
         {/* Event info */}
         <div className="card p-4">
           <h3 className="text-sm font-bold mb-4 pb-2" style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>
