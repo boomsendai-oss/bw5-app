@@ -10,6 +10,7 @@ import VideoSection from "@/components/VideoSection";
 import VoteSection from "@/components/VoteSection";
 import SNSSection from "@/components/SNSSection";
 import Footer from "@/components/Footer";
+import WelcomePopup from "@/components/WelcomePopup";
 
 const SECTION_IDS = [
   "sns",
@@ -50,6 +51,7 @@ export default function Home() {
 
   return (
     <>
+      <WelcomePopup />
       <Navigation
         activeSection={activeSection}
         onNavigate={handleNavigate}
