@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import { motion, useInView } from "framer-motion";
-import { Clock } from "lucide-react";
+import { Clock, Radio } from "lucide-react";
+import Link from "next/link";
 
 interface ScheduleItem {
   id: number;
@@ -36,7 +37,20 @@ export default function ScheduleSection() {
           <h2 className="text-3xl sm:text-4xl font-black tracking-tight gradient-text mb-2">
             TIMETABLE
           </h2>
-          <div className="section-divider max-w-[200px] mx-auto" />
+          <div className="section-divider max-w-[200px] mx-auto mb-4" />
+          <Link
+            href="/timetable"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold tracking-wider transition-all hover:scale-105"
+            style={{
+              background: 'linear-gradient(135deg, rgba(45,106,79,0.3) 0%, rgba(45,106,79,0.15) 100%)',
+              border: '1px solid rgba(45,106,79,0.4)',
+              color: '#7fcea0',
+              boxShadow: '0 0 20px rgba(45,106,79,0.2)',
+            }}
+          >
+            <Radio size={14} className="animate-pulse" />
+            LIVE 舞台進行を見る
+          </Link>
         </motion.div>
 
         {/* Timeline */}
