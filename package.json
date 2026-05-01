@@ -10,13 +10,16 @@
   },
   "dependencies": {
     "@libsql/client": "^0.17.2",
+    "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.3.3",
+    "@vercel/speed-insights": "^2.0.0",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.8.0",
     "next": "16.2.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-icons": "^5.6.0",
+    "react-pageflip": "^2.0.3",
     "react-swipeable": "^7.0.2",
     "uuid": "^13.0.0"
   },

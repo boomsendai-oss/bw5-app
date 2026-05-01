@@ -68,8 +68,7 @@ export default function BackstageSection() {
               <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ background: '#22c55e' }} />
             </span>
             <Camera size={16} className="text-white/70" />
-            <h2 className="text-base font-black tracking-tight text-white">舞台裏ライブ</h2>
-            <span className="ml-auto text-[10px] text-white/40 tabular-nums">{idx + 1} / {status.photos.length}</span>
+            <h2 className="text-base font-black tracking-tight text-white">舞台裏ライブフォト</h2>
           </div>
 
           {/* Photo with fade */}
@@ -97,8 +96,8 @@ export default function BackstageSection() {
             </AnimatePresence>
           </div>
 
-          <div className="px-5 py-2.5 text-[10px] text-white/40 text-center">
-            会場スタッフが撮影 / 約{Math.round((status.rotate_ms || 4500) / 1000)}秒で自動切替
+          <div className="px-5 py-2.5 text-[11px] text-white/55 text-center">
+            舞台裏の様子を写真でお届け
           </div>
         </motion.div>
       </div>
