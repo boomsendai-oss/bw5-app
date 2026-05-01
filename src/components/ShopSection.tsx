@@ -1262,9 +1262,17 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
               <p className="mt-1.5 text-[11px]">受付期限: 5/19(火) 23:59</p>
             </div>
 
-            {/* 簡潔な注意書き */}
-            <div className="rounded-xl p-2.5 text-[11px]" style={{ background: "#fef2f2", border: "1px solid rgba(220,76,4,0.3)", color: "#7f1d1d" }}>
-              ⚠️ 第三者への共有・転載は禁止。コピーガード&ウォーターマーク処理済み。
+            {/* 注意事項 - 柔らかめに */}
+            <div className="rounded-xl p-3 text-[11px] leading-relaxed" style={{ background: "#fef2f2", border: "1px solid rgba(220,76,4,0.3)", color: "#7f1d1d" }}>
+              <p className="font-bold mb-1">📺 ご購入者のみが視聴いただけます</p>
+              <p>
+                映像データには <strong>ウォーターマーク（電子透かし）</strong> が施されており、
+                第三者と共有された場合に <strong>「誰のデータか」が判別できる仕組み</strong> になっています。
+                <br />
+                コピーガード処理も入っているため、ご購入いただいた方ご本人のみが安心してお楽しみいただけます。
+                <br />
+                <span className="text-[10px] opacity-80">※出演者・関係者のプライバシー保護にご協力をお願いいたします</span>
+              </p>
             </div>
 
             {/* Form */}
