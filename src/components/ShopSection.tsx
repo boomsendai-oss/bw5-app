@@ -217,6 +217,7 @@ export default function ShopSection() {
 function MerchTab() {
   const [items, setItems] = useState<MerchItem[]>([]);
   const [modal, setModal] = useState<MerchItem | null>(null);
+  const [restockModal, setRestockModal] = useState<MerchItem | null>(null);
   const [mode, setMode] = useState<ShopMode>("pre");
 
   // Re-evaluate mode every 30s and on mount so 14:30/18:30 transitions auto-apply
@@ -258,6 +259,8 @@ function MerchTab() {
         {items.map((item, i) => {
           // Booth-only items don't track stock in DB (sold by hand at the booth) — never show as sold out.
           const soldOut = item.purchase_at_booth ? false : (item.stock ?? 0) <= 0;
+          // シール (id=8) は追加注文の対象外。それ以外の sold-out は後日発送で受付可能。
+          const restockEligible = soldOut && item.id !== 8 && !item.purchase_at_booth;
           return (
             <motion.div
               key={item.id}
@@ -269,11 +272,14 @@ function MerchTab() {
             >
               <button
                 type="button"
-                onClick={() => !soldOut && setModal(item)}
-                disabled={soldOut}
+                onClick={() => {
+                  if (!soldOut) setModal(item);
+                  else if (restockEligible) setRestockModal(item);
+                }}
+                disabled={soldOut && !restockEligible}
                 aria-label={item.purchase_at_booth ? `${item.name} のデザインを見る` : `${item.name} の予約画面を開く`}
                 className="aspect-square relative overflow-hidden w-full block transition-transform active:scale-[0.97]"
-                style={{ background: "rgba(255,255,255,0.05)", cursor: !soldOut ? "pointer" : "not-allowed" }}
+                style={{ background: "rgba(255,255,255,0.05)", cursor: (!soldOut || restockEligible) ? "pointer" : "not-allowed" }}
               >
                 {item.image_url ? (
                   <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="(max-width: 768px) 50vw, 200px" />
@@ -316,16 +322,31 @@ function MerchTab() {
                 })()}
 
                 <button
-                  onClick={() => !soldOut && setModal(item)}
-                  disabled={soldOut}
+                  onClick={() => {
+                    if (!soldOut) setModal(item);
+                    else if (restockEligible) setRestockModal(item);
+                  }}
+                  disabled={soldOut && !restockEligible}
                   className="w-full mt-2 text-xs font-bold py-2 rounded-full transition-all"
                   style={{
-                    background: !soldOut ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.1)",
-                    color: !soldOut ? "#f27a1a" : "rgba(255,255,255,0.3)",
-                    cursor: !soldOut ? "pointer" : "not-allowed",
+                    background: !soldOut
+                      ? "rgba(255,255,255,0.95)"
+                      : restockEligible
+                      ? "rgba(255,255,255,0.95)"
+                      : "rgba(255,255,255,0.1)",
+                    color: !soldOut
+                      ? "#f27a1a"
+                      : restockEligible
+                      ? "#dc4c04"
+                      : "rgba(255,255,255,0.3)",
+                    cursor: (!soldOut || restockEligible) ? "pointer" : "not-allowed",
                   }}
                 >
-                  {soldOut ? "SOLD OUT" : item.purchase_at_booth ? "デザインを見る" : copy.cardButton}
+                  {!soldOut
+                    ? (item.purchase_at_booth ? "デザインを見る" : copy.cardButton)
+                    : restockEligible
+                    ? "追加注文(後日発送)"
+                    : "SOLD OUT"}
                 </button>
               </div>
             </motion.div>
@@ -342,6 +363,7 @@ function MerchTab() {
 
       <AnimatePresence>
         {modal && <OrderModal item={modal} mode={mode} onClose={() => { setModal(null); load(); }} />}
+        {restockModal && <RestockModal item={restockModal} onClose={() => setRestockModal(null)} />}
       </AnimatePresence>
     </>
   );
@@ -706,3 +728,251 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
   );
 }
 
+
+
+// ════════════════════════════════════════
+// Restock Modal — 売り切れ商品の追加注文（後日発送）
+// ════════════════════════════════════════
+function RestockModal({ item, onClose }: { item: MerchItem; onClose: () => void }) {
+  const variants = item.variants ?? [];
+  const colors = useMemo(
+    () => Array.from(new Set(variants.map((v) => v.color).filter(Boolean))),
+    [variants]
+  );
+  const sizes = useMemo(
+    () => Array.from(new Set(variants.map((v) => v.size).filter(Boolean))),
+    [variants]
+  );
+
+  const [color, setColor] = useState(colors[0] ?? "");
+  const [size, setSize] = useState(sizes[0] ?? "");
+  const [quantity, setQuantity] = useState(1);
+  const [buyerName, setBuyerName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [address, setAddress] = useState("");
+  const [agreed, setAgreed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const SHIPPING_FEE = 800;
+  const subtotal = item.price * quantity;
+  const total = subtotal + SHIPPING_FEE;
+
+  const canSubmit =
+    !submitting &&
+    agreed &&
+    buyerName.trim().length > 0 &&
+    /^\S+@\S+\.\S+$/.test(email.trim()) &&
+    phone.trim().length > 0 &&
+    postalCode.trim().length > 0 &&
+    address.trim().length > 0 &&
+    (colors.length === 0 || color) &&
+    (sizes.length === 0 || size) &&
+    quantity >= 1;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setResult(null);
+    try {
+      const variant = variants.find((v) => v.color === color && v.size === size);
+      const res = await fetch("/api/restock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merch_id: item.id,
+          variant_id: variant?.id ?? null,
+          color,
+          size,
+          quantity,
+          buyer_name: buyerName.trim(),
+          email: email.trim(),
+          phone: phone.trim(),
+          postal_code: postalCode.trim(),
+          address: address.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResult({ ok: false, message: data.error ?? "送信に失敗しました" });
+        return;
+      }
+      setResult({
+        ok: true,
+        message: `ご注文を承りました。ご入力のメールアドレスに、お振込先・お支払期限のご案内をお送りしました。`,
+      });
+    } catch {
+      setResult({ ok: false, message: "通信エラーが発生しました" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <motion.div
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 40, opacity: 0 }}
+        className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto"
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center"
+        >
+          <X size={18} />
+        </button>
+
+        {/* Header */}
+        <div className="p-5 pb-3" style={{ background: "linear-gradient(135deg,#f27a1a,#dc4c04)" }}>
+          <div className="flex items-center gap-2 mb-1">
+            <Package size={16} className="text-white" />
+            <span className="text-[11px] font-black tracking-widest text-white/90">SOLD OUT — 追加注文受付</span>
+          </div>
+          <h3 className="text-lg font-black text-white leading-tight">{item.name}</h3>
+          <p className="text-xs text-white/85 mt-1">後日 自宅へ発送 / 銀行振込でお支払い</p>
+        </div>
+
+        {result?.ok ? (
+          <div className="p-6 text-center">
+            <CheckCircle size={48} className="mx-auto text-green-500 mb-3" />
+            <p className="font-bold text-gray-800">ご注文を承りました!</p>
+            <p className="text-xs text-gray-600 mt-2 leading-relaxed">{result.message}</p>
+            <button
+              onClick={onClose}
+              className="mt-5 px-6 py-2.5 rounded-full text-sm font-bold text-white"
+              style={{ background: "#f27a1a" }}
+            >
+              閉じる
+            </button>
+          </div>
+        ) : (
+          <div className="p-5 space-y-3">
+            {/* Important notice */}
+            <div className="rounded-xl p-3 text-[11px] leading-relaxed" style={{ background: "#fff7ed", border: "1px solid rgba(242,122,26,0.3)", color: "#555" }}>
+              <p className="font-black text-orange-700 mb-1.5">📦 後日発送の流れ</p>
+              <ol className="list-decimal pl-4 space-y-0.5">
+                <li>下記フォームでご注文</li>
+                <li>ご入力のメールアドレスにお振込先のご案内をお送りします</li>
+                <li><strong>2026年5月12日(火) 15:00 まで</strong>にお振り込み</li>
+                <li>ご入金確認後、約2週間でご指定の住所へ発送</li>
+              </ol>
+              <p className="mt-2">送料：<strong>¥{SHIPPING_FEE.toLocaleString()}</strong>（別途加算）</p>
+            </div>
+
+            {/* Variant pickers */}
+            {colors.length > 0 && (
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block font-semibold">カラー</label>
+                <select
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 focus:border-orange-400 focus:outline-none text-gray-800 bg-white"
+                >
+                  {colors.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {sizes.length > 0 && (
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block font-semibold">サイズ</label>
+                <select
+                  value={size}
+                  onChange={(e) => setSize(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 focus:border-orange-400 focus:outline-none text-gray-800 bg-white"
+                >
+                  {sizes.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block font-semibold">数量</label>
+              <input
+                type="number" min={1} max={10}
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+                className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 focus:border-orange-400 focus:outline-none text-gray-800"
+              />
+            </div>
+
+            {/* Buyer info */}
+            <div className="border-t pt-3 mt-1">
+              <p className="text-xs font-black text-gray-700 mb-2">お届け先 / ご連絡先</p>
+              <div className="space-y-2.5">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">お名前</label>
+                  <input type="text" value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="山田 太郎"
+                    className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 focus:border-orange-400 focus:outline-none text-gray-800" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">メールアドレス</label>
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@mail.com"
+                    className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 focus:border-orange-400 focus:outline-none text-gray-800" />
+                  <p className="text-[10px] text-gray-500 mt-0.5">※お振込先のご案内をこちらにお送りします</p>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">電話番号</label>
+                  <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="090-1234-5678"
+                    className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 focus:border-orange-400 focus:outline-none text-gray-800" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">郵便番号</label>
+                  <input type="text" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder="980-0000"
+                    className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 focus:border-orange-400 focus:outline-none text-gray-800" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">住所</label>
+                  <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="宮城県仙台市〇〇区..."
+                    className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 focus:border-orange-400 focus:outline-none text-gray-800" />
+                </div>
+              </div>
+            </div>
+
+            {/* Total */}
+            <div className="rounded-xl bg-gray-50 p-3 text-sm">
+              <div className="flex justify-between text-gray-600 text-xs"><span>商品代金</span><span>¥{subtotal.toLocaleString()}</span></div>
+              <div className="flex justify-between text-gray-600 text-xs mt-1"><span>送料</span><span>¥{SHIPPING_FEE.toLocaleString()}</span></div>
+              <div className="flex justify-between font-black mt-2 pt-2 border-t border-gray-200 text-base" style={{ color: "#dc4c04" }}>
+                <span>合計</span>
+                <span>¥{total.toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* Agreement */}
+            <label className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer select-none">
+              <input
+                type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-orange-500"
+              />
+              <span>送料 ¥{SHIPPING_FEE.toLocaleString()} の加算、5/12(火)15:00 までの銀行振込、ご入金確認後 約2週間での発送に同意します。</span>
+            </label>
+
+            {result && !result.ok && (
+              <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-xs text-red-700">{result.message}</div>
+            )}
+
+            <button
+              onClick={submit} disabled={!canSubmit}
+              className="w-full py-3 rounded-full text-sm font-bold text-white disabled:opacity-40 transition-all flex items-center justify-center gap-2"
+              style={{ background: "#dc4c04" }}
+            >
+              {submitting ? <><Loader2 size={16} className="animate-spin" />送信中...</> : "注文を確定する"}
+            </button>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}

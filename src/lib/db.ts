@@ -52,11 +52,28 @@ export async function initDb(): Promise<void> {
       sql: `CREATE TABLE IF NOT EXISTS merch_orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       merch_id INTEGER NOT NULL,
+      variant_id INTEGER,
+      color TEXT DEFAULT '',
+      size TEXT DEFAULT '',
       buyer_name TEXT NOT NULL,
+      email TEXT DEFAULT '',
       quantity INTEGER DEFAULT 1,
       payment_method TEXT NOT NULL,
       status TEXT DEFAULT 'pending',
+      square_payment_id TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (merch_id) REFERENCES merchandise(id)
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS merch_variants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      merch_id INTEGER NOT NULL,
+      color TEXT DEFAULT '',
+      size TEXT DEFAULT '',
+      stock INTEGER DEFAULT 0,
+      sort_order INTEGER DEFAULT 0,
       FOREIGN KEY (merch_id) REFERENCES merchandise(id)
     )`,
       args: [],
@@ -126,6 +143,55 @@ export async function initDb(): Promise<void> {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       image_url TEXT NOT NULL,
       sort_order INTEGER DEFAULT 0
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS performances (
+      m_id TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      title_reading TEXT DEFAULT '',
+      instructor TEXT DEFAULT '',
+      instructor_photo_url TEXT DEFAULT '',
+      performer_count INTEGER DEFAULT 0,
+      genre TEXT DEFAULT '',
+      song_name TEXT DEFAULT '',
+      part INTEGER DEFAULT 1
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS performers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      m_id TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0,
+      FOREIGN KEY (m_id) REFERENCES performances(m_id)
+    )`,
+      args: [],
+    },
+    {
+      // 売り切れ商品の追加注文（後日発送）
+      sql: `CREATE TABLE IF NOT EXISTS restock_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      merch_id INTEGER NOT NULL,
+      variant_id INTEGER,
+      color TEXT DEFAULT '',
+      size TEXT DEFAULT '',
+      quantity INTEGER DEFAULT 1,
+      buyer_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      postal_code TEXT NOT NULL,
+      address TEXT NOT NULL,
+      unit_price INTEGER NOT NULL,
+      shipping_fee INTEGER NOT NULL DEFAULT 800,
+      total_amount INTEGER NOT NULL,
+      status TEXT DEFAULT 'pending_payment',
+      payment_deadline TEXT DEFAULT '',
+      note TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (merch_id) REFERENCES merchandise(id)
     )`,
       args: [],
     },
@@ -210,6 +276,57 @@ export async function initDb(): Promise<void> {
       { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['square_app_id', 'sandbox-sq0idb-PLACEHOLDER'] },
       { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['square_location_id', 'PLACEHOLDER'] },
       { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['video_sale_active', 'true'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['open_time', '14:00'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['start_time', '14:30'] },
+      // Section visibility defaults (1=visible, 0=Coming Soon)
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['section_schedule_visible', '1'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['section_merch_visible', '1'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['section_video_visible', '0'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['section_music_visible', '0'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['section_vote_visible', '0'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['section_sns_visible', '1'] },
+    ], 'write');
+  }
+
+  const perfCount = await c.execute('SELECT COUNT(*) as count FROM performances');
+  if (Number(perfCount.rows[0].count) === 0) {
+    // m_id, title, title_reading, instructor, instructor_photo_url, performer_count, genre, song_name, part
+    const perfSql = 'INSERT INTO performances (m_id, title, title_reading, instructor, instructor_photo_url, performer_count, genre, song_name, part) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
+    await c.batch([
+      // --- Part 1 ---
+      { sql: perfSql, args: ['M1',  'BOOMインストラクターナンバー', 'ブームインストラクターナンバー', 'ALL INSTRUCTORS', '', 0, 'HIPHOP', '', 1] },
+      { sql: perfSql, args: ['M2',  'TARO HH 初級', 'タロー ヒップホップ しょきゅう', 'TARO', '', 0, 'HIPHOP', '', 1] },
+      { sql: perfSql, args: ['M3',  'はじめてHH', 'はじめてヒップホップ', 'Ryuki', '', 0, 'HIPHOP', '', 1] },
+      { sql: perfSql, args: ['M4',  'YURI WAACK', 'ユリ ワック', 'YURI', '', 0, 'WAACK', '', 1] },
+      { sql: perfSql, args: ['M5',  '諏訪キッズ', 'すわキッズ', 'HARUKA', '', 0, 'HIPHOP', '', 1] },
+      { sql: perfSql, args: ['M6',  '多賀城HOUSE', 'たがじょうハウス', 'K@TTSU & AOI', '', 0, 'HOUSE', '', 1] },
+      { sql: perfSql, args: ['M7',  '長町キッズ', 'ながまちキッズ', 'TARO', '', 0, 'HIPHOP', '', 1] },
+      { sql: perfSql, args: ['M8',  'ダンス部', 'ダンスぶ', '', '', 0, '', '', 1] },
+      { sql: perfSql, args: ['M9',  'ZIEL ゲスト', 'ジール ゲスト', 'ZIEL', '', 0, '', '', 1] },
+      { sql: perfSql, args: ['M10', 'おっちゃんNJS', 'おっちゃんエヌジェイエス', 'おっちゃん', '', 0, 'NJS', '', 1] },
+      // --- Part 2 ---
+      { sql: perfSql, args: ['M11', '多賀城HH入門', 'たがじょうヒップホップにゅうもん', 'AOI', '', 0, 'HIPHOP', '', 2] },
+      { sql: perfSql, args: ['M12', 'ベーシックダンスクラス', 'ベーシックダンスクラス', 'Ryuki & TARO', '', 0, 'HIPHOP', '', 2] },
+      { sql: perfSql, args: ['M13', '多賀城JAZZ', 'たがじょうジャズ', 'KEIKO', '', 0, 'JAZZ', '', 2] },
+      { sql: perfSql, args: ['M14', '長町ちびっこ', 'ながまちちびっこ', 'TARO', '', 0, 'HIPHOP', '', 2] },
+      { sql: perfSql, args: ['M15', '多賀城HH初級', 'たがじょうヒップホップしょきゅう', 'AOI', '', 0, 'HIPHOP', '', 2] },
+      { sql: perfSql, args: ['M16', 'SAYUKIフリースタイル', 'サユキフリースタイル', 'SAYUKI', '', 0, 'FREESTYLE', '', 2] },
+      { sql: perfSql, args: ['M17', 'TARO&TAKE', 'タローアンドタケ', 'TARO & TAKE', '', 0, '', '', 2] },
+      { sql: perfSql, args: ['M18', 'K@TTSU HOUSE', 'カッツハウス', 'K@TTSU', '', 0, 'HOUSE', '', 2] },
+      { sql: perfSql, args: ['M19', 'FOODIES', 'フーディーズ', '', '', 0, '', '', 2] },
+      { sql: perfSql, args: ['M20', 'GRAFFITIナンバー', 'グラフィティナンバー', 'Ryuki & TARO', '', 0, 'HIPHOP', '', 2] },
+      // --- Part 3 ---
+      { sql: perfSql, args: ['M21', '七ヶ浜HH初級', 'しちがはまヒップホップしょきゅう', 'TARO', '', 0, 'HIPHOP', '', 3] },
+      { sql: perfSql, args: ['M22', '長町ガールズ合同', 'ながまちガールズごうどう', 'KEIKO', '', 0, 'GIRLS', '', 3] },
+      { sql: perfSql, args: ['M23', '日曜キッズHH', 'にちようキッズヒップホップ', 'Ryuki', '', 0, 'HIPHOP', '', 3] },
+      { sql: perfSql, args: ['M24', 'ちゃんなつHH', 'ちゃんなつヒップホップ', 'ちゃんなつ', '', 0, 'HIPHOP', '', 3] },
+      { sql: perfSql, args: ['M25', '七ヶ浜HH入門', 'しちがはまヒップホップにゅうもん', 'AOI', '', 0, 'HIPHOP', '', 3] },
+      { sql: perfSql, args: ['M26', 'キッズ強化', 'キッズきょうか', 'TARO', '', 0, 'HIPHOP', '', 3] },
+      { sql: perfSql, args: ['M27', 'クレアラシル', 'クレアラシル', '', '', 0, '', '', 3] },
+      { sql: perfSql, args: ['M28', 'HOUSEエキスパート', 'ハウスエキスパート', 'K@TTSU', '', 0, 'HOUSE', '', 3] },
+      { sql: perfSql, args: ['M29', 'NEW STYLERS', 'ニュースタイラーズ', '', '', 0, '', '', 3] },
+      { sql: perfSql, args: ['M30', 'TARO HH中級', 'タローヒップホップちゅうきゅう', 'TARO', '', 0, 'HIPHOP', '', 3] },
+      { sql: perfSql, args: ['M31', 'エンディングナンバー', 'エンディングナンバー', 'ALL', '', 0, '', '', 3] },
     ], 'write');
   }
 
