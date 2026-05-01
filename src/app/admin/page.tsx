@@ -12,13 +12,20 @@ import {
 interface ScheduleItem {
   id: number; time: string; title: string; description: string; sort_order: number;
 }
+interface MerchVariant {
+  id: number; merch_id: number; color: string; size: string; stock: number; sort_order: number;
+}
 interface MerchItem {
   id: number; name: string; price: number; image_url: string;
   stock: number; description: string; sort_order: number; active: number;
+  variants?: MerchVariant[];
 }
 interface MerchOrder {
-  id: number; merch_id: number; buyer_name: string; payment_method: string;
+  id: number; merch_id: number; variant_id?: number | null;
+  color?: string; size?: string; email?: string;
+  buyer_name: string; payment_method: string;
   status: string; created_at: string; merch_name: string; merch_price?: number;
+  square_payment_id?: string;
 }
 interface MusicRelease {
   id: number; artist: string; title: string; jacket_url: string;
@@ -56,7 +63,7 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   useEffect(() => { const t = setTimeout(onClose, 2500); return () => clearTimeout(t); }, [onClose]);
   return (
     <div className="fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-sm font-medium text-white"
-      style={{ background: 'linear-gradient(135deg, #e63946, #f4a261)' }}>
+      style={{ background: 'linear-gradient(135deg, #e07b2d, #f4a261)' }}>
       {message}
     </div>
   );
@@ -178,6 +185,13 @@ export default function AdminPage() {
           })}
         </nav>
         <div className="p-4 border-t" style={{ borderColor: 'var(--border-color)' }}>
+          <a
+            href="/admin/performances"
+            className="flex items-center gap-2 text-sm w-full mb-3 px-4 py-2 rounded-lg transition-colors"
+            style={{ background: 'var(--bg-hover)', color: 'var(--accent-primary)' }}
+          >
+            <Music className="w-4 h-4" /> ナンバー管理
+          </a>
           <button onClick={handleLogout} className="flex items-center gap-2 text-sm w-full" style={{ color: 'var(--text-muted)' }}>
             <LogOut className="w-4 h-4" /> ログアウト
           </button>
@@ -387,6 +401,29 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
     notify('在庫を更新しました');
   };
 
+  const setStockExact = async (id: number, stock: number) => {
+    const res = await fetch('/api/merchandise', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_stock', id, stock: Math.max(0, stock) }),
+    });
+    const data = await res.json();
+    setItems(data.items || []);
+    setOrders(data.orders || []);
+  };
+
+  const updateVariantStock = async (variantId: number, stock: number) => {
+    const res = await fetch('/api/merchandise', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update_variant_stock', id: variantId, stock: Math.max(0, stock) }),
+    });
+    const data = await res.json();
+    setItems(data.items || []);
+    setOrders(data.orders || []);
+    notify('バリアント在庫を更新しました');
+  };
+
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
   const startEdit = (item: MerchItem) => {
     setEditId(item.id);
     setForm({ name: item.name, price: String(item.price), stock: String(item.stock), image_url: item.image_url, description: item.description });
@@ -416,51 +453,114 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
         </div>
       )}
 
-      <div className="card overflow-x-auto">
-        <table className="admin-table">
-          <thead>
-            <tr><th>商品名</th><th>価格</th><th>在庫</th><th>販売数</th><th className="w-48">操作</th></tr>
-          </thead>
-          <tbody>
-            {items.map(item => (
-              <tr key={item.id}>
-                {editId === item.id ? (
-                  <>
-                    <td><input className="admin-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></td>
-                    <td><input className="admin-input" type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} /></td>
-                    <td><input className="admin-input" type="number" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} /></td>
-                    <td>{soldCount(item.id)}</td>
-                    <td>
-                      <div className="flex gap-1">
-                        <button onClick={() => save(item)} className="p-1.5 rounded" style={{ color: '#22c55e' }}><Save className="w-4 h-4" /></button>
-                        <button onClick={() => setEditId(null)} className="p-1.5 rounded" style={{ color: 'var(--text-muted)' }}><X className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </>
+      {items.length === 0 && (
+        <div className="card p-6 text-center" style={{ color: 'var(--text-secondary)' }}>
+          <p className="text-sm mb-2">商品データを読み込み中、または0件です。</p>
+          <button onClick={load} className="btn-secondary text-xs px-4 py-2">再読み込み</button>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {items.map(item => {
+          const variantTotalStock = (item.variants ?? []).reduce((sum, v) => sum + (v.stock ?? 0), 0);
+          const hasVariants = (item.variants ?? []).length > 0;
+          return (
+            <div key={item.id} className="card p-4">
+              {/* Header row: image + name + price + sold + remove */}
+              <div className="flex items-start gap-3 mb-3">
+                {item.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.image_url} alt="" className="w-16 h-16 rounded-lg object-cover bg-white/5" />
                 ) : (
-                  <>
-                    <td>{item.name}</td>
-                    <td className="font-mono">&yen;{item.price.toLocaleString()}</td>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => updateStock(item.id, -1)} className="w-6 h-6 rounded flex items-center justify-center text-xs" style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>-</button>
-                        <span className="font-mono w-8 text-center">{item.stock}</span>
-                        <button onClick={() => updateStock(item.id, 1)} className="w-6 h-6 rounded flex items-center justify-center text-xs" style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>+</button>
-                      </div>
-                    </td>
-                    <td className="font-mono">{soldCount(item.id)}</td>
-                    <td>
-                      <div className="flex gap-1">
-                        <button onClick={() => startEdit(item)} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--text-secondary)' }}><Edit3 className="w-4 h-4" /></button>
-                        <button onClick={() => remove(item.id)} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--accent-primary)' }}><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </>
+                  <div className="w-16 h-16 rounded-lg flex items-center justify-center text-xs" style={{ background: 'var(--bg-hover)', color: 'var(--text-muted)' }}>NO IMG</div>
                 )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                <div className="flex-1 min-w-0">
+                  {editId === item.id ? (
+                    <div className="space-y-2">
+                      <input className="admin-input w-full" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="商品名" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input className="admin-input" type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} placeholder="価格" />
+                        <input className="admin-input" value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })} placeholder="画像URL" />
+                      </div>
+                      <textarea className="admin-input w-full" rows={3} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="説明文" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="font-bold text-sm leading-tight">{item.name}</div>
+                      <div className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                        ¥{item.price.toLocaleString()} ・ ID:{item.id} ・ 販売数:{soldCount(item.id)}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1 shrink-0">
+                  {editId === item.id ? (
+                    <>
+                      <button onClick={() => save(item)} className="p-1.5 rounded hover:bg-white/5" style={{ color: '#22c55e' }} title="保存"><Save className="w-4 h-4" /></button>
+                      <button onClick={() => setEditId(null)} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--text-muted)' }} title="キャンセル"><X className="w-4 h-4" /></button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => startEdit(item)} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--text-secondary)' }} title="名前/価格/画像/説明を編集"><Edit3 className="w-4 h-4" /></button>
+                      <button onClick={() => remove(item.id)} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--accent-primary)' }} title="削除"><Trash2 className="w-4 h-4" /></button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Master stock — variantsありの場合は表示のみで variants合計を出す */}
+              <div className="rounded-lg p-3 mb-3 flex items-center gap-3" style={{ background: 'var(--bg-hover)' }}>
+                <div className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>マスター在庫</div>
+                {hasVariants ? (
+                  <div className="text-sm font-mono">
+                    {item.stock} <span className="text-xs" style={{ color: 'var(--text-muted)' }}>(バリアント合計: {variantTotalStock})</span>
+                  </div>
+                ) : (
+                  <input
+                    type="number"
+                    min={0}
+                    defaultValue={item.stock}
+                    onBlur={e => {
+                      const v = Number(e.target.value);
+                      if (!Number.isNaN(v) && v !== item.stock) setStockExact(item.id, v);
+                    }}
+                    className="admin-input w-24 text-sm"
+                  />
+                )}
+              </div>
+
+              {/* Variants editor */}
+              {hasVariants && (
+                <div className="space-y-1.5">
+                  <div className="text-xs font-bold mb-1" style={{ color: 'var(--text-secondary)' }}>
+                    バリアント別在庫
+                  </div>
+                  {(item.variants ?? []).map(v => (
+                    <div key={v.id} className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'var(--bg-hover)' }}>
+                      <div className="flex-1 text-sm">
+                        {v.color || '—'}{v.size ? ` / ${v.size}` : ''}
+                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        defaultValue={v.stock}
+                        onBlur={e => {
+                          const newStock = Number(e.target.value);
+                          if (!Number.isNaN(newStock) && newStock !== v.stock) updateVariantStock(v.id, newStock);
+                        }}
+                        className="admin-input w-20 text-sm text-right"
+                      />
+                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>個</span>
+                    </div>
+                  ))}
+                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                    数値を変えてフォーカスを外すと自動保存されます
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -935,34 +1035,82 @@ function OrdersTab({ notify }: { notify: (m: string) => void }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const updateStatus = async (id: number, status: string) => {
+    const res = await fetch('/api/merch/order', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status }),
+    });
+    if (res.ok) {
+      notify('更新しました');
+      load();
+    } else {
+      notify('更新に失敗しました');
+    }
+  };
+
   const statusColor = (status: string) => {
     switch (status) {
       case 'paid': return '#22c55e';
+      case 'pending_cash': return '#f4a261';
+      case 'awaiting_payment': return '#eab308';
       case 'pending': return '#f4a261';
       case 'cancelled': return '#ef4444';
       default: return 'var(--text-secondary)';
     }
   };
+  const statusLabel = (status: string) => {
+    switch (status) {
+      case 'paid': return '支払済';
+      case 'pending_cash': return '当日現金';
+      case 'awaiting_payment': return '決済待ち';
+      case 'pending': return '未払い';
+      case 'cancelled': return 'キャンセル';
+      default: return status;
+    }
+  };
+  const isPaid = (s: string) => s === 'paid';
+  const isPending = (s: string) => s === 'pending_cash' || s === 'awaiting_payment' || s === 'pending';
 
   type CombinedOrder = {
-    id: string; type: string; buyer_name: string; detail: string;
-    payment_method: string; status: string; created_at: string;
+    id: string; rawId: number; type: 'merch' | 'video'; typeLabel: string;
+    buyer_name: string; detail: string; payment_method: string;
+    status: string; created_at: string;
   };
 
   const combined: CombinedOrder[] = [
-    ...(orderType === 'all' || orderType === 'merch' ? merchOrders.map(o => ({
-      id: `M-${o.id}`, type: 'グッズ', buyer_name: o.buyer_name,
-      detail: o.merch_name || '', payment_method: o.payment_method,
-      status: o.status, created_at: o.created_at,
-    })) : []),
+    ...(orderType === 'all' || orderType === 'merch' ? merchOrders.map(o => {
+      const variant = [o.color, o.size].filter(Boolean).join(' / ');
+      return {
+        id: `M-${o.id}`, rawId: o.id, type: 'merch' as const, typeLabel: 'グッズ',
+        buyer_name: o.buyer_name,
+        detail: `${o.merch_name ?? ''}${variant ? ` (${variant})` : ''}`,
+        payment_method: o.payment_method,
+        status: o.status, created_at: o.created_at,
+      };
+    }) : []),
     ...(orderType === 'all' || orderType === 'video' ? videoOrders.map(o => ({
-      id: `V-${o.id}`, type: '映像', buyer_name: o.buyer_name,
+      id: `V-${o.id}`, rawId: o.id, type: 'video' as const, typeLabel: '映像',
+      buyer_name: o.buyer_name,
       detail: o.email, payment_method: o.payment_method,
       status: o.status, created_at: o.created_at,
     })) : []),
   ]
-    .filter(o => filter === 'all' || o.status === filter)
+    .filter(o => {
+      if (filter === 'all') return true;
+      if (filter === 'paid') return isPaid(o.status);
+      if (filter === 'pending') return isPending(o.status);
+      return true;
+    })
     .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+  const pmLabel = (pm: string) => {
+    if (pm === 'cash_onsite') return '当日現金';
+    if (pm === 'online_square') return 'Square決済';
+    return pm;
+  };
+  const totalPending = merchOrders.filter(o => isPending(o.status)).length +
+                       videoOrders.filter(o => isPending(o.status)).length;
 
   return (
     <div>
@@ -976,7 +1124,7 @@ function OrdersTab({ notify }: { notify: (m: string) => void }) {
         </div>
         <div className="card p-4 text-center">
           <div className="text-2xl font-bold" style={{ color: '#f4a261' }}>
-            {merchOrders.filter(o => o.status === 'pending').length + videoOrders.filter(o => o.status === 'pending').length}
+            {totalPending}
           </div>
           <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>未払い</div>
         </div>
@@ -1024,7 +1172,7 @@ function OrdersTab({ notify }: { notify: (m: string) => void }) {
       <div className="card overflow-x-auto">
         <table className="admin-table">
           <thead>
-            <tr><th>注文ID</th><th>種類</th><th>購入者</th><th>詳細</th><th>支払方法</th><th>ステータス</th><th>日時</th></tr>
+            <tr><th>注文ID</th><th>種類</th><th>購入者</th><th>詳細</th><th>支払方法</th><th>ステータス</th><th>日時</th><th>操作</th></tr>
           </thead>
           <tbody>
             {combined.map(o => (
@@ -1032,21 +1180,37 @@ function OrdersTab({ notify }: { notify: (m: string) => void }) {
                 <td className="font-mono text-xs">{o.id}</td>
                 <td>
                   <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>
-                    {o.type}
+                    {o.typeLabel}
                   </span>
                 </td>
                 <td>{o.buyer_name}</td>
                 <td className="text-sm" style={{ color: 'var(--text-secondary)' }}>{o.detail}</td>
-                <td>{o.payment_method}</td>
+                <td className="text-xs">{pmLabel(o.payment_method)}</td>
                 <td>
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ color: statusColor(o.status), background: `${statusColor(o.status)}20` }}>
-                    {o.status === 'paid' ? '支払済' : o.status === 'pending' ? '未払い' : o.status}
+                    {statusLabel(o.status)}
                   </span>
                 </td>
                 <td className="text-xs" style={{ color: 'var(--text-muted)' }}>{o.created_at}</td>
+                <td>
+                  {o.type === 'merch' && isPending(o.status) && (
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => updateStatus(o.rawId, 'paid')}
+                        className="text-xs px-2 py-0.5 rounded font-medium text-white"
+                        style={{ background: '#22c55e' }}
+                      >支払済</button>
+                      <button
+                        onClick={() => updateStatus(o.rawId, 'cancelled')}
+                        className="text-xs px-2 py-0.5 rounded font-medium text-white"
+                        style={{ background: '#ef4444' }}
+                      >取消</button>
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
-            {combined.length === 0 && <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--text-muted)' }}>注文がありません</td></tr>}
+            {combined.length === 0 && <tr><td colSpan={8} className="text-center py-8" style={{ color: 'var(--text-muted)' }}>注文がありません</td></tr>}
           </tbody>
         </table>
       </div>
@@ -1061,7 +1225,8 @@ function SettingsTab({ notify }: { notify: (m: string) => void }) {
   const [dirty, setDirty] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/settings');
+    // Admin page needs the full settings list (incl. lottery_keyword etc.).
+    const res = await fetch('/api/settings', { headers: { 'x-admin-auth': '1' } });
     setSettings(await res.json());
     setDirty(false);
   }, []);
@@ -1074,9 +1239,13 @@ function SettingsTab({ notify }: { notify: (m: string) => void }) {
   };
 
   const saveAll = async () => {
+    // Don't overwrite admin_password with an empty string (the public GET
+    // filters this key, so an empty value here means "unchanged").
+    const payload: SettingsMap = { ...settings };
+    if (!payload.admin_password) delete payload.admin_password;
     await fetch('/api/settings', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
+      body: JSON.stringify(payload),
     });
     setDirty(false);
     notify('設定を保存しました');
@@ -1199,9 +1368,10 @@ function SettingsTab({ notify }: { notify: (m: string) => void }) {
           <h3 className="text-sm font-bold mb-4 pb-2" style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>
             管理者
           </h3>
-          <div className="space-y-3">
-            <Field label="管理パスワード" settingsKey="admin_password" />
-          </div>
+          <p className="text-[11px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            管理パスワードは Vercel の環境変数 <code>ADMIN_PASSWORD</code> で管理されています。
+            変更する場合は Vercel ダッシュボード（Settings → Environment Variables）から行ってください。
+          </p>
         </div>
 
         {/* Payment */}
@@ -1214,6 +1384,91 @@ function SettingsTab({ notify }: { notify: (m: string) => void }) {
             <Field label="Square App ID" settingsKey="square_app_id" />
             <Field label="Square Location ID" settingsKey="square_location_id" />
             <Field label="PayPal リンク" settingsKey="paypal_link" />
+          </div>
+        </div>
+
+        {/* Timetable offset */}
+        <div className="card p-4">
+          <h3 className="text-sm font-bold mb-4 pb-2" style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+            🎭 舞台進行タイムオフセット
+          </h3>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+            当日の進行が巻き/押しの場合に調整。+で遅れ、-で巻き。
+          </p>
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <button
+              onClick={() => update('time_offset_min', String(Number(settings.time_offset_min || '0') - 5))}
+              className="w-12 h-12 rounded-xl text-xl font-bold"
+              style={{ background: 'var(--bg-hover)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
+            >-5</button>
+            <button
+              onClick={() => update('time_offset_min', String(Number(settings.time_offset_min || '0') - 1))}
+              className="w-10 h-10 rounded-lg text-lg font-bold"
+              style={{ background: 'var(--bg-hover)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
+            >-1</button>
+            <div className="text-center min-w-[80px]">
+              <div className="text-3xl font-black" style={{ color: Number(settings.time_offset_min || '0') === 0 ? 'var(--text-primary)' : Number(settings.time_offset_min || '0') > 0 ? '#e07b2d' : '#22c55e' }}>
+                {Number(settings.time_offset_min || '0') > 0 ? '+' : ''}{settings.time_offset_min || '0'}
+              </div>
+              <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>分</div>
+            </div>
+            <button
+              onClick={() => update('time_offset_min', String(Number(settings.time_offset_min || '0') + 1))}
+              className="w-10 h-10 rounded-lg text-lg font-bold"
+              style={{ background: 'var(--bg-hover)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
+            >+1</button>
+            <button
+              onClick={() => update('time_offset_min', String(Number(settings.time_offset_min || '0') + 5))}
+              className="w-12 h-12 rounded-xl text-xl font-bold"
+              style={{ background: 'var(--bg-hover)', color: 'var(--text-primary)', border: '1px solid var(--border-color)' }}
+            >+5</button>
+          </div>
+          <button
+            onClick={() => update('time_offset_min', '0')}
+            className="w-full py-1.5 rounded-lg text-xs font-medium"
+            style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border-color)' }}
+          >リセット（±0）</button>
+        </div>
+
+        {/* Section visibility */}
+        <div className="card p-4 md:col-span-2">
+          <h3 className="text-sm font-bold mb-2 pb-2" style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+            <span className="mr-2">👁️</span>公開制御（セクション表示/非表示）
+          </h3>
+          <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+            OFFにしたセクションは「Coming Soon」表示になります。当日のタイミングでONに切り替えてください。
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1">
+            <Toggle label="🗓️ タイムテーブル" settingsKey="section_schedule_visible" />
+            <Toggle label="🛍️ グッズ販売" settingsKey="section_merch_visible" />
+            <Toggle label="🎬 映像データ" settingsKey="section_video_visible" />
+            <Toggle label="🎵 音源" settingsKey="section_music_visible" />
+            <Toggle label="⭐ 投票" settingsKey="section_vote_visible" />
+            <Toggle label="📱 SNS" settingsKey="section_sns_visible" />
+            <Toggle label="🎰 くじ引きセクション" settingsKey="lottery_section_visible" />
+          </div>
+        </div>
+
+        {/* Lottery controls */}
+        <div className="card p-4 md:col-span-2" style={{ borderColor: 'rgba(242,122,26,0.5)', borderWidth: '2px' }}>
+          <h3 className="text-sm font-bold mb-2 pb-2" style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+            <span className="mr-2">🎰</span>くじ引き運営コントロール
+          </h3>
+          <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+            MCの合図でON、時間が来たらOFF。キーワードはMCが当日マイクで発表する文字列。
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Toggle label="受付ON/OFF（くじ引き可能）" settingsKey="lottery_active" />
+            </div>
+            <Field label="キーワード（MCが当日発表）" settingsKey="lottery_keyword" />
+            <Field label="景品名" settingsKey="lottery_prize_name" />
+            <Field label="景品画像URL" settingsKey="lottery_prize_image" />
+            <Field label="当選確率（0-1、例: 0.10 = 10%）" settingsKey="lottery_probability" />
+            <Field label="当選数上限" settingsKey="lottery_winners_cap" type="number" />
+          </div>
+          <div className="mt-4 p-3 rounded-lg text-xs" style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>
+            👉 当選者一覧は <a href="/admin/lottery-winners" className="underline" style={{ color: 'var(--accent-primary)' }}>/admin/lottery-winners</a> で確認できます
           </div>
         </div>
 
