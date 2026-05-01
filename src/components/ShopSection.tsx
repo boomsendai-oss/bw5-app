@@ -420,6 +420,9 @@ function ImageSwiper({
   availableViews,
   currentView,
   onChangeView,
+  colorList,
+  currentColor,
+  onChangeColor,
 }: {
   displayImage: string;
   alt: string;
@@ -427,8 +430,22 @@ function ImageSwiper({
   availableViews: ViewMode[];
   currentView: ViewMode;
   onChangeView: (v: ViewMode) => void;
+  /** 色の横スワイプ切替を有効にする場合のリスト (主にシール用) */
+  colorList?: string[];
+  currentColor?: string;
+  onChangeColor?: (c: string) => void;
 }) {
+  // シールアイテムは色 (=デザイン) スワイプ、その他はビュー (FRONT/BACK/CLOSEUP/MODEL) スワイプ
+  const useColorSwipe = !!(colorList && colorList.length > 1 && currentColor && onChangeColor);
   const switchBy = (delta: number) => {
+    if (useColorSwipe) {
+      const cs = colorList!;
+      const idx = cs.indexOf(currentColor!);
+      if (idx < 0) return;
+      const next = (idx + delta + cs.length) % cs.length;
+      onChangeColor!(cs[next]);
+      return;
+    }
     if (availableViews.length < 2) return;
     const idx = availableViews.indexOf(currentView);
     if (idx < 0) return;
@@ -456,19 +473,22 @@ function ImageSwiper({
         sizes="(max-width: 768px) 80vw, 320px"
         draggable={false}
       />
-      {availableViews.length > 1 && (
+      {(availableViews.length > 1 || useColorSwipe) && (
         <>
           {/* Dots indicator */}
           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 px-2 py-1 rounded-full bg-black/35 backdrop-blur">
-            {availableViews.map((v) => (
-              <span
-                key={v}
-                className="w-1.5 h-1.5 rounded-full transition-all"
-                style={{ background: v === currentView ? '#fff' : 'rgba(255,255,255,0.4)' }}
-              />
-            ))}
+            {(useColorSwipe ? colorList! : availableViews).map((item) => {
+              const active = useColorSwipe ? item === currentColor : item === currentView;
+              return (
+                <span
+                  key={item}
+                  className="w-1.5 h-1.5 rounded-full transition-all"
+                  style={{ background: active ? '#fff' : 'rgba(255,255,255,0.4)' }}
+                />
+              );
+            })}
           </div>
-          {/* Subtle swipe hint on first render */}
+          {/* Subtle swipe hint */}
           <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[9px] font-bold bg-white/85 text-gray-700 pointer-events-none">
             ← スワイプ →
           </div>
@@ -628,6 +648,13 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
               availableViews={availableViews}
               currentView={view}
               onChangeView={setView}
+              {...(item.id === 8
+                ? {
+                    colorList: colors,
+                    currentColor: selectedColor,
+                    onChangeColor: setSelectedColor,
+                  }
+                : {})}
             />
             {availableViews.length > 1 && (
               <div className="flex justify-center gap-2 -mt-2 mb-3">
@@ -1200,14 +1227,12 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
         <div className="p-5 pb-3" style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)" }}>
           <div className="flex items-center gap-2 mb-1">
             <Package size={16} className="text-white" />
-            <span className="text-[11px] font-black tracking-widest text-white/90">VIDEO — 事前予約受付</span>
+            <span className="text-[11px] font-black tracking-widest text-white/90">VIDEO 事前予約</span>
           </div>
           <h3 className="text-lg font-black text-white leading-tight">{item.name}</h3>
-          <p className="text-xs text-white/85 mt-1">「欲しい！」を伝えるだけ。お支払いは後日でOK</p>
           <div className="mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-black"
             style={{ background: "rgba(255,255,255,0.95)", color: "#6366f1" }}>
-            <span>🆓 今は無料で申込のみ</span>
-            {item.price > 0 && <span className="text-[10px] opacity-70">/ 完成後 ¥{item.price.toLocaleString()}</span>}
+            <span>¥{item.price.toLocaleString()} (お支払いは後日)</span>
           </div>
         </div>
 
@@ -1226,36 +1251,20 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
           </div>
         ) : (
           <div className="p-5 space-y-3">
-            {/* "今は申し込みだけ" の安心感を強く打ち出す */}
-            <div className="rounded-xl p-3.5" style={{ background: "linear-gradient(135deg,#ecfdf5,#d1fae5)", border: "1px solid rgba(34,197,94,0.45)" }}>
-              <p className="text-sm font-black mb-1" style={{ color: "#047857" }}>🆓 今は申し込みだけ。お支払いは不要です</p>
-              <p className="text-[11px] leading-relaxed" style={{ color: "#065f46" }}>
-                ここでは「欲しい！」というご希望をお伺いするだけです。<br />
-                データの編集が完成したら、メールで販売サイトのご案内をお送りします。<br />
-                <strong>その時にお支払い ¥3,000 と引き換えにダウンロード</strong>できる流れになります。
-              </p>
-            </div>
-
-            {/* Flow */}
-            <div className="rounded-xl p-3 text-[11px] leading-relaxed" style={{ background: "#f5f3ff", border: "1px solid rgba(99,102,241,0.3)", color: "#555" }}>
+            {/* シンプルな流れ説明 */}
+            <div className="rounded-xl p-3 text-[12px] leading-relaxed" style={{ background: "#f5f3ff", border: "1px solid rgba(99,102,241,0.3)", color: "#555" }}>
               <p className="font-black text-purple-700 mb-1.5">📹 流れ</p>
-              <ol className="list-decimal pl-4 space-y-1">
-                <li><strong>今:</strong> 下記フォームに「欲しい人」として申込（無料 / お支払いなし）</li>
-                <li><strong>編集完成後（5月下旬予定）:</strong> ご入力のメールアドレスに<strong>販売サイト（Vimeo オンデマンド予定）</strong>のご案内が届きます</li>
-                <li><strong>その時:</strong> ¥3,000 のお支払いと引き換えにダウンロードしてご視聴</li>
+              <ol className="list-decimal pl-4 space-y-0.5">
+                <li>このフォームでご予約（無料）</li>
+                <li>5月下旬頃に販売サイトのご案内メール</li>
+                <li>その時に ¥3,000 でご購入 → 視聴/ダウンロード</li>
               </ol>
-              <p className="mt-2 text-[10px]"><strong>申込の受付期限: 2026年5月19日(火) 23:59 まで</strong></p>
+              <p className="mt-1.5 text-[11px]">受付期限: 5/19(火) 23:59</p>
             </div>
 
-            {/* Anti-piracy notice */}
-            <div className="rounded-xl p-3 text-[11px] leading-relaxed" style={{ background: "#fef2f2", border: "1px solid rgba(220,76,4,0.4)", color: "#7f1d1d" }}>
-              <p className="font-black text-red-700 mb-1.5">⚠️ 重要なお願い</p>
-              <p>購入後の映像データの<strong>第三者への共有・転載・SNS等への投稿は固くお断り</strong>いたします。</p>
-              <p className="mt-1.5">
-                ・<strong>コピーガード処理</strong>を施しています<br />
-                ・<strong>ウォーターマーク（電子透かし）</strong>により流出時は購入者を特定可能です
-              </p>
-              <p className="mt-1.5 text-[10px] text-red-700/80">出演者・関係者のプライバシー保護のため、ご理解とご協力をお願いいたします。</p>
+            {/* 簡潔な注意書き */}
+            <div className="rounded-xl p-2.5 text-[11px]" style={{ background: "#fef2f2", border: "1px solid rgba(220,76,4,0.3)", color: "#7f1d1d" }}>
+              ⚠️ 第三者への共有・転載は禁止。コピーガード&ウォーターマーク処理済み。
             </div>
 
             {/* Form */}

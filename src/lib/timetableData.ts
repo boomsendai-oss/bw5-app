@@ -21,7 +21,7 @@ export const REGULAR_SCHEDULE: Record<string, string> = {
   M3:  '水 18:30',          // TARO / HIPHOP 初級
   M4:  '日 12:15',          // Ryuki / はじめての HIPHOP
   M5:  '土 15:30',          // YURI / 長町 WAACK 入門
-  M6:  '土 11:00 (月2)',    // K@TTSU & AOI / 多賀城 HOUSE
+  M6:  '土 11:00 (隔週)',   // K@TTSU & AOI / 多賀城 HOUSE
   M7:  'BOOM 外部レッスン',  // HARUKA / 諏訪キッズ
   M8:  'BOOM 外部レッスン',  // TARO / 長町 キッズ HIPHOP
   M9:  '日 11:00',          // AOI / 多賀城 HIPHOP 初級
