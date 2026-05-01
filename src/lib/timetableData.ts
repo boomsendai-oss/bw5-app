@@ -18,30 +18,30 @@ export interface TimetableItem {
  * 演目詳細ページの「クラス」直下に表示される。
  */
 export const REGULAR_SCHEDULE: Record<string, string> = {
-  M3:  '水 18:30',         // TARO / HIPHOP 初級
-  M4:  '日 12:15',         // Ryuki / はじめての HIPHOP
-  M5:  '土 15:30',         // YURI / 長町 WAACK 入門
-  M6:  '土 11:00 (月2)',   // K@TTSU & AOI / 多賀城 HOUSE
-  M7:  '不定期 (諏訪キッズ)', // HARUKA
-  M8:  '月 17:30',         // TARO / 長町 キッズ HIPHOP
-  M9:  '日 11:00',         // AOI / 多賀城 HIPHOP 初級
-  M10: 'ダンス部 / 不定期', // BOOM ダンス部
-  M14: '日 14:00 (隔週)',  // おっちゃん / NEW JACK SWING
-  M15: '日 15:00',         // Ryuki & TARO / ベーシックダンスクラス
-  M16: '月 18:30',         // KEIKO / 多賀城 JAZZ
-  M17: '月 16:20',         // KOKEKO & TARO / 長町 ちびっこ HIPHOP
-  M19: '日 12:45',         // AOI / 多賀城 HIPHOP 入門
-  M20: '水 20:00',         // K@TTSU / HOUSE
-  M22: '金 18:30',         // AOI / 七ヶ浜 HIPHOP 入門
-  M24: '日 14:00 (隔週)',  // ちゃんなつ / HIPHOP
-  M27: '土 16:30',         // KEIKO / 長町 ガールズ 合同
-  M28: '金 19:30',         // TARO / 七ヶ浜 HIPHOP 初級
-  M29: '日 13:30',         // Ryuki / キッズ HIPHOP
-  M30: '日 (隔週)',        // SAYUKI / FREE STYLE
+  M3:  '水 18:30',          // TARO / HIPHOP 初級
+  M4:  '日 12:15',          // Ryuki / はじめての HIPHOP
+  M5:  '土 15:30',          // YURI / 長町 WAACK 入門
+  M6:  '土 11:00 (月2)',    // K@TTSU & AOI / 多賀城 HOUSE
+  M7:  'BOOM 外部レッスン',  // HARUKA / 諏訪キッズ
+  M8:  'BOOM 外部レッスン',  // TARO / 長町 キッズ HIPHOP
+  M9:  '日 11:00',          // AOI / 多賀城 HIPHOP 初級
+  M10: '',                   // BOOM ダンス部 — 表示なし
+  M14: '日 14:00 (隔週)',   // おっちゃん / NEW JACK SWING
+  M15: '日 15:00',          // Ryuki & TARO / ベーシックダンスクラス
+  M16: '月 18:30',          // KEIKO / 多賀城 JAZZ
+  M17: 'BOOM 外部レッスン',  // KOKEKO & TARO / 長町 ちびっこ HIPHOP
+  M19: '日 12:45',          // AOI / 多賀城 HIPHOP 基礎
+  M20: '水 20:00',          // K@TTSU / HOUSE
+  M22: '金 18:30',          // AOI / 七ヶ浜 HIPHOP 入門
+  M24: '日 14:00 (隔週)',   // ちゃんなつ / HIPHOP
+  M27: '土 16:30',          // KEIKO / 長町 ガールズ 合同
+  M28: '金 19:30',          // TARO / 七ヶ浜 HIPHOP 初級
+  M29: '日 13:30',          // Ryuki / キッズ HIPHOP
+  M30: '日 (隔週)',         // SAYUKI / FREE STYLE
   M31: 'SPECIAL ナンバー / 不定期', // TARO & Ryuki / GRAFFITI
-  M33: '土 10:00',         // TARO / キッズ 強化
-  M35: '土 11:30',         // K@TTSU / HOUSE エキスパート
-  M37: '月 20:15',         // TARO / HIPHOP 中級
+  M33: '土 10:00',          // TARO / キッズ 強化
+  M35: '土 11:30',          // K@TTSU / HOUSE エキスパート
+  M37: '月 20:15',          // TARO / HIPHOP 中級
 };
 
 // Helper: parse "HH:MM" or "HH:MM:SS" to Date on 2026-05-05 JST

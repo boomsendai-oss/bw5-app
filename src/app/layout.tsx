@@ -40,10 +40,40 @@ export default function RootLayout({
         */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){var p=location.pathname;var isStaff=p.indexOf('/staff/')===0||p.indexOf('/admin')===0;if(!isStaff){var ml=document.createElement('link');ml.rel='manifest';ml.href='/manifest.webmanifest';document.head.appendChild(ml);var m1=document.createElement('meta');m1.name='apple-mobile-web-app-capable';m1.content='yes';document.head.appendChild(m1);var m2=document.createElement('meta');m2.name='mobile-web-app-capable';m2.content='yes';document.head.appendChild(m2);var m3=document.createElement('meta');m3.name='apple-mobile-web-app-title';m3.content='BW5 App';document.head.appendChild(m3);}else{var m1=document.createElement('meta');m1.name='apple-mobile-web-app-capable';m1.content='no';document.head.appendChild(m1);var m2=document.createElement('meta');m2.name='mobile-web-app-capable';m2.content='no';document.head.appendChild(m2);var t=p.indexOf('/staff/orders')===0?'BW5 物販スタッフ':p.indexOf('/staff/backstage')===0?'BW5 舞台裏':p.indexOf('/admin')===0?'BW5 管理':'BW5';var m3=document.createElement('meta');m3.name='apple-mobile-web-app-title';m3.content=t;document.head.appendChild(m3);var icon=p.indexOf('/staff/orders')===0?'/images/icon-staff-orders.png':p.indexOf('/staff/backstage')===0?'/images/icon-staff-backstage.png':p.indexOf('/admin')===0?'/images/icon-admin.png':'/apple-touch-icon.png';var li=document.createElement('link');li.rel='apple-touch-icon';li.href=icon;document.head.appendChild(li);}})();`,
+            __html: `(function(){
+              var p = location.pathname;
+              var isStaff = p.indexOf('/staff/') === 0 || p.indexOf('/admin') === 0;
+              var d = document;
+              var head = d.head;
+              // 既存の manifest / capable 関連タグを一旦すべて除去 (path 切替時の inheritance を断つ)
+              head.querySelectorAll('link[rel="manifest"]').forEach(function(n){n.remove();});
+              head.querySelectorAll('meta[name="apple-mobile-web-app-capable"]').forEach(function(n){n.remove();});
+              head.querySelectorAll('meta[name="mobile-web-app-capable"]').forEach(function(n){n.remove();});
+              head.querySelectorAll('meta[name="apple-mobile-web-app-title"]').forEach(function(n){n.remove();});
+              head.querySelectorAll('link[rel="apple-touch-icon"]').forEach(function(n){n.remove();});
+              function add(tag, attrs){var e = d.createElement(tag); Object.keys(attrs).forEach(function(k){e.setAttribute(k, attrs[k]);}); head.appendChild(e); return e;}
+              if (!isStaff) {
+                add('link', {rel: 'manifest', href: '/manifest.webmanifest'});
+                add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
+                add('meta', {name: 'mobile-web-app-capable', content: 'yes'});
+                add('meta', {name: 'apple-mobile-web-app-title', content: 'BW5 App'});
+                add('link', {rel: 'apple-touch-icon', href: '/apple-touch-icon.png'});
+              } else {
+                // /staff/* and /admin* はホーム画面追加で素のブックマーク扱いにする
+                add('meta', {name: 'apple-mobile-web-app-capable', content: 'no'});
+                add('meta', {name: 'mobile-web-app-capable', content: 'no'});
+                var title = p.indexOf('/staff/orders') === 0 ? 'BW5 物販スタッフ'
+                          : p.indexOf('/staff/backstage') === 0 ? 'BW5 舞台裏'
+                          : p.indexOf('/admin') === 0 ? 'BW5 管理' : 'BW5';
+                var icon  = p.indexOf('/staff/orders') === 0 ? '/images/icon-staff-orders.png'
+                          : p.indexOf('/staff/backstage') === 0 ? '/images/icon-staff-backstage.png'
+                          : p.indexOf('/admin') === 0 ? '/images/icon-admin.png' : '/apple-touch-icon.png';
+                add('meta', {name: 'apple-mobile-web-app-title', content: title});
+                add('link', {rel: 'apple-touch-icon', href: icon});
+              }
+            })();`,
           }}
         />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
