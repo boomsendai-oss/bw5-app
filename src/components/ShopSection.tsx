@@ -6,6 +6,7 @@ import {
   ShoppingBag, X, Package, CreditCard, Banknote, CheckCircle, Loader2, Info,
 } from "lucide-react";
 import Image from "next/image";
+import { getStage, shopModeFromStage, type ShopMode } from "@/lib/stage";
 
 // ── Types ──
 interface MerchVariant {
@@ -120,26 +121,10 @@ const VIEW_LABEL: Record<ViewMode, string> = {
 };
 
 // ════════════════════════════════════════
-// Reservation mode (time-based)
+// 物販モードは stage 由来で決まる (?stage=pre|morning|open=>"pre"、show=>"during"、closed=>"closed")
 // ════════════════════════════════════════
-// 開演（事前予約締切）/ 公演終了（取り置き締切）
-const PICKUP_DEADLINE = new Date("2026-05-05T14:30:00+09:00"); // 開演＝事前予約締切
-const EVENT_END       = new Date("2026-05-05T18:30:00+09:00"); // 公演終了＝取り置き締切
-
-type ShopMode = "pre" | "during" | "closed";
-
 function getShopMode(): ShopMode {
-  // URL クエリでプレビュー上書き ?preview=pre / event / closed
-  if (typeof window !== "undefined") {
-    const p = new URLSearchParams(window.location.search).get("preview");
-    if (p === "pre") return "pre";
-    if (p === "event" || p === "during") return "during";
-    if (p === "closed") return "closed";
-  }
-  const now = Date.now();
-  if (now < PICKUP_DEADLINE.getTime()) return "pre";
-  if (now < EVENT_END.getTime()) return "during";
-  return "closed";
+  return shopModeFromStage(getStage());
 }
 
 const MODE_COPY: Record<ShopMode, {

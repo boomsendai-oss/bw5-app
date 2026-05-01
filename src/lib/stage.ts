@@ -1,28 +1,31 @@
 /**
- * 4段階のコンテンツ解禁ステージ
+ * 5段階のコンテンツ解禁ステージ — ホーム画面のセクションと物販モードを統合管理
  *
- *   pre      : 〜 5/5 09:00         事前公開（ショップ・オリジナル曲・SNSのみ）
- *   morning  : 5/5 09:00 〜 13:45   + 演目情報
- *   open     : 5/5 13:45 〜 14:30   + パンフレット・投票・舞台裏ライブフォト
- *   show     : 5/5 14:30 〜          全解禁（物販は取り置きモード）
+ *   pre      : 〜 5/5 09:00         事前公開（ショップ・オリジナル曲・SNSのみ） / ショップ=予約モード
+ *   morning  : 5/5 09:00 〜 13:45   + 演目情報                                    / ショップ=予約モード
+ *   open     : 5/5 13:45 〜 14:30   + パンフレット・投票・舞台裏ライブフォト       / ショップ=予約モード
+ *   show     : 5/5 14:30 〜 18:30   全解禁                                         / ショップ=取り置きモード
+ *   closed   : 5/5 18:30 〜          全解禁                                         / ショップ=受付終了
  *
- * ?stage=pre / morning / open / show でプレビュー上書き。
+ * URL の ?stage=pre|morning|open|show|closed でプレビュー上書き可能。
  */
 
-export type Stage = 'pre' | 'morning' | 'open' | 'show';
+export type Stage = 'pre' | 'morning' | 'open' | 'show' | 'closed';
 
 export const STAGE_BOUNDARIES = {
   morning: '2026-05-05T09:00:00+09:00',
   open:    '2026-05-05T13:45:00+09:00',
   show:    '2026-05-05T14:30:00+09:00',
+  closed:  '2026-05-05T18:30:00+09:00',
 } as const;
 
 export function getStage(): Stage {
   if (typeof window !== 'undefined') {
     const p = new URLSearchParams(window.location.search).get('stage');
-    if (p === 'pre' || p === 'morning' || p === 'open' || p === 'show') return p;
+    if (p === 'pre' || p === 'morning' || p === 'open' || p === 'show' || p === 'closed') return p;
   }
   const now = Date.now();
+  if (now >= new Date(STAGE_BOUNDARIES.closed).getTime()) return 'closed';
   if (now >= new Date(STAGE_BOUNDARIES.show).getTime()) return 'show';
   if (now >= new Date(STAGE_BOUNDARIES.open).getTime()) return 'open';
   if (now >= new Date(STAGE_BOUNDARIES.morning).getTime()) return 'morning';
@@ -38,8 +41,23 @@ export const STAGE_UNLOCKED: Record<Stage, ReadonlyArray<string>> = {
   morning: ['merch', 'music', 'sns', 'schedule'],
   open:    ['merch', 'music', 'sns', 'schedule', 'pamphlet', 'vote', 'backstage'],
   show:    ['merch', 'music', 'sns', 'schedule', 'pamphlet', 'vote', 'backstage', 'video'],
+  closed:  ['merch', 'music', 'sns', 'schedule', 'pamphlet', 'vote', 'backstage', 'video'],
 };
 
 export function isUnlockedAtStage(sectionId: string, stage: Stage): boolean {
   return STAGE_UNLOCKED[stage].includes(sectionId);
+}
+
+/**
+ * Stage → 物販モードの対応。
+ *   pre/morning/open → 'pre' (事前予約モード)
+ *   show             → 'during' (取り置きモード)
+ *   closed           → 'closed' (受付終了)
+ */
+export type ShopMode = 'pre' | 'during' | 'closed';
+
+export function shopModeFromStage(stage: Stage): ShopMode {
+  if (stage === 'show') return 'during';
+  if (stage === 'closed') return 'closed';
+  return 'pre';
 }
