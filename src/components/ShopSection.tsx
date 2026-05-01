@@ -202,6 +202,15 @@ export default function ShopSection() {
 // ════════════════════════════════════════
 // 映像データの事前予約商品 ID（id=9）
 const VIDEO_PREORDER_ID = 9;
+// 映像データ事前予約の受付期限 (発表会から約2週間後)
+const VIDEO_PREORDER_DEADLINE = new Date("2026-05-19T23:59:59+09:00");
+
+function isVideoPreorderClosed(): boolean {
+  if (typeof window !== "undefined") {
+    // ?stage= プレビューでテストする時もそのまま現在時刻判定でOK (stage に依存しない)
+  }
+  return Date.now() > VIDEO_PREORDER_DEADLINE.getTime();
+}
 
 function MerchTab() {
   const [items, setItems] = useState<MerchItem[]>([]);
@@ -248,7 +257,8 @@ function MerchTab() {
       <div className="grid grid-cols-2 gap-2.5">
         {items.map((item, i) => {
           const isVideoPreorder = item.id === VIDEO_PREORDER_ID;
-          // 映像データ事前予約は在庫概念なし。常に予約受付可能。
+          const videoClosed = isVideoPreorder && isVideoPreorderClosed();
+          // 映像データ事前予約は在庫概念なし。期限内なら常に予約受付可能。
           const soldOut = isVideoPreorder
             ? false
             : item.purchase_at_booth
@@ -268,11 +278,11 @@ function MerchTab() {
               <button
                 type="button"
                 onClick={() => {
-                  if (isVideoPreorder) setVideoModal(item);
-                  else if (!soldOut) setModal(item);
+                  if (isVideoPreorder && !videoClosed) setVideoModal(item);
+                  else if (!isVideoPreorder && !soldOut) setModal(item);
                   else if (restockEligible) setRestockModal(item);
                 }}
-                disabled={soldOut && !restockEligible && !isVideoPreorder}
+                disabled={(soldOut && !restockEligible && !isVideoPreorder) || videoClosed}
                 aria-label={isVideoPreorder ? `${item.name} を予約` : item.purchase_at_booth ? `${item.name} のデザインを見る` : `${item.name} の予約画面を開く`}
                 className="aspect-square relative overflow-hidden w-full block transition-transform active:scale-[0.97]"
                 style={{ background: "rgba(255,255,255,0.05)", cursor: (!soldOut || restockEligible || isVideoPreorder) ? "pointer" : "not-allowed" }}
@@ -338,27 +348,32 @@ function MerchTab() {
 
                 <button
                   onClick={() => {
-                    if (!soldOut) setModal(item);
+                    if (isVideoPreorder && !videoClosed) setVideoModal(item);
+                    else if (!isVideoPreorder && !soldOut) setModal(item);
                     else if (restockEligible) setRestockModal(item);
                   }}
-                  disabled={soldOut && !restockEligible}
+                  disabled={(soldOut && !restockEligible && !isVideoPreorder) || videoClosed}
                   className="w-full mt-2 text-xs font-bold py-2 rounded-full transition-all"
                   style={{
-                    background: !soldOut
+                    background: videoClosed
+                      ? "rgba(255,255,255,0.1)"
+                      : !soldOut
                       ? "rgba(255,255,255,0.95)"
                       : restockEligible
                       ? "rgba(255,255,255,0.95)"
                       : "rgba(255,255,255,0.1)",
-                    color: !soldOut
+                    color: videoClosed
+                      ? "rgba(255,255,255,0.3)"
+                      : !soldOut
                       ? "#f27a1a"
                       : restockEligible
                       ? "#dc4c04"
                       : "rgba(255,255,255,0.3)",
-                    cursor: (!soldOut || restockEligible) ? "pointer" : "not-allowed",
+                    cursor: ((!isVideoPreorder && !soldOut) || (isVideoPreorder && !videoClosed) || restockEligible) ? "pointer" : "not-allowed",
                   }}
                 >
                   {isVideoPreorder
-                    ? "事前予約する"
+                    ? (videoClosed ? "受付終了" : "事前予約する")
                     : !soldOut
                     ? (item.purchase_at_booth ? "デザインを見る" : copy.cardButton)
                     : restockEligible
@@ -1132,6 +1147,7 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
                 <li>編集完成後、ご入力のメールアドレスに<strong>販売サイト（Vimeo オンデマンド予定）</strong>のご案内をお送りします</li>
                 <li>そちらからご購入手続きをお願いします</li>
               </ol>
+              <p className="mt-2 text-[10px]"><strong>事前予約の受付期限: 2026年5月19日(火) 23:59 まで</strong></p>
             </div>
 
             {/* Anti-piracy notice */}
