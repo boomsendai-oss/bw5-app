@@ -236,7 +236,7 @@ function PamphletViewer({ onClose }: { onClose: () => void }) {
               doubleClick={{ mode: 'toggle', step: 1.8 }}
               wheel={{ step: 0.2 }}
               pinch={{ step: 5 }}
-              onTransformed={(_ref: unknown, state: { scale: number }) => setIsZoomed(state.scale > 1.05)}
+              onTransform={(_ref: unknown, state: { scale: number }) => setIsZoomed(state.scale > 1.05)}
               centerOnInit
             >
               <TransformComponent
