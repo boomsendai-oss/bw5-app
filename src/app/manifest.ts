@@ -2,8 +2,8 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'BOOM WOP vol.5 | BOOM Dance School',
-    short_name: 'BW5',
+    name: 'BW5 App | BOOM WOP vol.5',
+    short_name: 'BW5 App',
     description: 'BOOM Dance School 発表会 BOOM WOP vol.5 デジタルパンフレット',
     start_url: '/',
     display: 'standalone',
