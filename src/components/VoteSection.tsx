@@ -118,18 +118,20 @@ export default function VoteSection() {
           animate={isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.5, delay: 0.1 }}
         >
-          {/* BOOMくん */}
+          {/* 名前募集ポスター */}
           <div className="flex justify-center mb-6">
             <motion.div
-              className="w-24 h-24 relative"
-              animate={{ y: [0, -6, 0] }}
-              transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+              className="w-full max-w-[280px] aspect-square relative rounded-2xl overflow-hidden"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={isInView ? { opacity: 1, scale: 1 } : {}}
+              transition={{ duration: 0.6 }}
             >
               <Image
-                src="/images/boomkun.png"
-                alt="BOOMくん"
+                src="/images/vote_naming.png"
+                alt="BOOMくん 名前募集"
                 fill
                 className="object-contain"
+                sizes="(max-width: 768px) 80vw, 280px"
               />
             </motion.div>
           </div>
