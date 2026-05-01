@@ -538,26 +538,58 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
                           <div className="text-[11px] font-bold mb-2" style={{ color: 'var(--text-secondary)' }}>
                             バリアント別在庫 (合計 {variantTotalStock})
                           </div>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {(item.variants ?? []).map(v => (
-                              <div key={v.id} className="flex items-center gap-1 px-2 py-1.5 rounded" style={{ background: 'var(--bg-hover)' }}>
-                                <div className="flex-1 text-[11px] truncate">
-                                  {v.color || '—'}{v.size ? ` / ${v.size}` : ''}
-                                </div>
-                                <input
-                                  type="number"
-                                  inputMode="numeric"
-                                  min={0}
-                                  defaultValue={v.stock}
-                                  onBlur={e => {
-                                    const newStock = Number(e.target.value);
-                                    if (!Number.isNaN(newStock) && newStock !== v.stock) updateVariantStock(v.id, newStock);
-                                  }}
-                                  className="admin-input w-14 text-xs text-right"
-                                />
+                          {/* 色ごとにグループ化して見やすく */}
+                          {(() => {
+                            const variants = item.variants ?? [];
+                            const byColor = new Map<string, MerchVariant[]>();
+                            for (const v of variants) {
+                              const key = v.color || '—';
+                              if (!byColor.has(key)) byColor.set(key, []);
+                              byColor.get(key)!.push(v);
+                            }
+                            const COLOR_HEX_ADMIN: Record<string, string> = {
+                              'フェードグレー': '#8c8c86', 'フェードレッド': '#c96a5a', 'フェードブルー': '#6a8bb3',
+                              'ホワイト': '#f5f5f5', 'ブラック': '#1b1b1b', 'ブルー': '#2f5fb0',
+                              'ライトグレー': '#cfcfc8', 'グリーン': '#6b8f6b',
+                            };
+                            return (
+                              <div className="space-y-2.5">
+                                {Array.from(byColor.entries()).map(([color, vs]) => {
+                                  const total = vs.reduce((s, v) => s + (v.stock ?? 0), 0);
+                                  const swatch = COLOR_HEX_ADMIN[color];
+                                  return (
+                                    <div key={color} className="rounded-lg p-2" style={{ background: 'var(--bg-hover)' }}>
+                                      <div className="flex items-center gap-2 mb-1.5">
+                                        {swatch && (
+                                          <span className="w-3.5 h-3.5 rounded-full border border-white/40 shrink-0" style={{ background: swatch }} />
+                                        )}
+                                        <span className="text-xs font-bold flex-1">{color}</span>
+                                        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>合計 {total}</span>
+                                      </div>
+                                      <div className="grid grid-cols-4 gap-1.5">
+                                        {vs.map(v => (
+                                          <label key={v.id} className="flex flex-col items-stretch text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+                                            <span className="text-center font-bold mb-0.5">{v.size || '単一'}</span>
+                                            <input
+                                              type="number"
+                                              inputMode="numeric"
+                                              min={0}
+                                              defaultValue={v.stock}
+                                              onBlur={e => {
+                                                const newStock = Number(e.target.value);
+                                                if (!Number.isNaN(newStock) && newStock !== v.stock) updateVariantStock(v.id, newStock);
+                                              }}
+                                              className="admin-input text-xs text-center w-full"
+                                            />
+                                          </label>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                            ))}
-                          </div>
+                            );
+                          })()}
                           <p className="text-[10px] mt-2" style={{ color: 'var(--text-muted)' }}>
                             数字を変えて指を離すと自動保存
                           </p>
