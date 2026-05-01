@@ -82,6 +82,7 @@ const SECTION_LOCKED_INFO: Record<string, { title: string; subtitle: string; emo
   music:    { title: "音源", subtitle: "オリジナル楽曲を公開予定", emoji: "🎵", color: "34, 197, 94" },
   vote:     { title: "投票", subtitle: "当日にオープンします", emoji: "⭐", color: "234, 179, 8" },
   sns:      { title: "SNS", subtitle: "公式アカウントをフォローしよう", emoji: "📱", color: "59, 130, 246" },
+  pamphlet: { title: "デジタルパンフレット", subtitle: "5/5 13:45 開場と同時に解禁", emoji: "📖", color: "236, 72, 153" },
 };
 
 // ── Countdown Hook ──
@@ -640,7 +641,7 @@ export default function Home() {
         <div className="section-divider" />
         {isSectionVisible('schedule') ? <ScheduleSection /> : <LockedSection id="schedule" {...SECTION_LOCKED_INFO.schedule} />}
         <div className="section-divider" />
-        <PamphletSection />
+        {isSectionVisible('pamphlet') ? <PamphletSection /> : <LockedSection id="pamphlet" {...SECTION_LOCKED_INFO.pamphlet} />}
         <div className="section-divider" />
         {(isSectionVisible('merch') || isSectionVisible('video')) ? (
           <ShopSection />

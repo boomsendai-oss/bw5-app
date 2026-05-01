@@ -38,7 +38,7 @@ export function getStage(): Stage {
  */
 export const STAGE_UNLOCKED: Record<Stage, ReadonlyArray<string>> = {
   pre:     ['merch', 'music', 'sns'],
-  morning: ['merch', 'music', 'sns', 'schedule'],
+  morning: ['merch', 'music', 'sns', 'schedule', 'backstage'],
   open:    ['merch', 'music', 'sns', 'schedule', 'pamphlet', 'vote', 'backstage'],
   show:    ['merch', 'music', 'sns', 'schedule', 'pamphlet', 'vote', 'backstage', 'video'],
   closed:  ['merch', 'music', 'sns', 'schedule', 'pamphlet', 'vote', 'backstage', 'video'],

@@ -137,15 +137,15 @@ const MODE_COPY: Record<ShopMode, {
   successMessage: string;
 }> = {
   pre: {
-    cardButton: "予約する",
-    modalButton: "予約を確定",
-    modalSubmitting: "予約中...",
+    cardButton: "事前予約する",
+    modalButton: "事前予約を確定",
+    modalSubmitting: "事前予約中...",
     bannerHTML:
-      'ご予約商品は<strong class="text-white">発表会当日（5/5）会場の物販ブース</strong>でのお受け取りです。<br />事前のお渡し・発送はございません。',
+      '<strong class="text-white">事前予約受付中</strong> — 発表会当日（5/5）会場の物販ブースでお受け取りです。<br />事前のお渡し・発送はございません。',
     modalInfoTitle: "受け取り：開場後すぐ（13:45〜14:30）",
     modalInfoBody:
       "物販ブースでお名前を伝えてお受け取りください。<br /><strong>※14:30 を過ぎると自動キャンセル</strong>となり商品は再販されます。<br />お支払いは現金・クレジットカード・PayPay 等に対応。",
-    successMessage: "ご予約を承りました。当日 13:45〜14:30 の間に物販ブースでお受け取りください。",
+    successMessage: "事前予約を承りました。当日 13:45〜14:30 の間に物販ブースでお受け取りください。",
   },
   during: {
     cardButton: "取り置きする",

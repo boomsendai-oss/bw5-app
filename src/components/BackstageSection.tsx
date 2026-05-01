@@ -53,8 +53,8 @@ export default function BackstageSection() {
     return () => clearInterval(t);
   }, [status]);
 
-  // ── ステージが open 未満の場合はプレースホルダ表示 ──
-  const isComingSoon = stage === 'pre' || stage === 'morning';
+  // ── pre ステージ（〜5/5 09:00）はプレースホルダ表示 ──
+  const isComingSoon = stage === 'pre';
   if (isComingSoon) {
     return (
       <section id="backstage" className="py-12 px-4 sm:px-6">
@@ -99,7 +99,7 @@ export default function BackstageSection() {
                 <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md"
                   style={{ background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.15)' }}>
                   <Clock size={12} className="text-orange-300" />
-                  <span className="text-[11px] font-bold text-white">5/5 13:45 から お届け!</span>
+                  <span className="text-[11px] font-bold text-white">5/5 9:00 から お届け!</span>
                 </div>
               </div>
             </div>
