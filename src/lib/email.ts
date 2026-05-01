@@ -98,7 +98,7 @@ export async function sendRestockOrderEmail(p: RestockOrderEmailParams): Promise
 
     <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #f27a1a; padding-left: 10px;">発送について</h2>
     <p style="font-size: 14px; line-height: 1.7;">
-      ご入金確認後、<strong>約2週間</strong>を目安にご指定の住所へ発送いたします。<br />
+      <strong>発表会から約2週間後 (2026年5月19日(火) 頃)</strong> を目安に、ご指定の住所へ発送いたします。<br />
       到着まで今しばらくお待ちください。
     </p>
 

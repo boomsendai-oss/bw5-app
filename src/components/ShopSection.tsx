@@ -884,7 +884,7 @@ function RestockModal({ item, onClose }: { item: MerchItem; onClose: () => void 
                 <li>下記フォームでご注文</li>
                 <li>ご入力のメールアドレスにお振込先のご案内をお送りします</li>
                 <li><strong>2026年5月12日(火) 15:00 まで</strong>にお振り込み</li>
-                <li>ご入金確認後、約2週間でご指定の住所へ発送</li>
+                <li>発表会から約2週間後 (5/19 頃) を目安にご指定の住所へ発送</li>
               </ol>
               <p className="mt-2">送料：<strong>¥{SHIPPING_FEE.toLocaleString()}</strong>（別途加算）</p>
               <p className="mt-1.5 text-[10px] text-orange-700">※複数商品をご注文の場合、送料を1回分のみに調整できる場合があります。その際は別途メールで個別にご案内します。</p>
@@ -978,7 +978,7 @@ function RestockModal({ item, onClose }: { item: MerchItem; onClose: () => void 
                 type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)}
                 className="mt-0.5 w-4 h-4 accent-orange-500"
               />
-              <span>送料 ¥{SHIPPING_FEE.toLocaleString()} の加算、5/12(火)15:00 までの銀行振込、ご入金確認後 約2週間での発送に同意します。</span>
+              <span>送料 ¥{SHIPPING_FEE.toLocaleString()} の加算、5/12(火)15:00 までの銀行振込、発表会から約2週間後(5/19頃)を目安の発送に同意します。</span>
             </label>
 
             {result && !result.ok && (
