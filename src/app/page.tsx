@@ -386,7 +386,7 @@ export default function Home() {
 
             {/* ── Now Playing Bar (event day) / Waiting Bar (before) ── */}
             <AnimatePresence mode="wait">
-              {(stage === 'pre' || stage === 'morning') ? (
+              {stage === 'pre' ? (
                 <motion.a
                   key="ticket-bar"
                   href={settings.ticket_url || "#"}
@@ -416,6 +416,33 @@ export default function Home() {
                     <span className="text-white/90 text-lg shrink-0 transition-transform group-hover:translate-x-0.5">→</span>
                   </div>
                 </motion.a>
+              ) : stage === 'morning' ? (
+                /* 当日朝(9:00〜13:45): 当日券のご案内 */
+                <motion.div
+                  key="walkup-bar"
+                  className="w-full mt-3"
+                  style={{ maxWidth: "340px" }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.5, delay: 0.2 }}
+                >
+                  <div
+                    className="rounded-xl px-4 py-3 flex items-center gap-3"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(34,197,94,0.18), rgba(16,185,129,0.18))",
+                      border: "1px solid rgba(34,197,94,0.4)",
+                      boxShadow: "0 8px 24px rgba(34,197,94,0.2)",
+                    }}
+                  >
+                    <span className="text-xl shrink-0">🎟️</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-bold tracking-wider uppercase text-green-300">WALK-UP OK</div>
+                      <div className="text-sm font-black text-white leading-tight">当日券で入場可能</div>
+                      <div className="text-[10px] text-white/70 mt-0.5">申込不要・会場へ直接お越しください</div>
+                    </div>
+                  </div>
+                </motion.div>
               ) : stage !== 'closed' && (currentItem || nextItem) ? (
                 <motion.div
                   key="live-bar"
