@@ -50,14 +50,14 @@ function imagesForVariant(
 ): VariantImages | null {
   // オフィシャルTシャツ
   if (merchId === 4) {
-    if (color === "ブラック" || color === "黒") {
+    // フェードグレーは平置き + 着用モデル画像の2枚構成
+    if (color === "フェードグレー") {
       return {
-        front:   "/merch/official_black_flat.png",
-        closeup: "/merch/official_black_model.png",
+        front:   "/merch/official_grey.png",
+        closeup: "/merch/official_grey_model.png",
       };
     }
     const map: Record<string, string> = {
-      "フェードグレー": "/merch/official_grey.png",
       "フェードレッド": "/merch/official_red.png",
       "フェードブルー": "/merch/official_blue.png",
     };
