@@ -46,8 +46,8 @@ const MENU_ITEMS = [
   {
     id: "music",
     emoji: "🎵",
-    label: "音源",
-    desc: "オリジナル楽曲",
+    label: "オリジナル曲",
+    desc: "公表配信中",
     color: "34, 197, 94",
   },
   {
@@ -67,7 +67,7 @@ const MENU_ITEMS = [
   {
     id: "pamphlet",
     emoji: "📖",
-    label: "パンフ",
+    label: "パンフレット",
     desc: "デジタル版",
     color: "236, 72, 153",
   },
