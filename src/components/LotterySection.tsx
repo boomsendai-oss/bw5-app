@@ -3,7 +3,64 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Gift, X, Check, Loader2 } from 'lucide-react';
+import confetti from 'canvas-confetti';
 import { getStage, type Stage } from '@/lib/stage';
+
+// 当選/大当たり時の紙吹雪+クラッカー演出
+function fireConfetti(jackpot: boolean) {
+  if (typeof window === 'undefined') return;
+  // 中央から広範囲に散布
+  const colors = jackpot
+    ? ['#ff006e', '#ffbe0b', '#ff8500', '#fff', '#fbbf24'] // jackpotは派手
+    : ['#f27a1a', '#ffd166', '#fff', '#dc4c04'];
+
+  // 最初のドカン
+  confetti({
+    particleCount: jackpot ? 200 : 100,
+    spread: 90,
+    origin: { y: 0.45, x: 0.5 },
+    colors,
+    startVelocity: 55,
+    scalar: jackpot ? 1.2 : 1,
+    ticks: 200,
+    zIndex: 9999,
+  });
+
+  // 左右からの追い打ち
+  setTimeout(() => {
+    confetti({
+      particleCount: 60,
+      angle: 60,
+      spread: 70,
+      origin: { x: 0, y: 0.7 },
+      colors,
+      zIndex: 9999,
+    });
+    confetti({
+      particleCount: 60,
+      angle: 120,
+      spread: 70,
+      origin: { x: 1, y: 0.7 },
+      colors,
+      zIndex: 9999,
+    });
+  }, 200);
+
+  // jackpot は更にもう一発
+  if (jackpot) {
+    setTimeout(() => {
+      confetti({
+        particleCount: 150,
+        spread: 120,
+        origin: { y: 0.4, x: 0.5 },
+        colors,
+        startVelocity: 45,
+        scalar: 1.4,
+        zIndex: 9999,
+      });
+    }, 600);
+  }
+}
 
 interface LotteryStatus {
   active: boolean;
@@ -165,6 +222,11 @@ export default function LotterySection() {
     setPhase('reveal');
     setResultOpen(true);
     fetchStatus();
+    // 当選/大当たり時はクラッカー演出を発火 (modal出現と同時)
+    if (pendingResult.won) {
+      // 少し遅延させて modal の登場と一緒に派手になるように
+      setTimeout(() => fireConfetti(pendingResult.prize_tier === 'jackpot'), 150);
+    }
   };
 
   const closeResult = () => {
