@@ -460,22 +460,53 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
         </div>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-2">
         {items.map(item => {
           const variantTotalStock = (item.variants ?? []).reduce((sum, v) => sum + (v.stock ?? 0), 0);
           const hasVariants = (item.variants ?? []).length > 0;
+          const totalStock = hasVariants ? variantTotalStock : item.stock;
+          const isExpanded = expandedId === item.id;
+          const isEditing = editId === item.id;
           return (
-            <div key={item.id} className="card p-4">
-              {/* Header row: image + name + price + sold + remove */}
-              <div className="flex items-start gap-3 mb-3">
+            <div key={item.id} className="card overflow-hidden" style={{ padding: 0 }}>
+              {/* Compact header — tap to expand */}
+              <button
+                onClick={() => { if (!isEditing) setExpandedId(isExpanded ? null : item.id); }}
+                className="w-full flex items-center gap-3 p-3 text-left transition-colors"
+                style={{ background: isExpanded ? 'var(--bg-hover)' : 'transparent' }}
+              >
                 {item.image_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.image_url} alt="" className="w-16 h-16 rounded-lg object-cover bg-white/5" />
+                  <img src={item.image_url} alt="" className="w-12 h-12 rounded-lg object-cover bg-white/5 shrink-0" />
                 ) : (
-                  <div className="w-16 h-16 rounded-lg flex items-center justify-center text-xs" style={{ background: 'var(--bg-hover)', color: 'var(--text-muted)' }}>NO IMG</div>
+                  <div className="w-12 h-12 rounded-lg flex items-center justify-center text-[10px] shrink-0" style={{ background: 'var(--bg-hover)', color: 'var(--text-muted)' }}>NO IMG</div>
                 )}
                 <div className="flex-1 min-w-0">
-                  {editId === item.id ? (
+                  <div className="font-bold text-sm leading-tight truncate">{item.name}</div>
+                  <div className="text-[11px] mt-0.5 flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                    <span>¥{item.price.toLocaleString()}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>•</span>
+                    <span className={totalStock <= 0 ? 'text-red-400 font-bold' : ''}>
+                      在庫 {totalStock}
+                    </span>
+                    {soldCount(item.id) > 0 && (
+                      <>
+                        <span style={{ color: 'var(--text-muted)' }}>•</span>
+                        <span>販売 {soldCount(item.id)}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <span className="shrink-0 text-lg" style={{ color: 'var(--text-muted)', transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                  ▾
+                </span>
+              </button>
+
+              {/* Expanded body */}
+              {isExpanded && (
+                <div className="border-t p-3 space-y-3" style={{ borderColor: 'var(--border-color)' }}>
+                  {/* Edit form OR action buttons */}
+                  {isEditing ? (
                     <div className="space-y-2">
                       <input className="admin-input w-full" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="商品名" />
                       <div className="grid grid-cols-2 gap-2">
@@ -483,79 +514,70 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
                         <input className="admin-input" value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })} placeholder="画像URL" />
                       </div>
                       <textarea className="admin-input w-full" rows={3} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="説明文" />
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => save(item)} className="btn-primary text-sm px-4 py-2 flex items-center gap-1"><Save className="w-3 h-3" /> 保存</button>
+                        <button onClick={() => setEditId(null)} className="btn-secondary text-sm px-4 py-2"><X className="w-3 h-3" /></button>
+                      </div>
                     </div>
                   ) : (
-                    <>
-                      <div className="font-bold text-sm leading-tight">{item.name}</div>
-                      <div className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                        ¥{item.price.toLocaleString()} ・ ID:{item.id} ・ 販売数:{soldCount(item.id)}
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1 shrink-0">
-                  {editId === item.id ? (
-                    <>
-                      <button onClick={() => save(item)} className="p-1.5 rounded hover:bg-white/5" style={{ color: '#22c55e' }} title="保存"><Save className="w-4 h-4" /></button>
-                      <button onClick={() => setEditId(null)} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--text-muted)' }} title="キャンセル"><X className="w-4 h-4" /></button>
-                    </>
-                  ) : (
-                    <>
-                      <button onClick={() => startEdit(item)} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--text-secondary)' }} title="名前/価格/画像/説明を編集"><Edit3 className="w-4 h-4" /></button>
-                      <button onClick={() => remove(item.id)} className="p-1.5 rounded hover:bg-white/5" style={{ color: 'var(--accent-primary)' }} title="削除"><Trash2 className="w-4 h-4" /></button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Master stock — variantsありの場合は表示のみで variants合計を出す */}
-              <div className="rounded-lg p-3 mb-3 flex items-center gap-3" style={{ background: 'var(--bg-hover)' }}>
-                <div className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>マスター在庫</div>
-                {hasVariants ? (
-                  <div className="text-sm font-mono">
-                    {item.stock} <span className="text-xs" style={{ color: 'var(--text-muted)' }}>(バリアント合計: {variantTotalStock})</span>
-                  </div>
-                ) : (
-                  <input
-                    type="number"
-                    min={0}
-                    defaultValue={item.stock}
-                    onBlur={e => {
-                      const v = Number(e.target.value);
-                      if (!Number.isNaN(v) && v !== item.stock) setStockExact(item.id, v);
-                    }}
-                    className="admin-input w-24 text-sm"
-                  />
-                )}
-              </div>
-
-              {/* Variants editor */}
-              {hasVariants && (
-                <div className="space-y-1.5">
-                  <div className="text-xs font-bold mb-1" style={{ color: 'var(--text-secondary)' }}>
-                    バリアント別在庫
-                  </div>
-                  {(item.variants ?? []).map(v => (
-                    <div key={v.id} className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'var(--bg-hover)' }}>
-                      <div className="flex-1 text-sm">
-                        {v.color || '—'}{v.size ? ` / ${v.size}` : ''}
-                      </div>
-                      <input
-                        type="number"
-                        min={0}
-                        defaultValue={v.stock}
-                        onBlur={e => {
-                          const newStock = Number(e.target.value);
-                          if (!Number.isNaN(newStock) && newStock !== v.stock) updateVariantStock(v.id, newStock);
-                        }}
-                        className="admin-input w-20 text-sm text-right"
-                      />
-                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>個</span>
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => startEdit(item)} className="text-xs flex items-center gap-1 px-3 py-1.5 rounded" style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>
+                        <Edit3 className="w-3 h-3" /> 商品情報を編集
+                      </button>
+                      <button onClick={() => remove(item.id)} className="text-xs flex items-center gap-1 px-3 py-1.5 rounded" style={{ color: 'var(--accent-primary)' }}>
+                        <Trash2 className="w-3 h-3" /> 削除
+                      </button>
                     </div>
-                  ))}
-                  <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
-                    数値を変えてフォーカスを外すと自動保存されます
-                  </p>
+                  )}
+
+                  {/* Stock editor */}
+                  {!isEditing && (
+                    <>
+                      {hasVariants ? (
+                        <div>
+                          <div className="text-[11px] font-bold mb-2" style={{ color: 'var(--text-secondary)' }}>
+                            バリアント別在庫 (合計 {variantTotalStock})
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {(item.variants ?? []).map(v => (
+                              <div key={v.id} className="flex items-center gap-1 px-2 py-1.5 rounded" style={{ background: 'var(--bg-hover)' }}>
+                                <div className="flex-1 text-[11px] truncate">
+                                  {v.color || '—'}{v.size ? ` / ${v.size}` : ''}
+                                </div>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  defaultValue={v.stock}
+                                  onBlur={e => {
+                                    const newStock = Number(e.target.value);
+                                    if (!Number.isNaN(newStock) && newStock !== v.stock) updateVariantStock(v.id, newStock);
+                                  }}
+                                  className="admin-input w-14 text-xs text-right"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[10px] mt-2" style={{ color: 'var(--text-muted)' }}>
+                            数字を変えて指を離すと自動保存
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <div className="text-[11px] font-bold" style={{ color: 'var(--text-secondary)' }}>マスター在庫</div>
+                          <input
+                            type="number"
+                            min={0}
+                            defaultValue={item.stock}
+                            onBlur={e => {
+                              const v = Number(e.target.value);
+                              if (!Number.isNaN(v) && v !== item.stock) setStockExact(item.id, v);
+                            }}
+                            className="admin-input w-24 text-sm"
+                          />
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </div>
