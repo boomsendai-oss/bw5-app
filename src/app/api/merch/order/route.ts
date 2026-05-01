@@ -70,17 +70,22 @@ export async function POST(req: NextRequest) {
     const status =
       payment_method === 'cash_onsite' ? 'pending_cash' : 'awaiting_payment';
 
+    // variant_id 未指定の場合は merchandise 配下の variant を 1件勝手にピック
+    // (autoCancel が在庫を戻せるように、本物の variant_id を必ず保存する)
+    let effectiveVariantId: number | null = variant_id ?? null;
+    if (!effectiveVariantId) {
+      const fallback = await getOne(
+        'SELECT id FROM merch_variants WHERE merch_id = ? ORDER BY sort_order ASC LIMIT 1',
+        [merch_id]
+      );
+      if (fallback?.id) effectiveVariantId = Number(fallback.id);
+    }
+
     const ops = [];
-    if (variant_id) {
+    if (effectiveVariantId) {
       ops.push({
         sql: 'UPDATE merch_variants SET stock = stock - 1 WHERE id = ?',
-        args: [variant_id],
-      });
-    } else {
-      ops.push({
-        sql: `UPDATE merch_variants SET stock = stock - 1
-              WHERE id = (SELECT id FROM merch_variants WHERE merch_id = ? LIMIT 1)`,
-        args: [merch_id],
+        args: [effectiveVariantId],
       });
     }
     ops.push({
@@ -92,7 +97,7 @@ export async function POST(req: NextRequest) {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         merch_id,
-        variant_id ?? null,
+        effectiveVariantId,
         color,
         size,
         buyer_name,
