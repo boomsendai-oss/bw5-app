@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { motion, useInView } from "framer-motion";
 import { Star } from "lucide-react";
 import Image from "next/image";
@@ -30,6 +30,23 @@ export default function VoteSection() {
   const [voting, setVoting] = useState(false);
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
+
+  // 1番目に並んだ候補が有利になるバイアスを避けるため、デバイスごとに表示順をシャッフル。
+  // fingerprint をシードに決定論的に並べることで、ユーザーには毎回同じ順序になる。
+  const shuffledCandidates = useMemo(() => {
+    if (candidates.length === 0) return [];
+    if (typeof window === 'undefined') return candidates;
+    const fp = localStorage.getItem("bw5_vote_fp") || "0";
+    let h = 0;
+    for (let i = 0; i < fp.length; i++) h = ((h << 5) - h + fp.charCodeAt(i)) | 0;
+    const arr = [...candidates];
+    for (let i = arr.length - 1; i > 0; i--) {
+      h = (h * 9301 + 49297) % 233280;
+      const j = Math.abs(h) % (i + 1);
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }, [candidates]);
 
   const fetchCandidates = useCallback(async () => {
     try {
@@ -119,23 +136,26 @@ export default function VoteSection() {
             </motion.div>
           </div>
 
-          <h3 className="text-center text-lg font-bold text-white mb-6">
+          <h3 className="text-center text-lg font-bold text-white mb-2">
             キャラクターの名前を決めよう!
           </h3>
+          <p className="text-[12px] leading-relaxed text-white/70 mb-5 px-1">
+            BOOMくんと呼ばれているこのキャラクター、実は<strong className="text-white">正式名称がまだありません</strong>。事前に Instagram で名前を募集し、寄せられた候補から残った 4つ を、今日この会場の皆さんと一緒に決めていきます。あなたの一票が、この子の名前になります 🎉
+          </p>
 
           {!hasVoted ? (
-            <div className="space-y-3">
-              {candidates.map((candidate, i) => (
+            <div className="grid grid-cols-2 gap-3">
+              {shuffledCandidates.map((candidate, i) => (
                 <motion.button
                   key={candidate.id}
                   onClick={() => handleVote(candidate.id)}
                   disabled={voting}
-                  className="w-full py-3.5 px-4 rounded-xl text-sm font-bold transition-all bg-[var(--bg-secondary)] border border-[var(--border-color)] text-white hover:border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 disabled:opacity-50"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={isInView ? { opacity: 1, x: 0 } : {}}
-                  transition={{ duration: 0.4, delay: 0.2 + i * 0.1 }}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  className="py-4 px-3 rounded-xl text-sm font-bold transition-all bg-[var(--bg-secondary)] border border-[var(--border-color)] text-white hover:border-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 disabled:opacity-50 leading-tight"
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={isInView ? { opacity: 1, scale: 1 } : {}}
+                  transition={{ duration: 0.4, delay: 0.2 + i * 0.08 }}
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.96 }}
                 >
                   {candidate.name}
                 </motion.button>

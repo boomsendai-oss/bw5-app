@@ -314,7 +314,7 @@ export default function Home() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.6 }}
             >
-              {!countdown.isOver ? (
+              {(stage === 'pre' || stage === 'morning') && !countdown.isOver ? (
                 <div className="rounded-2xl p-4 text-center"
                   style={{
                     background: "rgba(255,255,255,0.12)",
@@ -369,7 +369,7 @@ export default function Home() {
 
             {/* ── Now Playing Bar (event day) / Waiting Bar (before) ── */}
             <AnimatePresence mode="wait">
-              {!isEventDay ? (
+              {(stage === 'pre' || stage === 'morning') ? (
                 <motion.a
                   key="ticket-bar"
                   href={settings.ticket_url || "#"}

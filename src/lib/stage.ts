@@ -57,7 +57,7 @@ export function isUnlockedAtStage(sectionId: string, stage: Stage): boolean {
 export type ShopMode = 'pre' | 'during' | 'closed';
 
 export function shopModeFromStage(stage: Stage): ShopMode {
-  if (stage === 'show') return 'during';
+  if (stage === 'open' || stage === 'show') return 'during';
   if (stage === 'closed') return 'closed';
   return 'pre';
 }
