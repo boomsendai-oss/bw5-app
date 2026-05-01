@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Gift, X, Check, Loader2 } from 'lucide-react';
+import { getStage, type Stage } from '@/lib/stage';
 
 interface LotteryStatus {
   active: boolean;
@@ -45,6 +46,13 @@ export default function LotterySection() {
     error?: string;
   } | null>(null);
   const [resultOpen, setResultOpen] = useState(false);
+  const [stage, setStage] = useState<Stage>('pre');
+  useEffect(() => {
+    const update = () => setStage(getStage());
+    update();
+    const t = setInterval(update, 30000);
+    return () => clearInterval(t);
+  }, []);
   const [winnerName, setWinnerName] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
@@ -253,7 +261,9 @@ export default function LotterySection() {
               </div>
               <div className="px-4 py-3">
                 <div className="text-[10px] font-bold tracking-widest uppercase text-orange-600">PRIZE</div>
-                <div className="text-base font-black text-gray-900 mt-0.5">当日のお楽しみ 🤫</div>
+                <div className="text-base font-black text-gray-900 mt-0.5">
+                  {stage === 'show' || stage === 'closed' ? 'MCから何か発表があるかも…👀' : '当日のお楽しみ 🤫'}
+                </div>
               </div>
             </div>
 

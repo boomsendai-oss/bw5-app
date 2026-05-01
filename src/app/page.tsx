@@ -583,9 +583,9 @@ export default function Home() {
         <BackstageSection />
 
         {/* ══════════════════════════════════════════
-            VENUE INFO (本番当日は非表示)
+            VENUE INFO (open ステージ以降は非表示。pre/morning でのみ表示)
         ══════════════════════════════════════════ */}
-        {!isEventDay && (
+        {(stage === 'pre' || stage === 'morning') && (
         <section id="venue" className="py-10 px-4 sm:px-6">
           <div className="max-w-md mx-auto">
             <motion.div
