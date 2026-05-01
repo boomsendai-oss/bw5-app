@@ -58,8 +58,14 @@ export default function RootLayout({
                 add('meta', {name: 'apple-mobile-web-app-title', content: 'BW5 App'});
                 add('link', {rel: 'apple-touch-icon', href: '/apple-touch-icon.png'});
               } else {
-                add('meta', {name: 'apple-mobile-web-app-capable', content: 'no'});
-                add('meta', {name: 'mobile-web-app-capable', content: 'no'});
+                // /staff/* と /admin* は専用マニフェスト (start_url が各URL固定) を使う。
+                // これで iOS のホーム追加で start_url が "/" にならず正しいパスに飛ぶ
+                var manifestHref = p.indexOf('/staff/orders') === 0 ? '/staff-orders-manifest.webmanifest'
+                                 : p.indexOf('/staff/backstage') === 0 ? '/staff-backstage-manifest.webmanifest'
+                                 : p.indexOf('/admin') === 0 ? '/admin-manifest.webmanifest' : null;
+                if (manifestHref) add('link', {rel: 'manifest', href: manifestHref});
+                add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
+                add('meta', {name: 'mobile-web-app-capable', content: 'yes'});
                 var title = p.indexOf('/staff/orders') === 0 ? 'BW5 物販スタッフ'
                           : p.indexOf('/staff/backstage') === 0 ? 'BW5 舞台裏'
                           : p.indexOf('/admin') === 0 ? 'BW5 管理' : 'BW5';

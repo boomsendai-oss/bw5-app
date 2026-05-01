@@ -1,0 +1,17 @@
+{
+  "name": "BW5 物販スタッフ",
+  "short_name": "BW5 物販",
+  "start_url": "/staff/orders/012f39411c60a21ddab531a59aaeffbe",
+  "scope": "/staff/orders/",
+  "display": "standalone",
+  "background_color": "#f27a1a",
+  "theme_color": "#f27a1a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/images/icon-staff-orders.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

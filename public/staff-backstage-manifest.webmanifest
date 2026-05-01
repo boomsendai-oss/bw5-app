@@ -1,0 +1,17 @@
+{
+  "name": "BW5 舞台裏",
+  "short_name": "BW5 舞台裏",
+  "start_url": "/staff/backstage/8d844061dffd154d085eb72df9ca6a79",
+  "scope": "/staff/backstage/",
+  "display": "standalone",
+  "background_color": "#1f2937",
+  "theme_color": "#1f2937",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/images/icon-staff-backstage.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

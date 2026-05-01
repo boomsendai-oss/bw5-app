@@ -1,0 +1,17 @@
+{
+  "name": "BW5 管理",
+  "short_name": "BW5 管理",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#dc4c04",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/images/icon-admin.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
