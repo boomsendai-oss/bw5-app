@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MapPin, Clock, ChevronRight, Calendar, ExternalLink } from "lucide-react";
 import { timetableData, parseTime, getEndTime } from "@/lib/timetableData";
+import { getStage, isUnlockedAtStage, type Stage } from "@/lib/stage";
 import Navigation from "@/components/Navigation";
 import ScheduleSection from "@/components/ScheduleSection";
 import ShopSection from "@/components/ShopSection";
@@ -176,12 +177,26 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  // Section visibility check
+  // Stage gating (re-evaluated every 30s and on URL change)
+  const [stage, setStage] = useState<Stage>('pre');
+  useEffect(() => {
+    const update = () => setStage(getStage());
+    update();
+    const t = setInterval(update, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Section visibility:
+  //   stage が解禁を許可していれば原則公開。
+  //   settings の section_X_visible='0' は明示的な強制ロック扱いで stage を上書き。
+  //   settings='1' は stage が解禁すべきでない場面でも強制公開（運営テスト用）。
   const isSectionVisible = useCallback((sectionId: string): boolean => {
     const key = `section_${sectionId}_visible`;
-    if (!(key in settings)) return true;
-    return settings[key] === '1' || settings[key] === 'true';
-  }, [settings]);
+    const explicit = settings[key];
+    if (explicit === '0' || explicit === 'false') return false;
+    if (explicit === '1' || explicit === 'true') return true;
+    return isUnlockedAtStage(sectionId, stage);
+  }, [settings, stage]);
 
   // Filter menu items based on visibility
   const visibleMenuItems = useMemo(() => {
