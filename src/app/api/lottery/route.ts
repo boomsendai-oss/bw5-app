@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
     const LOTTERY_START_MS = new Date('2026-05-05T14:30:00+09:00').getTime();
     if (!isPreviewBypass && Date.now() < LOTTERY_START_MS) {
       return NextResponse.json({
-        error: '抽選はまだ開始できません',
+        error: '5/5 14:30 から解禁します',
         reason: 'not_started',
         starts_at: '2026-05-05T14:30:00+09:00',
       }, { status: 403 });

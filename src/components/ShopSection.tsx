@@ -845,6 +845,23 @@ function RestockModal({ item, onClose }: { item: MerchItem; onClose: () => void 
           <p className="text-xs text-white/85 mt-1">後日 自宅へ発送 / 銀行振込でお支払い</p>
         </div>
 
+        {/* Product image — Tシャツ等は色選択で切り替え */}
+        {(() => {
+          const variantImages = imagesForVariant(item.id, color);
+          const displayImg = variantImages?.model || variantImages?.front || item.image_url;
+          return displayImg ? (
+            <div className="relative w-full bg-gray-50" style={{ aspectRatio: "1 / 1" }}>
+              <Image
+                src={displayImg}
+                alt={item.name}
+                fill
+                className={item.id === 8 ? "object-contain p-3" : "object-cover"}
+                sizes="(max-width: 768px) 100vw, 480px"
+              />
+            </div>
+          ) : null;
+        })()}
+
         {result?.ok ? (
           <div className="p-6 text-center">
             <CheckCircle size={48} className="mx-auto text-green-500 mb-3" />

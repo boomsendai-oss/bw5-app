@@ -116,7 +116,7 @@ export default function LotterySection() {
     if (!apiOk) {
       const reason = apiData?.reason;
       if (reason === 'not_started') {
-        setInlineError('抽選はまだ開始できません(5/5 14:30 開始予定)');
+        setInlineError('5/5 14:30 から解禁します。お楽しみに!');
       } else if (reason === 'wrong_keyword') {
         setInlineError('シークレットコードが違います');
       } else {
