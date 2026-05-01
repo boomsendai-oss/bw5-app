@@ -40,18 +40,17 @@ export default function RootLayout({
         */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){
+            __html: `try{(function(){
               var p = location.pathname;
               var isStaff = p.indexOf('/staff/') === 0 || p.indexOf('/admin') === 0;
-              var d = document;
-              var head = d.head;
-              // 既存の manifest / capable 関連タグを一旦すべて除去 (path 切替時の inheritance を断つ)
-              head.querySelectorAll('link[rel="manifest"]').forEach(function(n){n.remove();});
-              head.querySelectorAll('meta[name="apple-mobile-web-app-capable"]').forEach(function(n){n.remove();});
-              head.querySelectorAll('meta[name="mobile-web-app-capable"]').forEach(function(n){n.remove();});
-              head.querySelectorAll('meta[name="apple-mobile-web-app-title"]').forEach(function(n){n.remove();});
-              head.querySelectorAll('link[rel="apple-touch-icon"]').forEach(function(n){n.remove();});
-              function add(tag, attrs){var e = d.createElement(tag); Object.keys(attrs).forEach(function(k){e.setAttribute(k, attrs[k]);}); head.appendChild(e); return e;}
+              var d = document, head = d.head;
+              function rm(sel){var ns=head.querySelectorAll(sel);for(var i=0;i<ns.length;i++){ns[i].parentNode.removeChild(ns[i]);}}
+              rm('link[rel="manifest"]');
+              rm('meta[name="apple-mobile-web-app-capable"]');
+              rm('meta[name="mobile-web-app-capable"]');
+              rm('meta[name="apple-mobile-web-app-title"]');
+              rm('link[rel="apple-touch-icon"]');
+              function add(tag, attrs){var e = d.createElement(tag); for(var k in attrs){e.setAttribute(k, attrs[k]);} head.appendChild(e); return e;}
               if (!isStaff) {
                 add('link', {rel: 'manifest', href: '/manifest.webmanifest'});
                 add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
@@ -59,7 +58,6 @@ export default function RootLayout({
                 add('meta', {name: 'apple-mobile-web-app-title', content: 'BW5 App'});
                 add('link', {rel: 'apple-touch-icon', href: '/apple-touch-icon.png'});
               } else {
-                // /staff/* and /admin* はホーム画面追加で素のブックマーク扱いにする
                 add('meta', {name: 'apple-mobile-web-app-capable', content: 'no'});
                 add('meta', {name: 'mobile-web-app-capable', content: 'no'});
                 var title = p.indexOf('/staff/orders') === 0 ? 'BW5 物販スタッフ'
@@ -71,7 +69,7 @@ export default function RootLayout({
                 add('meta', {name: 'apple-mobile-web-app-title', content: title});
                 add('link', {rel: 'apple-touch-icon', href: icon});
               }
-            })();`,
+            })();}catch(e){console.error('PWA bootstrap failed:', e);}`,
           }}
         />
         <link rel="icon" href="/favicon.ico" sizes="any" />
