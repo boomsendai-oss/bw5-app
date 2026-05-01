@@ -132,6 +132,8 @@ interface VideoPreorderEmailParams {
   buyerName: string;
   phone: string;
   preorderId: number;
+  merchName: string;
+  price: number;
 }
 
 export async function sendVideoPreorderEmail(p: VideoPreorderEmailParams): Promise<void> {
@@ -151,6 +153,12 @@ export async function sendVideoPreorderEmail(p: VideoPreorderEmailParams): Promi
   <div style="padding: 24px;">
     <p>${escapeHtml(p.buyerName)} 様</p>
     <p>このたびは BW5 演目映像データの事前予約をお申し込みいただき、誠にありがとうございます。</p>
+
+    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">ご予約内容</h2>
+    <table style="width:100%; border-collapse: collapse; font-size: 14px; margin-top: 8px;">
+      <tr><td style="padding:6px 0; color:#666; width: 110px;">商品</td><td style="padding:6px 0;"><strong>${escapeHtml(p.merchName)}</strong></td></tr>
+      <tr><td style="padding:6px 0; color:#666;">料金</td><td style="padding:6px 0;"><strong style="color:#6366f1; font-size: 16px;">¥${p.price.toLocaleString()}</strong> <span style="font-size:11px; color:#888;">(販売開始時にお支払い)</span></td></tr>
+    </table>
 
     <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">今後の流れ</h2>
     <ol style="font-size: 14px; line-height: 1.8; padding-left: 20px;">

@@ -309,11 +309,7 @@ function MerchTab() {
                 <h3 className="font-bold text-xs text-white leading-tight line-clamp-2 min-h-[2rem]">
                   {item.name}
                 </h3>
-                {isVideoPreorder ? (
-                  <p className="text-[10px] font-bold text-purple-300 mt-1">価格は後日メールでご案内</p>
-                ) : (
-                  <p className="text-sm font-black text-white mt-1">&yen;{item.price.toLocaleString()}</p>
-                )}
+                <p className="text-sm font-black text-white mt-1">&yen;{item.price.toLocaleString()}</p>
 
                 {/* Color swatches preview */}
                 {(() => {
@@ -1071,6 +1067,12 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
           </div>
           <h3 className="text-lg font-black text-white leading-tight">{item.name}</h3>
           <p className="text-xs text-white/85 mt-1">編集完了後、メールにて販売サイトをご案内</p>
+          {item.price > 0 && (
+            <div className="mt-2 inline-block rounded-full px-3 py-1 text-xs font-black"
+              style={{ background: "rgba(255,255,255,0.95)", color: "#6366f1" }}>
+              料金 ¥{item.price.toLocaleString()}
+            </div>
+          )}
         </div>
 
         {result?.ok ? (

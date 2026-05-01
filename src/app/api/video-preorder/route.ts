@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'メールアドレスの形式が正しくありません' }, { status: 400 });
     }
 
-    const merch = await getOne('SELECT id, name FROM merchandise WHERE id = ?', [body.merch_id]);
+    const merch = await getOne('SELECT id, name, price FROM merchandise WHERE id = ?', [body.merch_id]);
     if (!merch) {
       return NextResponse.json({ error: '商品が見つかりません' }, { status: 404 });
     }
@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
         buyerName: body.buyer_name,
         phone: body.phone,
         preorderId,
+        merchName: String(merch.name),
+        price: Number(merch.price) || 0,
       });
     } catch (e) {
       console.error('[video-preorder] email failed but record saved', e);
