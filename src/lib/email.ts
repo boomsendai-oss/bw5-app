@@ -91,7 +91,8 @@ export async function sendRestockOrderEmail(p: RestockOrderEmailParams): Promise
       </table>
       <p style="margin: 12px 0 0; font-size: 12px; color: #666;">
         ※振込手数料はお客様ご負担となります。<br />
-        ※振込名義は <strong>${escapeHtml(p.buyerName)}</strong> 様のお名前でお願いいたします。
+        ※振込名義は <strong>${escapeHtml(p.buyerName)}</strong> 様のお名前でお願いいたします。<br />
+        ※<strong>複数商品をご注文の場合、送料を1回分のみに調整できる場合がございます。</strong>その際は別途メールにて個別にご案内いたしますので、振込はそちらをご確認のうえお手続きください。
       </p>
     </div>
 

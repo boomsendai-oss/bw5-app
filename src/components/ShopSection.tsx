@@ -879,6 +879,7 @@ function RestockModal({ item, onClose }: { item: MerchItem; onClose: () => void 
                 <li>ご入金確認後、約2週間でご指定の住所へ発送</li>
               </ol>
               <p className="mt-2">送料：<strong>¥{SHIPPING_FEE.toLocaleString()}</strong>（別途加算）</p>
+              <p className="mt-1.5 text-[10px] text-orange-700">※複数商品をご注文の場合、送料を1回分のみに調整できる場合があります。その際は別途メールで個別にご案内します。</p>
             </div>
 
             {/* Variant pickers */}
