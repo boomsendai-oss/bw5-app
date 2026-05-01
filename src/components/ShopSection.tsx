@@ -258,12 +258,15 @@ function MerchTab() {
         {items.map((item, i) => {
           const isVideoPreorder = item.id === VIDEO_PREORDER_ID;
           const videoClosed = isVideoPreorder && isVideoPreorderClosed();
+          // バリアントがあるならその合計、無ければマスター在庫を使って SOLD OUT 判定
+          const variantTotal = (item.variants ?? []).reduce((s, v) => s + (v.stock ?? 0), 0);
+          const effectiveStock = (item.variants ?? []).length > 0 ? variantTotal : (item.stock ?? 0);
           // 映像データ事前予約は在庫概念なし。期限内なら常に予約受付可能。
           const soldOut = isVideoPreorder
             ? false
             : item.purchase_at_booth
             ? false
-            : (item.stock ?? 0) <= 0;
+            : effectiveStock <= 0;
           // シール (id=8) は追加注文の対象外。それ以外の sold-out は後日発送で受付可能。
           const restockEligible = soldOut && item.id !== 8 && !item.purchase_at_booth;
           return (
