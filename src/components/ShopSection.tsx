@@ -1048,6 +1048,7 @@ function RestockModal({ item, onClose }: { item: MerchItem; onClose: () => void 
               <label className="text-xs text-gray-500 mb-1 block font-semibold">数量</label>
               <input
                 type="number" min={1} max={10}
+                inputMode="numeric"
                 value={quantity}
                 onChange={(e) => setQuantity(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
                 className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 focus:border-orange-400 focus:outline-none text-gray-800"
@@ -1076,7 +1077,7 @@ function RestockModal({ item, onClose }: { item: MerchItem; onClose: () => void 
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">郵便番号</label>
-                  <input type="text" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder="980-0000"
+                  <input type="text" inputMode="numeric" pattern="[0-9-]*" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder="980-0000"
                     className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 focus:border-orange-400 focus:outline-none text-gray-800" />
                 </div>
                 <div>

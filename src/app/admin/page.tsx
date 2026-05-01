@@ -439,8 +439,8 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
         <div className="card p-4 mb-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
             <input className="admin-input" placeholder="商品名" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-            <input className="admin-input" placeholder="価格" type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} />
-            <input className="admin-input" placeholder="在庫数" type="number" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} />
+            <input className="admin-input" placeholder="価格" type="number" inputMode="numeric" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} />
+            <input className="admin-input" placeholder="在庫数" type="number" inputMode="numeric" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
             <input className="admin-input" placeholder="画像URL" value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })} />
@@ -510,7 +510,7 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
                     <div className="space-y-2">
                       <input className="admin-input w-full" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="商品名" />
                       <div className="grid grid-cols-2 gap-2">
-                        <input className="admin-input" type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} placeholder="価格" />
+                        <input className="admin-input" type="number" inputMode="numeric" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} placeholder="価格" />
                         <input className="admin-input" value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })} placeholder="画像URL" />
                       </div>
                       <textarea className="admin-input w-full" rows={3} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="説明文" />
@@ -546,6 +546,7 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
                                 </div>
                                 <input
                                   type="number"
+                                  inputMode="numeric"
                                   min={0}
                                   defaultValue={v.stock}
                                   onBlur={e => {
@@ -566,6 +567,7 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
                           <div className="text-[11px] font-bold" style={{ color: 'var(--text-secondary)' }}>マスター在庫</div>
                           <input
                             type="number"
+                            inputMode="numeric"
                             min={0}
                             defaultValue={item.stock}
                             onBlur={e => {
