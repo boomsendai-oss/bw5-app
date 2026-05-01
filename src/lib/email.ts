@@ -11,13 +11,13 @@ const ADMIN_BCC = 'boom.sendai@gmail.com';
 // 入金期限（固定）
 export const PAYMENT_DEADLINE_LABEL = '2026年5月12日(火) 15:00 まで';
 
-// 入金先（詳細は後日設定差し替え。現状はプレースホルダー）
+// 入金先
 export const BANK_INFO = {
   bank: 'GMOあおぞらネット銀行',
-  branch: '（後日ご案内）',
+  branch: 'めがみ支店',
   type: '普通',
-  number: '（後日ご案内）',
-  holder: '（後日ご案内）',
+  number: '4383329',
+  holder: 'キムラ シンタロウ BW5 グッズ',
 };
 
 interface RestockOrderEmailParams {
@@ -76,16 +76,11 @@ export async function sendRestockOrderEmail(p: RestockOrderEmailParams): Promise
       <tr><td style="padding:6px 0; color:#666;">電話番号</td><td style="padding:6px 0;">${escapeHtml(p.phone)}</td></tr>
     </table>
 
-    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #dc4c04; padding-left: 10px; color: #dc4c04;">お支払いのご案内</h2>
+    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #dc4c04; padding-left: 10px; color: #dc4c04;">お支払いのお願い</h2>
     <div style="background: #fff7ed; border: 1px solid rgba(242,122,26,0.3); border-radius: 12px; padding: 16px; margin-top: 8px;">
-      <p style="margin: 0 0 12px; font-size: 14px; padding: 10px; background:#fef3c7; border-radius:8px; border:1px solid rgba(202,138,4,0.3);">
-        ⚠️ <strong>正式な振込先口座は 5/12 までに別途メールでご案内いたします。</strong><br />
-        <span style="font-size:12px;color:#666;">この時点ではお振り込みは不要です。お知らせメールをお待ちください。</span>
+      <p style="margin: 0 0 12px; font-size: 14px;">
+        下記口座へ <strong style="color:#dc4c04;">${PAYMENT_DEADLINE_LABEL}</strong> にお振り込みをお願いいたします。
       </p>
-      <p style="margin: 0 0 12px; font-size: 13px; color: #666;">
-        【参考】お支払期限は <strong style="color:#dc4c04;">${PAYMENT_DEADLINE_LABEL}</strong> を予定しています。
-      </p>
-      <p style="margin:0 0 8px;font-size:12px;color:#666;">[振込先（一部・正式情報は後日ご案内）]</p>
       <table style="width:100%; border-collapse: collapse; font-size: 14px;">
         <tr><td style="padding:4px 0; color:#666; width: 110px;">銀行名</td><td style="padding:4px 0;">${BANK_INFO.bank}</td></tr>
         <tr><td style="padding:4px 0; color:#666;">支店</td><td style="padding:4px 0;">${BANK_INFO.branch}</td></tr>
