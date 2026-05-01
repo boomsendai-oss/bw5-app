@@ -438,16 +438,29 @@ export default function Home() {
                           </div>
                         )}
                       </>
-                    ) : nextItem ? (
-                      <>
-                        <span className="text-base">⏳</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[10px] font-bold tracking-wider uppercase text-yellow-400">COMING UP</div>
-                          <div className="text-sm font-bold text-white truncate">{nextItem.title}</div>
-                        </div>
-                        <div className="text-xs text-white/50 shrink-0">{nextItem.startTime.slice(0, 5)}〜</div>
-                      </>
-                    ) : null}
+                    ) : nextItem ? (() => {
+                      // 開演前で「次の演目」がまだ始まってない場合 → タイトルを伏せて「?」表示。
+                      // タイムテーブルの最初の本番演目と一致するかで判定。
+                      const firstShowItem = timetableData.find(
+                        (it) => it.type === 'performance' || it.type === 'guest' || it.type === 'special'
+                      );
+                      const isOpeningTease = firstShowItem && nextItem.startTime === firstShowItem.startTime;
+                      return (
+                        <>
+                          <span className="text-base">⏳</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[10px] font-bold tracking-wider uppercase text-yellow-400">COMING UP</div>
+                            <div className="text-sm font-bold text-white truncate">
+                              {isOpeningTease ? "??? (開演までのお楽しみ)" : nextItem.title}
+                            </div>
+                          </div>
+                          {/* 「?」の時だけ 14:30 開演時刻を表示。実演目が見えてからは時刻を隠す。 */}
+                          {isOpeningTease && (
+                            <div className="text-xs text-white/50 shrink-0">14:30〜</div>
+                          )}
+                        </>
+                      );
+                    })() : null}
                   </div>
                 </motion.div>
               ) : null}
