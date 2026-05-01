@@ -358,7 +358,7 @@ export default function Home() {
                 >
                   <div className="text-2xl mb-1">🎉</div>
                   <div className="text-base font-black text-white">
-                    本日は終了しました
+                    BW5 全演目が終了しました
                   </div>
                   <div className="text-xs text-white/70 mt-1">
                     ご来場いただきありがとうございました
