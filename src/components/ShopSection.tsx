@@ -116,6 +116,72 @@ const VIEW_LABEL: Record<ViewMode, string> = {
 };
 
 // ════════════════════════════════════════
+// Reservation mode (time-based)
+// ════════════════════════════════════════
+// 開演（事前予約締切）/ 公演終了（取り置き締切）
+const PICKUP_DEADLINE = new Date("2026-05-05T14:30:00+09:00"); // 開演＝事前予約締切
+const EVENT_END       = new Date("2026-05-05T18:30:00+09:00"); // 公演終了＝取り置き締切
+
+type ShopMode = "pre" | "during" | "closed";
+
+function getShopMode(): ShopMode {
+  // URL クエリでプレビュー上書き ?preview=pre / event / closed
+  if (typeof window !== "undefined") {
+    const p = new URLSearchParams(window.location.search).get("preview");
+    if (p === "pre") return "pre";
+    if (p === "event" || p === "during") return "during";
+    if (p === "closed") return "closed";
+  }
+  const now = Date.now();
+  if (now < PICKUP_DEADLINE.getTime()) return "pre";
+  if (now < EVENT_END.getTime()) return "during";
+  return "closed";
+}
+
+const MODE_COPY: Record<ShopMode, {
+  cardButton: string;
+  modalButton: string;
+  modalSubmitting: string;
+  bannerHTML: string;
+  modalInfoTitle: string;
+  modalInfoBody: string;
+  successMessage: string;
+}> = {
+  pre: {
+    cardButton: "予約する",
+    modalButton: "予約を確定",
+    modalSubmitting: "予約中...",
+    bannerHTML:
+      'ご予約商品は<strong class="text-white">発表会当日（5/5）会場の物販ブース</strong>でのお受け取りです。<br />事前のお渡し・発送はございません。',
+    modalInfoTitle: "受け取り：開場後すぐ（13:45〜14:30）",
+    modalInfoBody:
+      "物販ブースでお名前を伝えてお受け取りください。<br /><strong>※14:30 を過ぎると自動キャンセル</strong>となり商品は再販されます。<br />お支払いは現金・クレジットカード・PayPay 等に対応。",
+    successMessage: "ご予約を承りました。当日 13:45〜14:30 の間に物販ブースでお受け取りください。",
+  },
+  during: {
+    cardButton: "取り置きする",
+    modalButton: "取り置きを確定",
+    modalSubmitting: "確定中...",
+    bannerHTML:
+      '<strong class="text-white">ライブ取り置き受付中</strong> — お席からそのまま注文OK。お早めに物販ブースでお受け取りください。',
+    modalInfoTitle: "受け取り：物販ブースで随時",
+    modalInfoBody:
+      "なるべくお早めに物販ブースでお受け取りください。<br /><strong>※公演終了（18:30）までに受け取りがない場合は自動キャンセル</strong>となります。<br />お支払いは現金・クレジットカード・PayPay 等に対応。",
+    successMessage: "取り置きを承りました。物販ブースで「お名前」をお伝えください。",
+  },
+  closed: {
+    cardButton: "受付終了",
+    modalButton: "受付終了",
+    modalSubmitting: "—",
+    bannerHTML:
+      '<strong class="text-white">物販の受付は終了しました。</strong>',
+    modalInfoTitle: "受付終了",
+    modalInfoBody: "本日の取り置き・予約受付は終了しました。",
+    successMessage: "",
+  },
+};
+
+// ════════════════════════════════════════
 export default function ShopSection() {
   const sectionRef = useRef(null);
   const isInView = useInView(sectionRef, { once: true, margin: "-80px" });
@@ -132,7 +198,7 @@ export default function ShopSection() {
           <h2 className="text-3xl sm:text-4xl font-black tracking-tight gradient-text mb-3">
             GOODS
           </h2>
-          <p className="text-xs text-white/60">当日会場受取 or オンライン決済</p>
+          <p className="text-xs text-white/60">事前予約 / 当日取り置き OK・会場の物販ブースで受け取り</p>
         </motion.div>
 
         <MerchTab />
@@ -147,6 +213,15 @@ export default function ShopSection() {
 function MerchTab() {
   const [items, setItems] = useState<MerchItem[]>([]);
   const [modal, setModal] = useState<MerchItem | null>(null);
+  const [mode, setMode] = useState<ShopMode>("pre");
+
+  // Re-evaluate mode every 30s and on mount so 14:30/18:30 transitions auto-apply
+  useEffect(() => {
+    const update = () => setMode(getShopMode());
+    update();
+    const t = setInterval(update, 30000);
+    return () => clearInterval(t);
+  }, []);
 
   const load = async () => {
     try {
@@ -156,21 +231,23 @@ function MerchTab() {
   };
   useEffect(() => { load(); }, []);
 
+  const copy = MODE_COPY[mode];
+
   return (
     <>
-      {/* Pickup info banner */}
+      {/* Pickup info banner — varies by mode (pre / during / closed) */}
       <div
         className="mb-4 rounded-xl px-3 py-2.5 flex gap-2 items-start"
         style={{
-          background: "rgba(242,122,26,0.12)",
-          border: "1px solid rgba(242,122,26,0.35)",
+          background: mode === "during" ? "rgba(220,76,4,0.18)" : "rgba(242,122,26,0.12)",
+          border: `1px solid ${mode === "during" ? "rgba(220,76,4,0.5)" : "rgba(242,122,26,0.35)"}`,
         }}
       >
         <Info size={16} className="flex-shrink-0 mt-0.5" style={{ color: "#ffb37a" }} />
-        <p className="text-[11px] leading-snug text-white/85">
-          ご予約商品は<strong className="text-white">発表会当日、会場の物販ブース</strong>でのお受け取りとなります。<br />
-          事前のお渡し・発送はございません。
-        </p>
+        <p
+          className="text-[11px] leading-snug text-white/85"
+          dangerouslySetInnerHTML={{ __html: copy.bannerHTML }}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
@@ -244,7 +321,7 @@ function MerchTab() {
                     cursor: !soldOut ? "pointer" : "not-allowed",
                   }}
                 >
-                  {soldOut ? "SOLD OUT" : item.purchase_at_booth ? "デザインを見る" : "予約する"}
+                  {soldOut ? "SOLD OUT" : item.purchase_at_booth ? "デザインを見る" : copy.cardButton}
                 </button>
               </div>
             </motion.div>
@@ -260,7 +337,7 @@ function MerchTab() {
       )}
 
       <AnimatePresence>
-        {modal && <OrderModal item={modal} onClose={() => { setModal(null); load(); }} />}
+        {modal && <OrderModal item={modal} mode={mode} onClose={() => { setModal(null); load(); }} />}
       </AnimatePresence>
     </>
   );
@@ -269,7 +346,8 @@ function MerchTab() {
 // ════════════════════════════════════════
 // Order Modal
 // ════════════════════════════════════════
-function OrderModal({ item, onClose }: { item: MerchItem; onClose: () => void }) {
+function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; onClose: () => void }) {
+  const copy = MODE_COPY[mode];
   const variants = item.variants ?? [];
   const hasVariants = variants.length > 0 && variants.some((v) => v.color || v.size);
 
@@ -357,7 +435,7 @@ function OrderModal({ item, onClose }: { item: MerchItem; onClose: () => void })
         if (data.redirect) { window.location.href = data.redirect; return; }
         setResult({ ok: false, message: data.checkout_error ?? "オンライン決済は現在準備中です。当日現金を選んでください。" });
       } else {
-        setResult({ ok: true, message: "ご予約を承りました。当日会場の物販ブースでお受け取りください。" });
+        setResult({ ok: true, message: copy.successMessage });
         setTimeout(onClose, 2400);
       }
     } catch {
@@ -584,17 +662,17 @@ function OrderModal({ item, onClose }: { item: MerchItem; onClose: () => void })
                 />
               </div>
 
-              {/* Cash-only / pickup-only flow — payment selector removed */}
+              {/* Mode-aware pickup info — pre / during / closed */}
               <div className="rounded-xl px-3 py-3" style={{ background: "#fff7ed", border: "1px solid rgba(242,122,26,0.3)" }}>
                 <div className="flex items-center gap-2 mb-1">
-                  <Banknote size={16} style={{ color: "#dc4c04" }} />
-                  <span className="text-xs font-black" style={{ color: "#dc4c04" }}>お支払いは当日現金のみ</span>
+                  <Info size={16} style={{ color: "#dc4c04" }} />
+                  <span className="text-xs font-black" style={{ color: "#dc4c04" }}>{copy.modalInfoTitle}</span>
                 </div>
-                <div className="text-[11px] leading-relaxed" style={{ color: "#555" }}>
-                  <strong className="text-orange-600">受け取り時間：13:45〜14:30（45分）</strong><br />
-                  この時間内に物販ブースで現金と引き換えにお受け取りください。<br />
-                  <span className="text-red-600 font-bold">※14:30 以降は自動キャンセルされ、商品は他の方に再販されます。</span>
-                </div>
+                <div
+                  className="text-[11px] leading-relaxed"
+                  style={{ color: "#555" }}
+                  dangerouslySetInnerHTML={{ __html: copy.modalInfoBody }}
+                />
               </div>
 
               {result && !result.ok && (
@@ -604,13 +682,13 @@ function OrderModal({ item, onClose }: { item: MerchItem; onClose: () => void })
               )}
 
               <button
-                onClick={handleOrder} disabled={!canSubmit}
+                onClick={handleOrder} disabled={!canSubmit || mode === "closed"}
                 className="w-full py-3 rounded-full text-sm font-bold text-white disabled:opacity-40 transition-all flex items-center justify-center gap-2"
                 style={{ background: "#f27a1a" }}
               >
                 {submitting ? (
-                  <><Loader2 size={16} className="animate-spin" />予約中...</>
-                ) : "予約を確定"}
+                  <><Loader2 size={16} className="animate-spin" />{copy.modalSubmitting}</>
+                ) : copy.modalButton}
               </button>
               </>
               )}
