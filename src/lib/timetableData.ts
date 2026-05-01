@@ -37,8 +37,8 @@ export const REGULAR_SCHEDULE: Record<string, string> = {
   M27: '土 16:30',          // KEIKO / 長町 ガールズ 合同
   M28: '金 19:30',          // TARO / 七ヶ浜 HIPHOP 初級
   M29: '日 13:30',          // Ryuki / キッズ HIPHOP
-  M30: '日 (隔週)',         // SAYUKI / FREE STYLE
-  M31: 'SPECIAL ナンバー / 不定期', // TARO & Ryuki / GRAFFITI
+  M30: '日 14:00 (隔週)',   // SAYUKI / FREE STYLE
+  M31: '',                   // TARO & Ryuki / GRAFFITI — 表示なし
   M33: '土 10:00',          // TARO / キッズ 強化
   M35: '土 11:30',          // K@TTSU / HOUSE エキスパート
   M37: '月 20:15',          // TARO / HIPHOP 中級
