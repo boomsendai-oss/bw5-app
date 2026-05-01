@@ -570,8 +570,8 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
         if (data.redirect) { window.location.href = data.redirect; return; }
         setResult({ ok: false, message: data.checkout_error ?? "オンライン決済は現在準備中です。当日現金を選んでください。" });
       } else {
+        // 自動クローズはせず、ユーザーが「閉じる」ボタンを明示的にタップ
         setResult({ ok: true, message: copy.successMessage });
-        setTimeout(onClose, 2400);
       }
     } catch {
       setResult({ ok: false, message: "通信エラーが発生しました" });
@@ -601,12 +601,19 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
         </button>
 
         {result?.ok ? (
-          <div className="text-center py-6">
+          <div className="text-center py-6 px-2">
             <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}>
               <CheckCircle size={48} className="mx-auto mb-3 text-green-500" />
             </motion.div>
-            <p className="font-bold text-gray-800">予約完了!</p>
-            <p className="text-sm text-gray-500 mt-1">{result.message}</p>
+            <p className="font-bold text-gray-800">{mode === "during" ? "取り置き完了!" : "予約完了!"}</p>
+            <p className="text-sm text-gray-600 mt-2 leading-relaxed">{result.message}</p>
+            <button
+              onClick={onClose}
+              className="mt-5 px-8 py-2.5 rounded-full text-sm font-bold text-white"
+              style={{ background: "#f27a1a" }}
+            >
+              閉じる
+            </button>
           </div>
         ) : (
           <>

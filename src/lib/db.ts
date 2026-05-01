@@ -380,6 +380,7 @@ export async function initDb(): Promise<void> {
   }
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- DBの結果は動的キーアクセス多用のため any を維持 */
 export async function query(sql: string, args: any[] = []): Promise<ResultSet> {
   await initDb();
   return getClient().execute({ sql, args });
@@ -401,6 +402,7 @@ export async function getOne(sql: string, args: any[] = []): Promise<any | null>
   const result = await getClient().execute({ sql, args });
   return (result.rows[0] as any) || null;
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export async function batch(statements: InStatement[], mode: 'write' | 'read' | 'deferred' = 'write'): Promise<ResultSet[]> {
   await initDb();

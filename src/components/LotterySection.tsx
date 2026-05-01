@@ -462,22 +462,25 @@ export default function LotterySection() {
               {pendingResult.won && (
                 <div className="relative w-full" style={{ aspectRatio: '4 / 3', background: 'rgba(0,0,0,0.15)' }}>
                   {pendingResult.prize_tier === 'jackpot' ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <div className="absolute inset-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/images/boomkun_jackpot.png"
+                        alt="JACKPOT"
+                        className="absolute inset-0 w-full h-full"
+                        style={{ objectFit: 'cover' }}
+                      />
                       <motion.div
-                        animate={{ scale: [0.9, 1.1, 0.9], rotate: [-3, 3, -3] }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
-                        className="text-7xl"
-                      >
-                        🎁
-                      </motion.div>
-                      <div className="mt-2 text-3xl font-black tracking-widest"
+                        animate={{ scale: [0.95, 1.05, 0.95] }}
+                        transition={{ duration: 1.2, repeat: Infinity }}
+                        className="absolute bottom-2 left-1/2 -translate-x-1/2 text-3xl font-black tracking-widest pointer-events-none"
                         style={{
                           color: '#fff',
-                          textShadow: '0 4px 12px rgba(0,0,0,0.4), 0 0 20px rgba(255,255,255,0.5)',
+                          textShadow: '0 4px 12px rgba(0,0,0,0.6), 0 0 20px rgba(255,200,50,0.8)',
                         }}
                       >
                         JACKPOT!
-                      </div>
+                      </motion.div>
                     </div>
                   ) : (
                     <img
