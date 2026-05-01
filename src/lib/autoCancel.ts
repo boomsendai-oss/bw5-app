@@ -43,10 +43,14 @@ export async function autoCancelExpiredOrders(): Promise<number> {
       const effectiveDeadline = createdAt < pickupDl ? pickupDl : eventEnd;
       if (now < effectiveDeadline) continue; // まだ締切前
 
-      await execute(
-        "UPDATE merch_orders SET status = 'auto_cancelled' WHERE id = ?",
+      // 同時実行 (concurrent /api/merch リクエスト) で 2重に在庫戻しが起きないよう、
+      // status='pending' の WHERE 条件で UPDATE。0件しか変えなかったら他リクエストが
+      // 既に処理済みなので skip。
+      const r = await execute(
+        "UPDATE merch_orders SET status = 'auto_cancelled' WHERE id = ? AND status = 'pending'",
         [o.id]
       );
+      if (Number(r.rowsAffected ?? 0) === 0) continue;
       // 在庫戻し（バリアント→マスター）
       const qty = Number(o.quantity ?? 1);
       if (o.variant_id) {

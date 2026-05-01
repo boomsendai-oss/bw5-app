@@ -12,7 +12,6 @@ const WELCOME_SPARKLES = Array.from({ length: 8 }, (_, i) => {
 export default function WelcomePopup() {
   const [show, setShow] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
     const seen = localStorage.getItem('bw5_welcome_seen');
@@ -25,7 +24,6 @@ export default function WelcomePopup() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (navigator as any).standalone === true;
     setIsIOS(ios);
-    setIsStandalone(standalone);
 
     // Don't show if already in standalone (= already added to home)
     if (standalone) {
@@ -179,7 +177,6 @@ export default function WelcomePopup() {
 
 function Step({
   n,
-  icon,
   text,
   badge,
   badgeIcon,
@@ -187,7 +184,8 @@ function Step({
   after,
 }: {
   n: number;
-  icon: React.ReactNode;
+  /** unused — kept for callsite API symmetry */
+  icon?: React.ReactNode;
   text: string;
   badge: string;
   badgeIcon: React.ReactNode;
