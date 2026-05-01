@@ -160,10 +160,33 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const result = await execute(
-      'INSERT INTO lottery_entries (fingerprint, ip, won, prize_name, keyword_used, prize_tier) VALUES (?, ?, ?, ?, ?, ?)',
-      [fingerprint, ip, won, prize_name, keyword || '', prize_tier]
-    );
+    // 同時並行リクエストで cap を超えないように、won=1 の場合は
+    // INSERT...SELECT WHERE で「現在の当選者数 < cap」を atomic に再チェックする
+    let result;
+    if (won === 1) {
+      const cap = Number(m.lottery_winners_cap || 10);
+      result = await execute(
+        `INSERT INTO lottery_entries (fingerprint, ip, won, prize_name, keyword_used, prize_tier)
+         SELECT ?, ?, ?, ?, ?, ?
+         WHERE (SELECT COUNT(*) FROM lottery_entries WHERE won = 1) < ?`,
+        [fingerprint, ip, won, prize_name, keyword || '', prize_tier, cap]
+      );
+      if (Number(result.rowsAffected ?? 0) === 0) {
+        // cap に到達していたので "はずれ" として再 INSERT
+        won = 0;
+        prize_name = '';
+        prize_tier = 'normal';
+        result = await execute(
+          'INSERT INTO lottery_entries (fingerprint, ip, won, prize_name, keyword_used, prize_tier) VALUES (?, ?, ?, ?, ?, ?)',
+          [fingerprint, ip, 0, '', keyword || '', 'normal']
+        );
+      }
+    } else {
+      result = await execute(
+        'INSERT INTO lottery_entries (fingerprint, ip, won, prize_name, keyword_used, prize_tier) VALUES (?, ?, ?, ?, ?, ?)',
+        [fingerprint, ip, won, prize_name, keyword || '', prize_tier]
+      );
+    }
 
     return NextResponse.json({
       success: true,
