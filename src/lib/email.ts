@@ -124,6 +124,80 @@ export async function sendRestockOrderEmail(p: RestockOrderEmailParams): Promise
   }
 }
 
+// ════════════════════════════════════════
+// 映像データ事前予約 確認メール
+// ════════════════════════════════════════
+interface VideoPreorderEmailParams {
+  to: string;
+  buyerName: string;
+  phone: string;
+  preorderId: number;
+}
+
+export async function sendVideoPreorderEmail(p: VideoPreorderEmailParams): Promise<void> {
+  if (!resend) {
+    console.warn('[email] RESEND_API_KEY not set — skipping email send');
+    return;
+  }
+
+  const subject = `【BW5】演目映像データの事前予約を承りました（予約番号 #${p.preorderId}）`;
+  const html = `
+<div style="font-family: -apple-system, system-ui, sans-serif; max-width: 600px; margin: 0 auto; color: #222;">
+  <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; padding: 24px; text-align: center;">
+    <h1 style="margin: 0; font-size: 22px;">BW5 演目映像データ 事前予約 完了</h1>
+    <p style="margin: 8px 0 0; font-size: 13px; opacity: 0.9;">予約番号 #${p.preorderId}</p>
+  </div>
+
+  <div style="padding: 24px;">
+    <p>${escapeHtml(p.buyerName)} 様</p>
+    <p>このたびは BW5 演目映像データの事前予約をお申し込みいただき、誠にありがとうございます。</p>
+
+    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">今後の流れ</h2>
+    <ol style="font-size: 14px; line-height: 1.8; padding-left: 20px;">
+      <li>編集作業が完了し次第、改めてこちらのメールアドレス宛に<strong>販売サイト（Vimeo オンデマンド予定）のご案内</strong>をお送りいたします。</li>
+      <li>ご案内メール内のリンクから、ご購入手続きをお願いいたします。</li>
+      <li>ご購入後、即座に視聴・ダウンロードが可能になります。</li>
+    </ol>
+
+    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #dc4c04; padding-left: 10px; color: #dc4c04;">重要なお願い</h2>
+    <div style="background: #fef2f2; border: 1px solid rgba(220,76,4,0.3); border-radius: 12px; padding: 16px; margin-top: 8px; font-size: 13px; line-height: 1.7;">
+      <p style="margin: 0 0 8px;"><strong>購入後の映像データの第三者への共有・転載・SNS等への投稿は固くお断りいたします。</strong></p>
+      <p style="margin: 0 0 8px;">
+        ・データには<strong>コピーガード処理</strong>を施しています<br />
+        ・<strong>ウォーターマーク（電子透かし）</strong>により、流出した場合は購入者を特定できる仕様となっています
+      </p>
+      <p style="margin: 0; color: #666; font-size: 12px;">出演者・関係者のプライバシー保護のため、ご理解とご協力をお願いいたします。</p>
+    </div>
+
+    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">ご登録内容</h2>
+    <table style="width:100%; border-collapse: collapse; font-size: 14px; margin-top: 8px;">
+      <tr><td style="padding:6px 0; color:#666; width: 110px;">お名前</td><td style="padding:6px 0;">${escapeHtml(p.buyerName)} 様</td></tr>
+      <tr><td style="padding:6px 0; color:#666;">電話番号</td><td style="padding:6px 0;">${escapeHtml(p.phone)}</td></tr>
+    </table>
+
+    <hr style="margin: 28px 0; border: none; border-top: 1px solid #eee;" />
+    <p style="font-size: 12px; color: #888; line-height: 1.7;">
+      ご不明な点は本メールにご返信いただくか、<a href="mailto:boom.sendai@gmail.com" style="color:#6366f1;">boom.sendai@gmail.com</a> までご連絡ください。<br />
+      BOOM Dance School / BOOM WOP vol.5
+    </p>
+  </div>
+</div>
+`.trim();
+
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to: p.to,
+      bcc: [ADMIN_BCC],
+      subject,
+      html,
+    });
+  } catch (e) {
+    console.error('[email] video preorder send failed', e);
+    throw e;
+  }
+}
+
 function escapeHtml(s: string): string {
   return String(s)
     .replace(/&/g, '&amp;')

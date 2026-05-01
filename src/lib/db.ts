@@ -171,6 +171,21 @@ export async function initDb(): Promise<void> {
       args: [],
     },
     {
+      // 映像データ販売の事前予約（後日メールで案内）
+      sql: `CREATE TABLE IF NOT EXISTS video_preorders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      merch_id INTEGER NOT NULL,
+      buyer_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      note TEXT DEFAULT '',
+      status TEXT DEFAULT 'waiting',
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      FOREIGN KEY (merch_id) REFERENCES merchandise(id)
+    )`,
+      args: [],
+    },
+    {
       // 売り切れ商品の追加注文（後日発送）
       sql: `CREATE TABLE IF NOT EXISTS restock_orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
