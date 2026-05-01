@@ -373,7 +373,7 @@ function MerchTab() {
                   }}
                 >
                   {isVideoPreorder
-                    ? (videoClosed ? "受付終了" : "事前予約する")
+                    ? (videoClosed ? "受付終了" : "「欲しい!」を伝える")
                     : !soldOut
                     ? (item.purchase_at_booth ? "デザインを見る" : copy.cardButton)
                     : restockEligible
@@ -1079,7 +1079,7 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
       }
       setResult({
         ok: true,
-        message: "事前予約を承りました。映像データの編集が完了次第、ご入力のメールアドレスに販売サイトのご案内をお送りいたします。",
+        message: "お申込ありがとうございます！編集完成後（5月下旬予定）にご入力のメールアドレスへ販売サイトのご案内をお送りします。お支払いはその時で大丈夫です。",
       });
     } catch {
       setResult({ ok: false, message: "通信エラーが発生しました" });
@@ -1115,13 +1115,12 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
             <span className="text-[11px] font-black tracking-widest text-white/90">VIDEO — 事前予約受付</span>
           </div>
           <h3 className="text-lg font-black text-white leading-tight">{item.name}</h3>
-          <p className="text-xs text-white/85 mt-1">編集完了後、メールにて販売サイトをご案内</p>
-          {item.price > 0 && (
-            <div className="mt-2 inline-block rounded-full px-3 py-1 text-xs font-black"
-              style={{ background: "rgba(255,255,255,0.95)", color: "#6366f1" }}>
-              料金 ¥{item.price.toLocaleString()}
-            </div>
-          )}
+          <p className="text-xs text-white/85 mt-1">「欲しい！」を伝えるだけ。お支払いは後日でOK</p>
+          <div className="mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-black"
+            style={{ background: "rgba(255,255,255,0.95)", color: "#6366f1" }}>
+            <span>🆓 今は無料で申込のみ</span>
+            {item.price > 0 && <span className="text-[10px] opacity-70">/ 完成後 ¥{item.price.toLocaleString()}</span>}
+          </div>
         </div>
 
         {result?.ok ? (
@@ -1139,15 +1138,25 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
           </div>
         ) : (
           <div className="p-5 space-y-3">
+            {/* "今は申し込みだけ" の安心感を強く打ち出す */}
+            <div className="rounded-xl p-3.5" style={{ background: "linear-gradient(135deg,#ecfdf5,#d1fae5)", border: "1px solid rgba(34,197,94,0.45)" }}>
+              <p className="text-sm font-black mb-1" style={{ color: "#047857" }}>🆓 今は申し込みだけ。お支払いは不要です</p>
+              <p className="text-[11px] leading-relaxed" style={{ color: "#065f46" }}>
+                ここでは「欲しい！」というご希望をお伺いするだけです。<br />
+                データの編集が完成したら、メールで販売サイトのご案内をお送りします。<br />
+                <strong>その時にお支払い ¥3,000 と引き換えにダウンロード</strong>できる流れになります。
+              </p>
+            </div>
+
             {/* Flow */}
             <div className="rounded-xl p-3 text-[11px] leading-relaxed" style={{ background: "#f5f3ff", border: "1px solid rgba(99,102,241,0.3)", color: "#555" }}>
-              <p className="font-black text-purple-700 mb-1.5">📹 ご予約後の流れ</p>
-              <ol className="list-decimal pl-4 space-y-0.5">
-                <li>下記フォームでご予約</li>
-                <li>編集完成後、ご入力のメールアドレスに<strong>販売サイト（Vimeo オンデマンド予定）</strong>のご案内をお送りします</li>
-                <li>そちらからご購入手続きをお願いします</li>
+              <p className="font-black text-purple-700 mb-1.5">📹 流れ</p>
+              <ol className="list-decimal pl-4 space-y-1">
+                <li><strong>今:</strong> 下記フォームに「欲しい人」として申込（無料 / お支払いなし）</li>
+                <li><strong>編集完成後（5月下旬予定）:</strong> ご入力のメールアドレスに<strong>販売サイト（Vimeo オンデマンド予定）</strong>のご案内が届きます</li>
+                <li><strong>その時:</strong> ¥3,000 のお支払いと引き換えにダウンロードしてご視聴</li>
               </ol>
-              <p className="mt-2 text-[10px]"><strong>事前予約の受付期限: 2026年5月19日(火) 23:59 まで</strong></p>
+              <p className="mt-2 text-[10px]"><strong>申込の受付期限: 2026年5月19日(火) 23:59 まで</strong></p>
             </div>
 
             {/* Anti-piracy notice */}
@@ -1193,7 +1202,7 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
               className="w-full py-3 rounded-full text-sm font-bold text-white disabled:opacity-40 transition-all flex items-center justify-center gap-2"
               style={{ background: "#6366f1" }}
             >
-              {submitting ? <><Loader2 size={16} className="animate-spin" />送信中...</> : "事前予約を確定する"}
+              {submitting ? <><Loader2 size={16} className="animate-spin" />送信中...</> : "「欲しい!」を伝える(無料)"}
             </button>
           </div>
         )}

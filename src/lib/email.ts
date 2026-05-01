@@ -143,29 +143,33 @@ export async function sendVideoPreorderEmail(p: VideoPreorderEmailParams): Promi
     return;
   }
 
-  const subject = `【BW5】演目映像データの事前予約を承りました（予約番号 #${p.preorderId}）`;
+  const subject = `【BW5】演目映像データのお申込を承りました（受付番号 #${p.preorderId}）`;
   const html = `
 <div style="font-family: -apple-system, system-ui, sans-serif; max-width: 600px; margin: 0 auto; color: #222;">
   <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; padding: 24px; text-align: center;">
-    <h1 style="margin: 0; font-size: 22px;">BW5 演目映像データ 事前予約 完了</h1>
-    <p style="margin: 8px 0 0; font-size: 13px; opacity: 0.9;">予約番号 #${p.preorderId}</p>
+    <h1 style="margin: 0; font-size: 22px;">BW5 演目映像データ お申込完了</h1>
+    <p style="margin: 8px 0 0; font-size: 13px; opacity: 0.9;">受付番号 #${p.preorderId}</p>
   </div>
 
   <div style="padding: 24px;">
     <p>${escapeHtml(p.buyerName)} 様</p>
-    <p>このたびは BW5 演目映像データの事前予約をお申し込みいただき、誠にありがとうございます。</p>
+    <p>このたびは BW5 演目映像データのお申込をいただき、誠にありがとうございます。</p>
+    <div style="background:#ecfdf5;border:1px solid rgba(34,197,94,0.45);border-radius:12px;padding:14px;margin-top:14px;">
+      <p style="margin:0 0 6px;font-size:14px;font-weight:bold;color:#047857;">🆓 現時点ではお支払いは発生しません</p>
+      <p style="margin:0;font-size:13px;color:#065f46;line-height:1.7;">今回は「欲しい！」というご希望のお申込までで、料金のお支払いは<strong>編集完成後・販売サイトご案内時</strong>に承ります。</p>
+    </div>
 
-    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">ご予約内容</h2>
+    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">お申込内容</h2>
     <table style="width:100%; border-collapse: collapse; font-size: 14px; margin-top: 8px;">
       <tr><td style="padding:6px 0; color:#666; width: 110px;">商品</td><td style="padding:6px 0;"><strong>${escapeHtml(p.merchName)}</strong></td></tr>
-      <tr><td style="padding:6px 0; color:#666;">料金</td><td style="padding:6px 0;"><strong style="color:#6366f1; font-size: 16px;">¥${p.price.toLocaleString()}</strong> <span style="font-size:11px; color:#888;">(販売開始時にお支払い)</span></td></tr>
+      <tr><td style="padding:6px 0; color:#666;">完成後のご購入金額</td><td style="padding:6px 0;"><strong style="color:#6366f1; font-size: 16px;">¥${p.price.toLocaleString()}</strong> <span style="font-size:11px; color:#888;">※今は申込のみ・お支払いは後日</span></td></tr>
     </table>
 
     <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">今後の流れ</h2>
     <ol style="font-size: 14px; line-height: 1.8; padding-left: 20px;">
-      <li>編集作業が完了し次第、改めてこちらのメールアドレス宛に<strong>販売サイト（Vimeo オンデマンド予定）のご案内</strong>をお送りいたします。</li>
-      <li>ご案内メール内のリンクから、ご購入手続きをお願いいたします。</li>
-      <li>ご購入後、即座に視聴・ダウンロードが可能になります。</li>
+      <li><strong>今:</strong> ご希望の受付完了 (このメール) — お支払いは発生しません</li>
+      <li><strong>編集完成後 (5月下旬予定):</strong> こちらのメールアドレスへ<strong>販売サイト（Vimeo オンデマンド予定）のご案内</strong>をお送りします</li>
+      <li><strong>その時:</strong> ご案内メール内のリンクからお支払い (¥${p.price.toLocaleString()}) → 即時ダウンロード/視聴が可能になります</li>
     </ol>
 
     <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #dc4c04; padding-left: 10px; color: #dc4c04;">重要なお願い</h2>
