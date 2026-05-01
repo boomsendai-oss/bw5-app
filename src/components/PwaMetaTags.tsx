@@ -66,7 +66,7 @@ export default function PwaMetaTags() {
       if (!manifest) {
         manifest = document.createElement('link');
         manifest.rel = 'manifest';
-        manifest.href = '/manifest.json';
+        manifest.href = '/manifest.webmanifest';
         head.appendChild(manifest);
       }
       setMeta('apple-mobile-web-app-capable', 'yes');

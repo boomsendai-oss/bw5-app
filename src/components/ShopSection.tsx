@@ -449,7 +449,6 @@ function ImageSwiper({
       style={{ touchAction: 'pan-y' }}
     >
       <Image
-        key={displayImage}
         src={displayImage}
         alt={alt}
         fill
@@ -571,7 +570,11 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
         setResult({ ok: false, message: data.checkout_error ?? "オンライン決済は現在準備中です。当日現金を選んでください。" });
       } else {
         // 自動クローズはせず、ユーザーが「閉じる」ボタンを明示的にタップ
-        setResult({ ok: true, message: copy.successMessage });
+        // mode は modal open 時のスナップショットだが、stage transition (14:30 等) を
+        // 跨いで submit された場合に表示が食い違うので、ここで最新 stage を再評価して採用
+        const liveMode = getShopMode();
+        const liveCopy = MODE_COPY[liveMode];
+        setResult({ ok: true, message: liveCopy.successMessage });
       }
     } catch {
       setResult({ ok: false, message: "通信エラーが発生しました" });
@@ -925,7 +928,9 @@ function RestockModal({ item, onClose }: { item: MerchItem; onClose: () => void 
       }
       setResult({
         ok: true,
-        message: `ご注文を承りました。ご入力のメールアドレスに、お振込先・お支払期限のご案内をお送りしました。`,
+        message: data.email_sent
+          ? `ご注文を承りました。ご入力のメールアドレス（${email.trim()}）に、お振込先・お支払期限のご案内をお送りしました。届かない場合は迷惑メールフォルダもご確認ください。`
+          : `ご注文を承りました。お振込先・お支払期限は、後日改めて 運営からメール (boom.sendai@gmail.com) でご案内いたしますので、しばらくお待ちください。`,
       });
     } catch {
       setResult({ ok: false, message: "通信エラーが発生しました" });
@@ -1159,7 +1164,9 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
       }
       setResult({
         ok: true,
-        message: "お申込ありがとうございます！編集完成後（5月下旬予定）にご入力のメールアドレスへ販売サイトのご案内をお送りします。お支払いはその時で大丈夫です。",
+        message: data.email_sent
+          ? `お申込ありがとうございます！編集完成後（5月下旬予定）にご入力のメールアドレス（${email.trim()}）へ販売サイトのご案内をお送りします。お支払いはその時で大丈夫です。`
+          : "お申込ありがとうございます！編集完成後（5月下旬予定）にご案内メールをお送りします。お支払いはその時で大丈夫です。",
       });
     } catch {
       setResult({ ok: false, message: "通信エラーが発生しました" });

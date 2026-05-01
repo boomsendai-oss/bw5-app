@@ -176,6 +176,14 @@ export async function POST(req: NextRequest) {
         : 'はずれ…またチャレンジしてね',
     });
   } catch (e) {
+    // UNIQUE constraint 違反 = 同じ fingerprint で並行リクエストが2回入った race
+    const msg = String((e as Error)?.message || '');
+    if (msg.includes('UNIQUE') || msg.includes('constraint failed: lottery_entries.fingerprint')) {
+      return NextResponse.json({
+        error: 'すでに参加済みです',
+        already: true,
+      }, { status: 409 });
+    }
     console.error('lottery POST err', e);
     return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }

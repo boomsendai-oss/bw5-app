@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
 
     const preorderId = Number(result.lastInsertRowid);
 
+    let emailSent = false;
     try {
       await sendVideoPreorderEmail({
         to: body.email,
@@ -49,11 +50,12 @@ export async function POST(req: NextRequest) {
         merchName: String(merch.name),
         price: Number(merch.price) || 0,
       });
+      emailSent = true;
     } catch (e) {
       console.error('[video-preorder] email failed but record saved', e);
     }
 
-    return NextResponse.json({ success: true, preorder_id: preorderId });
+    return NextResponse.json({ success: true, preorder_id: preorderId, email_sent: emailSent });
   } catch (e) {
     console.error('video-preorder POST err', e);
     return NextResponse.json({ error: '予約の登録に失敗しました' }, { status: 500 });

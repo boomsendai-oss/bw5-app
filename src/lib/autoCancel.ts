@@ -24,8 +24,10 @@ export async function autoCancelExpiredOrders(): Promise<number> {
   // 開演前なら何もしない（最初の締切すら来てない）
   if (now < pickupDl) return 0;
 
+  // 物販注文 status は 'pending_cash' (cash_onsite) / 'awaiting_payment' (online_square) /
+  // 'pending' (legacy) のいずれか。すべての未受取をオートキャンセル対象にする。
   const pending = await getAll(
-    "SELECT id, merch_id, variant_id, quantity, created_at FROM merch_orders WHERE status = 'pending'"
+    "SELECT id, merch_id, variant_id, quantity, created_at FROM merch_orders WHERE status IN ('pending', 'pending_cash', 'awaiting_payment')"
   );
   if (pending.length === 0) return 0;
 
@@ -44,10 +46,10 @@ export async function autoCancelExpiredOrders(): Promise<number> {
       if (now < effectiveDeadline) continue; // まだ締切前
 
       // 同時実行 (concurrent /api/merch リクエスト) で 2重に在庫戻しが起きないよう、
-      // status='pending' の WHERE 条件で UPDATE。0件しか変えなかったら他リクエストが
-      // 既に処理済みなので skip。
+      // 「未確定 status」での WHERE 条件 UPDATE で先勝ちロックを実現。
+      // 0件しか変えなかったら他リクエストが既に処理済みなので skip。
       const r = await execute(
-        "UPDATE merch_orders SET status = 'auto_cancelled' WHERE id = ? AND status = 'pending'",
+        "UPDATE merch_orders SET status = 'auto_cancelled' WHERE id = ? AND status IN ('pending', 'pending_cash', 'awaiting_payment')",
         [o.id]
       );
       if (Number(r.rowsAffected ?? 0) === 0) continue;

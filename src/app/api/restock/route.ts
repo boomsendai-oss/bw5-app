@@ -80,7 +80,8 @@ export async function POST(req: NextRequest) {
 
     const orderId = Number(result.lastInsertRowid);
 
-    // メール送信（失敗してもDB登録は維持）
+    // メール送信（失敗してもDB登録は維持するが、send_failed フラグで UI に正直に伝える）
+    let emailSent = false;
     try {
       await sendRestockOrderEmail({
         to: body.email,
@@ -97,6 +98,7 @@ export async function POST(req: NextRequest) {
         phone: body.phone,
         orderId,
       });
+      emailSent = true;
     } catch (e) {
       console.error('[restock] email failed but order saved', e);
     }
@@ -107,6 +109,7 @@ export async function POST(req: NextRequest) {
       total_amount: totalAmount,
       shipping_fee: SHIPPING_FEE,
       payment_deadline: PAYMENT_DEADLINE_LABEL,
+      email_sent: emailSent,
     });
   } catch (e) {
     console.error('restock POST err', e);
