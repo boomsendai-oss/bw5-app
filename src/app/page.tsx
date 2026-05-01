@@ -510,8 +510,8 @@ export default function Home() {
               ) : null}
             </AnimatePresence>
 
-            {/* ── プレゼント企画 bar (closed では非表示) ── */}
-            {stage !== 'closed' && (
+            {/* ── プレゼント企画 bar (show のときだけ表示。タップでくじ引きへ) ── */}
+            {stage === 'show' && (
             <motion.button
               onClick={() => handleNavigate('lottery')}
               className="w-full mt-3 block"
@@ -529,15 +529,21 @@ export default function Home() {
                   boxShadow: "0 8px 24px rgba(190,24,93,0.35)",
                 }}
               >
-                {/* tiny sparkles */}
+                {/* tiny sparkles — fixed positions to avoid hydration mismatch & re-render flicker */}
                 <div className="absolute inset-0 pointer-events-none">
-                  {[...Array(5)].map((_, i) => (
+                  {[
+                    { left: 12, top: 30, dur: 2.6, delay: 0.2 },
+                    { left: 38, top: 75, dur: 3.1, delay: 1.1 },
+                    { left: 60, top: 20, dur: 2.3, delay: 0.7 },
+                    { left: 78, top: 65, dur: 3.4, delay: 1.6 },
+                    { left: 90, top: 40, dur: 2.8, delay: 0.4 },
+                  ].map((p, i) => (
                     <motion.span
                       key={i}
                       className="absolute text-xs"
-                      style={{ left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%` }}
+                      style={{ left: `${p.left}%`, top: `${p.top}%` }}
                       animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0.5] }}
-                      transition={{ duration: 2 + Math.random() * 2, repeat: Infinity, delay: Math.random() * 2 }}
+                      transition={{ duration: p.dur, repeat: Infinity, delay: p.delay }}
                     >
                       ✨
                     </motion.span>
@@ -673,8 +679,9 @@ export default function Home() {
 
         {/* ══════════════════════════════════════════
             BACKSTAGE LIVE (上部に配置 — 一回スクロールで見える位置)
+            stage 解禁 + admin の section_backstage_visible 強制ロックの両方に従う
         ══════════════════════════════════════════ */}
-        <BackstageSection />
+        {isSectionVisible('backstage') && <BackstageSection />}
 
         {/* ══════════════════════════════════════════
             VENUE INFO (open ステージ以降は非表示。pre/morning でのみ表示)
@@ -758,7 +765,7 @@ export default function Home() {
         <div className="section-divider" />
         {isSectionVisible('music') ? <MusicSection /> : <LockedSection id="music" {...SECTION_LOCKED_INFO.music} />}
         <div className="section-divider" />
-        {stage !== 'closed' && <LotterySection />}
+        {(stage === 'show' || stage === 'open') && <LotterySection />}
         <div className="section-divider" />
         {isSectionVisible('vote') ? <VoteSection /> : <LockedSection id="vote" {...SECTION_LOCKED_INFO.vote} />}
         <div className="section-divider" />

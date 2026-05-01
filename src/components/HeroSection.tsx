@@ -4,7 +4,16 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 
-function Particle({ delay, x, size }: { delay: number; x: number; size: number }) {
+interface ParticleData {
+  id: number;
+  delay: number;
+  x: number;
+  size: number;
+  duration: number;
+  colorA: boolean;
+}
+
+function Particle({ delay, x, size, duration, colorA }: ParticleData) {
   return (
     <motion.div
       className="absolute rounded-full"
@@ -14,9 +23,7 @@ function Particle({ delay, x, size }: { delay: number; x: number; size: number }
         left: `${x}%`,
         bottom: "-10%",
         background: `radial-gradient(circle, ${
-          Math.random() > 0.5
-            ? "rgba(230,57,70,0.6)"
-            : "rgba(244,162,97,0.6)"
+          colorA ? "rgba(224,123,45,0.6)" : "rgba(244,162,97,0.6)"
         }, transparent)`,
       }}
       animate={{
@@ -25,7 +32,7 @@ function Particle({ delay, x, size }: { delay: number; x: number; size: number }
         scale: [0.5, 1, 0.8, 0.3],
       }}
       transition={{
-        duration: 6 + Math.random() * 4,
+        duration,
         delay,
         repeat: Infinity,
         ease: "easeOut",
@@ -35,18 +42,19 @@ function Particle({ delay, x, size }: { delay: number; x: number; size: number }
 }
 
 export default function HeroSection() {
-  const [particles, setParticles] = useState<
-    { id: number; delay: number; x: number; size: number }[]
-  >([]);
+  const [particles, setParticles] = useState<ParticleData[]>([]);
   const [heroImage, setHeroImage] = useState("/images/upload_1776286511201.png");
   const [settings, setSettings] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const p = Array.from({ length: 20 }, (_, i) => ({
+    // Random values frozen on mount — identity stable across re-renders to avoid flicker
+    const p: ParticleData[] = Array.from({ length: 20 }, (_, i) => ({
       id: i,
       delay: Math.random() * 5,
       x: Math.random() * 100,
       size: 4 + Math.random() * 8,
+      duration: 6 + Math.random() * 4,
+      colorA: Math.random() > 0.5,
     }));
     setParticles(p);
 
@@ -80,7 +88,7 @@ export default function HeroSection() {
       {/* Particles */}
       <div className="absolute inset-0 pointer-events-none">
         {particles.map((p) => (
-          <Particle key={p.id} delay={p.delay} x={p.x} size={p.size} />
+          <Particle key={p.id} {...p} />
         ))}
       </div>
 
@@ -105,7 +113,7 @@ export default function HeroSection() {
           <img
             src={heroImage}
             alt="BOOM WOP vol.5"
-            className="w-full h-full object-contain drop-shadow-[0_0_30px_rgba(230,57,70,0.4)]"
+            className="w-full h-full object-contain drop-shadow-[0_0_30px_rgba(224,123,45,0.4)]"
           />
         </motion.div>
 

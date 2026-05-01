@@ -85,10 +85,10 @@ export async function POST(req: NextRequest) {
     }
 
     // 開始時刻ゲート — 5/5 14:30 (JST) 以降のみ
-    // ?stage= プレビューでテスト中は通す
+    // ?stage= プレビューでテスト中は通す (open/morning/show/closed どれでもOK)
     const url = new URL(req.url);
     const stagePreview = url.searchParams.get('stage');
-    const isPreviewBypass = stagePreview === 'show' || stagePreview === 'closed';
+    const isPreviewBypass = stagePreview === 'show' || stagePreview === 'closed' || stagePreview === 'open' || stagePreview === 'morning';
     const LOTTERY_START_MS = new Date('2026-05-05T14:30:00+09:00').getTime();
     if (!isPreviewBypass && Date.now() < LOTTERY_START_MS) {
       return NextResponse.json({

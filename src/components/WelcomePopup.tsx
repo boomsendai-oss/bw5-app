@@ -1,16 +1,13 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Calendar, ShoppingBag, Video, Music, Star, Share2, Smartphone } from 'lucide-react';
+import { X, Share, Plus } from 'lucide-react';
 
-const features = [
-  { icon: Calendar, label: 'タイムテーブル', desc: '全23ナンバーの出演順を確認' },
-  { icon: ShoppingBag, label: 'グッズ購入', desc: 'オリジナルキャップを事前予約' },
-  { icon: Video, label: '映像データ', desc: 'イベント全編映像を購入' },
-  { icon: Music, label: '音源リリース', desc: '新曲の配信情報をチェック' },
-  { icon: Star, label: 'キャラ名投票', desc: 'BOOMくんの名前を決めよう' },
-  { icon: Share2, label: 'SNS', desc: '最新情報をフォロー' },
-];
+// Pre-computed sparkle positions — keep stable across renders to avoid flicker
+const WELCOME_SPARKLES = Array.from({ length: 8 }, (_, i) => {
+  const s = i * 67 + 5;
+  return { left: 15 + ((s * 17) % 70), top: 10 + ((s * 23) % 70), dur: 2 + ((s * 7) % 20) / 10, delay: ((s * 11) % 15) / 10 };
+});
 
 export default function WelcomePopup() {
   const [show, setShow] = useState(false);
@@ -18,17 +15,25 @@ export default function WelcomePopup() {
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
-    // Check if already seen
     const seen = localStorage.getItem('bw5_welcome_seen');
     if (seen) return;
 
-    // Check platform
     const ua = navigator.userAgent;
-    setIsIOS(/iPad|iPhone|iPod/.test(ua));
-    setIsStandalone(window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true);
+    const ios = /iPad|iPhone|iPod/.test(ua);
+    const standalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (navigator as any).standalone === true;
+    setIsIOS(ios);
+    setIsStandalone(standalone);
 
-    // Show after a short delay
-    const timer = setTimeout(() => setShow(true), 800);
+    // Don't show if already in standalone (= already added to home)
+    if (standalone) {
+      localStorage.setItem('bw5_welcome_seen', '1');
+      return;
+    }
+
+    const timer = setTimeout(() => setShow(true), 600);
     return () => clearTimeout(timer);
   }, []);
 
@@ -41,105 +46,173 @@ export default function WelcomePopup() {
     <AnimatePresence>
       {show && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm"
+            className="fixed inset-0 z-[100]"
+            style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
             onClick={handleClose}
           />
 
-          {/* Popup */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 30 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 30 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed inset-x-4 top-[10vh] bottom-auto z-[101] max-w-md mx-auto rounded-3xl overflow-hidden"
-            style={{ background: 'linear-gradient(180deg, rgba(30,30,30,0.98) 0%, rgba(15,15,15,0.98) 100%)' }}
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 40 }}
+            transition={{ type: 'spring', damping: 22, stiffness: 280 }}
+            className="fixed inset-0 z-[101] flex items-center justify-center px-4 pointer-events-none"
           >
-            {/* Close button */}
-            <button
-              onClick={handleClose}
-              className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
+            <div
+              className="w-full max-w-sm rounded-3xl overflow-hidden relative pointer-events-auto"
+              style={{
+                background: 'linear-gradient(170deg, #fff 0%, #fff7ed 100%)',
+                boxShadow: '0 20px 60px rgba(220,76,4,0.35)',
+              }}
             >
-              <X size={16} className="text-white/70" />
-            </button>
-
-            {/* Header */}
-            <div className="px-6 pt-8 pb-4 text-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/images/boomkun.png"
-                alt="BOOM WOP vol.5"
-                className="w-20 h-20 mx-auto mb-4 object-contain drop-shadow-[0_0_20px_rgba(230,57,70,0.4)]"
-              />
-              <h2 className="text-2xl font-black tracking-tight gradient-text mb-1">
-                BOOM WOP vol.5
-              </h2>
-              <p className="text-sm text-[var(--text-secondary)] tracking-wider">
-                デジタルパンフレット
-              </p>
-            </div>
-
-            {/* Features grid */}
-            <div className="px-5 pb-4">
-              <div className="grid grid-cols-2 gap-2">
-                {features.map((f) => {
-                  const Icon = f.icon;
-                  return (
-                    <div key={f.label} className="flex items-start gap-2.5 p-3 rounded-xl bg-white/[0.04]">
-                      <div className="w-8 h-8 rounded-lg bg-[#e63946]/15 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <Icon size={15} className="text-[#e63946]" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-white leading-tight">{f.label}</p>
-                        <p className="text-[10px] text-[var(--text-muted)] leading-snug mt-0.5">{f.desc}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Add to home screen hint */}
-            {!isStandalone && (
-              <div className="mx-5 mb-4 p-3.5 rounded-xl border border-[#e63946]/20 bg-[#e63946]/[0.06]">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-[#e63946]/20 flex items-center justify-center flex-shrink-0">
-                    <Smartphone size={16} className="text-[#e63946]" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-white mb-1">ホーム画面に追加しよう！</p>
-                    {isIOS ? (
-                      <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">
-                        画面下の <span className="inline-block px-1 py-0.5 bg-white/10 rounded text-[10px]">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="inline -mt-0.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
-                        </span> 共有ボタン →「ホーム画面に追加」でアプリのように使えます
-                      </p>
-                    ) : (
-                      <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">
-                        ブラウザメニュー →「ホーム画面に追加」でアプリのように使えます
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* CTA */}
-            <div className="px-5 pb-6">
+              {/* Close X */}
               <button
                 onClick={handleClose}
-                className="w-full py-3.5 rounded-2xl btn-primary text-sm font-bold tracking-wider"
+                className="absolute top-3 right-3 z-20 w-8 h-8 rounded-full flex items-center justify-center transition-transform active:scale-90"
+                style={{ background: 'rgba(0,0,0,0.06)' }}
+                aria-label="閉じる"
               >
-                はじめる 🎶
+                <X size={16} style={{ color: '#666' }} />
               </button>
+
+              {/* Hero image — BOOMくん with smartphone */}
+              <div className="relative pt-4 pb-2 px-4" style={{
+                background: 'radial-gradient(circle at 50% 30%, rgba(242,122,26,0.18) 0%, transparent 60%)',
+              }}>
+                {/* Floating sparkles — fixed positions to avoid re-render flicker */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                  {WELCOME_SPARKLES.map((p, i) => (
+                    <motion.span
+                      key={i}
+                      className="absolute text-base"
+                      style={{ left: `${p.left}%`, top: `${p.top}%` }}
+                      animate={{ y: [0, -10, 0], opacity: [0.3, 0.9, 0.3] }}
+                      transition={{ duration: p.dur, repeat: Infinity, delay: p.delay }}
+                    >
+                      ✨
+                    </motion.span>
+                  ))}
+                </div>
+
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/images/boomkun_phone.png"
+                  alt="BOOMくんがスマホでホーム画面追加を案内"
+                  className="relative w-full max-w-[280px] mx-auto object-contain"
+                  style={{ aspectRatio: '3 / 4', filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.18))' }}
+                />
+              </div>
+
+              {/* Headline */}
+              <div className="px-6 pt-1 pb-3 text-center">
+                <h2 className="text-xl font-black tracking-tight" style={{ color: '#dc4c04' }}>
+                  ホーム画面に追加してね
+                </h2>
+                <p className="text-[12px] mt-1.5 leading-relaxed" style={{ color: '#666' }}>
+                  当日サクッと開ける専用アプリに変身✨
+                  <br />本番＆カウントダウンを最高に楽しもう
+                </p>
+              </div>
+
+              {/* iOS-specific instructions */}
+              {isIOS ? (
+                <div className="mx-5 mb-4 rounded-2xl p-3.5 space-y-2.5" style={{ background: '#fff', border: '1.5px solid rgba(242,122,26,0.25)' }}>
+                  <Step
+                    n={1}
+                    icon={<Share size={18} style={{ color: '#0a84ff' }} />}
+                    text="画面下の"
+                    badge="共有ボタン"
+                    badgeIcon={<Share size={11} style={{ color: '#0a84ff' }} />}
+                    badgeColor="#e8f1ff"
+                    after="をタップ"
+                  />
+                  <Step
+                    n={2}
+                    icon={<Plus size={18} style={{ color: '#dc4c04' }} />}
+                    text="メニューから"
+                    badge="ホーム画面に追加"
+                    badgeIcon={<Plus size={11} style={{ color: '#dc4c04' }} />}
+                    badgeColor="#fff0e6"
+                    after=""
+                  />
+                </div>
+              ) : (
+                <div className="mx-5 mb-4 rounded-2xl p-3.5" style={{ background: '#fff', border: '1.5px solid rgba(242,122,26,0.25)' }}>
+                  <p className="text-xs leading-relaxed" style={{ color: '#444' }}>
+                    Chrome / Safari の <strong>メニュー（︙ または □）</strong> から
+                    <br />→ <strong className="text-orange-600">「ホーム画面に追加」</strong>を選択
+                  </p>
+                </div>
+              )}
+
+              {/* Big CTA */}
+              <div className="px-5 pb-5">
+                <button
+                  onClick={handleClose}
+                  className="w-full py-3.5 rounded-2xl text-base font-black text-white transition-transform active:scale-[0.97]"
+                  style={{
+                    background: 'linear-gradient(135deg, #f27a1a 0%, #dc4c04 100%)',
+                    boxShadow: '0 6px 16px rgba(220,76,4,0.35)',
+                  }}
+                >
+                  わかった！はじめる →
+                </button>
+                <button
+                  onClick={handleClose}
+                  className="w-full mt-2 py-2 text-xs font-medium"
+                  style={{ color: '#999' }}
+                >
+                  あとで（ブラウザのまま使う）
+                </button>
+              </div>
             </div>
           </motion.div>
         </>
       )}
     </AnimatePresence>
+  );
+}
+
+function Step({
+  n,
+  icon,
+  text,
+  badge,
+  badgeIcon,
+  badgeColor,
+  after,
+}: {
+  n: number;
+  icon: React.ReactNode;
+  text: string;
+  badge: string;
+  badgeIcon: React.ReactNode;
+  badgeColor: string;
+  after: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <div
+        className="w-7 h-7 rounded-full flex items-center justify-center font-black text-white shrink-0 text-sm"
+        style={{ background: '#f27a1a' }}
+      >
+        {n}
+      </div>
+      <div className="text-xs font-bold flex items-center gap-1 flex-wrap" style={{ color: '#333' }}>
+        <span>{text}</span>
+        <span
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-black"
+          style={{ background: badgeColor, color: '#222' }}
+        >
+          {badgeIcon}
+          {badge}
+        </span>
+        {after && <span>{after}</span>}
+      </div>
+    </div>
   );
 }

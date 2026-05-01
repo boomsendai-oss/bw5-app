@@ -35,6 +35,21 @@ function getFingerprint(): string {
 
 type Phase = 'idle' | 'spinning' | 'reveal';
 
+// Pre-computed sparkle positions — keep stable across renders to avoid flicker
+// (React purity rules + framer-motion would otherwise recalc every render)
+const SPARKLES_BG = Array.from({ length: 12 }, (_, i) => {
+  const seed = i * 73 + 11;
+  return { left: (seed * 17) % 100, top: (seed * 31) % 100, dur: 2 + ((seed * 7) % 20) / 10, delay: ((seed * 13) % 20) / 10 };
+});
+const SPARKLES_PRIZE = Array.from({ length: 20 }, (_, i) => {
+  const seed = i * 53 + 7;
+  return { left: (seed * 19) % 100, top: (seed * 29) % 100, size: 10 + ((seed * 3) % 14), dur: 2 + ((seed * 11) % 20) / 10, delay: ((seed * 17) % 20) / 10 };
+});
+const SPARKLES_JACKPOT = Array.from({ length: 30 }, (_, i) => {
+  const seed = i * 41 + 13;
+  return { left: (seed * 23) % 100, top: (seed * 37) % 100, size: 12 + ((seed * 5) % 18), dur: 1.5 + ((seed * 7) % 15) / 10, delay: ((seed * 19) % 10) / 10 };
+});
+
 export default function LotterySection() {
   const [status, setStatus] = useState<LotteryStatus | null>(null);
   const [keyword, setKeyword] = useState('');
@@ -196,13 +211,13 @@ export default function LotterySection() {
           }}
         >
           <div className="absolute inset-0 pointer-events-none opacity-30">
-            {[...Array(12)].map((_, i) => (
+            {SPARKLES_BG.map((p, i) => (
               <motion.div
                 key={i}
                 className="absolute"
-                style={{ left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%` }}
+                style={{ left: `${p.left}%`, top: `${p.top}%` }}
                 animate={{ scale: [0.5, 1, 0.5], opacity: [0.3, 1, 0.3] }}
-                transition={{ duration: 2 + Math.random() * 2, repeat: Infinity, delay: Math.random() * 2 }}
+                transition={{ duration: p.dur, repeat: Infinity, delay: p.delay }}
               >
                 ✨
               </motion.div>
@@ -227,17 +242,17 @@ export default function LotterySection() {
                 }}
               >
                 <div className="absolute inset-0 pointer-events-none">
-                  {[...Array(20)].map((_, i) => (
+                  {SPARKLES_PRIZE.map((p, i) => (
                     <motion.span
                       key={i}
                       className="absolute"
                       style={{
-                        left: `${Math.random() * 100}%`,
-                        top: `${Math.random() * 100}%`,
-                        fontSize: `${10 + Math.random() * 14}px`,
+                        left: `${p.left}%`,
+                        top: `${p.top}%`,
+                        fontSize: `${p.size}px`,
                       }}
                       animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0.5] }}
-                      transition={{ duration: 2 + Math.random() * 2, repeat: Infinity, delay: Math.random() * 2 }}
+                      transition={{ duration: p.dur, repeat: Infinity, delay: p.delay }}
                     >
                       ✨
                     </motion.span>
@@ -425,17 +440,17 @@ export default function LotterySection() {
               {/* Sparkle layer for jackpot */}
               {pendingResult.prize_tier === 'jackpot' && (
                 <div className="absolute inset-0 pointer-events-none">
-                  {[...Array(30)].map((_, i) => (
+                  {SPARKLES_JACKPOT.map((p, i) => (
                     <motion.span
                       key={i}
                       className="absolute"
                       style={{
-                        left: `${Math.random() * 100}%`,
-                        top: `${Math.random() * 100}%`,
-                        fontSize: `${12 + Math.random() * 18}px`,
+                        left: `${p.left}%`,
+                        top: `${p.top}%`,
+                        fontSize: `${p.size}px`,
                       }}
                       animate={{ opacity: [0, 1, 0], scale: [0.5, 1.4, 0.5], rotate: [0, 360] }}
-                      transition={{ duration: 1.5 + Math.random() * 1.5, repeat: Infinity, delay: Math.random() }}
+                      transition={{ duration: p.dur, repeat: Infinity, delay: p.delay }}
                     >
                       {['✨', '🎉', '⭐', '💫', '🎊'][i % 5]}
                     </motion.span>

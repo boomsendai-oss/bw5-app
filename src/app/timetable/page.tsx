@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Clock, Play, ChevronRight, Film, Mic, Coffee } from 'lucide-react';
+import { ArrowLeft, Clock, Play, ChevronRight, Star, Sparkles, Coffee, Search } from 'lucide-react';
 import Link from 'next/link';
 import {
   timetableData,
@@ -39,18 +39,28 @@ function getItemStatus(
 function getTypeIcon(type: TimetableItem['type']) {
   switch (type) {
     case 'performance': return Play;
-    case 'video': return Film;
-    case 'mc': return Mic;
-    case 'break': return Coffee;
+    case 'guest':       return Star;
+    case 'special':     return Sparkles;
+    case 'break':       return Coffee;
   }
 }
 
 function getTypeLabel(type: TimetableItem['type']) {
   switch (type) {
     case 'performance': return 'STAGE';
-    case 'video': return 'VIDEO';
-    case 'mc': return 'MC';
-    case 'break': return 'BREAK';
+    case 'guest':       return 'GUEST';
+    case 'special':     return 'SPECIAL';
+    case 'break':       return 'BREAK';
+  }
+}
+
+// Accent color per type — used for non-current icon tint to avoid clashing with the orange bg
+function getTypeAccent(type: TimetableItem['type']): string {
+  switch (type) {
+    case 'performance': return '#60a5fa';
+    case 'guest':       return '#fbbf24';
+    case 'special':     return '#ec4899';
+    case 'break':       return '#4ade80';
   }
 }
 
@@ -75,7 +85,6 @@ export default function TimetablePage() {
 
   const nextItem = useMemo(() => {
     if (!currentItem) {
-      // Before event or in a gap — find next upcoming
       return timetableData.find((item) => parseTime(item.startTime) > now) ?? null;
     }
     const idx = timetableData.indexOf(currentItem);
@@ -114,7 +123,7 @@ export default function TimetablePage() {
     return Math.max(0, Math.min(100, (elapsed / total) * 100));
   }, [now]);
 
-  // Current item progress (for the glow ring)
+  // Current item progress
   const currentProgress = useMemo(() => {
     if (!currentItem) return 0;
     const start = parseTime(currentItem.startTime);
@@ -152,7 +161,15 @@ export default function TimetablePage() {
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] bg-noise text-white">
       {/* Header */}
-      <header className="sticky top-0 z-30 glass-strong border-b border-white/5">
+      <header
+        className="sticky top-0 z-30"
+        style={{
+          background: 'rgba(220, 100, 10, 0.85)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          borderBottom: '1px solid rgba(255,255,255,0.15)',
+        }}
+      >
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
           <Link href="/" className="text-white/60 hover:text-white transition-colors">
             <ArrowLeft size={20} />
@@ -160,6 +177,14 @@ export default function TimetablePage() {
           <div className="flex-1">
             <h1 className="font-display text-xl tracking-wider">STAGE TIMELINE</h1>
           </div>
+          <Link
+            href="/search"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-white/70 hover:text-white transition-colors"
+            style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)' }}
+          >
+            <Search size={12} />
+            検索
+          </Link>
           <div className="flex items-center gap-1.5 text-xs text-white/50">
             <Clock size={12} />
             <span className="tabular-nums">{formatTime(now)}</span>
@@ -177,11 +202,12 @@ export default function TimetablePage() {
               exit={{ opacity: 0, y: -20 }}
               className="mt-4 rounded-2xl p-6 text-center"
               style={{
-                background: 'linear-gradient(135deg, rgba(45,106,79,0.3) 0%, rgba(212,168,83,0.15) 100%)',
-                border: '1px solid rgba(45,106,79,0.4)',
+                background: 'rgba(255,255,255,0.18)',
+                border: '1px solid rgba(255,255,255,0.25)',
+                backdropFilter: 'blur(12px)',
               }}
             >
-              <p className="text-sm text-[#7fcea0] font-medium tracking-widest uppercase mb-1">開演まで</p>
+              <p className="text-sm text-white/80 font-medium tracking-widest uppercase mb-1">開演まで</p>
               <p className="font-display text-5xl text-white tracking-wider">
                 {countdownMinutes}<span className="text-2xl text-white/60 ml-1">min</span>
               </p>
@@ -197,11 +223,11 @@ export default function TimetablePage() {
               animate={{ opacity: 1, y: 0 }}
               className="mt-4 rounded-2xl p-6 text-center"
               style={{
-                background: 'linear-gradient(135deg, rgba(212,168,83,0.2) 0%, rgba(45,106,79,0.15) 100%)',
-                border: '1px solid rgba(212,168,83,0.3)',
+                background: 'rgba(255,255,255,0.12)',
+                border: '1px solid rgba(255,255,255,0.2)',
               }}
             >
-              <p className="font-display text-3xl gradient-gold tracking-wider">THANK YOU!</p>
+              <p className="font-display text-3xl gradient-text tracking-wider">THANK YOU!</p>
               <p className="text-sm text-white/50 mt-1">全演目が終了しました</p>
             </motion.div>
           )}
@@ -216,16 +242,16 @@ export default function TimetablePage() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="mt-4 rounded-2xl overflow-hidden"
               style={{
-                background: 'linear-gradient(135deg, rgba(45,106,79,0.25) 0%, rgba(45,106,79,0.08) 100%)',
-                border: '1px solid rgba(45,106,79,0.5)',
-                boxShadow: '0 0 40px rgba(45,106,79,0.2), 0 0 80px rgba(45,106,79,0.08)',
+                background: 'rgba(255,255,255,0.95)',
+                border: '1px solid rgba(255,255,255,0.8)',
+                boxShadow: '0 4px 30px rgba(0,0,0,0.15)',
               }}
             >
               {/* Progress bar at top */}
-              <div className="h-1 bg-white/5">
+              <div className="h-1 bg-gray-100">
                 <motion.div
                   className="h-full rounded-r-full"
-                  style={{ background: 'linear-gradient(90deg, #2d6a4f, #7fcea0)' }}
+                  style={{ background: 'linear-gradient(90deg, #f27a1a, #f5a623)' }}
                   initial={{ width: 0 }}
                   animate={{ width: `${currentProgress}%` }}
                   transition={{ duration: 1, ease: 'linear' }}
@@ -234,24 +260,23 @@ export default function TimetablePage() {
               <div className="p-5">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#2d6a4f] opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#7fcea0]" />
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
                   </span>
-                  <span className="text-xs font-bold tracking-[0.2em] uppercase text-[#7fcea0]">Now Playing</span>
-                  <span className="ml-auto text-xs text-white/40 tabular-nums">
+                  <span className="text-xs font-bold tracking-[0.2em] uppercase" style={{ color: '#22c55e' }}>Now Playing</span>
+                  <span className="ml-auto text-xs tabular-nums" style={{ color: '#999' }}>
                     {formatTimeFromStr(currentItem.startTime)}
                   </span>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="font-display text-3xl text-white/20 leading-none mt-0.5">{currentItem.id}</span>
+                  <span className="font-display text-3xl leading-none mt-0.5" style={{ color: '#ddd' }}>{currentItem.id}</span>
                   <div className="flex-1 min-w-0">
-                    <h2 className="text-xl font-bold text-white truncate">{currentItem.title}</h2>
+                    <h2 className="text-xl font-bold truncate" style={{ color: '#222' }}>{currentItem.title}</h2>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full bg-[#2d6a4f]/30 text-[#7fcea0]">
+                      <span className="text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full"
+                        style={{ background: 'rgba(242,122,26,0.1)', color: '#f27a1a' }}
+                      >
                         {getTypeLabel(currentItem.type)}
-                      </span>
-                      <span className="text-xs text-white/40">
-                        {Math.floor(currentItem.durationSec / 60)}:{String(currentItem.durationSec % 60).padStart(2, '0')}
                       </span>
                     </div>
                   </div>
@@ -270,13 +295,13 @@ export default function TimetablePage() {
               exit={{ opacity: 0, y: 10 }}
               className="mt-3 rounded-xl p-4 flex items-center gap-3"
               style={{
-                background: 'rgba(212,168,83,0.08)',
-                border: '1px solid rgba(212,168,83,0.2)',
+                background: 'rgba(255,255,255,0.15)',
+                border: '1px solid rgba(255,255,255,0.2)',
               }}
             >
-              <ChevronRight size={16} className="text-[#d4a853] shrink-0" />
+              <ChevronRight size={16} className="text-white/70 shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-[#d4a853] mb-0.5">Next</p>
+                <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-white/50 mb-0.5">Next</p>
                 <p className="text-sm font-semibold text-white truncate">{nextItem.title}</p>
               </div>
               <span className="text-xs text-white/40 tabular-nums shrink-0">
@@ -293,10 +318,10 @@ export default function TimetablePage() {
               <span>全体進行</span>
               <span className="tabular-nums">{Math.round(overallProgress)}%</span>
             </div>
-            <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.15)' }}>
               <motion.div
                 className="h-full rounded-full"
-                style={{ background: 'linear-gradient(90deg, #2d6a4f, #d4a853)' }}
+                style={{ background: 'linear-gradient(90deg, #f27a1a, #f5a623)' }}
                 animate={{ width: `${overallProgress}%` }}
                 transition={{ duration: 1 }}
               />
@@ -312,14 +337,17 @@ export default function TimetablePage() {
               <button
                 key={p.part}
                 onClick={() => setActivePart(p.part)}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-bold tracking-wider transition-all ${
-                  isActive
-                    ? 'bg-[#2d6a4f]/20 text-[#7fcea0] border border-[#2d6a4f]/40'
-                    : 'bg-white/3 text-white/40 border border-white/5 hover:text-white/60'
-                }`}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold tracking-wider transition-all"
+                style={{
+                  background: isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.08)',
+                  border: isActive ? '1px solid rgba(255,255,255,0.8)' : '1px solid rgba(255,255,255,0.12)',
+                  color: isActive ? '#f27a1a' : 'rgba(255,255,255,0.5)',
+                }}
               >
                 {p.label}
-                <span className="block text-[10px] font-normal text-white/30 mt-0.5">
+                <span className="block text-[10px] font-normal mt-0.5"
+                  style={{ color: isActive ? '#c46010' : 'rgba(255,255,255,0.3)' }}
+                >
                   {formatTimeFromStr(p.startTime)}〜
                 </span>
               </button>
@@ -335,76 +363,101 @@ export default function TimetablePage() {
             const isPast = status === 'past';
             const Icon = getTypeIcon(item.type);
 
+            const isPerformance = item.type === 'performance' || item.type === 'guest' || item.type === 'special';
+            const accent = getTypeAccent(item.type);
+
             return (
-              <motion.div
+              <div
                 key={item.id}
                 ref={isCurrent ? currentRef : undefined}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.03 }}
-                className={`relative rounded-xl px-4 py-3 flex items-center gap-3 transition-all ${
-                  isCurrent
-                    ? 'bg-[#2d6a4f]/15 border border-[#2d6a4f]/40'
+                className={`relative rounded-xl px-4 py-3 flex items-center gap-3 transition-all ${isPerformance ? 'cursor-pointer active:scale-[0.98]' : ''}`}
+                style={{
+                  background: isCurrent
+                    ? 'rgba(255,255,255,0.95)'
                     : isPast
-                    ? 'bg-white/[0.02] border border-white/[0.03] opacity-40'
-                    : 'bg-white/[0.02] border border-white/[0.05]'
-                }`}
-                style={
-                  isCurrent
-                    ? { boxShadow: '0 0 20px rgba(45,106,79,0.15)' }
-                    : undefined
-                }
+                    ? 'rgba(255,255,255,0.08)'
+                    : 'rgba(255,255,255,0.15)',
+                  border: isCurrent
+                    ? '1px solid rgba(255,255,255,0.8)'
+                    : '1px solid rgba(255,255,255,0.12)',
+                  boxShadow: isCurrent ? '0 4px 20px rgba(0,0,0,0.12)' : 'none',
+                  opacity: isPast ? 0.5 : 1,
+                }}
+                onClick={isPerformance ? () => window.location.href = `/performance/${item.id}` : undefined}
               >
                 {/* Timeline dot */}
                 <div className="flex flex-col items-center shrink-0 w-8">
                   <div
-                    className={`w-3 h-3 rounded-full border-2 ${
-                      isCurrent
-                        ? 'bg-[#7fcea0] border-[#2d6a4f] shadow-[0_0_8px_rgba(45,106,79,0.6)]'
-                        : isPast
-                        ? 'bg-white/20 border-white/10'
-                        : 'bg-transparent border-white/15'
-                    }`}
+                    className="w-3 h-3 rounded-full border-2"
+                    style={{
+                      background: isCurrent ? '#f27a1a' : isPast ? 'rgba(255,255,255,0.2)' : 'transparent',
+                      borderColor: isCurrent ? '#e06d10' : isPast ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.15)',
+                      boxShadow: isCurrent ? '0 0 8px rgba(242,122,26,0.6)' : 'none',
+                    }}
                   />
                 </div>
 
                 {/* Time */}
-                <span className="text-xs tabular-nums text-white/40 w-12 shrink-0">
+                <span className="text-xs tabular-nums w-12 shrink-0"
+                  style={{ color: isCurrent ? '#f27a1a' : 'rgba(255,255,255,0.4)' }}
+                >
                   {formatTimeFromStr(item.startTime)}
                 </span>
 
                 {/* Icon */}
                 <div
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                    isCurrent
-                      ? 'bg-[#2d6a4f]/30 text-[#7fcea0]'
-                      : 'bg-white/5 text-white/30'
-                  }`}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                  style={{
+                    background: isCurrent ? `${accent}1f` : `${accent}22`,
+                    color: isCurrent ? accent : accent,
+                  }}
                 >
                   <Icon size={14} />
                 </div>
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
-                  <p
-                    className={`text-sm font-semibold truncate ${
-                      isCurrent ? 'text-white' : isPast ? 'text-white/50' : 'text-white/80'
-                    }`}
-                  >
-                    {item.title}
-                  </p>
-                  <p className="text-[10px] text-white/30 mt-0.5">
-                    {Math.floor(item.durationSec / 60)}:{String(item.durationSec % 60).padStart(2, '0')}
-                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <p
+                      className="text-sm font-bold truncate"
+                      style={{
+                        color: isCurrent ? '#222' : isPast ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.9)',
+                      }}
+                    >
+                      {item.title}
+                    </p>
+                    {item.type === 'guest' && (
+                      <span className="text-[9px] font-black tracking-widest px-1.5 py-0.5 rounded shrink-0" style={{ background: '#fbbf24', color: '#1a1a1a' }}>
+                        GUEST
+                      </span>
+                    )}
+                    {item.type === 'special' && (
+                      <span className="text-[9px] font-black tracking-widest px-1.5 py-0.5 rounded shrink-0" style={{ background: '#ec4899', color: '#fff' }}>
+                        SPECIAL
+                      </span>
+                    )}
+                  </div>
+                  {item.subtitle && item.type !== 'guest' && (
+                    <p className="text-[10px] mt-0.5 truncate"
+                      style={{ color: isCurrent ? '#666' : isPast ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.55)' }}
+                    >
+                      {item.subtitle}
+                    </p>
+                  )}
                 </div>
 
                 {/* Status badge */}
                 {isCurrent && (
-                  <span className="text-[10px] font-bold tracking-widest uppercase text-[#7fcea0] shrink-0">
+                  <span className="text-[10px] font-bold tracking-widest uppercase shrink-0 px-2 py-0.5 rounded-full"
+                    style={{ background: '#22c55e', color: '#fff' }}
+                  >
                     LIVE
                   </span>
                 )}
-              </motion.div>
+                {isPerformance && !isCurrent && (
+                  <ChevronRight size={14} style={{ color: 'rgba(255,255,255,0.2)' }} className="shrink-0" />
+                )}
+              </div>
             );
           })}
         </div>
@@ -418,16 +471,16 @@ export default function TimetablePage() {
           onClick={scrollToCurrent}
           className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-3 rounded-full shadow-2xl"
           style={{
-            background: 'linear-gradient(135deg, #2d6a4f 0%, #1a4031 100%)',
-            border: '1px solid rgba(127,206,160,0.3)',
-            boxShadow: '0 8px 30px rgba(45,106,79,0.4)',
+            background: '#f27a1a',
+            border: '1px solid rgba(255,255,255,0.3)',
+            boxShadow: '0 8px 30px rgba(242,122,26,0.4)',
           }}
         >
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#7fcea0] opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-[#7fcea0]" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
           </span>
-          <span className="text-xs font-bold text-[#7fcea0] tracking-wider">NOW</span>
+          <span className="text-xs font-bold text-white tracking-wider">NOW</span>
         </motion.button>
       )}
     </div>

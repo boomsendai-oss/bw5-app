@@ -17,30 +17,137 @@ export async function GET() {
   }
 }
 
+/**
+ * POST /api/merch/order
+ * Body: { merch_id, variant_id?, buyer_name, email?, payment_method: 'cash_onsite'|'online_square' }
+ * Response: { order, redirect: string|null, checkout_error?: string }
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { merch_id, buyer_name, payment_method } = body;
+    const { merch_id, variant_id, buyer_name, email = '', payment_method } = body;
 
-    // Check stock
-    const item = await getOne('SELECT * FROM merchandise WHERE id = ? AND active = 1', [merch_id]);
+    if (!merch_id || !buyer_name || !payment_method) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+    if (!['cash_onsite', 'online_square'].includes(payment_method)) {
+      return NextResponse.json({ error: 'Invalid payment_method' }, { status: 400 });
+    }
+
+    const item = await getOne(
+      'SELECT * FROM merchandise WHERE id = ? AND active = 1',
+      [merch_id]
+    );
     if (!item) {
       return NextResponse.json({ error: 'Merchandise not found' }, { status: 404 });
     }
-    if (item.stock <= 0) {
-      return NextResponse.json({ error: 'Out of stock' }, { status: 400 });
+
+    let color = '';
+    let size = '';
+    if (variant_id) {
+      const v = await getOne(
+        'SELECT * FROM merch_variants WHERE id = ? AND merch_id = ?',
+        [variant_id, merch_id]
+      );
+      if (!v) {
+        return NextResponse.json({ error: 'Variant not found' }, { status: 404 });
+      }
+      if ((v.stock as number) <= 0) {
+        return NextResponse.json({ error: 'Out of stock' }, { status: 400 });
+      }
+      color = (v.color as string) ?? '';
+      size = (v.size as string) ?? '';
+    } else {
+      const v = await getOne(
+        'SELECT * FROM merch_variants WHERE merch_id = ? LIMIT 1',
+        [merch_id]
+      );
+      if (v && (v.stock as number) <= 0) {
+        return NextResponse.json({ error: 'Out of stock' }, { status: 400 });
+      }
     }
 
-    // Decrement stock and create order in a batch (transaction)
-    const results = await batch([
-      { sql: 'UPDATE merchandise SET stock = stock - 1 WHERE id = ?', args: [merch_id] },
-      { sql: 'INSERT INTO merch_orders (merch_id, buyer_name, payment_method) VALUES (?, ?, ?)', args: [merch_id, buyer_name, payment_method] },
-    ], 'write');
+    const status =
+      payment_method === 'cash_onsite' ? 'pending_cash' : 'awaiting_payment';
 
-    const orderId = results[1].lastInsertRowid;
+    const ops = [];
+    if (variant_id) {
+      ops.push({
+        sql: 'UPDATE merch_variants SET stock = stock - 1 WHERE id = ?',
+        args: [variant_id],
+      });
+    } else {
+      ops.push({
+        sql: `UPDATE merch_variants SET stock = stock - 1
+              WHERE id = (SELECT id FROM merch_variants WHERE merch_id = ? LIMIT 1)`,
+        args: [merch_id],
+      });
+    }
+    ops.push({
+      sql: 'UPDATE merchandise SET stock = stock - 1 WHERE id = ?',
+      args: [merch_id],
+    });
+    ops.push({
+      sql: `INSERT INTO merch_orders (merch_id, variant_id, color, size, buyer_name, email, payment_method, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        merch_id,
+        variant_id ?? null,
+        color,
+        size,
+        buyer_name,
+        email,
+        payment_method,
+        status,
+      ],
+    });
+    const results = await batch(ops, 'write');
+    const orderId = results[results.length - 1].lastInsertRowid;
     const order = await getOne('SELECT * FROM merch_orders WHERE id = ?', [orderId]);
+
+    if (payment_method === 'online_square') {
+      const checkoutRes = await fetch(
+        `${req.nextUrl.origin}/api/merch/checkout`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: orderId }),
+        }
+      );
+      if (!checkoutRes.ok) {
+        const err = await checkoutRes.json().catch(() => ({}));
+        return NextResponse.json({
+          order,
+          redirect: null,
+          checkout_error: err.error ?? 'Square未設定',
+        });
+      }
+      const { checkout_url } = await checkoutRes.json();
+      return NextResponse.json({ order, redirect: checkout_url });
+    }
+
+    return NextResponse.json({ order, redirect: null });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Failed to place order' }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/merch/order - admin update status
+ * Body: { id, status }
+ */
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { id, status } = body;
+    if (!id || !status) {
+      return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+    }
+    await execute('UPDATE merch_orders SET status = ? WHERE id = ?', [status, id]);
+    const order = await getOne('SELECT * FROM merch_orders WHERE id = ?', [id]);
     return NextResponse.json(order);
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to place order' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update' }, { status: 500 });
   }
 }

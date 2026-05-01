@@ -171,6 +171,32 @@ export async function initDb(): Promise<void> {
       args: [],
     },
     {
+      // 抽選エントリー (1人1回, fingerprint で重複防止)
+      sql: `CREATE TABLE IF NOT EXISTS lottery_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fingerprint TEXT NOT NULL UNIQUE,
+      ip TEXT DEFAULT '',
+      won INTEGER DEFAULT 0,
+      prize_name TEXT DEFAULT '',
+      prize_tier TEXT DEFAULT 'normal',
+      winner_name TEXT DEFAULT '',
+      keyword_used TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )`,
+      args: [],
+    },
+    {
+      // 舞台裏ライブフォト
+      sql: `CREATE TABLE IF NOT EXISTS backstage_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      image_url TEXT NOT NULL,
+      caption TEXT DEFAULT '',
+      active INTEGER DEFAULT 1,
+      uploaded_at TEXT DEFAULT (datetime('now', 'localtime'))
+    )`,
+      args: [],
+    },
+    {
       // 映像データ販売の事前予約（後日メールで案内）
       sql: `CREATE TABLE IF NOT EXISTS video_preorders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -291,7 +317,7 @@ export async function initDb(): Promise<void> {
       { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['square_app_id', 'sandbox-sq0idb-PLACEHOLDER'] },
       { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['square_location_id', 'PLACEHOLDER'] },
       { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['video_sale_active', 'true'] },
-      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['open_time', '14:00'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['open_time', '13:45'] },
       { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['start_time', '14:30'] },
       // Section visibility defaults (1=visible, 0=Coming Soon)
       { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['section_schedule_visible', '1'] },

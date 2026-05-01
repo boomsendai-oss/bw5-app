@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll, getOne, execute } from '@/lib/db';
+import { autoCancelExpiredOrders } from '@/lib/autoCancel';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const items = await getAll('SELECT * FROM merchandise WHERE active = 1 ORDER BY sort_order ASC');
-    return NextResponse.json(items);
+    // Auto-cancel any pending orders past the pickup deadline so stock is fresh
+    await autoCancelExpiredOrders();
+
+    const items = await getAll(
+      'SELECT * FROM merchandise WHERE active = 1 ORDER BY sort_order ASC'
+    );
+    const variants = await getAll(
+      'SELECT * FROM merch_variants ORDER BY merch_id ASC, sort_order ASC'
+    );
+    const withVariants = items.map((m: Record<string, unknown>) => ({
+      ...m,
+      variants: variants.filter(
+        (v: Record<string, unknown>) => v.merch_id === m.id
+      ),
+    }));
+    return NextResponse.json(withVariants);
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch merchandise' }, { status: 500 });
   }

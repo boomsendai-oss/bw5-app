@@ -9,13 +9,11 @@ export default function AddToHomeScreen() {
   const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
-    // Don't show if already installed as PWA
     const isStandalone =
       window.matchMedia('(display-mode: standalone)').matches ||
       (navigator as any).standalone === true;
     if (isStandalone) return;
 
-    // Don't show if user dismissed it
     const dismissed = localStorage.getItem('bw5_a2hs_dismissed');
     if (dismissed) return;
 
@@ -33,23 +31,33 @@ export default function AddToHomeScreen() {
 
   return (
     <>
-      {/* Small floating pill button — left side, above menu */}
-      <motion.button
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 1.5 }}
-        onClick={() => setShowGuide(true)}
-        className="fixed bottom-6 left-5 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full md:hidden"
-        style={{
-          background: 'rgba(255,255,255,0.1)',
-          backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255,255,255,0.1)',
-        }}
-        whileTap={{ scale: 0.95 }}
+      {/* Banner above bottom tab bar */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 2 }}
+        className="fixed left-0 right-0 z-40 px-3 md:hidden"
+        style={{ bottom: 'calc(60px + env(safe-area-inset-bottom, 0px))' }}
       >
-        <Smartphone size={14} className="text-[#e63946]" />
-        <span className="text-[11px] font-bold text-white/90 tracking-wide">ホーム画面に追加</span>
-      </motion.button>
+        <div
+          className="flex items-center gap-3 px-4 py-2.5 rounded-xl"
+          style={{
+            background: 'rgba(255,255,255,0.95)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+          }}
+        >
+          <Smartphone size={16} style={{ color: '#f27a1a' }} className="shrink-0" />
+          <button
+            onClick={() => setShowGuide(true)}
+            className="flex-1 text-left"
+          >
+            <span className="text-[11px] font-bold" style={{ color: '#333' }}>ホーム画面に追加</span>
+          </button>
+          <button onClick={handleDismiss} className="shrink-0 p-1">
+            <X size={14} style={{ color: '#aaa' }} />
+          </button>
+        </div>
+      </motion.div>
 
       {/* Guide modal */}
       <AnimatePresence>
@@ -59,7 +67,7 @@ export default function AddToHomeScreen() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm"
+              className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
               onClick={() => setShowGuide(false)}
             />
             <motion.div
@@ -67,89 +75,69 @@ export default function AddToHomeScreen() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 50 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed inset-x-4 bottom-8 z-[101] max-w-sm mx-auto rounded-3xl overflow-hidden"
-              style={{
-                background: 'linear-gradient(180deg, rgba(30,30,30,0.98) 0%, rgba(15,15,15,0.98) 100%)',
-                border: '1px solid rgba(255,255,255,0.08)',
-              }}
+              className="fixed inset-x-4 bottom-8 z-[101] max-w-sm mx-auto rounded-2xl overflow-hidden"
+              style={{ background: 'rgba(255,255,255,0.97)' }}
             >
               <button
                 onClick={() => setShowGuide(false)}
-                className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center"
+                className="absolute top-3 right-3 z-10 w-7 h-7 rounded-full bg-black/5 flex items-center justify-center"
               >
-                <X size={14} className="text-white/70" />
+                <X size={14} style={{ color: '#999' }} />
               </button>
 
-              <div className="p-6">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-12 h-12 rounded-2xl bg-[#e63946]/15 flex items-center justify-center">
-                    <Smartphone size={22} className="text-[#e63946]" />
+              <div className="p-5">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(242,122,26,0.1)' }}>
+                    <Smartphone size={20} style={{ color: '#f27a1a' }} />
                   </div>
                   <div>
-                    <h3 className="text-base font-black text-white">ホーム画面に追加</h3>
-                    <p className="text-[11px] text-[var(--text-muted)]">アプリのように使えます</p>
+                    <h3 className="text-sm font-black" style={{ color: '#333' }}>ホーム画面に追加</h3>
+                    <p className="text-[10px]" style={{ color: '#999' }}>アプリのように使えます</p>
                   </div>
                 </div>
 
                 {isIOS ? (
-                  <div className="space-y-3">
-                    {/* Step 1 */}
-                    <div className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.04]">
-                      <div className="w-7 h-7 rounded-full bg-[#e63946]/20 flex items-center justify-center flex-shrink-0 text-xs font-bold text-[#e63946]">1</div>
-                      <div>
-                        <p className="text-xs font-bold text-white">画面下の共有ボタンをタップ</p>
-                        <p className="text-[10px] text-[var(--text-muted)] mt-0.5 flex items-center gap-1">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
-                          ← この形のアイコン
-                        </p>
+                  <div className="space-y-2">
+                    {[
+                      { step: '1', title: '画面下の共有ボタンをタップ', desc: '□に↑のアイコン' },
+                      { step: '2', title: '「ホーム画面に追加」をタップ', desc: '下にスクロールすると出てきます' },
+                      { step: '3', title: '右上の「追加」をタップ', desc: '' },
+                    ].map((s) => (
+                      <div key={s.step} className="flex items-start gap-2.5 p-2.5 rounded-lg" style={{ background: '#f5f5f5' }}>
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold text-white" style={{ background: '#f27a1a' }}>{s.step}</div>
+                        <div>
+                          <p className="text-[11px] font-bold" style={{ color: '#333' }}>{s.title}</p>
+                          {s.desc && <p className="text-[9px] mt-0.5" style={{ color: '#999' }}>{s.desc}</p>}
+                        </div>
                       </div>
-                    </div>
-
-                    {/* Step 2 */}
-                    <div className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.04]">
-                      <div className="w-7 h-7 rounded-full bg-[#e63946]/20 flex items-center justify-center flex-shrink-0 text-xs font-bold text-[#e63946]">2</div>
-                      <div>
-                        <p className="text-xs font-bold text-white">「ホーム画面に追加」をタップ</p>
-                        <p className="text-[10px] text-[var(--text-muted)] mt-0.5">下にスクロールすると出てきます</p>
-                      </div>
-                    </div>
-
-                    {/* Step 3 */}
-                    <div className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.04]">
-                      <div className="w-7 h-7 rounded-full bg-[#e63946]/20 flex items-center justify-center flex-shrink-0 text-xs font-bold text-[#e63946]">3</div>
-                      <div>
-                        <p className="text-xs font-bold text-white">右上の「追加」をタップ</p>
-                        <p className="text-[10px] text-[var(--text-muted)] mt-0.5">BOOMくんアイコンがホーム画面に追加されます</p>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    <div className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.04]">
-                      <div className="w-7 h-7 rounded-full bg-[#e63946]/20 flex items-center justify-center flex-shrink-0 text-xs font-bold text-[#e63946]">1</div>
-                      <div>
-                        <p className="text-xs font-bold text-white">ブラウザの「︙」メニューを開く</p>
+                  <div className="space-y-2">
+                    {[
+                      { step: '1', title: 'ブラウザの「︙」メニューを開く' },
+                      { step: '2', title: '「ホーム画面に追加」をタップ' },
+                    ].map((s) => (
+                      <div key={s.step} className="flex items-start gap-2.5 p-2.5 rounded-lg" style={{ background: '#f5f5f5' }}>
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold text-white" style={{ background: '#f27a1a' }}>{s.step}</div>
+                        <p className="text-[11px] font-bold" style={{ color: '#333' }}>{s.title}</p>
                       </div>
-                    </div>
-                    <div className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.04]">
-                      <div className="w-7 h-7 rounded-full bg-[#e63946]/20 flex items-center justify-center flex-shrink-0 text-xs font-bold text-[#e63946]">2</div>
-                      <div>
-                        <p className="text-xs font-bold text-white">「ホーム画面に追加」をタップ</p>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 )}
 
-                <div className="flex gap-2 mt-5">
+                <div className="flex gap-2 mt-4">
                   <button
                     onClick={handleDismiss}
-                    className="flex-1 py-3 rounded-xl text-xs font-medium text-[var(--text-muted)] bg-white/5"
+                    className="flex-1 py-2.5 rounded-xl text-[11px] font-medium"
+                    style={{ background: '#f0f0f0', color: '#999' }}
                   >
                     表示しない
                   </button>
                   <button
                     onClick={() => setShowGuide(false)}
-                    className="flex-1 py-3 rounded-xl text-xs font-bold btn-primary"
+                    className="flex-1 py-2.5 rounded-xl text-[11px] font-bold text-white"
+                    style={{ background: '#f27a1a' }}
                   >
                     OK
                   </button>
