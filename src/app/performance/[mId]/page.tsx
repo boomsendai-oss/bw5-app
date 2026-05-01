@@ -318,11 +318,8 @@ export default function PerformanceDetailPage() {
               {REGULAR_SCHEDULE[perf.m_id] && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-xl col-span-2" style={{ background: "#fff7ed", border: "1px solid rgba(242,122,26,0.25)" }}>
                   <CalendarClock size={14} style={{ color: "#dc4c04" }} />
-                  <div>
-                    <div className="text-xs font-bold" style={{ color: "#333" }}>
-                      {REGULAR_SCHEDULE[perf.m_id]}
-                    </div>
-                    <div className="text-[9px]" style={{ color: "#999" }}>通常レッスン</div>
+                  <div className="text-xs font-bold" style={{ color: "#333" }}>
+                    {REGULAR_SCHEDULE[perf.m_id]}
                   </div>
                 </div>
               )}
