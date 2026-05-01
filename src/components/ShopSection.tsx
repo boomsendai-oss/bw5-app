@@ -42,26 +42,29 @@ const COLOR_HEX: Record<string, string> = {
 
 // ── Color → image override per product ──
 // Returns whichever views (front / back / closeup) exist for this color.
-type VariantImages = { front: string; back?: string; closeup?: string };
+type VariantImages = { front: string; back?: string; closeup?: string; model?: string };
 
 function imagesForVariant(
   merchId: number,
   color: string
 ): VariantImages | null {
-  // オフィシャルTシャツ
+  // オフィシャルTシャツ — 各色とも 平置き + 着用モデルの2枚構成
   if (merchId === 4) {
-    // フェードグレーは平置き + 着用モデル画像の2枚構成
-    if (color === "フェードグレー") {
-      return {
-        front:   "/merch/official_grey.png",
-        closeup: "/merch/official_grey_model.png",
-      };
-    }
-    const map: Record<string, string> = {
-      "フェードレッド": "/merch/official_red.png",
-      "フェードブルー": "/merch/official_blue.png",
+    const map: Record<string, VariantImages> = {
+      "フェードグレー": {
+        front: "/merch/official_grey.png",
+        model: "/merch/official_grey_model.png",
+      },
+      "フェードレッド": {
+        front: "/merch/official_red.png",
+        model: "/merch/official_red_model.png",
+      },
+      "フェードブルー": {
+        front: "/merch/official_blue.png",
+        model: "/merch/official_blue_model.png",
+      },
     };
-    return map[color] ? { front: map[color] } : null;
+    return map[color] ?? null;
   }
   // BOOMくん刺繍Tシャツ — front / back / closeup の3視点
   if (merchId === 5) {
@@ -108,11 +111,12 @@ function imagesForVariant(
   return null;
 }
 
-type ViewMode = "front" | "back" | "closeup";
+type ViewMode = "front" | "back" | "closeup" | "model";
 const VIEW_LABEL: Record<ViewMode, string> = {
   front: "FRONT",
   back: "BACK",
   closeup: "CLOSEUP",
+  model: "MODEL",
 };
 
 // ════════════════════════════════════════
@@ -386,9 +390,11 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
     const out: ViewMode[] = ["front"];
     if (variantImages.back) out.push("back");
     if (variantImages.closeup) out.push("closeup");
+    if (variantImages.model) out.push("model");
     return out;
   }, [variantImages]);
   const displayImage =
+    (view === "model" && variantImages?.model) ||
     (view === "closeup" && variantImages?.closeup) ||
     (view === "back" && variantImages?.back) ||
     variantImages?.front ||
