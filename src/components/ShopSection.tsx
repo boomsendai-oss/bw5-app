@@ -159,13 +159,14 @@ const MODE_COPY: Record<ShopMode, {
     successMessage: "取り置きを承りました。物販ブースで「お名前」をお伝えください。",
   },
   closed: {
-    cardButton: "受付終了",
-    modalButton: "受付終了",
+    cardButton: "物販ブースへ",
+    modalButton: "物販ブースで直接購入",
     modalSubmitting: "—",
     bannerHTML:
-      '<strong class="text-white">物販の受付は終了しました。</strong>',
-    modalInfoTitle: "受付終了",
-    modalInfoBody: "本日の取り置き・予約受付は終了しました。",
+      '<strong class="text-white">取り置きは終了しました</strong> — 在庫があるものは<strong class="text-white">物販ブースで直接お買い求めください</strong>。<br />売り切れ品は「追加注文(後日発送)」も引き続きご利用いただけます。',
+    modalInfoTitle: "物販ブースで直接お買い求めください",
+    modalInfoBody:
+      "取り置き受付は終了しました。<br />在庫がある商品は<strong>会場の物販ブースで直接</strong>お買い求めいただけます。<br />お支払いは現金・クレジットカード・PayPay 等に対応。",
     successMessage: "",
   },
 };
@@ -696,6 +697,17 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
                     </p>
                   </div>
                 )
+              ) : mode === "closed" ? (
+                /* Closed: 取り置きフォーム不要。直接ブースへの案内のみ */
+                <div className="rounded-xl px-4 py-5 text-center" style={{ background: "#fff7ed", border: "1px solid rgba(242,122,26,0.3)" }}>
+                  <Info size={20} className="mx-auto mb-2" style={{ color: "#dc4c04" }} />
+                  <p className="text-sm font-black mb-2" style={{ color: "#dc4c04" }}>{copy.modalInfoTitle}</p>
+                  <div
+                    className="text-[12px] leading-relaxed"
+                    style={{ color: "#555" }}
+                    dangerouslySetInnerHTML={{ __html: copy.modalInfoBody }}
+                  />
+                </div>
               ) : (
                 <>
               <div>
@@ -707,7 +719,7 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
                 />
               </div>
 
-              {/* Mode-aware pickup info — pre / during / closed */}
+              {/* Mode-aware pickup info — pre / during */}
               <div className="rounded-xl px-3 py-3" style={{ background: "#fff7ed", border: "1px solid rgba(242,122,26,0.3)" }}>
                 <div className="flex items-center gap-2 mb-1">
                   <Info size={16} style={{ color: "#dc4c04" }} />
@@ -727,7 +739,7 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
               )}
 
               <button
-                onClick={handleOrder} disabled={!canSubmit || mode === "closed"}
+                onClick={handleOrder} disabled={!canSubmit}
                 className="w-full py-3 rounded-full text-sm font-bold text-white disabled:opacity-40 transition-all flex items-center justify-center gap-2"
                 style={{ background: "#f27a1a" }}
               >

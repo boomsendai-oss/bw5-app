@@ -347,6 +347,23 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
+              ) : stage === 'closed' ? (
+                /* Closed — 終了メッセージ */
+                <div className="rounded-2xl p-4 text-center"
+                  style={{
+                    background: "rgba(244, 162, 97, 0.15)",
+                    border: "1px solid rgba(244, 162, 97, 0.4)",
+                    backdropFilter: "blur(16px)",
+                  }}
+                >
+                  <div className="text-2xl mb-1">🎉</div>
+                  <div className="text-base font-black text-white">
+                    本日は終了しました
+                  </div>
+                  <div className="text-xs text-white/70 mt-1">
+                    ご来場いただきありがとうございました
+                  </div>
+                </div>
               ) : (
                 /* Event day — NOW LIVE badge */
                 <div className="rounded-2xl p-4 text-center"
@@ -399,7 +416,7 @@ export default function Home() {
                     <span className="text-white/90 text-lg shrink-0 transition-transform group-hover:translate-x-0.5">→</span>
                   </div>
                 </motion.a>
-              ) : (currentItem || nextItem) ? (
+              ) : stage !== 'closed' && (currentItem || nextItem) ? (
                 <motion.div
                   key="live-bar"
                   className="w-full mt-3"
@@ -466,7 +483,8 @@ export default function Home() {
               ) : null}
             </AnimatePresence>
 
-            {/* ── プレゼント企画 bar (always shown when lottery section is visible) ── */}
+            {/* ── プレゼント企画 bar (closed では非表示) ── */}
+            {stage !== 'closed' && (
             <motion.button
               onClick={() => handleNavigate('lottery')}
               className="w-full mt-3 block"
@@ -506,6 +524,55 @@ export default function Home() {
                 <span className="text-white/90 text-lg shrink-0 relative z-10">→</span>
               </div>
             </motion.button>
+            )}
+
+            {/* ── Closing Thank-You card (closed のみ) ── */}
+            {stage === 'closed' && (
+              <motion.div
+                className="w-full mt-3"
+                style={{ maxWidth: "340px" }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+              >
+                <div
+                  className="rounded-2xl overflow-hidden"
+                  style={{
+                    background: "rgba(255,255,255,0.08)",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    backdropFilter: "blur(12px)",
+                  }}
+                >
+                  <div className="relative w-full" style={{ aspectRatio: "16 / 9", background: "rgba(0,0,0,0.3)" }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={settings.closing_photo_url || "/images/closing_photo.png"}
+                      alt="ありがとうございました"
+                      className="absolute inset-0 w-full h-full"
+                      style={{ objectFit: "cover" }}
+                      onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                        const img = e.currentTarget;
+                        if (!img.dataset.fb) {
+                          img.dataset.fb = "1";
+                          img.src = "/images/boomkun.png";
+                          img.style.objectFit = "contain";
+                          img.style.padding = "16px";
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="px-4 py-4 text-center">
+                    <p className="text-base font-black text-white mb-1">
+                      ご来場いただきありがとうございました!
+                    </p>
+                    <p className="text-[11px] text-white/65 leading-relaxed">
+                      皆さまのおかげで素晴らしい1日になりました。<br />
+                      また次回のステージでお会いしましょう 🎉
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </div>
 
           {/* ── Quick Access Cards ── */}
@@ -664,7 +731,7 @@ export default function Home() {
         <div className="section-divider" />
         {isSectionVisible('music') ? <MusicSection /> : <LockedSection id="music" {...SECTION_LOCKED_INFO.music} />}
         <div className="section-divider" />
-        <LotterySection />
+        {stage !== 'closed' && <LotterySection />}
         <div className="section-divider" />
         {isSectionVisible('vote') ? <VoteSection /> : <LockedSection id="vote" {...SECTION_LOCKED_INFO.vote} />}
         <div className="section-divider" />
