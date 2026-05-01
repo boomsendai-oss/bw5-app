@@ -6,6 +6,7 @@ import {
   ShoppingBag, X, Package, CreditCard, Banknote, CheckCircle, Loader2, Info,
 } from "lucide-react";
 import Image from "next/image";
+import { useSwipeable } from "react-swipeable";
 import { getStage, shopModeFromStage, type ShopMode } from "@/lib/stage";
 
 // ── Types ──
@@ -318,7 +319,8 @@ function MerchTab() {
                       boxShadow: "0 2px 8px rgba(99,102,241,0.5)",
                     }}
                   >
-                    今年はDVDではなく映像データ販売です
+                    今年はDVDではなく映像データ販売です<br />
+                    <span className="text-[8px] opacity-90">予約期限: 5/19(火) 23:59 まで</span>
                   </div>
                 )}
               </button>
@@ -376,7 +378,7 @@ function MerchTab() {
                   }}
                 >
                   {isVideoPreorder
-                    ? (videoClosed ? "受付終了" : "「欲しい!」を伝える")
+                    ? (videoClosed ? "受付終了" : "予約する")
                     : !soldOut
                     ? (item.purchase_at_booth ? "デザインを見る" : copy.cardButton)
                     : restockEligible
@@ -408,6 +410,75 @@ function MerchTab() {
 // ════════════════════════════════════════
 // Order Modal
 // ════════════════════════════════════════
+// ════════════════════════════════════════
+// Image Swiper — モーダル内のサムネ。横スワイプで FRONT/BACK/CLOSEUP/MODEL を切替
+// ════════════════════════════════════════
+function ImageSwiper({
+  displayImage,
+  alt,
+  isStickerItem,
+  availableViews,
+  currentView,
+  onChangeView,
+}: {
+  displayImage: string;
+  alt: string;
+  isStickerItem: boolean;
+  availableViews: ViewMode[];
+  currentView: ViewMode;
+  onChangeView: (v: ViewMode) => void;
+}) {
+  const switchBy = (delta: number) => {
+    if (availableViews.length < 2) return;
+    const idx = availableViews.indexOf(currentView);
+    if (idx < 0) return;
+    const next = (idx + delta + availableViews.length) % availableViews.length;
+    onChangeView(availableViews[next]);
+  };
+  const handlers = useSwipeable({
+    onSwipedLeft: () => switchBy(1),
+    onSwipedRight: () => switchBy(-1),
+    trackMouse: true,
+    preventScrollOnSwipe: true,
+    delta: 30,
+  });
+  return (
+    <div
+      {...handlers}
+      className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-gray-100 select-none"
+      style={{ touchAction: 'pan-y' }}
+    >
+      <Image
+        key={displayImage}
+        src={displayImage}
+        alt={alt}
+        fill
+        className={isStickerItem ? "object-contain p-3" : "object-cover"}
+        sizes="(max-width: 768px) 80vw, 320px"
+        draggable={false}
+      />
+      {availableViews.length > 1 && (
+        <>
+          {/* Dots indicator */}
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 px-2 py-1 rounded-full bg-black/35 backdrop-blur">
+            {availableViews.map((v) => (
+              <span
+                key={v}
+                className="w-1.5 h-1.5 rounded-full transition-all"
+                style={{ background: v === currentView ? '#fff' : 'rgba(255,255,255,0.4)' }}
+              />
+            ))}
+          </div>
+          {/* Subtle swipe hint on first render */}
+          <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[9px] font-bold bg-white/85 text-gray-700 pointer-events-none">
+            ← スワイプ →
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; onClose: () => void }) {
   const copy = MODE_COPY[mode];
   const variants = item.variants ?? [];
@@ -539,34 +610,33 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
           </div>
         ) : (
           <>
-            {/* Variant image preview (large) */}
-            <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-gray-100">
-              <Image
-                key={displayImage}
-                src={displayImage}
-                alt={item.name}
-                fill
-                className={item.id === 8 ? "object-contain p-3" : "object-cover"}
-                sizes="(max-width: 768px) 80vw, 320px"
-              />
-              {availableViews.length > 1 && (
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 rounded-full p-1 bg-white/90 backdrop-blur shadow-md">
-                  {availableViews.map((v) => (
-                    <button
-                      key={v}
-                      onClick={() => setView(v)}
-                      className="px-3 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap"
-                      style={{
-                        background: view === v ? "#f27a1a" : "transparent",
-                        color: view === v ? "#fff" : "#666",
-                      }}
-                    >
-                      {VIEW_LABEL[v]}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Variant image preview (large) — swipeable to switch views */}
+            <ImageSwiper
+              displayImage={displayImage}
+              alt={item.name}
+              isStickerItem={item.id === 8}
+              availableViews={availableViews}
+              currentView={view}
+              onChangeView={setView}
+            />
+            {availableViews.length > 1 && (
+              <div className="flex justify-center gap-2 -mt-2 mb-3">
+                {availableViews.map((v) => (
+                  <button
+                    key={v}
+                    onClick={() => setView(v)}
+                    className="px-3 py-1.5 rounded-full text-[10px] font-bold transition-all whitespace-nowrap"
+                    style={{
+                      background: view === v ? "#f27a1a" : "rgba(242,122,26,0.1)",
+                      color: view === v ? "#fff" : "#666",
+                      border: `1px solid ${view === v ? "#f27a1a" : "rgba(242,122,26,0.2)"}`,
+                    }}
+                  >
+                    {VIEW_LABEL[v]}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="pr-6">
               <h3 className="font-bold text-base text-gray-800 leading-tight">{item.name}</h3>
@@ -1205,7 +1275,7 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
               className="w-full py-3 rounded-full text-sm font-bold text-white disabled:opacity-40 transition-all flex items-center justify-center gap-2"
               style={{ background: "#6366f1" }}
             >
-              {submitting ? <><Loader2 size={16} className="animate-spin" />送信中...</> : "「欲しい!」を伝える(無料)"}
+              {submitting ? <><Loader2 size={16} className="animate-spin" />送信中...</> : "予約する (無料・5/19まで)"}
             </button>
           </div>
         )}

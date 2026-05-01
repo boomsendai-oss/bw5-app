@@ -437,8 +437,8 @@ export default function Home() {
                   >
                     <span className="text-xl shrink-0">🎟️</span>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[10px] font-bold tracking-wider uppercase text-green-300">WALK-UP OK</div>
-                      <div className="text-sm font-black text-white leading-tight">当日券で入場可能</div>
+                      <div className="text-[10px] font-bold tracking-wider uppercase text-green-300">WALK-UP TICKET</div>
+                      <div className="text-sm font-black text-white leading-tight">当日チケットも販売中 ¥2,500</div>
                       <div className="text-[10px] text-white/70 mt-0.5">申込不要・会場へ直接お越しください</div>
                     </div>
                   </div>
