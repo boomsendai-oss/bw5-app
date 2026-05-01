@@ -281,7 +281,7 @@ function MerchTab() {
                     src={item.image_url}
                     alt={item.name}
                     fill
-                    className={item.id === 8 ? "object-contain p-2" : "object-cover"}
+                    className={item.id === 8 || isVideoPreorder ? "object-contain p-2" : "object-cover"}
                     sizes="(max-width: 768px) 50vw, 200px"
                   />
                 ) : (
@@ -297,14 +297,14 @@ function MerchTab() {
                 {/* 映像データ商品にだけ表示する目立つバッジ — DVDではないことが一目で分かる */}
                 {isVideoPreorder && (
                   <div
-                    className="absolute top-1.5 left-1.5 right-1.5 px-2 py-1 rounded-md text-[9px] font-black leading-tight text-center"
+                    className="absolute bottom-1.5 left-1.5 right-1.5 px-2 py-1 rounded-md text-[9px] font-black leading-tight text-center"
                     style={{
                       background: "linear-gradient(135deg, rgba(99,102,241,0.95), rgba(139,92,246,0.95))",
                       color: "#fff",
                       boxShadow: "0 2px 8px rgba(99,102,241,0.5)",
                     }}
                   >
-                    🎥 今年はDVDではなく<br />データ販売です
+                    今年はDVDではなく映像データ販売です
                   </div>
                 )}
               </button>

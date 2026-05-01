@@ -451,7 +451,7 @@ export default function Home() {
                           <div className="flex-1 min-w-0">
                             <div className="text-[10px] font-bold tracking-wider uppercase text-yellow-400">COMING UP</div>
                             <div className="text-sm font-bold text-white truncate">
-                              {isOpeningTease ? "??? (開演までのお楽しみ)" : nextItem.title}
+                              {isOpeningTease ? "???" : nextItem.title}
                             </div>
                           </div>
                           {/* 「?」の時だけ 14:30 開演時刻を表示。実演目が見えてからは時刻を隠す。 */}
