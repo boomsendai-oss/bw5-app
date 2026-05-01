@@ -292,7 +292,13 @@ function MerchTab() {
                 style={{ background: "rgba(255,255,255,0.05)", cursor: (!soldOut || restockEligible || isVideoPreorder) ? "pointer" : "not-allowed" }}
               >
                 {item.image_url ? (
-                  <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="(max-width: 768px) 50vw, 200px" />
+                  <Image
+                    src={item.image_url}
+                    alt={item.name}
+                    fill
+                    className={item.id === 8 ? "object-contain p-2" : "object-cover"}
+                    sizes="(max-width: 768px) 50vw, 200px"
+                  />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <Package size={36} className="text-white/20" />
@@ -523,7 +529,7 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
                 src={displayImage}
                 alt={item.name}
                 fill
-                className="object-cover"
+                className={item.id === 8 ? "object-contain p-3" : "object-cover"}
                 sizes="(max-width: 768px) 80vw, 320px"
               />
               {availableViews.length > 1 && (
