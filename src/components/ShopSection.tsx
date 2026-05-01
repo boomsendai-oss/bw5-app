@@ -294,6 +294,19 @@ function MerchTab() {
                     <span className="text-white text-sm font-black tracking-widest">SOLD OUT</span>
                   </div>
                 )}
+                {/* 映像データ商品にだけ表示する目立つバッジ — DVDではないことが一目で分かる */}
+                {isVideoPreorder && (
+                  <div
+                    className="absolute top-1.5 left-1.5 right-1.5 px-2 py-1 rounded-md text-[9px] font-black leading-tight text-center"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(99,102,241,0.95), rgba(139,92,246,0.95))",
+                      color: "#fff",
+                      boxShadow: "0 2px 8px rgba(99,102,241,0.5)",
+                    }}
+                  >
+                    🎥 今年はDVDではなく<br />データ販売です
+                  </div>
+                )}
               </button>
 
               <div className="p-3">
