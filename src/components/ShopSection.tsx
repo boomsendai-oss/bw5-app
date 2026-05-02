@@ -1337,7 +1337,7 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
               className="w-full py-3 rounded-full text-sm font-bold text-white disabled:opacity-40 transition-all flex items-center justify-center gap-2"
               style={{ background: "#6366f1" }}
             >
-              {submitting ? <><Loader2 size={16} className="animate-spin" />送信中...</> : "予約する (無料・5/19まで)"}
+              {submitting ? <><Loader2 size={16} className="animate-spin" />送信中...</> : "予約する (5/19まで)"}
             </button>
           </div>
         )}
