@@ -183,13 +183,24 @@ export default function StaffOrdersPage() {
                             {o.created_at}
                           </div>
                         </div>
-                        {isPending && (
+                        {isPending ? (
                           <button
                             onClick={() => markStatus(o.id, 'completed')}
                             className="px-3 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-1 shrink-0"
                             style={{ background: '#22c55e' }}
                           >
                             <Check size={14} />受取済
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              if (confirm('この予約を「未受取」に戻しますか？')) markStatus(o.id, 'pending_cash');
+                            }}
+                            className="px-2.5 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1 shrink-0"
+                            style={{ background: 'rgba(234,179,8,0.15)', color: '#a16207', border: '1px solid rgba(234,179,8,0.4)' }}
+                            title="未受取に戻す"
+                          >
+                            ↩ 戻す
                           </button>
                         )}
                       </li>
