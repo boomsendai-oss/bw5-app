@@ -54,7 +54,7 @@ export default function RootLayout({
                 rm('link[rel="apple-touch-icon"]');
                 function add(tag, attrs){var e = d.createElement(tag); for(var k in attrs){e.setAttribute(k, attrs[k]);} head.appendChild(e); return e;}
                 if (!isStaff) {
-                  add('link', {rel: 'manifest', href: '/manifest.webmanifest'});
+                  add('link', {rel: 'manifest', href: '/main-manifest.webmanifest'});
                   add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
                   add('meta', {name: 'mobile-web-app-capable', content: 'yes'});
                   add('meta', {name: 'apple-mobile-web-app-title', content: 'BW5 App'});

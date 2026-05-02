@@ -157,7 +157,7 @@ export default function WelcomePopup() {
                     boxShadow: '0 6px 16px rgba(220,76,4,0.35)',
                   }}
                 >
-                  わかった！はじめる →
+                  ホーム画面に追加して始める →
                 </button>
                 <button
                   onClick={handleClose}
