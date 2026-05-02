@@ -43,7 +43,7 @@ function Particle({ delay, x, size, duration, colorA }: ParticleData) {
 
 export default function HeroSection() {
   const [particles, setParticles] = useState<ParticleData[]>([]);
-  const [heroImage, setHeroImage] = useState("/images/upload_1776286511201.png");
+  const [heroImage, setHeroImage] = useState("/images/hero_main.png");
   const [settings, setSettings] = useState<Record<string, string>>({});
 
   useEffect(() => {

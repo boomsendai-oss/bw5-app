@@ -117,7 +117,7 @@ function useCountdown(targetDate: string) {
 export default function Home() {
   const [activeSection, setActiveSection] = useState("schedule");
   const [settings, setSettings] = useState<Record<string, string>>({});
-  const [heroImage, setHeroImage] = useState("/images/upload_1776286511201.png");
+  const [heroImage, setHeroImage] = useState("/images/hero_main.png");
   const [now, setNow] = useState(() => new Date());
 
   const eventDate = settings.event_date || "2026-05-05";
