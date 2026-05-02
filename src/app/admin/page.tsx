@@ -422,6 +422,31 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
     notify('バリアント在庫を更新しました');
   };
 
+  const addVariant = async (merchId: number, color: string, size: string, stock: number) => {
+    const res = await fetch('/api/merchandise', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add_variant', merch_id: merchId, color, size, stock }),
+    });
+    if (!res.ok) { notify('追加に失敗しました'); return; }
+    const data = await res.json();
+    setItems(data.items || []);
+    setOrders(data.orders || []);
+    notify('バリアント追加しました');
+  };
+
+  const deleteVariant = async (variantId: number, label: string) => {
+    if (!confirm(`バリアント「${label}」を削除しますか？(注文があると整合性が崩れる場合があります)`)) return;
+    const res = await fetch('/api/merchandise', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete_variant', id: variantId }),
+    });
+    if (!res.ok) { notify('削除に失敗しました'); return; }
+    const data = await res.json();
+    setItems(data.items || []);
+    setOrders(data.orders || []);
+    notify('バリアントを削除しました');
+  };
+
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const startEdit = (item: MerchItem) => {
@@ -568,7 +593,7 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
                                       </div>
                                       <div className="grid grid-cols-4 gap-1.5">
                                         {vs.map(v => (
-                                          <label key={v.id} className="flex flex-col items-stretch text-[10px]" style={{ color: 'var(--text-secondary)' }}>
+                                          <div key={v.id} className="relative flex flex-col items-stretch text-[10px]" style={{ color: 'var(--text-secondary)' }}>
                                             <span className="text-center font-bold mb-0.5">{v.size || '単一'}</span>
                                             <input
                                               type="number"
@@ -581,7 +606,17 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
                                               }}
                                               className="admin-input text-xs text-center w-full"
                                             />
-                                          </label>
+                                            <button
+                                              type="button"
+                                              onClick={() => deleteVariant(v.id, `${color} / ${v.size || '単一'}`)}
+                                              className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[10px] leading-none"
+                                              style={{ background: 'rgba(239,68,68,0.85)', color: '#fff' }}
+                                              title="このバリアントを削除"
+                                              aria-label="削除"
+                                            >
+                                              ×
+                                            </button>
+                                          </div>
                                         ))}
                                       </div>
                                     </div>
@@ -590,8 +625,9 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
                               </div>
                             );
                           })()}
+                          <AddVariantRow merchId={item.id} onAdd={(c, s, st) => addVariant(item.id, c, s, st)} />
                           <p className="text-[10px] mt-2" style={{ color: 'var(--text-muted)' }}>
-                            数字を変えて指を離すと自動保存
+                            数字を変えて指を離すと自動保存。× で削除、+追加 で新しいサイズ/色を追加。
                           </p>
                         </div>
                       ) : (
@@ -617,6 +653,43 @@ function MerchTab({ notify }: { notify: (m: string) => void }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function AddVariantRow({ merchId: _merchId, onAdd }: { merchId: number; onAdd: (color: string, size: string, stock: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const [color, setColor] = useState('');
+  const [size, setSize] = useState('');
+  const [stock, setStock] = useState('0');
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mt-3 w-full text-xs px-3 py-2 rounded-lg flex items-center justify-center gap-1 transition-colors"
+        style={{ background: 'var(--bg-hover)', color: 'var(--accent-primary)', border: '1px dashed var(--accent-primary)' }}
+      >
+        <Plus className="w-3 h-3" /> バリアント追加
+      </button>
+    );
+  }
+  const submit = () => {
+    if (!color && !size) { return; }
+    onAdd(color.trim(), size.trim(), Number(stock) || 0);
+    setColor(''); setSize(''); setStock('0'); setOpen(false);
+  };
+  return (
+    <div className="mt-3 rounded-lg p-2.5 space-y-2" style={{ background: 'var(--bg-hover)', border: '1px solid var(--border-color)' }}>
+      <div className="text-[11px] font-bold" style={{ color: 'var(--text-secondary)' }}>新しいバリアント</div>
+      <div className="grid grid-cols-3 gap-1.5">
+        <input className="admin-input text-xs" placeholder="色 (任意)" value={color} onChange={e => setColor(e.target.value)} />
+        <input className="admin-input text-xs" placeholder="サイズ (任意)" value={size} onChange={e => setSize(e.target.value)} />
+        <input className="admin-input text-xs" type="number" inputMode="numeric" placeholder="在庫" value={stock} onChange={e => setStock(e.target.value)} />
+      </div>
+      <div className="flex gap-1.5">
+        <button onClick={submit} className="flex-1 btn-primary text-xs px-3 py-1.5">追加</button>
+        <button onClick={() => { setOpen(false); setColor(''); setSize(''); setStock('0'); }} className="btn-secondary text-xs px-3 py-1.5">キャンセル</button>
       </div>
     </div>
   );

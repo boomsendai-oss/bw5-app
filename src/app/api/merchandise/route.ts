@@ -96,6 +96,20 @@ export async function POST(req: NextRequest) {
     } else if (action === 'delete') {
       // soft delete (active=0)
       await execute('UPDATE merchandise SET active = 0 WHERE id = ?', [Number(body.id)]);
+    } else if (action === 'add_variant') {
+      // body: { merch_id, color?, size?, stock? }
+      const merchId = Number(body.merch_id);
+      const color = body.color ?? '';
+      const size = body.size ?? '';
+      const stock = Number(body.stock) || 0;
+      const max = await getOne('SELECT MAX(sort_order) as m FROM merch_variants WHERE merch_id = ?', [merchId]);
+      await execute(
+        'INSERT INTO merch_variants (merch_id, color, size, stock, sort_order) VALUES (?, ?, ?, ?, ?)',
+        [merchId, color, size, stock, Number(max?.m ?? 0) + 1]
+      );
+    } else if (action === 'delete_variant') {
+      // body: { id (variant id) }
+      await execute('DELETE FROM merch_variants WHERE id = ?', [Number(body.id)]);
     } else {
       return NextResponse.json({ error: 'unknown action' }, { status: 400 });
     }
