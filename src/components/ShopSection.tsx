@@ -309,6 +309,15 @@ function MerchTab() {
                     <span className="text-white text-sm font-black tracking-widest">SOLD OUT</span>
                   </div>
                 )}
+                {/* 当日販売のみアイテム (シール除く) に「当日販売」バッジ */}
+                {item.purchase_at_booth && item.id !== 8 && (
+                  <div
+                    className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md text-[9px] font-black"
+                    style={{ background: "rgba(0,0,0,0.7)", color: "#ffd166" }}
+                  >
+                    🏪 当日会場販売
+                  </div>
+                )}
                 {/* 映像データ商品にだけ表示する目立つバッジ — DVDではないことが一目で分かる */}
                 {isVideoPreorder && (
                   <div
@@ -786,7 +795,7 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
               )}
 
               {item.purchase_at_booth ? (
-                selectedColor === "BOOMくん" ? (
+                item.id === 8 && selectedColor === "BOOMくん" ? (
                   <div
                     className="rounded-2xl px-4 py-4 border-2"
                     style={{
@@ -805,7 +814,8 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
                       物販ブースで6種を見せていただいた方に1枚お渡しします。
                     </p>
                   </div>
-                ) : (
+                ) : item.id === 8 ? (
+                  /* シール — 貯金箱方式 */
                   <div
                     className="rounded-2xl px-4 py-4 border-2 border-dashed"
                     style={{ background: "#fff7ed", borderColor: "#f27a1a" }}
@@ -815,10 +825,30 @@ function OrderModal({ item, mode, onClose }: { item: MerchItem; mode: ShopMode; 
                       <h4 className="text-sm font-black text-orange-600">物販ブースで直接お買い求めください</h4>
                     </div>
                     <p className="text-xs text-gray-700 leading-relaxed">
-                      駄菓子屋スタイル！貯金箱に
+                      物販ブースの貯金箱に
                       <span className="font-black text-orange-600 mx-1">¥{item.price.toLocaleString()}</span>
                       を入れて、お好みのデザインを1枚お持ちください。<br />
-                      お釣りが必要な場合はスタッフまでお声がけを🎫
+                      クレジットカード・PayPay 等をご希望の場合はスタッフにお声がけを🎫
+                    </p>
+                  </div>
+                ) : (
+                  /* オフィシャルT 等 — 当日会場販売 */
+                  <div
+                    className="rounded-2xl px-4 py-4 border-2 border-dashed"
+                    style={{ background: "#fff7ed", borderColor: "#f27a1a" }}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xl">🏪</span>
+                      <h4 className="text-sm font-black text-orange-600">当日 会場で販売します</h4>
+                    </div>
+                    <p className="text-xs text-gray-700 leading-relaxed">
+                      この商品は<strong className="text-orange-600">事前予約はありません</strong>。
+                      <span className="block mt-1">
+                        発表会当日（5/5）会場の物販ブースで直接お買い求めください。
+                      </span>
+                      <span className="block mt-1 text-[11px] text-gray-500">
+                        現金・クレジットカード・PayPay 等に対応します
+                      </span>
                     </p>
                   </div>
                 )
