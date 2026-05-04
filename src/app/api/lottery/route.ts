@@ -15,10 +15,21 @@ export async function GET(req: NextRequest) {
       map[row.key] = row.value;
     }
 
-    // Count winners so far (atomic-ish for fairness display)
+    // tier 別に勝者数をカウント
     const winsRow = await getOne('SELECT COUNT(*) as c FROM lottery_entries WHERE won = 1');
+    const jpRow = await getOne(
+      "SELECT COUNT(*) as c FROM lottery_entries WHERE won = 1 AND prize_tier = 'jackpot'"
+    );
+    const nrRow = await getOne(
+      "SELECT COUNT(*) as c FROM lottery_entries WHERE won = 1 AND prize_tier = 'normal'"
+    );
     const winners_count = Number(winsRow?.c ?? 0);
-    const cap = Number(map.lottery_winners_cap || 10);
+    const jackpot_count = Number(jpRow?.c ?? 0);
+    const normal_count = Number(nrRow?.c ?? 0);
+    const jackpot_cap = Number(map.lottery_jackpot_cap || 1);
+    const normal_cap = Number(map.lottery_normal_cap || 10);
+    const cap = jackpot_cap + normal_cap;
+    const sold_out = jackpot_count >= jackpot_cap && normal_count >= normal_cap;
 
     const fingerprint = req.nextUrl.searchParams.get('fingerprint');
     let entry = null;
@@ -36,8 +47,14 @@ export async function GET(req: NextRequest) {
       prize_image: map.lottery_prize_image || '',
       winners_count,
       winners_cap: cap,
-      sold_out: winners_count >= cap,
+      jackpot_count,
+      jackpot_cap,
+      normal_count,
+      normal_cap,
+      sold_out,
       probability: Number(map.lottery_probability || 0.1),
+      jackpot_probability: Number(map.lottery_jackpot_probability || 0.02),
+      normal_probability: Number(map.lottery_normal_probability || 0.07),
       entry,
     });
   } catch (e) {
@@ -132,47 +149,56 @@ export async function POST(req: NextRequest) {
       req.headers.get('x-real-ip') ||
       '';
 
-    // Roll dice
-    const probability = Number(m.lottery_probability || 0.1);
-    const roll = Math.random();
-    const passedRoll = roll < probability;
+    // Roll dice — JACKPOT と 通常 を独立した確率・上限で判定
+    // 単一の乱数で帯域判定:
+    //   roll < jackpotProb              → JACKPOT 候補
+    //   jackpotProb <= roll < jackpotProb + normalProb → 通常 候補
+    //   それ以外                          → はずれ
+    const jackpotProb = Number(m.lottery_jackpot_probability || 0.02);
+    const normalProb = Number(m.lottery_normal_probability || 0.07);
+    const jackpotCap = Number(m.lottery_jackpot_cap || 1);
+    const normalCap = Number(m.lottery_normal_cap || 10);
 
-    // If won the dice, check cap and assign tier (jackpot vs normal)
+    const roll = Math.random();
     let won = 0;
     let prize_name = '';
     let prize_tier: 'normal' | 'jackpot' = 'normal';
-    if (passedRoll) {
-      const cap = Number(m.lottery_winners_cap || 10);
-      const winsNow = await getOne('SELECT COUNT(*) as c FROM lottery_entries WHERE won = 1');
-      const current = Number(winsNow?.c ?? 0);
-      if (current < cap) {
+
+    if (roll < jackpotProb) {
+      // JACKPOT 候補 → 上限チェック
+      const jpRow = await getOne(
+        "SELECT COUNT(*) as c FROM lottery_entries WHERE won = 1 AND prize_tier = 'jackpot'"
+      );
+      if (Number(jpRow?.c ?? 0) < jackpotCap) {
         won = 1;
-        // Determine if THIS winner (position = current + 1) is the jackpot
-        const jackpotPos = Number(m.lottery_jackpot_position || 0);
-        const myPosition = current + 1;
-        if (jackpotPos > 0 && myPosition === jackpotPos) {
-          prize_tier = 'jackpot';
-          prize_name = m.lottery_jackpot_prize_name || '🎊 大当たり！物販で好きなアイテム1つ無料 🎊';
-        } else {
-          prize_tier = 'normal';
-          prize_name = m.lottery_normal_prize_name || m.lottery_prize_name || 'きらきらシール スペシャルバージョン';
-        }
+        prize_tier = 'jackpot';
+        prize_name = m.lottery_jackpot_prize_name || '🎊 大当たり！物販で好きなアイテム1つ無料 🎊';
+      }
+    } else if (roll < jackpotProb + normalProb) {
+      // 通常 候補 → 上限チェック
+      const nrRow = await getOne(
+        "SELECT COUNT(*) as c FROM lottery_entries WHERE won = 1 AND prize_tier = 'normal'"
+      );
+      if (Number(nrRow?.c ?? 0) < normalCap) {
+        won = 1;
+        prize_tier = 'normal';
+        prize_name = m.lottery_normal_prize_name || m.lottery_prize_name || 'きらきらシール スペシャルバージョン';
       }
     }
 
     // 同時並行リクエストで cap を超えないように、won=1 の場合は
-    // INSERT...SELECT WHERE で「現在の当選者数 < cap」を atomic に再チェックする
+    // INSERT...SELECT WHERE で「該当 tier の当選者数 < cap」を atomic に再チェック
     let result;
     if (won === 1) {
-      const cap = Number(m.lottery_winners_cap || 10);
+      const tierCap = prize_tier === 'jackpot' ? jackpotCap : normalCap;
       result = await execute(
         `INSERT INTO lottery_entries (fingerprint, ip, won, prize_name, keyword_used, prize_tier)
          SELECT ?, ?, ?, ?, ?, ?
-         WHERE (SELECT COUNT(*) FROM lottery_entries WHERE won = 1) < ?`,
-        [fingerprint, ip, won, prize_name, keyword || '', prize_tier, cap]
+         WHERE (SELECT COUNT(*) FROM lottery_entries WHERE won = 1 AND prize_tier = ?) < ?`,
+        [fingerprint, ip, won, prize_name, keyword || '', prize_tier, prize_tier, tierCap]
       );
       if (Number(result.rowsAffected ?? 0) === 0) {
-        // cap に到達していたので "はずれ" として再 INSERT
+        // tier cap に到達していたので "はずれ" として再 INSERT
         won = 0;
         prize_name = '';
         prize_tier = 'normal';
