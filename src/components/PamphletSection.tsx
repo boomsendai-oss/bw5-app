@@ -161,9 +161,10 @@ function PamphletViewer({ onClose }: { onClose: () => void }) {
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => !isZoomed && next(),
     onSwipedRight: () => !isZoomed && prev(),
+    trackTouch: true,
     trackMouse: true,
     preventScrollOnSwipe: true,
-    delta: 30,
+    delta: 15,
   });
 
   return (
@@ -241,8 +242,16 @@ function PamphletViewer({ onClose }: { onClose: () => void }) {
               centerOnInit
             >
               <TransformComponent
-                wrapperStyle={{ width: '100%', height: '100%' }}
-                contentStyle={{ width: '100%', height: '100%' }}
+                wrapperStyle={{
+                  width: '100%',
+                  height: '100%',
+                  touchAction: isZoomed ? 'none' : 'pan-y',
+                }}
+                contentStyle={{
+                  width: '100%',
+                  height: '100%',
+                  touchAction: isZoomed ? 'none' : 'pan-y',
+                }}
               >
                 <div className="relative w-full h-full">
                   <Image
