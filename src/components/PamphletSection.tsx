@@ -112,6 +112,7 @@ function PamphletViewer({ onClose }: { onClose: () => void }) {
   const [direction, setDirection] = useState<1 | -1>(1);
   const [size, setSize] = useState({ w: 360, h: 498 });
   const [isZoomed, setIsZoomed] = useState(false);
+  const [zoomMode, setZoomMode] = useState(false);
 
   // Compute viewer size — preserve image aspect (1500:2077)
   useEffect(() => {
@@ -144,7 +145,7 @@ function PamphletViewer({ onClose }: { onClose: () => void }) {
   }, [isZoomed]);
 
   // ページ切り替え時にズーム状態をリセット
-  useEffect(() => { setIsZoomed(false); }, [pageIndex]);
+  useEffect(() => { setIsZoomed(false); setZoomMode(false); }, [pageIndex]);
 
   // Keyboard arrows
   useEffect(() => {
@@ -182,17 +183,27 @@ function PamphletViewer({ onClose }: { onClose: () => void }) {
             {pageIndex + 1} / {TOTAL_PAGES}
           </div>
           <div className="text-[10px] text-white/40">
-            {isZoomed ? '🔍 ダブルタップで戻る' : 'ピンチ / ダブルタップでズーム'}
+            {zoomMode ? '🔍 拡大中（× で戻る）' : '左右スワイプでページ送り'}
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="w-9 h-9 rounded-full flex items-center justify-center"
-          style={{ background: 'rgba(255,255,255,0.15)' }}
-          aria-label="閉じる"
-        >
-          <X size={18} className="text-white" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setZoomMode((v) => !v)}
+            className="px-3 h-9 rounded-full flex items-center gap-1 text-xs font-bold text-white"
+            style={{ background: zoomMode ? 'rgba(220,76,4,0.85)' : 'rgba(255,255,255,0.15)' }}
+            aria-label="拡大表示の切り替え"
+          >
+            {zoomMode ? '✕ 拡大終了' : '🔍 拡大'}
+          </button>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-full flex items-center justify-center"
+            style={{ background: 'rgba(255,255,255,0.15)' }}
+            aria-label="閉じる"
+          >
+            <X size={18} className="text-white" />
+          </button>
+        </div>
       </div>
 
       {/* Swipe area + page with paper-flip animation */}
@@ -230,42 +241,47 @@ function PamphletViewer({ onClose }: { onClose: () => void }) {
               boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
             }}
           >
-            <TransformWrapper
-              initialScale={1}
-              minScale={1}
-              maxScale={4}
-              doubleClick={{ mode: 'toggle', step: 1.8 }}
-              wheel={{ step: 0.2 }}
-              pinch={{ step: 5 }}
-              panning={{ disabled: !isZoomed }}
-              onTransform={(_ref: unknown, state: { scale: number }) => setIsZoomed(state.scale > 1.05)}
-              centerOnInit
-            >
-              <TransformComponent
-                wrapperStyle={{
-                  width: '100%',
-                  height: '100%',
-                  touchAction: isZoomed ? 'none' : 'pan-y',
-                }}
-                contentStyle={{
-                  width: '100%',
-                  height: '100%',
-                  touchAction: isZoomed ? 'none' : 'pan-y',
-                }}
+            {zoomMode ? (
+              <TransformWrapper
+                initialScale={1}
+                minScale={1}
+                maxScale={4}
+                doubleClick={{ mode: 'toggle', step: 1.8 }}
+                wheel={{ step: 0.2 }}
+                pinch={{ step: 5 }}
+                onTransform={(_ref: unknown, state: { scale: number }) => setIsZoomed(state.scale > 1.05)}
+                centerOnInit
               >
-                <div className="relative w-full h-full">
-                  <Image
-                    src={`/pamphlet/page-${String(pageIndex + 1).padStart(2, '0')}.webp`}
-                    alt={`パンフ ${pageIndex + 1}ページ`}
-                    fill
-                    sizes="(max-width: 600px) 100vw, 600px"
-                    style={{ objectFit: 'cover' }}
-                    priority={pageIndex < 2}
-                    draggable={false}
-                  />
-                </div>
-              </TransformComponent>
-            </TransformWrapper>
+                <TransformComponent
+                  wrapperStyle={{ width: '100%', height: '100%' }}
+                  contentStyle={{ width: '100%', height: '100%' }}
+                >
+                  <div className="relative w-full h-full">
+                    <Image
+                      src={`/pamphlet/page-${String(pageIndex + 1).padStart(2, '0')}.webp`}
+                      alt={`パンフ ${pageIndex + 1}ページ`}
+                      fill
+                      sizes="(max-width: 600px) 100vw, 600px"
+                      style={{ objectFit: 'cover' }}
+                      priority={pageIndex < 2}
+                      draggable={false}
+                    />
+                  </div>
+                </TransformComponent>
+              </TransformWrapper>
+            ) : (
+              <div className="relative w-full h-full">
+                <Image
+                  src={`/pamphlet/page-${String(pageIndex + 1).padStart(2, '0')}.webp`}
+                  alt={`パンフ ${pageIndex + 1}ページ`}
+                  fill
+                  sizes="(max-width: 600px) 100vw, 600px"
+                  style={{ objectFit: 'cover' }}
+                  priority={pageIndex < 2}
+                  draggable={false}
+                />
+              </div>
+            )}
             {/* Page edge gradient (subtle paper depth effect) — ズーム中は非表示 */}
             {!isZoomed && (
               <div
