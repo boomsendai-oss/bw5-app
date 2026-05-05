@@ -29,7 +29,10 @@ export async function GET(req: NextRequest) {
     const jackpot_cap = Number(map.lottery_jackpot_cap || 1);
     const normal_cap = Number(map.lottery_normal_cap || 10);
     const cap = jackpot_cap + normal_cap;
-    const sold_out = jackpot_count >= jackpot_cap && normal_count >= normal_cap;
+    // 上限到達してもUI上は売り切れ表示にしない（会場の体験を冷やさないため）。
+    // 当選枠が埋まった場合は POST 側で won=0（はずれ）になるが、スピンは引き続き可能。
+    // 完全に終了したい場合は admin で lottery_active を 0 にする運用。
+    const sold_out = false;
 
     const fingerprint = req.nextUrl.searchParams.get('fingerprint');
     let entry = null;
