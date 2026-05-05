@@ -339,7 +339,7 @@ export default function LotterySection() {
               <div className="px-4 py-3">
                 <div className="text-[10px] font-bold tracking-widest uppercase text-orange-600">PRIZE</div>
                 <div className="text-base font-black text-gray-900 mt-0.5">
-                  {stage === 'show' || stage === 'closed' ? 'MCから何か発表があるかも…👀' : '当日のお楽しみ 🤫'}
+                  {stage === 'show' || stage === 'closed' ? 'もう一度チャンス！MCから新しいキーワード発表 🎯' : '当日のお楽しみ 🤫'}
                 </div>
               </div>
             </div>
@@ -417,7 +417,7 @@ export default function LotterySection() {
             ) : !status.active ? (
               <div className="rounded-2xl px-4 py-4 text-center" style={{ background: 'rgba(0,0,0,0.2)' }}>
                 <div className="text-sm font-bold text-white">受付待機中</div>
-                <div className="text-[11px] text-white/70 mt-1">MCの合図でキーワードを発表します！</div>
+                <div className="text-[11px] text-white/70 mt-1">MCから新しいキーワードが発表されます！</div>
               </div>
             ) : phase === 'spinning' ? (
               <SpinningView pendingReady={!!pendingResult} onStop={stopSpin} />
