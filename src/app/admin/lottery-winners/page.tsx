@@ -8,6 +8,7 @@ interface Winner {
   fingerprint: string;
   ip: string;
   prize_name: string;
+  prize_tier?: 'normal' | 'jackpot';
   winner_name?: string;
   created_at: string;
 }
@@ -82,20 +83,39 @@ export default function LotteryWinnersPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.winners.map((w, i) => (
-                  <tr key={w.id} style={{ borderTop: '1px solid #eee' }}>
-                    <td className="px-3 py-2 font-bold text-orange-600">#{i + 1}</td>
-                    <td className="px-3 py-2 font-bold text-gray-900">
-                      {w.winner_name ? (
-                        w.winner_name
-                      ) : (
-                        <span className="text-[10px] text-gray-400 font-normal">未入力（ID: {w.fingerprint.slice(0, 8)}…）</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-gray-800">{w.prize_name}</td>
-                    <td className="px-3 py-2 text-gray-500 text-[11px]">{w.created_at}</td>
-                  </tr>
-                ))}
+                {data.winners.map((w, i) => {
+                  const isJackpot = w.prize_tier === 'jackpot';
+                  return (
+                    <tr
+                      key={w.id}
+                      style={{
+                        borderTop: '1px solid #eee',
+                        background: isJackpot ? 'linear-gradient(90deg, #fffbeb 0%, #fef3c7 100%)' : undefined,
+                      }}
+                    >
+                      <td className={`px-3 py-2 font-bold ${isJackpot ? 'text-pink-600' : 'text-orange-600'}`}>#{i + 1}</td>
+                      <td className="px-3 py-2 font-bold text-gray-900">
+                        {w.winner_name ? (
+                          <>
+                            {w.winner_name}
+                            {isJackpot && (
+                              <span
+                                className="ml-2 text-[10px] font-black px-2 py-0.5 rounded-full text-white align-middle"
+                                style={{ background: 'linear-gradient(135deg, #f59e0b, #dc2626)' }}
+                              >
+                                🎊 JACKPOT
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-gray-400 font-normal">未入力（ID: {w.fingerprint.slice(0, 8)}…）</span>
+                        )}
+                      </td>
+                      <td className={`px-3 py-2 ${isJackpot ? 'text-pink-700 font-bold' : 'text-gray-800'}`}>{w.prize_name}</td>
+                      <td className="px-3 py-2 text-gray-500 text-[11px]">{w.created_at}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           ) : (

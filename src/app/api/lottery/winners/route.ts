@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const winners = await getAll(
-      "SELECT id, fingerprint, ip, prize_name, winner_name, created_at FROM lottery_entries WHERE won = 1 ORDER BY created_at ASC"
+      "SELECT id, fingerprint, ip, prize_name, prize_tier, winner_name, created_at FROM lottery_entries WHERE won = 1 ORDER BY created_at ASC"
     );
     const total = await getOne('SELECT COUNT(*) as c FROM lottery_entries');
     const totalEntries = Number(total?.c ?? 0);
