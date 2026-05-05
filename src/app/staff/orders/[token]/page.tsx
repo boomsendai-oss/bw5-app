@@ -22,6 +22,7 @@ interface Winner {
   id: number;
   fingerprint: string;
   prize_name: string;
+  prize_tier?: 'normal' | 'jackpot';
   winner_name?: string;
   created_at: string;
 }
@@ -217,18 +218,40 @@ export default function StaffOrdersPage() {
           <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.95)' }}>
             {data && data.winners.length > 0 ? (
               <ul>
-                {data.winners.map((w, i) => (
-                  <li key={w.id} className="px-4 py-3 flex items-center gap-3" style={{ borderTop: '1px solid #eee' }}>
-                    <span className="text-lg font-black text-orange-600 w-8 shrink-0">#{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-gray-900">
-                        {w.winner_name ? w.winner_name : <span className="text-gray-400 text-xs">名前未入力</span>}
+                {data.winners.map((w, i) => {
+                  const isJackpot = w.prize_tier === 'jackpot';
+                  return (
+                    <li
+                      key={w.id}
+                      className="px-4 py-3 flex items-center gap-3"
+                      style={{
+                        borderTop: '1px solid #eee',
+                        background: isJackpot ? 'linear-gradient(90deg, #fffbeb 0%, #fef3c7 100%)' : undefined,
+                      }}
+                    >
+                      <span className={`text-lg font-black w-8 shrink-0 ${isJackpot ? 'text-pink-600' : 'text-orange-600'}`}>#{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-gray-900">
+                            {w.winner_name ? w.winner_name : <span className="text-gray-400 text-xs">名前未入力</span>}
+                          </span>
+                          {isJackpot && (
+                            <span
+                              className="text-[10px] font-black px-2 py-0.5 rounded-full text-white"
+                              style={{ background: 'linear-gradient(135deg, #f59e0b, #dc2626)' }}
+                            >
+                              🎊 JACKPOT
+                            </span>
+                          )}
+                        </div>
+                        <div className={`text-[11px] mt-0.5 ${isJackpot ? 'text-pink-700 font-bold' : 'text-gray-700'}`}>
+                          {w.prize_name}
+                        </div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">{w.created_at}</div>
                       </div>
-                      <div className="text-[11px] text-gray-700 mt-0.5">{w.prize_name}</div>
-                      <div className="text-[10px] text-gray-400 mt-0.5">{w.created_at}</div>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
               <div className="text-center py-10 text-gray-500">
