@@ -131,16 +131,34 @@ export async function POST(req: NextRequest) {
       'SELECT id, won, prize_name FROM lottery_entries WHERE fingerprint = ?',
       [fingerprint]
     );
+    const retryEnabled = m.lottery_retry_enabled === '1';
     if (existing) {
-      return NextResponse.json(
-        {
-          error: 'すでに参加済みです',
-          already: true,
-          won: existing.won === 1,
-          prize_name: existing.prize_name,
-        },
-        { status: 409 }
-      );
+      // すでに当選済みの人は再挑戦不可
+      if (existing.won === 1) {
+        return NextResponse.json(
+          {
+            error: 'すでに当選済みです',
+            already: true,
+            won: true,
+            prize_name: existing.prize_name,
+          },
+          { status: 409 }
+        );
+      }
+      // ハズレた人 → retryEnabled=1 のときだけ再挑戦OK
+      if (!retryEnabled) {
+        return NextResponse.json(
+          {
+            error: 'すでに参加済みです',
+            already: true,
+            won: false,
+            prize_name: existing.prize_name,
+          },
+          { status: 409 }
+        );
+      }
+      // 古いハズレ記録を削除して新しい挑戦を許可
+      await execute('DELETE FROM lottery_entries WHERE fingerprint = ? AND won = 0', [fingerprint]);
     }
 
     // Get IP for logging
