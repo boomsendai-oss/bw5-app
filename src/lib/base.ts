@@ -22,7 +22,9 @@ const CLIENT_SECRET = process.env.BASE_CLIENT_SECRET || '';
 
 // ========== OAuth helpers ==========
 
-export function buildAuthorizeUrl(scope = 'read_users read_items read_orders') {
+export function buildAuthorizeUrl(
+  scope = 'read_users read_items read_orders write_items'
+) {
   const u = new URL(`${OAUTH_BASE}/authorize`);
   u.searchParams.set('response_type', 'code');
   u.searchParams.set('client_id', CLIENT_ID);
@@ -222,6 +224,76 @@ export async function fetchItem(itemId: number): Promise<BaseItem | null> {
 export async function isAuthorized(): Promise<boolean> {
   const token = await getValidAccessToken();
   return !!token;
+}
+
+// ========== Items API (write) ==========
+
+/**
+ * 商品の説明 (detail) を更新する
+ * https://developers.thebase.in/docs/api/items#operation/edit
+ */
+export async function updateItemDetail(
+  itemId: number,
+  detail: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  const token = await getValidAccessToken();
+  if (!token) return { success: false, error: 'not authorized' };
+
+  const body = new URLSearchParams();
+  body.set('item_id', String(itemId));
+  body.set('detail', detail);
+
+  const res = await fetch(`${BASE_API}/items/edit`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    return { success: false, error: `${res.status}: ${errText.slice(0, 200)}` };
+  }
+  return { success: true };
+}
+
+/**
+ * 商品の汎用フィールド更新（title, detail, price, stock など）
+ */
+export async function updateItem(
+  itemId: number,
+  fields: Partial<{
+    title: string;
+    detail: string;
+    price: number;
+    stock: number;
+    visible: number;
+    list_order: number;
+  }>
+): Promise<{ success: true } | { success: false; error: string }> {
+  const token = await getValidAccessToken();
+  if (!token) return { success: false, error: 'not authorized' };
+
+  const body = new URLSearchParams();
+  body.set('item_id', String(itemId));
+  for (const [k, v] of Object.entries(fields)) {
+    if (v !== undefined) body.set(k, String(v));
+  }
+
+  const res = await fetch(`${BASE_API}/items/edit`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    return { success: false, error: `${res.status}: ${errText.slice(0, 200)}` };
+  }
+  return { success: true };
 }
 
 /**
