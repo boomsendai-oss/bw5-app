@@ -240,6 +240,9 @@ function MerchTab() {
 
   return (
     <>
+      {/* BASE shop banner — post-event continued sales */}
+      <BaseShopSection />
+
       {/* Pickup info banner — varies by mode (pre / during / closed) */}
       <div
         className="mb-4 rounded-xl px-3 py-2.5 flex gap-2 items-start"
@@ -1343,5 +1346,166 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
         )}
       </motion.div>
     </motion.div>
+  );
+}
+
+// ════════════════════════════════════════
+// BASE Shop Section (post-event continued sales)
+// ════════════════════════════════════════
+
+interface BaseProduct {
+  item_id: number;
+  title: string;
+  price: number;
+  stock: number;
+  sold_out: boolean;
+  image_url: string;
+  url: string;
+  variations: { id: number; name: string; stock: number }[];
+}
+
+function BaseShopSection() {
+  const [products, setProducts] = useState<BaseProduct[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/base-products")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.products) {
+          // 「BW5」がタイトル先頭にある商品のみ抽出。なければ全商品を表示しない（バナーのみ表示）
+          const filtered = data.products.filter((p: BaseProduct) =>
+            /^BW5/i.test(p.title)
+          );
+          setProducts(filtered);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  if (!loaded) return null;
+
+  // 何もBW5商品が無ければシンプルバナーだけ
+  if (products.length === 0) {
+    return (
+      <a
+        href="https://nitroash.thebase.in"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block mb-4 rounded-2xl overflow-hidden"
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(220,76,4,0.25), rgba(242,122,26,0.15))",
+          border: "1px solid rgba(242,122,26,0.5)",
+        }}
+      >
+        <div className="px-4 py-3 flex items-center gap-3">
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+            style={{ background: "rgba(255,255,255,0.1)" }}
+          >
+            🛍
+          </div>
+          <div className="flex-1">
+            <div className="text-[10px] tracking-widest text-white/70 uppercase font-bold">
+              ONLINE STORE
+            </div>
+            <div className="text-sm font-black text-white">
+              NITROASH ストアで継続販売中
+            </div>
+            <div className="text-[10px] text-white/60 mt-0.5">
+              再販・追加販売はこちらから
+            </div>
+          </div>
+          <div className="text-white/70">→</div>
+        </div>
+      </a>
+    );
+  }
+
+  return (
+    <div className="mb-5">
+      <div
+        className="rounded-2xl overflow-hidden"
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(220,76,4,0.20), rgba(242,122,26,0.10))",
+          border: "1px solid rgba(242,122,26,0.5)",
+        }}
+      >
+        <div className="px-4 pt-3 pb-2 flex items-center gap-2">
+          <div className="text-[10px] tracking-widest text-orange-200/90 font-bold">
+            🛍 ONLINE STORE — 継続販売中
+          </div>
+          <a
+            href="https://nitroash.thebase.in"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-auto text-[10px] text-white/70 underline"
+          >
+            すべて見る
+          </a>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 px-3 pb-3">
+          {products.map((p) => (
+            <a
+              key={p.item_id}
+              href={p.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block rounded-xl overflow-hidden bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+            >
+              <div
+                className="relative w-full"
+                style={{ aspectRatio: "1 / 1", background: "rgba(0,0,0,0.3)" }}
+              >
+                {p.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.image_url}
+                    alt={p.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-3xl">
+                    🛍
+                  </div>
+                )}
+                {p.sold_out && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                    <span className="text-xs font-black text-white tracking-widest">
+                      SOLD OUT
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="px-2.5 py-2">
+                <div className="text-[11px] font-bold text-white truncate">
+                  {p.title}
+                </div>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-[12px] font-black text-orange-300">
+                    ¥{p.price.toLocaleString()}
+                  </span>
+                  {!p.sold_out && (
+                    <span
+                      className="text-[9px] px-1.5 py-0.5 rounded-full font-bold"
+                      style={{
+                        background: "rgba(255,255,255,0.15)",
+                        color: "white",
+                      }}
+                    >
+                      購入する →
+                    </span>
+                  )}
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
