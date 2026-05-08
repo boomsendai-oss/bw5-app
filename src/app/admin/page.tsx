@@ -33,7 +33,8 @@ interface MusicRelease {
   youtube_music_url: string; release_at: string; sort_order: number;
 }
 interface VideoOrder {
-  id: number; buyer_name: string; email: string; payment_method: string;
+  id: number; buyer_name: string; email: string; phone?: string; note?: string;
+  payment_method: string;
   status: string; created_at: string;
 }
 interface VoteCandidate {
@@ -1178,12 +1179,28 @@ function OrdersTab({ notify }: { notify: (m: string) => void }) {
     }
   };
 
+  const updateVideoStatus = async (id: number, status: string) => {
+    const res = await fetch('/api/video-orders', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status }),
+    });
+    if (res.ok) {
+      notify('更新しました');
+      load();
+    } else {
+      notify('更新に失敗しました');
+    }
+  };
+
   const statusColor = (status: string) => {
     switch (status) {
       case 'paid': return '#22c55e';
+      case 'delivered': return '#0ea5e9';
       case 'pending_cash': return '#f4a261';
       case 'awaiting_payment': return '#eab308';
       case 'pending': return '#f4a261';
+      case 'waiting': return '#eab308';
       case 'cancelled': return '#ef4444';
       default: return 'var(--text-secondary)';
     }
@@ -1191,15 +1208,18 @@ function OrdersTab({ notify }: { notify: (m: string) => void }) {
   const statusLabel = (status: string) => {
     switch (status) {
       case 'paid': return '支払済';
+      case 'delivered': return '配信済';
       case 'pending_cash': return '当日現金';
       case 'awaiting_payment': return '決済待ち';
       case 'pending': return '未払い';
+      case 'waiting': return '予約受付中';
       case 'cancelled': return 'キャンセル';
       default: return status;
     }
   };
-  const isPaid = (s: string) => s === 'paid';
-  const isPending = (s: string) => s === 'pending_cash' || s === 'awaiting_payment' || s === 'pending';
+  const isPaid = (s: string) => s === 'paid' || s === 'delivered';
+  const isPending = (s: string) =>
+    s === 'pending_cash' || s === 'awaiting_payment' || s === 'pending' || s === 'waiting';
 
   type CombinedOrder = {
     id: string; rawId: number; type: 'merch' | 'video'; typeLabel: string;
@@ -1221,7 +1241,8 @@ function OrdersTab({ notify }: { notify: (m: string) => void }) {
     ...(orderType === 'all' || orderType === 'video' ? videoOrders.map(o => ({
       id: `V-${o.id}`, rawId: o.id, type: 'video' as const, typeLabel: '映像',
       buyer_name: o.buyer_name,
-      detail: o.email, payment_method: o.payment_method,
+      detail: [o.email, o.phone].filter(Boolean).join(' / '),
+      payment_method: o.payment_method,
       status: o.status, created_at: o.created_at,
     })) : []),
   ]
@@ -1236,6 +1257,7 @@ function OrdersTab({ notify }: { notify: (m: string) => void }) {
   const pmLabel = (pm: string) => {
     if (pm === 'cash_onsite') return '当日現金';
     if (pm === 'online_square') return 'Square決済';
+    if (pm === 'online_video') return 'オンライン';
     return pm;
   };
   const totalPending = merchOrders.filter(o => isPending(o.status)).length +
@@ -1334,6 +1356,42 @@ function OrdersTab({ notify }: { notify: (m: string) => void }) {
                         className="text-xs px-2 py-0.5 rounded font-medium text-white"
                         style={{ background: '#ef4444' }}
                       >取消</button>
+                    </div>
+                  )}
+                  {o.type === 'video' && (
+                    <div className="flex gap-1 flex-wrap">
+                      {isPending(o.status) && (
+                        <button
+                          onClick={() => updateVideoStatus(o.rawId, 'paid')}
+                          className="text-xs px-2 py-0.5 rounded font-medium text-white"
+                          style={{ background: '#22c55e' }}
+                        >支払済</button>
+                      )}
+                      {o.status === 'paid' && (
+                        <button
+                          onClick={() => updateVideoStatus(o.rawId, 'delivered')}
+                          className="text-xs px-2 py-0.5 rounded font-medium text-white"
+                          style={{ background: '#0ea5e9' }}
+                        >配信済</button>
+                      )}
+                      {o.status !== 'cancelled' && (
+                        <button
+                          onClick={() => {
+                            if (confirm('この予約をキャンセル扱いにしますか？')) {
+                              updateVideoStatus(o.rawId, 'cancelled');
+                            }
+                          }}
+                          className="text-xs px-2 py-0.5 rounded font-medium text-white"
+                          style={{ background: '#ef4444' }}
+                        >取消</button>
+                      )}
+                      {o.status === 'cancelled' && (
+                        <button
+                          onClick={() => updateVideoStatus(o.rawId, 'waiting')}
+                          className="text-xs px-2 py-0.5 rounded font-medium text-white"
+                          style={{ background: '#6b7280' }}
+                        >復活</button>
+                      )}
                     </div>
                   )}
                 </td>
