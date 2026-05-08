@@ -606,6 +606,83 @@ export default function Home() {
                 </div>
               </motion.div>
             )}
+
+            {/* ── Post-event Big CTAs (closed のみ) ── */}
+            {stage === 'closed' && (
+              <motion.div
+                className="w-full mt-4 space-y-3"
+                style={{ maxWidth: "340px" }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.4 }}
+              >
+                {/* 🎬 映像データ予約 — 一番目立つ位置にデカデカ */}
+                <a
+                  href="#merch"
+                  className="block rounded-2xl overflow-hidden relative"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%)",
+                    boxShadow:
+                      "0 8px 24px rgba(99,102,241,0.35), 0 4px 8px rgba(236,72,153,0.20)",
+                  }}
+                >
+                  <div className="px-5 py-5 text-center">
+                    <div className="text-[10px] tracking-[0.3em] text-white/85 font-bold mb-1">
+                      VIDEO DATA · PRE-ORDER
+                    </div>
+                    <div className="text-2xl font-black text-white mb-1.5 leading-tight">
+                      🎬 映像データ販売<br />予約受付中
+                    </div>
+                    <div className="text-[11px] text-white/85 mb-3 leading-relaxed">
+                      BW5 全演目の映像データ ¥3,000<br />
+                      <span className="text-white/70">受付期限 5/19(火) 23:59</span>
+                    </div>
+                    <div
+                      className="inline-block px-6 py-2 rounded-full text-sm font-black"
+                      style={{
+                        background: "#fff",
+                        color: "#6366f1",
+                      }}
+                    >
+                      予約する →
+                    </div>
+                  </div>
+                </a>
+
+                {/* 🛍 物販エントリー */}
+                <a
+                  href="#merch"
+                  className="block rounded-2xl overflow-hidden"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(220,76,4,0.30), rgba(242,122,26,0.18))",
+                    border: "1px solid rgba(242,122,26,0.5)",
+                  }}
+                >
+                  <div className="px-4 py-3.5 flex items-center gap-3">
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+                      style={{ background: "rgba(255,255,255,0.15)" }}
+                    >
+                      🛍
+                    </div>
+                    <div className="flex-1 text-left">
+                      <div className="text-[10px] tracking-widest text-white/70 uppercase font-bold">
+                        ONLINE STORE
+                      </div>
+                      <div className="text-sm font-black text-white">
+                        物販ストアで継続販売中
+                      </div>
+                      <div className="text-[10px] text-white/65 mt-0.5">
+                        Tシャツ・キャップ・トート ほか
+                      </div>
+                    </div>
+                    <div className="text-white/70 text-xl">→</div>
+                  </div>
+                </a>
+              </motion.div>
+            )}
           </div>
 
           {/* ── Quick Access Cards ── */}
@@ -752,24 +829,48 @@ export default function Home() {
         )}
 
         {/* ── Sections (visibility-controlled) ── */}
-        <div className="section-divider" />
-        {isSectionVisible('schedule') ? <ScheduleSection /> : <LockedSection id="schedule" {...SECTION_LOCKED_INFO.schedule} />}
-        <div className="section-divider" />
-        {isSectionVisible('pamphlet') ? <PamphletSection /> : <LockedSection id="pamphlet" {...SECTION_LOCKED_INFO.pamphlet} />}
-        <div className="section-divider" />
-        {(isSectionVisible('merch') || isSectionVisible('video')) ? (
-          <ShopSection />
+        {stage === 'closed' ? (
+          // 終演後は物販と映像販売を最優先に
+          <>
+            <div className="section-divider" />
+            {(isSectionVisible('merch') || isSectionVisible('video')) ? (
+              <ShopSection />
+            ) : (
+              <LockedSection id="merch" {...SECTION_LOCKED_INFO.merch} />
+            )}
+            <div className="section-divider" />
+            {isSectionVisible('music') ? <MusicSection /> : <LockedSection id="music" {...SECTION_LOCKED_INFO.music} />}
+            <div className="section-divider" />
+            {isSectionVisible('schedule') ? <ScheduleSection /> : <LockedSection id="schedule" {...SECTION_LOCKED_INFO.schedule} />}
+            <div className="section-divider" />
+            {isSectionVisible('pamphlet') ? <PamphletSection /> : <LockedSection id="pamphlet" {...SECTION_LOCKED_INFO.pamphlet} />}
+            <div className="section-divider" />
+            {isSectionVisible('vote') ? <VoteSection /> : <LockedSection id="vote" {...SECTION_LOCKED_INFO.vote} />}
+            <div className="section-divider" />
+            {isSectionVisible('sns') ? <SNSSection /> : <LockedSection id="sns" {...SECTION_LOCKED_INFO.sns} />}
+          </>
         ) : (
-          <LockedSection id="merch" {...SECTION_LOCKED_INFO.merch} />
+          <>
+            <div className="section-divider" />
+            {isSectionVisible('schedule') ? <ScheduleSection /> : <LockedSection id="schedule" {...SECTION_LOCKED_INFO.schedule} />}
+            <div className="section-divider" />
+            {isSectionVisible('pamphlet') ? <PamphletSection /> : <LockedSection id="pamphlet" {...SECTION_LOCKED_INFO.pamphlet} />}
+            <div className="section-divider" />
+            {(isSectionVisible('merch') || isSectionVisible('video')) ? (
+              <ShopSection />
+            ) : (
+              <LockedSection id="merch" {...SECTION_LOCKED_INFO.merch} />
+            )}
+            <div className="section-divider" />
+            {isSectionVisible('music') ? <MusicSection /> : <LockedSection id="music" {...SECTION_LOCKED_INFO.music} />}
+            <div className="section-divider" />
+            {(stage === 'show' || stage === 'open') && <LotterySection />}
+            <div className="section-divider" />
+            {isSectionVisible('vote') ? <VoteSection /> : <LockedSection id="vote" {...SECTION_LOCKED_INFO.vote} />}
+            <div className="section-divider" />
+            {isSectionVisible('sns') ? <SNSSection /> : <LockedSection id="sns" {...SECTION_LOCKED_INFO.sns} />}
+          </>
         )}
-        <div className="section-divider" />
-        {isSectionVisible('music') ? <MusicSection /> : <LockedSection id="music" {...SECTION_LOCKED_INFO.music} />}
-        <div className="section-divider" />
-        {(stage === 'show' || stage === 'open') && <LotterySection />}
-        <div className="section-divider" />
-        {isSectionVisible('vote') ? <VoteSection /> : <LockedSection id="vote" {...SECTION_LOCKED_INFO.vote} />}
-        <div className="section-divider" />
-        {isSectionVisible('sns') ? <SNSSection /> : <LockedSection id="sns" {...SECTION_LOCKED_INFO.sns} />}
         <Footer />
       </main>
     </>
