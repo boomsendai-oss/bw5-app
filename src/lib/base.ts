@@ -22,7 +22,7 @@ const CLIENT_SECRET = process.env.BASE_CLIENT_SECRET || '';
 
 // ========== OAuth helpers ==========
 
-export function buildAuthorizeUrl(scope = 'read_shop read_items read_orders') {
+export function buildAuthorizeUrl(scope = 'read_users read_items read_orders') {
   const u = new URL(`${OAUTH_BASE}/authorize`);
   u.searchParams.set('response_type', 'code');
   u.searchParams.set('client_id', CLIENT_ID);
