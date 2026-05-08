@@ -579,7 +579,7 @@ export default function Home() {
                   <div className="relative w-full" style={{ aspectRatio: "16 / 9", background: "rgba(0,0,0,0.3)" }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={settings.closing_photo_url || "/images/closing_photo.png"}
+                      src={settings.closing_photo_url || "/images/closing_photo.jpg"}
                       alt="ありがとうございました"
                       className="absolute inset-0 w-full h-full"
                       style={{ objectFit: "cover" }}
