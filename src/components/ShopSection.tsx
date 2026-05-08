@@ -176,6 +176,19 @@ const MODE_COPY: Record<ShopMode, {
 export default function ShopSection() {
   const sectionRef = useRef(null);
   const isInView = useInView(sectionRef, { once: true, margin: "-80px" });
+  const [mode, setMode] = useState<ShopMode>("pre");
+  useEffect(() => {
+    const update = () => setMode(getShopMode());
+    update();
+    const t = setInterval(update, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  // closed モードでは hero に全機能集約済みなので、
+  // モーダル mount 用にだけ MerchTab を裏で生かす（フルスクリーンモーダルだけ機能する）
+  if (mode === "closed") {
+    return <MerchTab />;
+  }
 
   return (
     <section id="merch" className="py-16 px-4 sm:px-6">
@@ -236,7 +249,35 @@ function MerchTab() {
   };
   useEffect(() => { load(); }, []);
 
+  // closed モード時に hero の Big CTA から直接モーダルを開けるように、
+  // window レベルのカスタムイベントを listen する
+  useEffect(() => {
+    const handler = () => {
+      const videoItem = items.find((i) => i.id === VIDEO_PREORDER_ID);
+      if (videoItem) setVideoModal(videoItem);
+    };
+    window.addEventListener("open-video-preorder", handler);
+    return () => window.removeEventListener("open-video-preorder", handler);
+  }, [items]);
+
   const copy = MODE_COPY[mode];
+  const isClosed = mode === "closed";
+
+  // closed モードでは既存の物販グリッドを非表示。
+  // BASE 商品セクションは hero に移動済なのでここでも非表示。
+  // Video Preorder modal は event listener 経由で開けるよう mount だけ続ける。
+  if (isClosed) {
+    return (
+      <>
+        {videoModal && (
+          <VideoPreorderModal
+            item={videoModal}
+            onClose={() => setVideoModal(null)}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <>
@@ -1364,7 +1405,26 @@ interface BaseProduct {
   variations: { id: number; name: string; stock: number }[];
 }
 
-function BaseShopSection() {
+// BW5関連商品を識別するためのキーワード集
+// BASE側の命名にあわせて柔軟に判定する
+const BW5_PRODUCT_PATTERNS: RegExp[] = [
+  /^BW5/i,
+  /BW5/i,
+  /^BOOM\s*シグネチャー/i,
+  /^(BM|<BM>)\s*フェルト/i,
+  /シグネチャーTシャツ/i,
+  /フェルトロゴキャップ/i,
+  /ミニトート/i,
+  /きらきらシール/i,
+  /キラキラシール/i,
+  /BOOM\s*WOP/i,
+];
+
+function isBW5Product(title: string): boolean {
+  return BW5_PRODUCT_PATTERNS.some((re) => re.test(title));
+}
+
+export function BaseShopSection() {
   const [products, setProducts] = useState<BaseProduct[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -1373,9 +1433,9 @@ function BaseShopSection() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.products) {
-          // 「BW5」がタイトル先頭にある商品のみ抽出。なければ全商品を表示しない（バナーのみ表示）
+          // BW5関連キーワードに該当する商品のみ抽出
           const filtered = data.products.filter((p: BaseProduct) =>
-            /^BW5/i.test(p.title)
+            isBW5Product(p.title)
           );
           setProducts(filtered);
         }

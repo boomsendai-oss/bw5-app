@@ -7,7 +7,7 @@ import { timetableData, parseTime, getEndTime } from "@/lib/timetableData";
 import { getStage, isUnlockedAtStage, type Stage } from "@/lib/stage";
 import Navigation from "@/components/Navigation";
 import ScheduleSection from "@/components/ScheduleSection";
-import ShopSection from "@/components/ShopSection";
+import ShopSection, { BaseShopSection } from "@/components/ShopSection";
 import MusicSection from "@/components/MusicSection";
 import VoteSection from "@/components/VoteSection";
 import SNSSection from "@/components/SNSSection";
@@ -616,10 +616,15 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
               >
-                {/* 🎬 映像データ予約 — 一番目立つ位置にデカデカ */}
-                <a
-                  href="#merch"
-                  className="block rounded-2xl overflow-hidden relative"
+                {/* 🎬 映像データ予約 — クリックで直接モーダルを開く */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof window !== "undefined") {
+                      window.dispatchEvent(new Event("open-video-preorder"));
+                    }
+                  }}
+                  className="w-full block rounded-2xl overflow-hidden relative text-left"
                   style={{
                     background:
                       "linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%)",
@@ -648,39 +653,10 @@ export default function Home() {
                       予約する →
                     </div>
                   </div>
-                </a>
+                </button>
 
-                {/* 🛍 物販エントリー */}
-                <a
-                  href="#merch"
-                  className="block rounded-2xl overflow-hidden"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, rgba(220,76,4,0.30), rgba(242,122,26,0.18))",
-                    border: "1px solid rgba(242,122,26,0.5)",
-                  }}
-                >
-                  <div className="px-4 py-3.5 flex items-center gap-3">
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                      style={{ background: "rgba(255,255,255,0.15)" }}
-                    >
-                      🛍
-                    </div>
-                    <div className="flex-1 text-left">
-                      <div className="text-[10px] tracking-widest text-white/70 uppercase font-bold">
-                        ONLINE STORE
-                      </div>
-                      <div className="text-sm font-black text-white">
-                        物販ストアで継続販売中
-                      </div>
-                      <div className="text-[10px] text-white/65 mt-0.5">
-                        Tシャツ・キャップ・トート ほか
-                      </div>
-                    </div>
-                    <div className="text-white/70 text-xl">→</div>
-                  </div>
-                </a>
+                {/* 🛍 BASE オンラインストア商品をインライン表示 */}
+                <BaseShopSection />
               </motion.div>
             )}
           </div>
