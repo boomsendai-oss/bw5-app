@@ -616,7 +616,7 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
               >
-                {/* 🎬 映像データ予約 — クリックで直接モーダルを開く */}
+                {/* 🎬 映像データ予約 — DVDケース画像付き */}
                 <button
                   type="button"
                   onClick={() => {
@@ -632,25 +632,66 @@ export default function Home() {
                       "0 8px 24px rgba(99,102,241,0.35), 0 4px 8px rgba(236,72,153,0.20)",
                   }}
                 >
-                  <div className="px-5 py-5 text-center">
-                    <div className="text-[10px] tracking-[0.3em] text-white/85 font-bold mb-1">
-                      VIDEO DATA · PRE-ORDER
+                  {/* 装飾用の光彩 */}
+                  <div
+                    aria-hidden
+                    className="absolute pointer-events-none"
+                    style={{
+                      top: "-30%",
+                      right: "-10%",
+                      width: "60%",
+                      height: "150%",
+                      background:
+                        "radial-gradient(ellipse, rgba(255,255,255,0.25), transparent 70%)",
+                      filter: "blur(8px)",
+                    }}
+                  />
+
+                  <div className="relative flex items-stretch">
+                    {/* テキストエリア */}
+                    <div className="flex-1 px-4 pt-4 pb-4 min-w-0">
+                      <div className="text-[9px] tracking-[0.25em] text-white/85 font-bold mb-1">
+                        VIDEO DATA · PRE-ORDER
+                      </div>
+                      <div className="text-[19px] font-black text-white leading-tight mb-1">
+                        映像データ販売<br />
+                        <span className="text-white">予約受付中</span>
+                      </div>
+                      <div className="text-[10px] text-white/85 mb-2.5 leading-snug">
+                        BW5 全演目 ¥3,000<br />
+                        <span className="text-white/70">期限 5/19(火) 23:59</span>
+                      </div>
+                      <div
+                        className="inline-block px-4 py-1.5 rounded-full text-[12px] font-black"
+                        style={{
+                          background: "#fff",
+                          color: "#6366f1",
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                        }}
+                      >
+                        予約する →
+                      </div>
                     </div>
-                    <div className="text-2xl font-black text-white mb-1.5 leading-tight">
-                      🎬 映像データ販売<br />予約受付中
-                    </div>
-                    <div className="text-[11px] text-white/85 mb-3 leading-relaxed">
-                      BW5 全演目の映像データ ¥3,000<br />
-                      <span className="text-white/70">受付期限 5/19(火) 23:59</span>
-                    </div>
+
+                    {/* DVDケース画像 */}
                     <div
-                      className="inline-block px-6 py-2 rounded-full text-sm font-black"
-                      style={{
-                        background: "#fff",
-                        color: "#6366f1",
-                      }}
+                      className="relative shrink-0 self-stretch"
+                      style={{ width: "130px" }}
                     >
-                      予約する →
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src="/merch/video_data_cutout.png"
+                        alt="BW5 映像データ DVDケース"
+                        className="absolute"
+                        style={{
+                          right: "-10px",
+                          top: "50%",
+                          transform: "translateY(-50%) rotate(-5deg)",
+                          width: "150px",
+                          height: "auto",
+                          filter: "drop-shadow(0 8px 16px rgba(0,0,0,0.4))",
+                        }}
+                      />
                     </div>
                   </div>
                 </button>
