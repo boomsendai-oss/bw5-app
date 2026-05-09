@@ -1446,11 +1446,14 @@ export function BaseShopSection() {
 
   if (!loaded) return null;
 
+  // BW5特集ページのURL（カテゴリーページ・複数商品をまとめてカートに入れるため）
+  const BW5_CATEGORY_URL = "https://nitroash.thebase.in/categories/7331140";
+
   // 何もBW5商品が無ければシンプルバナーだけ
   if (products.length === 0) {
     return (
       <a
-        href="https://nitroash.thebase.in"
+        href={BW5_CATEGORY_URL}
         target="_blank"
         rel="noopener noreferrer"
         className="block mb-4 rounded-2xl overflow-hidden"
@@ -1472,7 +1475,7 @@ export function BaseShopSection() {
               ONLINE STORE
             </div>
             <div className="text-sm font-black text-white">
-              NITROASH ストアで継続販売中
+              BW5 特集ページで継続販売中
             </div>
             <div className="text-[10px] text-white/60 mt-0.5">
               再販・追加販売はこちらから
@@ -1499,12 +1502,12 @@ export function BaseShopSection() {
             🛍 ONLINE STORE — 継続販売中
           </div>
           <a
-            href="https://nitroash.thebase.in"
+            href={BW5_CATEGORY_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="ml-auto text-[10px] text-white/70 underline"
           >
-            すべて見る
+            特集ページ
           </a>
         </div>
 
@@ -1565,6 +1568,32 @@ export function BaseShopSection() {
             </a>
           ))}
         </div>
+
+        {/* 特集ページへの誘導 — 複数商品をまとめてカートに入れたい人向け */}
+        <a
+          href={BW5_CATEGORY_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block mx-3 mb-3 rounded-xl overflow-hidden"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.08))",
+            border: "1px solid rgba(255,255,255,0.25)",
+          }}
+        >
+          <div className="px-3 py-2.5 flex items-center gap-2">
+            <span className="text-base">📦</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-bold text-white">
+                まとめて買うなら BW5 特集ページ
+              </div>
+              <div className="text-[9px] text-white/65 mt-0.5">
+                複数商品を一度にカートへ・送料節約
+              </div>
+            </div>
+            <div className="text-white/70 text-sm">→</div>
+          </div>
+        </a>
       </div>
     </div>
   );
