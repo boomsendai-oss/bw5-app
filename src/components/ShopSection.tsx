@@ -1424,6 +1424,11 @@ function isBW5Product(title: string): boolean {
   return BW5_PRODUCT_PATTERNS.some((re) => re.test(title));
 }
 
+// 受注販売中のアイテムID（個別バナーで表示するため、通常グリッドからは除外）
+const MADE_TO_ORDER_ITEM_IDS = new Set<number>([144022109]); // フェードグレー
+// 受注締切
+const MADE_TO_ORDER_DEADLINE = new Date("2026-05-17T23:59:00+09:00");
+
 export function BaseShopSection() {
   const [products, setProducts] = useState<BaseProduct[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -1434,8 +1439,10 @@ export function BaseShopSection() {
       .then((data) => {
         if (data?.products) {
           // BW5関連キーワードに該当する商品のみ抽出
-          const filtered = data.products.filter((p: BaseProduct) =>
-            isBW5Product(p.title)
+          // 受注販売アイテムは MadeToOrderBanner 側で表示するためここから除外
+          const filtered = data.products.filter(
+            (p: BaseProduct) =>
+              isBW5Product(p.title) && !MADE_TO_ORDER_ITEM_IDS.has(p.item_id)
           );
           setProducts(filtered);
         }
@@ -1610,5 +1617,129 @@ export function BaseShopSection() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ════════════════════════════════════════
+// Made-to-Order Banner（受注販売中アイテムを大バナーで表示）
+// ════════════════════════════════════════
+
+const MTO_DEADLINE_MS = new Date("2026-05-17T23:59:00+09:00").getTime();
+
+function formatCountdown(now: number): string {
+  const diff = MTO_DEADLINE_MS - now;
+  if (diff <= 0) return "受付終了";
+  const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+  const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  if (days > 0) return `あと ${days}日${hours > 0 ? ` ${hours}時間` : ""}`;
+  return `あと ${hours}時間`;
+}
+
+export function MadeToOrderBanner() {
+  const [item, setItem] = useState<BaseProduct | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    fetch("/api/base-products")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.products) return;
+        const target = data.products.find(
+          (p: BaseProduct) => p.item_id === 144022109 // フェードグレー
+        );
+        if (target) setItem(target);
+      })
+      .catch(() => {});
+  }, []);
+
+  // カウントダウン更新（1分毎）
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60 * 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (!item) return null;
+  const expired = MTO_DEADLINE_MS <= now;
+  const url = `${item.url}${item.url.includes("?") ? "&" : "?"}openExternalBrowser=1`;
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer external"
+      onClick={(e) => {
+        e.preventDefault();
+        window.open(url, "_blank", "noopener,noreferrer");
+      }}
+      className="block rounded-2xl overflow-hidden relative"
+      style={{
+        background:
+          "linear-gradient(135deg, #1f2937 0%, #374151 50%, #4b5563 100%)",
+        boxShadow:
+          "0 8px 24px rgba(31,41,55,0.45), 0 4px 8px rgba(0,0,0,0.30)",
+        border: "1px solid rgba(255,255,255,0.10)",
+      }}
+    >
+      {/* 上部の装飾ストライプ */}
+      <div
+        className="absolute top-0 left-0 right-0"
+        style={{
+          height: "3px",
+          background:
+            "linear-gradient(90deg, #f59e0b 0%, #ef4444 50%, #f59e0b 100%)",
+        }}
+      />
+
+      <div className="relative flex items-stretch">
+        {/* テキストエリア */}
+        <div className="flex-1 px-4 pt-4 pb-4 min-w-0">
+          <div className="text-[9px] tracking-[0.25em] text-orange-300 font-bold mb-1">
+            MADE TO ORDER · 受注販売
+          </div>
+          <div className="text-[18px] font-black text-white leading-tight mb-1">
+            オフィシャルT<br />
+            <span className="text-white">[フェードグレー]</span>
+          </div>
+          <div className="text-[10px] text-white/85 mb-2 leading-snug">
+            ¥3,500 ／ S・M・L・XL・XXL<br />
+            <span className="text-orange-300">5月末〜6月頭お渡し</span>
+          </div>
+          {/* 締切バッジ */}
+          <div
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black"
+            style={{
+              background: expired ? "#6b7280" : "#fff",
+              color: expired ? "#fff" : "#dc2626",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.20)",
+            }}
+          >
+            <span>⏰</span>
+            <span>{expired ? "受付終了" : `5/17締切 · ${formatCountdown(now)}`}</span>
+          </div>
+        </div>
+
+        {/* Tシャツ画像 */}
+        <div
+          className="relative shrink-0 self-stretch"
+          style={{ width: "115px" }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/merch/official_grey.png"
+            alt="BW5 オフィシャルTシャツ フェードグレー"
+            className="absolute"
+            style={{
+              right: "-8px",
+              top: "50%",
+              transform: "translateY(-50%) rotate(3deg)",
+              width: "130px",
+              height: "auto",
+              filter:
+                "drop-shadow(0 8px 14px rgba(0,0,0,0.5)) drop-shadow(0 3px 5px rgba(245,158,11,0.25))",
+            }}
+          />
+        </div>
+      </div>
+    </a>
   );
 }

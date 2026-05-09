@@ -7,7 +7,10 @@ import { timetableData, parseTime, getEndTime } from "@/lib/timetableData";
 import { getStage, isUnlockedAtStage, type Stage } from "@/lib/stage";
 import Navigation from "@/components/Navigation";
 import ScheduleSection from "@/components/ScheduleSection";
-import ShopSection, { BaseShopSection } from "@/components/ShopSection";
+import ShopSection, {
+  BaseShopSection,
+  MadeToOrderBanner,
+} from "@/components/ShopSection";
 import MusicSection from "@/components/MusicSection";
 import VoteSection from "@/components/VoteSection";
 import SNSSection from "@/components/SNSSection";
@@ -696,6 +699,9 @@ export default function Home() {
                     </div>
                   </div>
                 </button>
+
+                {/* 👕 受注販売バナー (フェードグレー Tシャツ・5/17締切) */}
+                <MadeToOrderBanner />
 
                 {/* 🛍 BASE オンラインストア商品をインライン表示 */}
                 <BaseShopSection />
