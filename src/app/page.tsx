@@ -689,7 +689,8 @@ export default function Home() {
                           transform: "translateY(-50%) rotate(-5deg)",
                           width: "150px",
                           height: "auto",
-                          filter: "drop-shadow(0 8px 16px rgba(0,0,0,0.4))",
+                          filter:
+                            "drop-shadow(0 10px 18px rgba(76,29,149,0.55)) drop-shadow(0 4px 6px rgba(190,24,93,0.35))",
                         }}
                       />
                     </div>
