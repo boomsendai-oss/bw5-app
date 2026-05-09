@@ -1447,7 +1447,17 @@ export function BaseShopSection() {
   if (!loaded) return null;
 
   // BW5特集ページのURL（カテゴリーページ・複数商品をまとめてカートに入れるため）
-  const BW5_CATEGORY_URL = "https://nitroash.thebase.in/categories/7331140";
+  // ?openExternalBrowser=1 はLINE等のアプリ内ブラウザでも標準ブラウザで開かせる
+  const BW5_CATEGORY_URL =
+    "https://nitroash.thebase.in/categories/7331140?openExternalBrowser=1";
+
+  // BASE個別商品URLにも openExternalBrowser=1 を付与
+  const withExtBrowser = (url: string) => {
+    if (!url) return url;
+    return url.includes("?")
+      ? `${url}&openExternalBrowser=1`
+      : `${url}?openExternalBrowser=1`;
+  };
 
   // 何もBW5商品が無ければシンプルバナーだけ
   if (products.length === 0) {
@@ -1507,7 +1517,11 @@ export function BaseShopSection() {
         <a
           href={BW5_CATEGORY_URL}
           target="_blank"
-          rel="noopener noreferrer"
+          rel="noopener noreferrer external"
+          onClick={(e) => {
+            e.preventDefault();
+            window.open(BW5_CATEGORY_URL, "_blank", "noopener,noreferrer");
+          }}
           className="block mx-3 mb-3 rounded-xl overflow-hidden"
           style={{
             background:
@@ -1533,9 +1547,17 @@ export function BaseShopSection() {
           {products.map((p) => (
             <a
               key={p.item_id}
-              href={p.url}
+              href={withExtBrowser(p.url)}
               target="_blank"
-              rel="noopener noreferrer"
+              rel="noopener noreferrer external"
+              onClick={(e) => {
+                e.preventDefault();
+                window.open(
+                  withExtBrowser(p.url),
+                  "_blank",
+                  "noopener,noreferrer"
+                );
+              }}
               className="block rounded-xl overflow-hidden bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
             >
               <div
