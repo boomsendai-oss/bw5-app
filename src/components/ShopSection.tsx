@@ -1696,9 +1696,19 @@ export function MadeToOrderBanner() {
           <div className="text-[9px] tracking-[0.25em] text-orange-300 font-bold mb-1">
             MADE TO ORDER · 受注販売
           </div>
-          <div className="text-[18px] font-black text-white leading-tight mb-1">
+          <div className="text-[18px] font-black text-white leading-tight mb-0.5">
             オフィシャルT<br />
             <span className="text-white">[フェードグレー]</span>
+          </div>
+          <div
+            className="inline-block text-[9px] font-black px-2 py-0.5 rounded mb-1.5"
+            style={{
+              background: "linear-gradient(90deg, #f59e0b, #ef4444)",
+              color: "#fff",
+              letterSpacing: "0.05em",
+            }}
+          >
+            🔥 イントラ着用カラー
           </div>
           <div className="text-[10px] text-white/85 mb-2 leading-snug">
             ¥3,500 ／ S・M・L・XL・XXL<br />
