@@ -1458,7 +1458,20 @@ export function BaseShopSection() {
       .finally(() => setLoaded(true));
   }, []);
 
-  if (!loaded) return null;
+  // ロード中は同等サイズのスケルトンを表示してレイアウトずれを防ぐ
+  if (!loaded) {
+    return (
+      <div
+        className="mb-5 rounded-2xl overflow-hidden animate-pulse"
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(220,76,4,0.10), rgba(242,122,26,0.05))",
+          border: "1px solid rgba(242,122,26,0.30)",
+          minHeight: "260px",
+        }}
+      />
+    );
+  }
 
   // BW5特集ページのURL（カテゴリーページ・複数商品をまとめてカートに入れるため）
   // ?openExternalBrowser=1 はLINE等のアプリ内ブラウザでも標準ブラウザで開かせる
@@ -1644,6 +1657,7 @@ function formatCountdown(now: number): string {
 
 export function MadeToOrderBanner() {
   const [item, setItem] = useState<BaseProduct | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -1656,7 +1670,8 @@ export function MadeToOrderBanner() {
         );
         if (target) setItem(target);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoaded(true));
   }, []);
 
   // カウントダウン更新（1分毎）
@@ -1665,6 +1680,20 @@ export function MadeToOrderBanner() {
     return () => clearInterval(t);
   }, []);
 
+  // ロード中は同サイズのスケルトンを表示してレイアウトずれを防ぐ
+  if (!loaded) {
+    return (
+      <div
+        className="rounded-2xl overflow-hidden relative animate-pulse"
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(31,41,55,0.6) 0%, rgba(75,85,99,0.4) 100%)",
+          minHeight: "165px",
+          border: "1px solid rgba(255,255,255,0.10)",
+        }}
+      />
+    );
+  }
   if (!item) return null;
   const expired = MTO_DEADLINE_MS <= now;
   const url = `${item.url}${item.url.includes("?") ? "&" : "?"}openExternalBrowser=1`;

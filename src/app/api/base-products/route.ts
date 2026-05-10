@@ -1,13 +1,28 @@
 import { NextResponse } from 'next/server';
 import { fetchItems, isAuthorized, buildItemUrl } from '@/lib/base';
 
-export const dynamic = 'force-dynamic';
+// 5分キャッシュ — 在庫の即時反映ではなく体感速度を優先
+// 価格や在庫の変更も最大5分で反映される
+export const revalidate = 300;
 
 const SHOP_URL = process.env.BASE_SHOP_URL || 'https://nitroash.thebase.in';
+
+// シンプルなインメモリキャッシュ（ホットなレスポンスを即返す）
+let cache: { data: unknown; expires: number } | null = null;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5分
 
 // GET /api/base-products — 公開用：BASEショップの商品リスト
 export async function GET() {
   try {
+    // インメモリキャッシュ ヒット
+    if (cache && cache.expires > Date.now()) {
+      return NextResponse.json(cache.data, {
+        headers: {
+          'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
+        },
+      });
+    }
+
     const authed = await isAuthorized();
     if (!authed) {
       return NextResponse.json(
@@ -49,7 +64,13 @@ export async function GET() {
         };
       });
 
-    return NextResponse.json({ products, count: products.length });
+    const responseData = { products, count: products.length };
+    cache = { data: responseData, expires: Date.now() + CACHE_TTL_MS };
+    return NextResponse.json(responseData, {
+      headers: {
+        'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
+      },
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'unknown';
     console.error('[base-products] err', msg);
