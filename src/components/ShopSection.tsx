@@ -1438,12 +1438,19 @@ export function BaseShopSection() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.products) {
-          // BW5関連キーワードに該当する商品のみ抽出
+          // すべての公開商品を表示（BW5 + NITROASH アーカイブ含む）
           // 受注販売アイテムは MadeToOrderBanner 側で表示するためここから除外
           const filtered = data.products.filter(
-            (p: BaseProduct) =>
-              isBW5Product(p.title) && !MADE_TO_ORDER_ITEM_IDS.has(p.item_id)
+            (p: BaseProduct) => !MADE_TO_ORDER_ITEM_IDS.has(p.item_id)
           );
+          // BW5 関連商品を上位に並べ替え
+          filtered.sort((a: BaseProduct, b: BaseProduct) => {
+            const aBw5 = isBW5Product(a.title);
+            const bBw5 = isBW5Product(b.title);
+            if (aBw5 && !bBw5) return -1;
+            if (!aBw5 && bBw5) return 1;
+            return 0;
+          });
           setProducts(filtered);
         }
       })
@@ -1516,7 +1523,7 @@ export function BaseShopSection() {
       >
         <div className="px-4 pt-3 pb-2 flex items-center gap-2">
           <div className="text-[10px] tracking-widest text-orange-200/90 font-bold">
-            🛍 ONLINE STORE — 継続販売中
+            🛍 NITROASH STORE — BW5 + アーカイブ
           </div>
         </div>
 
