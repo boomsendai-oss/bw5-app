@@ -1427,7 +1427,7 @@ function isBW5Product(title: string): boolean {
 // 受注販売中のアイテムID（個別バナーで表示するため、通常グリッドからは除外）
 const MADE_TO_ORDER_ITEM_IDS = new Set<number>([144022109]); // フェードグレー
 // 受注締切
-const MADE_TO_ORDER_DEADLINE = new Date("2026-05-17T23:59:00+09:00");
+const MADE_TO_ORDER_DEADLINE = new Date("2026-05-19T23:59:00+09:00");
 
 export function BaseShopSection() {
   const [products, setProducts] = useState<BaseProduct[]>([]);
@@ -1631,7 +1631,7 @@ export function BaseShopSection() {
 // Made-to-Order Banner（受注販売中アイテムを大バナーで表示）
 // ════════════════════════════════════════
 
-const MTO_DEADLINE_MS = new Date("2026-05-17T23:59:00+09:00").getTime();
+const MTO_DEADLINE_MS = new Date("2026-05-19T23:59:00+09:00").getTime();
 
 function formatCountdown(now: number): string {
   const diff = MTO_DEADLINE_MS - now;
@@ -1731,7 +1731,7 @@ export function MadeToOrderBanner() {
             }}
           >
             <span>⏰</span>
-            <span>{expired ? "受付終了" : `5/17締切 · ${formatCountdown(now)}`}</span>
+            <span>{expired ? "受付終了" : `5/19締切 · ${formatCountdown(now)}`}</span>
           </div>
         </div>
 
