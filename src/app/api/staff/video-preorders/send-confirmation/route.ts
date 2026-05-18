@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
         to: r.email,
         buyerName: r.buyer_name,
         preorderId: r.id,
-        merchName: 'BOOM WOP vol.5 フルパフォーマンス映像',
+        // merchName は省略 (email.ts の固定文言を使う)
         price: r.price ?? 3000,
         phone: r.phone ?? undefined,
         createdAt: jstStr,

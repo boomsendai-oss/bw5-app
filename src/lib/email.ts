@@ -154,8 +154,23 @@ interface VideoPreorderEmailParams {
   buyerName: string;
   phone?: string;
   preorderId: number;
-  merchName: string;
+  merchName?: string;       // 省略時は固定文言を使用
   price: number;
+  createdAt?: string;       // JST表記済の文字列。省略時は now
+}
+
+// 商品名は購入画面のDB管理名 (「BW5 映像データ販売」) ではなく、
+// 顧客向け正式名称で出す。後から変える時はここを更新するだけでOK。
+const VIDEO_PREORDER_PRODUCT_NAME = 'BOOM WOP vol.5 フルパフォーマンス映像';
+
+function fmtJst(iso?: string): string {
+  if (iso) return iso;
+  const d = new Date();
+  return d.toLocaleString('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric', month: 'long', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
 }
 
 export async function sendVideoPreorderEmail(p: VideoPreorderEmailParams): Promise<void> {
@@ -164,32 +179,41 @@ export async function sendVideoPreorderEmail(p: VideoPreorderEmailParams): Promi
     return;
   }
 
-  const subject = `【BW5】演目映像データのお申込を承りました`;
+  const merchName = p.merchName ?? VIDEO_PREORDER_PRODUCT_NAME;
+  const createdAt = fmtJst(p.createdAt);
+
+  const subject = `【BW5】映像データご予約を承りました`;
   const html = `
 <div style="font-family: -apple-system, system-ui, sans-serif; max-width: 600px; margin: 0 auto; color: #222;">
   <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; padding: 24px; text-align: center;">
-    <h1 style="margin: 0; font-size: 22px;">BW5 演目映像データ お申込完了</h1>
+    <h1 style="margin: 0; font-size: 22px;">BW5 映像データご予約 受付完了</h1>
   </div>
 
   <div style="padding: 24px;">
     <p>${escapeHtml(p.buyerName)} 様</p>
-    <p>このたびは BW5 演目映像データのお申込をいただき、誠にありがとうございます。</p>
+    <p>このたびは BW5 演目映像データのご予約をいただき、誠にありがとうございます。<br />
+    ご予約は正常に受付完了いたしました。</p>
+
     <div style="background:#ecfdf5;border:1px solid rgba(34,197,94,0.45);border-radius:12px;padding:14px;margin-top:14px;">
       <p style="margin:0 0 6px;font-size:14px;font-weight:bold;color:#047857;">🆓 現時点ではお支払いは発生しません</p>
-      <p style="margin:0;font-size:13px;color:#065f46;line-height:1.7;">今回は「欲しい！」というご希望のお申込までで、料金のお支払いは<strong>編集完成後・販売サイトご案内時</strong>に承ります。</p>
+      <p style="margin:0;font-size:13px;color:#065f46;line-height:1.7;">今回は「欲しい!」というご希望のお申込までで、料金のお支払いは<strong>別途お送りするお支払いリンク</strong>からお願いいたします。</p>
     </div>
 
-    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">お申込内容</h2>
+    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">ご予約内容</h2>
     <table style="width:100%; border-collapse: collapse; font-size: 14px; margin-top: 8px;">
-      <tr><td style="padding:6px 0; color:#666; width: 110px;">商品</td><td style="padding:6px 0;"><strong>${escapeHtml(p.merchName)}</strong></td></tr>
-      <tr><td style="padding:6px 0; color:#666;">完成後のご購入金額</td><td style="padding:6px 0;"><strong style="color:#6366f1; font-size: 16px;">¥${p.price.toLocaleString()}</strong> <span style="font-size:11px; color:#888;">※今は申込のみ・お支払いは後日</span></td></tr>
+      <tr><td style="padding:6px 0; color:#666; width: 130px;">予約番号</td><td style="padding:6px 0;"><strong>#${p.preorderId}</strong></td></tr>
+      <tr><td style="padding:6px 0; color:#666;">商品</td><td style="padding:6px 0;"><strong>${escapeHtml(merchName)}</strong></td></tr>
+      <tr><td style="padding:6px 0; color:#666;">ご購入金額</td><td style="padding:6px 0;"><strong style="color:#6366f1; font-size: 16px;">¥${p.price.toLocaleString()}</strong> <span style="font-size:11px; color:#888;">※今は申込のみ・お支払いは後日</span></td></tr>
+      <tr><td style="padding:6px 0; color:#666;">お名前</td><td style="padding:6px 0;">${escapeHtml(p.buyerName)} 様</td></tr>
+      ${p.phone ? `<tr><td style="padding:6px 0; color:#666;">電話番号</td><td style="padding:6px 0;">${escapeHtml(p.phone)}</td></tr>` : ''}
+      <tr><td style="padding:6px 0; color:#666;">ご予約日</td><td style="padding:6px 0;">${escapeHtml(createdAt)}</td></tr>
     </table>
 
     <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">今後の流れ</h2>
     <ol style="font-size: 14px; line-height: 1.8; padding-left: 20px;">
-      <li><strong>今:</strong> ご希望の受付完了 (このメール) — お支払いは発生しません</li>
-      <li><strong>編集完成後 (5月下旬予定):</strong> こちらのメールアドレスへ<strong>販売サイト（Vimeo オンデマンド予定）のご案内</strong>をお送りします</li>
-      <li><strong>その時:</strong> ご案内メール内のリンクからお支払い (¥${p.price.toLocaleString()}) → 即時ダウンロード/視聴が可能になります</li>
+      <li><strong>今:</strong> ご予約の受付完了 (このメール) — お支払いは発生しません</li>
+      <li><strong>5月20日以降:</strong> このメールアドレス宛に <strong>お支払いリンク</strong> をお送りします。リンク内に <strong>お支払い期限</strong> もあわせてご案内いたします。</li>
+      <li><strong>5月末〜6月頭 (編集完成タイミング):</strong> お支払い完了の方へ、<strong>ダウンロードリンク</strong> を一斉送信いたします。</li>
     </ol>
 
     <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #dc4c04; padding-left: 10px; color: #dc4c04;">重要なお願い</h2>
@@ -197,16 +221,10 @@ export async function sendVideoPreorderEmail(p: VideoPreorderEmailParams): Promi
       <p style="margin: 0 0 8px;"><strong>購入後の映像データの第三者への共有・転載・SNS等への投稿は固くお断りいたします。</strong></p>
       <p style="margin: 0 0 8px;">
         ・データには<strong>コピーガード処理</strong>を施しています<br />
-        ・<strong>ウォーターマーク（電子透かし）</strong>により、流出した場合は購入者を特定できる仕様となっています
+        ・<strong>ウォーターマーク(電子透かし)</strong>により、流出した場合は購入者を特定できる仕様となっています
       </p>
       <p style="margin: 0; color: #666; font-size: 12px;">出演者・関係者のプライバシー保護のため、ご理解とご協力をお願いいたします。</p>
     </div>
-
-    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">ご登録内容</h2>
-    <table style="width:100%; border-collapse: collapse; font-size: 14px; margin-top: 8px;">
-      <tr><td style="padding:6px 0; color:#666; width: 110px;">お名前</td><td style="padding:6px 0;">${escapeHtml(p.buyerName)} 様</td></tr>
-      ${p.phone ? `<tr><td style="padding:6px 0; color:#666;">電話番号</td><td style="padding:6px 0;">${escapeHtml(p.phone)}</td></tr>` : ''}
-    </table>
 
     <hr style="margin: 28px 0; border: none; border-top: 1px solid #eee;" />
     <p style="font-size: 12px; color: #888; line-height: 1.7;">
@@ -233,7 +251,7 @@ interface VideoPreorderMakeupParams {
   to: string;
   buyerName: string;
   preorderId: number;
-  merchName: string;
+  merchName?: string;       // 省略時は VIDEO_PREORDER_PRODUCT_NAME
   price: number;
   phone?: string;
   createdAt: string;
@@ -245,6 +263,7 @@ export async function sendVideoPreorderMakeupEmail(p: VideoPreorderMakeupParams)
     return;
   }
 
+  const merchName = p.merchName ?? VIDEO_PREORDER_PRODUCT_NAME;
   const subject = `【BW5】映像データご予約 確認のご連絡`;
   const html = `
 <div style="font-family: -apple-system, system-ui, sans-serif; max-width: 600px; margin: 0 auto; color: #222;">
@@ -270,7 +289,7 @@ export async function sendVideoPreorderMakeupEmail(p: VideoPreorderMakeupParams)
     <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">ご予約内容</h2>
     <table style="width:100%; border-collapse: collapse; font-size: 14px; margin-top: 8px;">
       <tr><td style="padding:6px 0; color:#666; width: 130px;">予約番号</td><td style="padding:6px 0;"><strong>#${p.preorderId}</strong></td></tr>
-      <tr><td style="padding:6px 0; color:#666;">商品</td><td style="padding:6px 0;"><strong>${escapeHtml(p.merchName)}</strong></td></tr>
+      <tr><td style="padding:6px 0; color:#666;">商品</td><td style="padding:6px 0;"><strong>${escapeHtml(merchName)}</strong></td></tr>
       <tr><td style="padding:6px 0; color:#666;">ご購入金額</td><td style="padding:6px 0;"><strong style="color:#6366f1; font-size: 16px;">¥${p.price.toLocaleString()}</strong> <span style="font-size:11px; color:#888;">※今は申込のみ・お支払いは後日</span></td></tr>
       <tr><td style="padding:6px 0; color:#666;">お名前</td><td style="padding:6px 0;">${escapeHtml(p.buyerName)} 様</td></tr>
       ${p.phone ? `<tr><td style="padding:6px 0; color:#666;">電話番号</td><td style="padding:6px 0;">${escapeHtml(p.phone)}</td></tr>` : ''}

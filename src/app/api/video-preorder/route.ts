@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
         buyerName: body.buyer_name,
         phone: body.phone,
         preorderId,
-        merchName: String(merch.name),
+        // merchName は省略 (固定文言 "BOOM WOP vol.5 フルパフォーマンス映像" を使う)
         price: Number(merch.price) || 0,
       });
       emailSent = true;
