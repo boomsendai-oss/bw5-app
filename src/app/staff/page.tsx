@@ -24,6 +24,12 @@ type Card = {
 
 const CARDS: Card[] = [
   {
+    href: '/staff/masters',
+    icon: '🗂️',
+    title: 'マスターデータ',
+    description: 'スタジオ・インストラクター・レッスン定義',
+  },
+  {
     href: '/staff/dashboard',
     icon: '📊',
     title: 'KPIダッシュボード',
