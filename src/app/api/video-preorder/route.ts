@@ -51,6 +51,15 @@ export async function POST(req: NextRequest) {
         price: Number(merch.price) || 0,
       });
       emailSent = true;
+      // 送信成功時に confirmation_email_sent_at を記録 (管理画面の送信履歴用)
+      try {
+        await execute(
+          `UPDATE video_preorders SET confirmation_email_sent_at = ? WHERE id = ?`,
+          [new Date().toISOString(), preorderId]
+        );
+      } catch (e) {
+        console.error('[video-preorder] confirmation_email_sent_at update failed', e);
+      }
     } catch (e) {
       console.error('[video-preorder] email failed but record saved', e);
     }
