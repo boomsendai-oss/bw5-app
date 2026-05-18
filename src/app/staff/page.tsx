@@ -105,10 +105,14 @@ export default function StaffHubPage() {
   useEffect(() => {
     fetch('/api/staff/hub-stats', { credentials: 'include' })
       .then(async r => {
+        if (r.status === 401) {
+          window.location.href = '/staff/events/login?next=/staff';
+          return null;
+        }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
-      .then((d: Stats) => setStats(d))
+      .then((d: Stats | null) => { if (d) setStats(d); })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
   }, []);

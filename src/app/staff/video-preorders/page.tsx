@@ -31,6 +31,10 @@ export default function VideoPreordersPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/staff/video-preorders', { credentials: 'include' });
+      if (res.status === 401) {
+        window.location.href = '/staff/events/login?next=/staff/video-preorders';
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setPreorders(data.preorders || []);

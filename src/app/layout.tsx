@@ -43,7 +43,7 @@ export default function RootLayout({
             __html: `(function(){
               function setup() { try {
                 var p = location.pathname;
-                var isStaff = p.indexOf('/staff/') === 0 || p.indexOf('/admin') === 0;
+                var isStaff = p.indexOf('/staff/') === 0 || p === '/staff' || p.indexOf('/admin') === 0;
                 var d = document, head = d.head;
                 function rm(sel){var ns=head.querySelectorAll(sel);for(var i=0;i<ns.length;i++){ns[i].parentNode.removeChild(ns[i]);}}
                 // Next.js が自動注入する manifest を含めて全削除 → 必要なものだけを再注入
@@ -60,17 +60,21 @@ export default function RootLayout({
                   add('meta', {name: 'apple-mobile-web-app-title', content: 'BW5 App'});
                   add('link', {rel: 'apple-touch-icon', href: '/apple-touch-icon.png'});
                 } else {
+                  // /staff/orders と /staff/backstage は専用manifest、それ以外の /staff* はスタッフハブ用manifest
                   var manifestHref = p.indexOf('/staff/orders') === 0 ? '/staff-orders-manifest.webmanifest'
                                    : p.indexOf('/staff/backstage') === 0 ? '/staff-backstage-manifest.webmanifest'
+                                   : p.indexOf('/staff') === 0 ? '/staff-manifest.webmanifest'
                                    : p.indexOf('/admin') === 0 ? '/admin-manifest.webmanifest' : null;
                   if (manifestHref) add('link', {rel: 'manifest', href: manifestHref});
                   add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
                   add('meta', {name: 'mobile-web-app-capable', content: 'yes'});
                   var title = p.indexOf('/staff/orders') === 0 ? 'BW5 物販スタッフ'
                             : p.indexOf('/staff/backstage') === 0 ? 'BW5 舞台裏'
+                            : p.indexOf('/staff') === 0 ? 'BOOM Staff'
                             : p.indexOf('/admin') === 0 ? 'BW5 管理' : 'BW5';
                   var icon  = p.indexOf('/staff/orders') === 0 ? '/images/icon-staff-orders.png'
                             : p.indexOf('/staff/backstage') === 0 ? '/images/icon-staff-backstage.png'
+                            : p.indexOf('/staff') === 0 ? '/images/icon-staff-orders.png'
                             : p.indexOf('/admin') === 0 ? '/images/icon-admin.png' : '/apple-touch-icon.png';
                   add('meta', {name: 'apple-mobile-web-app-title', content: title});
                   add('link', {rel: 'apple-touch-icon', href: icon});

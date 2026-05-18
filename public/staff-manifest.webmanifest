@@ -1,0 +1,17 @@
+{
+  "name": "BOOM スタッフ",
+  "short_name": "BOOM Staff",
+  "start_url": "/staff",
+  "scope": "/staff",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#f27a1a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/images/icon-staff-orders.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
