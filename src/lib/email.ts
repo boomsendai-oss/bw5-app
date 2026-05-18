@@ -1,12 +1,39 @@
-import { Resend } from 'resend';
+import * as nodemailer from 'nodemailer';
 
-const resendKey = process.env.RESEND_API_KEY;
-const resend = resendKey ? new Resend(resendKey) : null;
+// ────────────────────────────────────────────────────────────
+// Gmail SMTP (boom.sendai@gmail.com アプリパスワード経由)
+// 旧 Resend は onboarding@resend.dev 制限でアカウント所有者にしか送れず
+// 全顧客にメール届かない不具合 → 2026-05-18 nodemailer/Gmail SMTPに切替
+// ────────────────────────────────────────────────────────────
+const GMAIL_USER = process.env.GMAIL_USER || 'boom.sendai@gmail.com';
+const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD;
 
-// Resend 側でドメイン認証していない場合は onboarding@resend.dev が送信元になる
-// 認証後は noreply@<your-domain> に切替
-const FROM = process.env.RESEND_FROM || 'BW5 <onboarding@resend.dev>';
+const transporter = GMAIL_APP_PASSWORD
+  ? nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: GMAIL_USER,
+        pass: GMAIL_APP_PASSWORD,
+      },
+    })
+  : null;
+
+const FROM = `BOOM BW5 <${GMAIL_USER}>`;
 const ADMIN_BCC = 'boom.sendai@gmail.com';
+
+async function sendMail(opts: { to: string; subject: string; html: string }): Promise<void> {
+  if (!transporter) {
+    console.warn('[email] GMAIL_APP_PASSWORD not set — skipping email send');
+    return;
+  }
+  await transporter.sendMail({
+    from: FROM,
+    to: opts.to,
+    bcc: ADMIN_BCC === opts.to ? undefined : ADMIN_BCC,
+    subject: opts.subject,
+    html: opts.html,
+  });
+}
 
 // 入金期限（固定）
 export const PAYMENT_DEADLINE_LABEL = '2026年5月12日(火) 15:00 まで';
@@ -37,12 +64,12 @@ interface RestockOrderEmailParams {
 }
 
 export async function sendRestockOrderEmail(p: RestockOrderEmailParams): Promise<void> {
-  if (!resend) {
-    console.warn('[email] RESEND_API_KEY not set — skipping email send');
+  if (!transporter) {
+    console.warn('[email] GMAIL_APP_PASSWORD not set — skipping email send');
     return;
   }
 
-  const subject = `【BW5】追加注文を承りました（注文番号 #${p.orderId}）`;
+  const subject = `【BW5】追加注文を承りました(注文番号 #${p.orderId})`;
   const colorLine = p.color ? `カラー：${p.color}` : '';
   const sizeLine = p.size ? `サイズ：${p.size}` : '';
 
@@ -112,13 +139,7 @@ export async function sendRestockOrderEmail(p: RestockOrderEmailParams): Promise
 `.trim();
 
   try {
-    await resend.emails.send({
-      from: FROM,
-      to: p.to,
-      bcc: [ADMIN_BCC],
-      subject,
-      html,
-    });
+    await sendMail({ to: p.to, subject, html });
   } catch (e) {
     console.error('[email] send failed', e);
     throw e;
@@ -131,24 +152,23 @@ export async function sendRestockOrderEmail(p: RestockOrderEmailParams): Promise
 interface VideoPreorderEmailParams {
   to: string;
   buyerName: string;
-  phone: string;
+  phone?: string;
   preorderId: number;
   merchName: string;
   price: number;
 }
 
 export async function sendVideoPreorderEmail(p: VideoPreorderEmailParams): Promise<void> {
-  if (!resend) {
-    console.warn('[email] RESEND_API_KEY not set — skipping email send');
+  if (!transporter) {
+    console.warn('[email] GMAIL_APP_PASSWORD not set — skipping email send');
     return;
   }
 
-  const subject = `【BW5】演目映像データのお申込を承りました（受付番号 #${p.preorderId}）`;
+  const subject = `【BW5】演目映像データのお申込を承りました`;
   const html = `
 <div style="font-family: -apple-system, system-ui, sans-serif; max-width: 600px; margin: 0 auto; color: #222;">
   <div style="background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; padding: 24px; text-align: center;">
     <h1 style="margin: 0; font-size: 22px;">BW5 演目映像データ お申込完了</h1>
-    <p style="margin: 8px 0 0; font-size: 13px; opacity: 0.9;">受付番号 #${p.preorderId}</p>
   </div>
 
   <div style="padding: 24px;">
@@ -185,7 +205,7 @@ export async function sendVideoPreorderEmail(p: VideoPreorderEmailParams): Promi
     <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #6366f1; padding-left: 10px;">ご登録内容</h2>
     <table style="width:100%; border-collapse: collapse; font-size: 14px; margin-top: 8px;">
       <tr><td style="padding:6px 0; color:#666; width: 110px;">お名前</td><td style="padding:6px 0;">${escapeHtml(p.buyerName)} 様</td></tr>
-      <tr><td style="padding:6px 0; color:#666;">電話番号</td><td style="padding:6px 0;">${escapeHtml(p.phone)}</td></tr>
+      ${p.phone ? `<tr><td style="padding:6px 0; color:#666;">電話番号</td><td style="padding:6px 0;">${escapeHtml(p.phone)}</td></tr>` : ''}
     </table>
 
     <hr style="margin: 28px 0; border: none; border-top: 1px solid #eee;" />
@@ -198,13 +218,7 @@ export async function sendVideoPreorderEmail(p: VideoPreorderEmailParams): Promi
 `.trim();
 
   try {
-    await resend.emails.send({
-      from: FROM,
-      to: p.to,
-      bcc: [ADMIN_BCC],
-      subject,
-      html,
-    });
+    await sendMail({ to: p.to, subject, html });
   } catch (e) {
     console.error('[email] video preorder send failed', e);
     throw e;
