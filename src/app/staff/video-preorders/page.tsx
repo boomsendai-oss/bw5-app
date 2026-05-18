@@ -108,6 +108,30 @@ export default function VideoPreordersPage() {
     }
   };
 
+  const sendPaymentLink = async (ids: number[]) => {
+    if (ids.length === 0) return;
+    if (!window.confirm(`${ids.length}件に決済リンクを送信します。よろしいですか?`)) return;
+    setBusy(true);
+    setMessage(`${ids.length}件 決済リンク送信中...`);
+    try {
+      const res = await fetch('/api/staff/video-preorders/send-payment-link', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setMessage(`✅ 決済リンク送信完了: 成功 ${data.sent} / スキップ ${data.skipped} / 失敗 ${data.failed}`);
+      setSelected(new Set());
+      await load();
+    } catch (e) {
+      setMessage(`❌ 送信失敗: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const markStatus = async (id: number, status: 'active' | 'duplicate' | 'cancelled') => {
     setBusy(true);
     try {
@@ -224,6 +248,13 @@ export default function VideoPreordersPage() {
         >
           ✉️ 選択中{selected.size}件に確認メール送信
         </button>
+        <button
+          onClick={() => sendPaymentLink(Array.from(selected))}
+          disabled={busy || selected.size === 0}
+          className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold disabled:opacity-50"
+        >
+          💳 選択中{selected.size}件に決済リンク送信
+        </button>
       </div>
 
       {message && (
@@ -246,6 +277,8 @@ export default function VideoPreordersPage() {
                 <th className="px-2 py-2 text-left">電話</th>
                 <th className="px-2 py-2 text-left">予約日</th>
                 <th className="px-2 py-2 text-left">確認メール</th>
+                <th className="px-2 py-2 text-left">決済リンク</th>
+                <th className="px-2 py-2 text-left">支払い</th>
                 <th className="px-2 py-2 text-left">操作</th>
               </tr>
             </thead>
@@ -283,25 +316,44 @@ export default function VideoPreordersPage() {
                         ? <span className="text-blue-700 text-[11px]">📧 {fmtDateTime(p.confirmation_email_sent_at)}</span>
                         : <span className="text-amber-700 text-[11px]">未送信</span>}
                     </td>
+                    <td className="px-2 py-2">
+                      {p.payment_link_sent_at
+                        ? <span className="text-emerald-700 text-[11px]">💳 {fmtDateTime(p.payment_link_sent_at)}</span>
+                        : <span className="text-slate-400 text-[11px]">未送信</span>}
+                    </td>
+                    <td className="px-2 py-2">
+                      {p.payment_paid_at
+                        ? <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-semibold">✓ 支払済</span>
+                        : <span className="text-slate-400 text-[11px]">-</span>}
+                    </td>
                     <td className="px-2 py-2 whitespace-nowrap">
                       {isDup
                         ? <button onClick={() => markStatus(p.id, 'active')} disabled={busy} className="px-2 py-0.5 text-[10px] rounded bg-slate-200 hover:bg-slate-300">有効に戻す</button>
                         : <button onClick={() => markStatus(p.id, 'duplicate')} disabled={busy} className="px-2 py-0.5 text-[10px] rounded bg-red-100 hover:bg-red-200 text-red-700">重複マーク</button>}
                       {p.email && (
-                        <button
-                          onClick={() => sendConfirmation([p.id])}
-                          disabled={busy || isDup}
-                          className="ml-1 px-2 py-0.5 text-[10px] rounded bg-blue-100 hover:bg-blue-200 text-blue-700 disabled:opacity-50"
-                        >
-                          {isSent ? '再送' : '送信'}
-                        </button>
+                        <>
+                          <button
+                            onClick={() => sendConfirmation([p.id])}
+                            disabled={busy || isDup}
+                            className="ml-1 px-2 py-0.5 text-[10px] rounded bg-blue-100 hover:bg-blue-200 text-blue-700 disabled:opacity-50"
+                          >
+                            {isSent ? '再送' : '確認'}
+                          </button>
+                          <button
+                            onClick={() => sendPaymentLink([p.id])}
+                            disabled={busy || isDup || !!p.payment_paid_at}
+                            className="ml-1 px-2 py-0.5 text-[10px] rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-700 disabled:opacity-50"
+                          >
+                            {p.payment_link_sent_at ? '💳再送' : '💳送信'}
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">該当なし</td></tr>
+                <tr><td colSpan={11} className="px-4 py-8 text-center text-slate-400">該当なし</td></tr>
               )}
             </tbody>
           </table>

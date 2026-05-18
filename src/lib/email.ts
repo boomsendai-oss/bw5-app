@@ -325,6 +325,120 @@ export async function sendVideoPreorderMakeupEmail(p: VideoPreorderMakeupParams)
   await sendMail({ to: p.to, subject, html });
 }
 
+// ════════════════════════════════════════
+// 映像予約 お支払いリンク送信メール (5/20以降)
+// ════════════════════════════════════════
+interface PaymentLinkEmailParams {
+  to: string;
+  buyerName: string;
+  preorderId: number;
+  paymentUrl: string;        // https://square.link/u/xxxx
+  deadlineLabel: string;     // "2026年5月27日(火) 23:59"
+  amountLabel?: string;      // default "¥3,000"
+}
+
+export async function sendVideoPreorderPaymentLinkEmail(p: PaymentLinkEmailParams): Promise<void> {
+  if (!transporter) {
+    console.warn('[email] GMAIL_APP_PASSWORD not set — skipping');
+    return;
+  }
+  const amount = p.amountLabel ?? '¥3,000';
+  const subject = `【BW5】お支払いのご案内 ${amount}`;
+  const html = `
+<div style="font-family: -apple-system, system-ui, sans-serif; max-width: 600px; margin: 0 auto; color: #222;">
+  <div style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; padding: 24px; text-align: center;">
+    <h1 style="margin: 0; font-size: 22px;">BW5 映像データ お支払いのご案内</h1>
+    <p style="margin: 8px 0 0; font-size: 13px; opacity: 0.9;">${escapeHtml(amount)}</p>
+  </div>
+  <div style="padding: 24px;">
+    <p>${escapeHtml(p.buyerName)} 様</p>
+    <p>このたびは BW5 (BOOM WOP vol.5) の映像データをご予約いただき、誠にありがとうございました。<br />
+    お支払いリンクをお送りいたしますので、下記より決済をお願いいたします。</p>
+
+    <div style="text-align:center; margin: 28px 0;">
+      <a href="${escapeHtml(p.paymentUrl)}" style="display:inline-block; background:#10b981; color:#fff; padding:14px 36px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:16px;">💳 お支払いに進む (${escapeHtml(amount)})</a>
+      <p style="font-size:11px; color:#666; margin:6px 0 0;">Square 決済 / カード払い対応</p>
+    </div>
+
+    <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:12px; padding:14px; margin:14px 0;">
+      <p style="margin:0 0 4px; font-size:14px; font-weight:bold; color:#92400e;">⏰ お支払い期限</p>
+      <p style="margin:0; font-size:16px; font-weight:bold; color:#b45309;">${escapeHtml(p.deadlineLabel)}</p>
+      <p style="margin:6px 0 0; font-size:11px; color:#92400e;">期限を過ぎますとご予約が無効になり、映像のお届けができなくなります。</p>
+    </div>
+
+    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #10b981; padding-left: 10px;">今後の流れ</h2>
+    <ol style="font-size: 14px; line-height: 1.8; padding-left: 20px;">
+      <li><strong>今:</strong> 上のリンクから決済 (${escapeHtml(amount)})</li>
+      <li><strong>決済完了:</strong> Squareから領収書メールが届きます</li>
+      <li><strong>5月末〜6月頭:</strong> 編集完成後、ダウンロードリンクをこのメールアドレスへお送りします</li>
+    </ol>
+
+    <h2 style="margin-top: 28px; font-size: 15px; border-left: 4px solid #10b981; padding-left: 10px;">お支払い時のお願い</h2>
+    <ul style="font-size: 13px; line-height: 1.7; color: #444; padding-left: 20px;">
+      <li>Square決済画面で <strong>お名前・メールアドレス・電話番号</strong> をご入力ください。ご予約情報と突合いたします。</li>
+      <li>ご予約時と同じお名前でご決済いただけるとスムーズです。</li>
+      <li>領収書は Square から自動でお送りされます。</li>
+    </ul>
+
+    <hr style="margin: 28px 0; border: none; border-top: 1px solid #eee;" />
+    <p style="font-size: 12px; color: #888; line-height: 1.7;">
+      ご不明な点は本メールにご返信いただくか、<a href="mailto:boom.sendai@gmail.com" style="color:#10b981;">boom.sendai@gmail.com</a> までご連絡ください。<br />
+      BOOM Dance School / BOOM WOP vol.5
+    </p>
+  </div>
+</div>`.trim();
+
+  await sendMail({ to: p.to, subject, html });
+}
+
+// ════════════════════════════════════════
+// お支払いリマインダーメール (期限3日前 / 期限当日)
+// ════════════════════════════════════════
+interface PaymentReminderParams {
+  to: string;
+  buyerName: string;
+  preorderId: number;
+  paymentUrl: string;
+  deadlineLabel: string;
+  daysRemaining: number;     // 3 or 0
+}
+
+export async function sendVideoPreorderPaymentReminderEmail(p: PaymentReminderParams): Promise<void> {
+  if (!transporter) {
+    console.warn('[email] GMAIL_APP_PASSWORD not set — skipping');
+    return;
+  }
+  const urgent = p.daysRemaining <= 0;
+  const subject = urgent
+    ? `【本日締切】BW5映像データ お支払いのご確認`
+    : `【締切間近】BW5映像データ お支払いのご案内 (あと${p.daysRemaining}日)`;
+  const html = `
+<div style="font-family: -apple-system, system-ui, sans-serif; max-width: 600px; margin: 0 auto; color: #222;">
+  <div style="background: linear-gradient(135deg, ${urgent ? '#dc2626' : '#f59e0b'}, ${urgent ? '#991b1b' : '#d97706'}); color: #fff; padding: 24px; text-align: center;">
+    <h1 style="margin: 0; font-size: 20px;">${urgent ? '⚠️ 本日が締切です' : '⏰ お支払い期限が近づいています'}</h1>
+  </div>
+  <div style="padding: 24px;">
+    <p>${escapeHtml(p.buyerName)} 様</p>
+    <p>BW5 映像データのお支払いについて、まだご決済が確認できておりません。<br />
+    お支払い期限 <strong>${escapeHtml(p.deadlineLabel)}</strong> までにご決済をお願いいたします。</p>
+
+    <div style="text-align:center; margin: 24px 0;">
+      <a href="${escapeHtml(p.paymentUrl)}" style="display:inline-block; background:${urgent ? '#dc2626' : '#f59e0b'}; color:#fff; padding:14px 36px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:16px;">💳 今すぐお支払いに進む</a>
+    </div>
+
+    <p style="font-size:13px; color:#666;">既に決済済の方は本メールを無視してください。決済反映に数時間かかる場合がございます。</p>
+
+    <hr style="margin: 28px 0; border: none; border-top: 1px solid #eee;" />
+    <p style="font-size: 12px; color: #888; line-height: 1.7;">
+      ご不明な点は本メールにご返信いただくか、<a href="mailto:boom.sendai@gmail.com">boom.sendai@gmail.com</a> までご連絡ください。<br />
+      BOOM Dance School / BOOM WOP vol.5
+    </p>
+  </div>
+</div>`.trim();
+
+  await sendMail({ to: p.to, subject, html });
+}
+
 function escapeHtml(s: string): string {
   return String(s)
     .replace(/&/g, '&amp;')
