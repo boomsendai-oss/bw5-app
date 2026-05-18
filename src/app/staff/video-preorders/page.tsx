@@ -145,6 +145,7 @@ export default function VideoPreordersPage() {
   }), [preorders]);
 
   return (
+    <main className="min-h-screen bg-neutral-50 text-neutral-900">
     <div className="max-w-7xl mx-auto p-4 sm:p-6">
       <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl sm:text-2xl font-bold text-orange-700">📹 映像予約 管理</h1>
@@ -181,7 +182,7 @@ export default function VideoPreordersPage() {
           <button
             key={k}
             onClick={() => setFilter(k)}
-            className={`px-3 py-1 rounded-full text-xs sm:text-sm ${filter === k ? 'bg-orange-500 text-white' : 'bg-white border border-slate-200 text-slate-700'}`}
+            className={`px-3 py-1 rounded-full text-xs sm:text-sm ${filter === k ? 'bg-orange-500 text-white' : 'bg-white border border-slate-300 text-slate-700'}`}
           >
             {label}
           </button>
@@ -191,7 +192,7 @@ export default function VideoPreordersPage() {
           placeholder="名前/メアド/電話で検索"
           value={q}
           onChange={e => setQ(e.target.value)}
-          className="px-3 py-1 rounded border border-slate-200 text-sm flex-1 min-w-[180px]"
+          className="px-3 py-1 rounded border border-slate-300 text-sm flex-1 min-w-[180px] bg-white text-neutral-900 placeholder:text-neutral-400"
         />
       </div>
 
@@ -230,7 +231,7 @@ export default function VideoPreordersPage() {
         <p className="text-slate-500">読み込み中...</p>
       ) : (
         <div className="overflow-x-auto bg-white rounded-lg border border-slate-200">
-          <table className="w-full text-xs sm:text-sm">
+          <table className="w-full text-xs sm:text-sm text-neutral-800">
             <thead className="bg-slate-50 text-slate-700">
               <tr>
                 <th className="px-2 py-2 text-left">選</th>
@@ -303,5 +304,6 @@ export default function VideoPreordersPage() {
         </div>
       )}
     </div>
+    </main>
   );
 }
