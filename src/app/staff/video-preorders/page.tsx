@@ -108,6 +108,37 @@ export default function VideoPreordersPage() {
     }
   };
 
+  const sendPaymentReminder = async () => {
+    if (!window.confirm('未払いの方全員にリマインダーを送信します（手動モード）。よろしいですか?')) return;
+    setBusy(true);
+    setMessage('リマインダー送信中...');
+    try {
+      // 未払い・リンク送信済 を抽出
+      const targetIds = preorders
+        .filter(p => p.payment_link_sent_at && !p.payment_paid_at && p.status !== 'duplicate' && p.status !== 'cancelled' && p.email)
+        .map(p => p.id);
+      if (targetIds.length === 0) {
+        setMessage('対象なし (未払い・リンク送信済 が0件)');
+        setBusy(false);
+        return;
+      }
+      const res = await fetch('/api/staff/video-preorders/send-payment-reminder', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'manual', ids: targetIds }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setMessage(`✅ リマインダー送信完了: 成功 ${data.sent} / 失敗 ${data.failed} (期限まで${data.daysRemaining}日)`);
+      await load();
+    } catch (e) {
+      setMessage(`❌ 送信失敗: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const sendPaymentLink = async (ids: number[]) => {
     if (ids.length === 0) return;
     if (!window.confirm(`${ids.length}件に決済リンクを送信します。よろしいですか?`)) return;
@@ -254,6 +285,14 @@ export default function VideoPreordersPage() {
           className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold disabled:opacity-50"
         >
           💳 選択中{selected.size}件に決済リンク送信
+        </button>
+        <button
+          onClick={sendPaymentReminder}
+          disabled={busy}
+          className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-semibold disabled:opacity-50"
+          title="未払い者全員に督促メール送信"
+        >
+          ⏰ 未払い者にリマインダー送信
         </button>
       </div>
 
