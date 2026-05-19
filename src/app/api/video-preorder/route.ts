@@ -4,6 +4,10 @@ import { sendVideoPreorderEmail } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
+// 予約締切: 2026-05-20 00:00 JST (= 5/19 23:59:59.999 まで受付)
+// 締切後は 410 Gone で受付拒否
+const PREORDER_DEADLINE = new Date('2026-05-20T00:00:00+09:00');
+
 interface PreorderBody {
   merch_id: number;
   buyer_name: string;
@@ -15,6 +19,19 @@ interface PreorderBody {
 // POST /api/video-preorder — 映像データ販売の事前予約
 export async function POST(req: NextRequest) {
   try {
+    // 締切チェック (最初に実行)
+    const now = new Date();
+    if (now >= PREORDER_DEADLINE) {
+      return NextResponse.json(
+        {
+          error: '映像データの予約受付は終了しました。',
+          message: 'ご希望の方は boom.sendai@gmail.com までご連絡ください。',
+          deadline: PREORDER_DEADLINE.toISOString(),
+        },
+        { status: 410 } // Gone = もう利用できない
+      );
+    }
+
     const body = (await req.json()) as PreorderBody;
 
     const required = ['merch_id', 'buyer_name', 'email', 'phone'] as const;
