@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@libsql/client": "^0.17.2",
+    "@pdf-lib/fontkit": "^1.1.1",
     "@types/canvas-confetti": "^1.9.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.3.3",
@@ -19,6 +20,7 @@
     "lucide-react": "^1.8.0",
     "next": "16.2.3",
     "nodemailer": "^8.0.7",
+    "pdf-lib": "^1.17.1",
     "piexifjs": "^1.0.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -28,7 +30,8 @@
     "react-zoom-pan-pinch": "^4.0.3",
     "recharts": "^3.8.1",
     "resend": "^6.12.2",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

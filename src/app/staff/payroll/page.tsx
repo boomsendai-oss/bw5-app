@@ -359,8 +359,9 @@ export default function PayrollPage() {
                 <button onClick={() => updateStatus(detail.run.id, 'draft')} className={`px-2 py-1 rounded text-xs ${detail.run.status === 'draft' ? 'bg-slate-200 font-bold' : 'bg-slate-50 hover:bg-slate-100'}`}>下書き</button>
                 <button onClick={() => updateStatus(detail.run.id, 'confirmed')} className={`px-2 py-1 rounded text-xs ${detail.run.status === 'confirmed' ? 'bg-blue-200 font-bold' : 'bg-slate-50 hover:bg-blue-100'}`}>確定</button>
                 <button onClick={() => updateStatus(detail.run.id, 'paid')} className={`px-2 py-1 rounded text-xs ${detail.run.status === 'paid' ? 'bg-green-200 font-bold' : 'bg-slate-50 hover:bg-green-100'}`}>振込済</button>
+                <a href={`/staff/payroll/${detail.run.id}/print`} target="_blank" rel="noopener noreferrer" className="ml-auto px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs font-semibold">📄 明細書印刷</a>
                 {detail.run.payslip_folder_url && (
-                  <a href={detail.run.payslip_folder_url} target="_blank" rel="noopener noreferrer" className="ml-auto px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-xs">📁 明細フォルダ</a>
+                  <a href={detail.run.payslip_folder_url} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-xs">📁 Drive</a>
                 )}
               </div>
             </div>

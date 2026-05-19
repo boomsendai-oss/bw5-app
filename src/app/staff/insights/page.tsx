@@ -104,12 +104,54 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 }
 
+const TARGET_LABELS: Record<string, { label: string; unit: string; placeholder: string }> = {
+  members_active: { label: '在籍数', unit: '人', placeholder: '100' },
+  monthly_revenue: { label: '月次売上', unit: '円', placeholder: '3000000' },
+  line_friends: { label: 'LINE友だち', unit: '人', placeholder: '500' },
+  trial_count: { label: '体験申込数', unit: '件', placeholder: '20' },
+  trial_cvr: { label: '体験CVR', unit: '%', placeholder: '50' },
+  utilization: { label: '平均稼働率', unit: '%', placeholder: '70' },
+  churn_rate: { label: '退会率(上限)', unit: '%', placeholder: '3' },
+  operating_profit: { label: '営業利益', unit: '円', placeholder: '500000' },
+};
+
 export default function InsightsPage() {
   const [ym, setYm] = useState(currentYM());
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [showTargets, setShowTargets] = useState(false);
+  const [targetForm, setTargetForm] = useState<Record<string, string>>({});
+
+  const openTargets = async () => {
+    const res = await fetch(`/api/staff/kpi/targets?year_month=${ym}`, { credentials: 'include' });
+    if (res.ok) {
+      const d = await res.json();
+      const form: Record<string, string> = {};
+      for (const [k, v] of Object.entries(d.targets as Record<string, number>)) form[k] = String(v);
+      setTargetForm(form);
+      setShowTargets(true);
+    }
+  };
+
+  const saveTargets = async () => {
+    const targets: Record<string, number> = {};
+    for (const [k, v] of Object.entries(targetForm)) {
+      const n = parseFloat(v);
+      if (!isNaN(n)) targets[k] = n;
+    }
+    const res = await fetch('/api/staff/kpi/targets', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year_month: ym, targets }),
+    });
+    if (res.ok) {
+      setShowTargets(false);
+      const r = await fetch(`/api/staff/kpi/dashboard?year_month=${ym}`, { credentials: 'include' });
+      if (r.ok) setData(await r.json());
+    }
+  };
 
   const uploadCsv = async (endpoint: string, label: string, file: File) => {
     setUploading(true);
@@ -195,6 +237,7 @@ export default function InsightsPage() {
             <span className="text-sm font-bold text-orange-700 px-2">{ym}</span>
             <button onClick={() => setYm(shiftYM(ym, 1))} className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-xs font-semibold">▶</button>
             <button onClick={() => setYm(currentYM())} className="ml-1 px-2 py-1 rounded text-xs bg-slate-100 hover:bg-slate-200 border border-slate-300">今月</button>
+            <button onClick={openTargets} className="ml-1 px-2 py-1 rounded text-xs bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-700">🎯 目標</button>
           </div>
         }
       />
@@ -415,6 +458,38 @@ export default function InsightsPage() {
           </>
         )}
       </div>
+
+      {showTargets && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3" onClick={() => setShowTargets(false)}>
+          <div className="bg-white w-full max-w-md rounded-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
+              <h3 className="font-bold">🎯 {ym} の目標値</h3>
+              <button onClick={() => setShowTargets(false)} className="text-2xl text-slate-400 leading-none">✕</button>
+            </div>
+            <div className="p-4 space-y-3">
+              {Object.entries(TARGET_LABELS).map(([k, info]) => (
+                <div key={k}>
+                  <label className="text-xs font-semibold text-slate-600">{info.label}</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={targetForm[k] ?? ''}
+                      onChange={e => setTargetForm({ ...targetForm, [k]: e.target.value })}
+                      placeholder={info.placeholder}
+                      className="flex-1 px-3 py-2 border rounded text-sm"
+                    />
+                    <span className="text-xs text-slate-500">{info.unit}</span>
+                  </div>
+                </div>
+              ))}
+              <button onClick={saveTargets} className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-white rounded font-semibold">
+                保存
+              </button>
+              <p className="text-[10px] text-slate-400">空欄にすると目標値が削除されない点に注意。値を0にして無効化してください</p>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
