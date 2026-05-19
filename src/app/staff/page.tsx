@@ -42,6 +42,12 @@ const CARDS: Card[] = [
     description: 'レッスン単位で給与計算→PDF明細→Drive自動アップ',
   },
   {
+    href: '/staff/expenses',
+    icon: '💸',
+    title: '経費管理',
+    description: '銀行明細→カテゴリ確定→月次集計 / 手動入力',
+  },
+  {
     href: '/staff/dashboard',
     icon: '📈',
     title: 'KPIスナップショット (旧)',

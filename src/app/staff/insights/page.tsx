@@ -111,21 +111,16 @@ export default function InsightsPage() {
   const [err, setErr] = useState('');
   const [uploading, setUploading] = useState(false);
 
-  const uploadRS002 = async (file: File) => {
+  const uploadCsv = async (endpoint: string, label: string, file: File) => {
     setUploading(true);
     setErr('');
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const res = await fetch('/api/staff/kpi/import-rs002', {
-        method: 'POST',
-        credentials: 'include',
-        body: fd,
-      });
+      const res = await fetch(endpoint, { method: 'POST', credentials: 'include', body: fd });
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
       const result = await res.json();
-      alert(`RS002取込完了: ${result.imported}件取込 / ${result.skipped}件スキップ`);
-      // 再ロード
+      alert(`${label}取込完了: ${result.imported}件取込 / ${result.skipped}件スキップ`);
       const r = await fetch(`/api/staff/kpi/dashboard?year_month=${ym}`, { credentials: 'include' });
       if (r.ok) setData(await r.json());
     } catch (e) {
@@ -173,10 +168,26 @@ export default function InsightsPage() {
         rightExtra={
           <div className="flex items-center gap-1 flex-wrap">
             <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'}`}>
-              {uploading ? '取込中...' : '📥 RS002 CSV'}
+              {uploading ? '取込中...' : '📥 RS002'}
               <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
                 const f = e.target.files?.[0];
-                if (f) uploadRS002(f);
+                if (f) uploadCsv('/api/staff/kpi/import-rs002', 'RS002', f);
+                e.target.value = '';
+              }} />
+            </label>
+            <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-green-50 hover:bg-green-100 border-green-200 text-green-700'}`}>
+              📥 課金明細
+              <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) uploadCsv('/api/staff/kpi/import-hacomono-billing', 'HACOMONO課金明細', f);
+                e.target.value = '';
+              }} />
+            </label>
+            <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700'}`}>
+              📥 銀行CSV
+              <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) uploadCsv('/api/staff/kpi/import-bank', '銀行明細', f);
                 e.target.value = '';
               }} />
             </label>
