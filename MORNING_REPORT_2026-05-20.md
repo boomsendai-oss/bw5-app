@@ -23,7 +23,19 @@
 - `SIDEBAR_PREP_HACOMONO_BILLING.md` を用意済み
 - そのままサイドバーに投げれば HACOMONO 課金明細クエリの特定が進む
 
+### 全画面 smoke test 結果 (4:30時点)
+全ページ HTTP 200 確認済み:
+- /staff/insights ✅
+- /staff/payroll ✅
+- /staff/studio-billing ✅
+- /staff/expenses ✅
+- /staff/cancel-requests ✅
+- /instructor ✅
+- /staff/masters ✅
+- /staff/schedule/calendar ✅
+
 ---
+
 
 
 ## 🆕 追加実装 (TAROフィードバック反映 / 2:30頃)
