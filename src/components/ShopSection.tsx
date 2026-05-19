@@ -219,7 +219,7 @@ const VIDEO_PREORDER_ID = 9;
 // 映像データ事前予約の受付期限 (発表会から約2週間後)
 const VIDEO_PREORDER_DEADLINE = new Date("2026-05-19T23:59:59+09:00");
 
-function isVideoPreorderClosed(): boolean {
+export function isVideoPreorderClosed(): boolean {
   if (typeof window !== "undefined") {
     // ?stage= プレビューでテストする時もそのまま現在時刻判定でOK (stage に依存しない)
   }
@@ -353,6 +353,12 @@ function MerchTab() {
                     <span className="text-white text-sm font-black tracking-widest">SOLD OUT</span>
                   </div>
                 )}
+                {videoClosed && (
+                  <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center px-2 text-center">
+                    <span className="text-white text-base font-black tracking-wider">予約受付終了</span>
+                    <span className="text-white/80 text-[10px] mt-1">5/19(火) 23:59 で締切ました</span>
+                  </div>
+                )}
                 {/* 当日販売のみアイテム (シール除く) に「当日販売」バッジ */}
                 {item.purchase_at_booth && item.id !== 8 && (
                   <div
@@ -363,7 +369,7 @@ function MerchTab() {
                   </div>
                 )}
                 {/* 映像データ商品にだけ表示する目立つバッジ — DVDではないことが一目で分かる */}
-                {isVideoPreorder && (
+                {isVideoPreorder && !videoClosed && (
                   <div
                     className="absolute bottom-1.5 left-1.5 right-1.5 px-2 py-1 rounded-md text-[9px] font-black leading-tight text-center"
                     style={{
@@ -1336,16 +1342,31 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
               <p className="mt-1.5 text-[11px]">受付期限: 5/19(火) 23:59</p>
             </div>
 
-            {/* 注意事項 - 柔らかめに */}
+            {/* 視聴方法 - よくある質問への回答 */}
+            <div className="rounded-xl p-3 text-[11px] leading-relaxed" style={{ background: "#eff6ff", border: "1px solid rgba(59,130,246,0.3)", color: "#1e3a8a" }}>
+              <p className="font-bold mb-1">📱 視聴方法について</p>
+              <ul className="list-disc pl-4 space-y-0.5">
+                <li>お手持ちの<strong>スマートフォン・タブレット・PC</strong>にダウンロードしてご視聴いただけます</li>
+                <li>テレビに繋いで（HDMI/AirPlay/Chromecast等）<strong>大画面でも</strong>お楽しみいただけます</li>
+                <li>購入後は何度でも視聴可能です</li>
+              </ul>
+            </div>
+
+            {/* 共有範囲のご案内 - 柔らかめに */}
             <div className="rounded-xl p-3 text-[11px] leading-relaxed" style={{ background: "#fef2f2", border: "1px solid rgba(220,76,4,0.3)", color: "#7f1d1d" }}>
-              <p className="font-bold mb-1">📺 ご購入者のみが視聴いただけます</p>
+              <p className="font-bold mb-1">👨‍👩‍👧 ご家族間での共有について</p>
               <p>
-                映像データには <strong>ウォーターマーク（電子透かし）</strong> が施されており、
-                第三者と共有された場合に <strong>「誰のデータか」が判別できる仕組み</strong> になっています。
+                <strong>同居のご家族間での共有はOK</strong>です。ご家族みんなで思い出を振り返ってください。
                 <br />
-                コピーガード処理も入っているため、ご購入いただいた方ご本人のみが安心してお楽しみいただけます。
+                ただし、SNS投稿や動画サイトへのアップロードなど<strong>外部への流出はご遠慮ください</strong>。
                 <br />
-                <span className="text-[10px] opacity-80">※出演者・関係者のプライバシー保護にご協力をお願いいたします</span>
+                <span className="block mt-1.5">
+                  ご親戚の方・遠方のご祖父母様など <strong>別世帯の方</strong> にもご覧いただきたい場合は、
+                  お手数ですが <strong>別途データをご購入</strong> いただけると大変助かります 🙏
+                </span>
+                <span className="block mt-1.5 text-[10px] opacity-80">
+                  ※映像にはウォーターマーク（電子透かし）と購入者識別情報が埋め込まれており、外部流出時に追跡可能な仕組みです。出演者・関係者のプライバシー保護にご協力をお願いいたします。
+                </span>
               </p>
             </div>
 
@@ -1369,7 +1390,7 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
 
             <label className="flex items-start gap-2 text-xs text-gray-700 cursor-pointer select-none pt-1">
               <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 w-4 h-4 accent-purple-500" />
-              <span>映像データの第三者への共有・転載をしないこと、コピーガード/ウォーターマーク処理に同意します。</span>
+              <span>同居家族以外への共有・SNS等への転載をしないこと、ウォーターマーク（電子透かし）処理に同意します。</span>
             </label>
 
             {result && !result.ok && (
@@ -1398,6 +1419,8 @@ interface BaseProduct {
   item_id: number;
   title: string;
   price: number;
+  proper_price?: number | null;
+  on_sale?: boolean;
   stock: number;
   sold_out: boolean;
   image_url: string;
@@ -1610,14 +1633,35 @@ export function BaseShopSection() {
                     </span>
                   </div>
                 )}
+                {p.on_sale && !p.sold_out && (
+                  <span
+                    className="absolute top-1.5 left-1.5 text-[9px] font-black tracking-wider px-1.5 py-0.5 rounded"
+                    style={{
+                      background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)",
+                      color: "white",
+                      boxShadow: "0 2px 6px rgba(239,68,68,0.5)",
+                    }}
+                  >
+                    SALE
+                  </span>
+                )}
               </div>
               <div className="px-2.5 py-2">
                 <div className="text-[11px] font-bold text-white truncate">
                   {p.title}
                 </div>
                 <div className="flex items-center justify-between mt-1">
-                  <span className="text-[12px] font-black text-orange-300">
-                    ¥{p.price.toLocaleString()}
+                  <span className="text-[12px] font-black text-orange-300 flex items-baseline gap-1">
+                    {p.on_sale && p.proper_price ? (
+                      <>
+                        <span className="text-[10px] text-white/40 line-through font-normal">
+                          ¥{p.proper_price.toLocaleString()}
+                        </span>
+                        <span>¥{p.price.toLocaleString()}</span>
+                      </>
+                    ) : (
+                      <span>¥{p.price.toLocaleString()}</span>
+                    )}
                   </span>
                   {!p.sold_out && (
                     <span

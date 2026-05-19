@@ -10,6 +10,7 @@ import ScheduleSection from "@/components/ScheduleSection";
 import ShopSection, {
   BaseShopSection,
   MadeToOrderBanner,
+  isVideoPreorderClosed,
 } from "@/components/ShopSection";
 import MusicSection from "@/components/MusicSection";
 import VoteSection from "@/components/VoteSection";
@@ -350,24 +351,7 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
-              ) : stage === 'closed' ? (
-                /* Closed — 終了メッセージ */
-                <div className="rounded-2xl p-4 text-center"
-                  style={{
-                    background: "rgba(244, 162, 97, 0.15)",
-                    border: "1px solid rgba(244, 162, 97, 0.4)",
-                    backdropFilter: "blur(16px)",
-                  }}
-                >
-                  <div className="text-2xl mb-1">🎉</div>
-                  <div className="text-base font-black text-white">
-                    BW5 全演目が終了しました
-                  </div>
-                  <div className="text-xs text-white/70 mt-1">
-                    ご来場いただきありがとうございました
-                  </div>
-                </div>
-              ) : (
+              ) : stage === 'closed' ? null : (
                 /* Event day — NOW LIVE badge */
                 <div className="rounded-2xl p-4 text-center"
                   style={{
@@ -619,20 +603,28 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
               >
-                {/* 🎬 映像データ予約 — DVDケース画像付き */}
+                {/* 🎬 映像データ予約 — DVDケース画像付き (締切後は非活性) */}
+                {(() => {
+                  const closed = isVideoPreorderClosed();
+                  return (
                 <button
                   type="button"
                   onClick={() => {
+                    if (closed) return;
                     if (typeof window !== "undefined") {
                       window.dispatchEvent(new Event("open-video-preorder"));
                     }
                   }}
-                  className="w-full block rounded-2xl overflow-hidden relative text-left"
+                  disabled={closed}
+                  className="w-full block rounded-2xl overflow-hidden relative text-left disabled:cursor-not-allowed"
                   style={{
-                    background:
-                      "linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%)",
-                    boxShadow:
-                      "0 8px 24px rgba(99,102,241,0.35), 0 4px 8px rgba(236,72,153,0.20)",
+                    background: closed
+                      ? "linear-gradient(135deg, #6b7280, #9ca3af)"
+                      : "linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%)",
+                    boxShadow: closed
+                      ? "none"
+                      : "0 8px 24px rgba(99,102,241,0.35), 0 4px 8px rgba(236,72,153,0.20)",
+                    opacity: closed ? 0.85 : 1,
                   }}
                 >
                   {/* 装飾用の光彩 */}
@@ -658,21 +650,23 @@ export default function Home() {
                       </div>
                       <div className="text-[19px] font-black text-white leading-tight mb-1">
                         映像データ販売<br />
-                        <span className="text-white">予約受付中</span>
+                        <span className="text-white">{closed ? "予約受付終了" : "予約受付中"}</span>
                       </div>
                       <div className="text-[10px] text-white/85 mb-2.5 leading-snug">
                         BW5 全演目 ¥3,000<br />
-                        <span className="text-white/70">期限 5/19(火) 23:59</span>
+                        <span className="text-white/70">
+                          {closed ? "5/19(火) 23:59 で締切ました" : "期限 5/19(火) 23:59"}
+                        </span>
                       </div>
                       <div
                         className="inline-block px-4 py-1.5 rounded-full text-[12px] font-black"
                         style={{
-                          background: "#fff",
-                          color: "#6366f1",
-                          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                          background: closed ? "#9ca3af" : "#fff",
+                          color: closed ? "#fff" : "#6366f1",
+                          boxShadow: closed ? "none" : "0 4px 12px rgba(0,0,0,0.15)",
                         }}
                       >
-                        予約する →
+                        {closed ? "受付終了" : "予約する →"}
                       </div>
                     </div>
 
@@ -699,6 +693,41 @@ export default function Home() {
                     </div>
                   </div>
                 </button>
+                  );
+                })()}
+
+                {/* 📸 本番写真 公開ページへのリンク */}
+                <a
+                  href="/photo"
+                  className="w-full block rounded-2xl overflow-hidden relative text-left"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, #f27a1a 0%, #dc4c04 100%)",
+                    boxShadow:
+                      "0 8px 24px rgba(220,76,4,0.35), 0 4px 8px rgba(244,162,97,0.25)",
+                  }}
+                >
+                  <div className="relative flex items-center gap-3 px-4 py-4">
+                    <span className="text-3xl shrink-0">📸</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[9px] tracking-[0.25em] text-white/85 font-bold mb-0.5">
+                        GROUP PHOTOS · 6 PHASES
+                      </div>
+                      <div className="text-[17px] font-black text-white leading-tight">
+                        本番写真 公開ページ
+                      </div>
+                      <div className="text-[10px] text-white/85 mt-0.5">
+                        5/13 から順次公開 (全6Phase)
+                      </div>
+                    </div>
+                    <span
+                      className="inline-flex items-center justify-center w-9 h-9 rounded-full shrink-0"
+                      style={{ background: "#fff", color: "#dc4c04" }}
+                    >
+                      →
+                    </span>
+                  </div>
+                </a>
 
                 {/* 👕 受注販売バナー (フェードグレー Tシャツ・5/17締切) */}
                 <MadeToOrderBanner />
