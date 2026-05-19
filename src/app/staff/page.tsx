@@ -49,10 +49,10 @@ const CARDS: Card[] = [
     ],
   },
   {
-    href: '/staff/schedule',
+    href: '/staff/schedule/calendar',
     icon: '📅',
-    title: 'レッスンスケジュール',
-    description: '常設・特別レッスン・休講・代講管理',
+    title: 'レッスンカレンダー',
+    description: '月別レッスン予定 (マスター展開+実開催)',
     stat: s => [
       { label: '登録クラス', value: s.lessons.active },
     ],
