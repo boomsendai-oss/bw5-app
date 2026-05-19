@@ -167,9 +167,9 @@ export default function ScheduleCalendarPage() {
                               ? l.status === 'cancelled' ? 'bg-red-100 text-red-700 line-through' : 'bg-emerald-100 text-emerald-800'
                               : 'bg-blue-50 text-blue-800'
                           }`}
-                          title={`${l.start_time} ${l.class_name} (${l.instructor_name ?? '?'})`}
+                          title={`${l.start_time ?? '時間未設定'} ${l.class_name} (${l.instructor_name ?? '?'})`}
                         >
-                          {l.start_time.substring(0, 5)} {l.class_name.replace(/​/g, '').substring(0, 8)}
+                          {l.start_time ? l.start_time.substring(0, 5) : '時間未設定'} {(l.class_name ?? '').replace(/​/g, '').substring(0, 8)}
                         </div>
                       ))}
                       {lessonCount > 3 && (
@@ -218,7 +218,9 @@ export default function ScheduleCalendarPage() {
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-sm font-bold">{l.start_time?.substring(0, 5)} - {l.end_time?.substring(0, 5)}</span>
+                      <span className="font-mono text-sm font-bold">
+                        {l.start_time ? l.start_time.substring(0, 5) : '時間未設定'} - {l.end_time ? l.end_time.substring(0, 5) : ''}
+                      </span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-white text-slate-600 border">
                         {l.source === 'instance' ? '実開催' : 'マスター展開'}
                       </span>
