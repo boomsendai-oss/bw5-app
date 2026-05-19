@@ -37,6 +37,7 @@ type Instructor = {
 
 type Rate = { id: number; instructor_id: number; duration_minutes: number; rate: number };
 type TransitFee = { id: number; instructor_id: number; studio_id: number; amount: number };
+type PhotoCount = { instructor_id: number; count: number };
 
 export default function MastersPage() {
   const [tab, setTab] = useState<'studios' | 'instructors'>('studios');
@@ -44,6 +45,7 @@ export default function MastersPage() {
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [rates, setRates] = useState<Rate[]>([]);
   const [fees, setFees] = useState<TransitFee[]>([]);
+  const [photoCounts, setPhotoCounts] = useState<PhotoCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<{ kind: 'studio'; data: Partial<Studio> } | { kind: 'instructor'; data: Partial<Instructor> } | null>(null);
   const [editRates, setEditRates] = useState<{ duration: number; rate: number }[]>([]);
@@ -67,6 +69,7 @@ export default function MastersPage() {
       setInstructors(iData.instructors || []);
       setRates(iData.rates || []);
       setFees(iData.transit_fees || []);
+      setPhotoCounts(iData.photo_counts || []);
     } catch (e) {
       setMsg(`読込失敗: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -230,6 +233,7 @@ export default function MastersPage() {
                     <th className="px-2 py-2 text-left">名前</th>
                     <th className="px-2 py-2 text-left">連絡</th>
                     <th className="px-2 py-2 text-left">単価</th>
+                    <th className="px-2 py-2 text-left">📸</th>
                     <th className="px-2 py-2 text-left">IG</th>
                     <th className="px-2 py-2 text-left">Drive</th>
                     <th className="px-2 py-2 text-left"></th>
@@ -245,6 +249,14 @@ export default function MastersPage() {
                         <td className="px-2 py-2 text-xs">
                           {myRates.map(r => <div key={r.id}>{r.duration_minutes}分: ¥{r.rate.toLocaleString()}</div>)}
                           {myRates.length === 0 && '-'}
+                        </td>
+                        <td className="px-2 py-2 text-xs">
+                          {(() => {
+                            const cnt = photoCounts.find(p => p.instructor_id === i.id)?.count ?? 0;
+                            return cnt > 0
+                              ? <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">{cnt}</span>
+                              : <span className="text-slate-300">-</span>;
+                          })()}
                         </td>
                         <td className="px-2 py-2 text-xs">
                           {i.instagram_handle
@@ -263,7 +275,7 @@ export default function MastersPage() {
                       </tr>
                     );
                   })}
-                  {instructors.length === 0 && <tr><td colSpan={6} className="px-2 py-6 text-center text-slate-400">登録なし</td></tr>}
+                  {instructors.length === 0 && <tr><td colSpan={7} className="px-2 py-6 text-center text-slate-400">登録なし</td></tr>}
                 </tbody>
               </table>
             </div>

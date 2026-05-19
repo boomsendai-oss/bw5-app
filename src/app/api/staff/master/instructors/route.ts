@@ -11,7 +11,9 @@ export async function GET(req: NextRequest) {
   const instructors = await getAll(`SELECT * FROM instructors ORDER BY active DESC, name ASC`);
   const rates = await getAll(`SELECT * FROM instructor_rates ORDER BY instructor_id, duration_minutes`);
   const fees = await getAll(`SELECT * FROM instructor_transit_fees ORDER BY instructor_id, studio_id`);
-  return NextResponse.json({ instructors, rates, transit_fees: fees });
+  // 写真枚数 (instructor_photos) を一緒に返す
+  const photoCounts = await getAll(`SELECT instructor_id, COUNT(*) as count FROM instructor_photos WHERE is_active = 1 GROUP BY instructor_id`);
+  return NextResponse.json({ instructors, rates, transit_fees: fees, photo_counts: photoCounts });
 }
 
 export async function POST(req: NextRequest) {
