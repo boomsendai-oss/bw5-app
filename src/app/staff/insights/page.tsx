@@ -109,6 +109,31 @@ export default function InsightsPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  const uploadRS002 = async (file: File) => {
+    setUploading(true);
+    setErr('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/staff/kpi/import-rs002', {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      const result = await res.json();
+      alert(`RS002取込完了: ${result.imported}件取込 / ${result.skipped}件スキップ`);
+      // 再ロード
+      const r = await fetch(`/api/staff/kpi/dashboard?year_month=${ym}`, { credentials: 'include' });
+      if (r.ok) setData(await r.json());
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const load = useCallback(async (target: string) => {
     setLoading(true);
@@ -146,7 +171,15 @@ export default function InsightsPage() {
         title="📊 経営インサイト"
         description="月次KPI自動集計ダッシュボード"
         rightExtra={
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-wrap">
+            <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'}`}>
+              {uploading ? '取込中...' : '📥 RS002 CSV'}
+              <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) uploadRS002(f);
+                e.target.value = '';
+              }} />
+            </label>
             <button onClick={() => setYm(shiftYM(ym, -1))} className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-xs font-semibold">◀</button>
             <span className="text-sm font-bold text-orange-700 px-2">{ym}</span>
             <button onClick={() => setYm(shiftYM(ym, 1))} className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-xs font-semibold">▶</button>
