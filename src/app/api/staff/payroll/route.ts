@@ -22,7 +22,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ months: runs });
   }
   const runs = await getAll(
-    `SELECT pr.*, i.name AS instructor_name, i.salary_type, i.payslip_folder_url
+    `SELECT pr.*, i.name AS instructor_name, i.salary_type,
+            COALESCE(i.payslip_folder_url, i.shared_folder_url) AS payslip_folder_url
      FROM payroll_runs pr
      LEFT JOIN instructors i ON i.id = pr.instructor_id
      WHERE pr.year_month = ?

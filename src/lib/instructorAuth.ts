@@ -40,7 +40,9 @@ export async function getInstructorBySession(req: NextRequest): Promise<{ id: nu
   const token = req.cookies.get(INSTRUCTOR_SESSION_COOKIE)?.value;
   if (!token) return null;
   const session = await getOne(
-    `SELECT s.instructor_id, s.expires_at, i.name, i.salary_type, i.payslip_folder_url, i.contact_email
+    `SELECT s.instructor_id, s.expires_at, i.name, i.salary_type,
+            COALESCE(i.payslip_folder_url, i.shared_folder_url) AS payslip_folder_url,
+            i.contact_email
      FROM instructor_sessions s
      LEFT JOIN instructors i ON i.id = s.instructor_id
      WHERE s.session_token = ?`,

@@ -11,7 +11,9 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params;
   const runId = Number(id);
   const run = await getOne(
-    `SELECT pr.*, i.name AS instructor_name, i.salary_type, i.payslip_folder_url, i.contact_email,
+    `SELECT pr.*, i.name AS instructor_name, i.salary_type,
+            COALESCE(i.payslip_folder_url, i.shared_folder_url) AS payslip_folder_url,
+            i.contact_email,
             i.bank_name, i.bank_branch, i.bank_account_type, i.bank_account_number, i.bank_account_holder
      FROM payroll_runs pr LEFT JOIN instructors i ON i.id = pr.instructor_id
      WHERE pr.id = ?`,
