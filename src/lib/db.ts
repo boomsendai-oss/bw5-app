@@ -632,6 +632,19 @@ export async function initDb(): Promise<void> {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`, args: [] },
 
+    { sql: `CREATE TABLE IF NOT EXISTS hacomono_products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      price INTEGER NOT NULL,
+      category TEXT,
+      active INTEGER DEFAULT 1,
+      notes TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(product_type, name)
+    )`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_hacomono_products_type ON hacomono_products(product_type)`, args: [] },
+
     { sql: `CREATE TABLE IF NOT EXISTS lesson_cancel_requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       instructor_id INTEGER NOT NULL,
