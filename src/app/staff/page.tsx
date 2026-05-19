@@ -48,6 +48,12 @@ const CARDS: Card[] = [
     description: '銀行明細→カテゴリ確定→月次集計 / 手動入力',
   },
   {
+    href: '/staff/studio-billing',
+    icon: '🏠',
+    title: '月次スタジオ料金',
+    description: 'レッスン時間×単価で計算→キャンセル料調整→振込',
+  },
+  {
     href: '/staff/dashboard',
     icon: '📈',
     title: 'KPIスナップショット (旧)',
