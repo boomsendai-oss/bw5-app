@@ -35,6 +35,23 @@ async function sendMail(opts: { to: string; subject: string; html: string }): Pr
   });
 }
 
+// 汎用送信 (text or html)
+export async function sendEmail(opts: { to: string; subject: string; text?: string; html?: string; attachments?: Array<{ filename: string; content: Buffer | string }> }): Promise<void> {
+  if (!transporter) {
+    console.warn('[email] GMAIL_APP_PASSWORD not set — skipping email send');
+    return;
+  }
+  await transporter.sendMail({
+    from: FROM,
+    to: opts.to,
+    bcc: ADMIN_BCC === opts.to ? undefined : ADMIN_BCC,
+    subject: opts.subject,
+    text: opts.text,
+    html: opts.html ?? (opts.text ? opts.text.replace(/\n/g, '<br />') : undefined),
+    attachments: opts.attachments,
+  });
+}
+
 // 入金期限（固定）
 export const PAYMENT_DEADLINE_LABEL = '2026年5月12日(火) 15:00 まで';
 
