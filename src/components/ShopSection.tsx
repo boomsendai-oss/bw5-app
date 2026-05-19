@@ -221,7 +221,12 @@ const VIDEO_PREORDER_DEADLINE = new Date("2026-05-19T23:59:59+09:00");
 
 export function isVideoPreorderClosed(): boolean {
   if (typeof window !== "undefined") {
-    // ?stage= プレビューでテストする時もそのまま現在時刻判定でOK (stage に依存しない)
+    // ?expired=1 のクエリパラメータが付いている場合は強制的に「締切後」として扱う
+    // 5/20 0:00 以降の画面プレビュー用 (TAROの動作確認専用)
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("expired") === "1") return true;
+    } catch {}
   }
   return Date.now() > VIDEO_PREORDER_DEADLINE.getTime();
 }

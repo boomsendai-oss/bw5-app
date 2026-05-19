@@ -73,7 +73,12 @@ export default function PhaseDetailPage() {
   return (
     <main className="min-h-screen pb-12" style={{ background: "#fff7ed" }}>
       {/* ─── 上部 sticky: 映像予約バナー (5/19締切後は非表示) ─── */}
-      {Date.now() < new Date("2026-05-20T00:00:00+09:00").getTime() && (
+      {(() => {
+        const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+        const forceExpired = params?.get("expired") === "1";
+        const expired = forceExpired || Date.now() >= new Date("2026-05-20T00:00:00+09:00").getTime();
+        return !expired;
+      })() && (
         <div
           className="sticky top-0 z-40 px-4 py-2.5"
           style={{
