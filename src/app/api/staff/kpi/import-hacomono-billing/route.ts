@@ -25,7 +25,9 @@ function parseAmt(s: string): number {
 // 商品名から経費カテゴリ推定 (HACOMONO命名規則ベース)
 function guessProductCategory(productName: string): string {
   const p = productName.toLowerCase();
-  if (/入会金|システム変更手数料|enrollment|signup|admission/.test(p)) return 'enrollment_fee';
+  // システム変更手数料は入会金ではなく「その他」(プラン変更・休会延長等で発生)
+  if (/システム変更手数料|手数料/.test(p)) return 'other';
+  if (/入会金|enrollment|signup|admission/.test(p)) return 'enrollment_fee';
   if (/プラン|plan|月会費|月額|定額|サブスク|マンスリー/.test(p)) return 'plan';
   if (/チケット|ticket|単発|回数券|ドロップイン|追加受講|ビジター/.test(p)) return 'ticket';
   return 'other';
