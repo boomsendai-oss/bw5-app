@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type Studio = {
   id: number;
@@ -154,12 +155,7 @@ export default function MastersPage() {
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <header className="bg-white border-b border-orange-100 px-4 py-3 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto flex items-baseline justify-between gap-3 flex-wrap">
-          <h1 className="text-lg sm:text-xl font-bold text-orange-600">🗂️ マスターデータ管理</h1>
-          <a href="/staff" className="text-xs text-orange-600 underline">← ハブ</a>
-        </div>
-      </header>
+      <StaffPageHeader title="🗂️ マスターデータ管理" description="スタジオ・インストラクター・レッスン定義" />
 
       <div className="max-w-6xl mx-auto p-4 sm:p-6">
         {msg && <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded text-sm">{msg}</div>}
@@ -234,7 +230,7 @@ export default function MastersPage() {
                     <th className="px-2 py-2 text-left">名前</th>
                     <th className="px-2 py-2 text-left">連絡</th>
                     <th className="px-2 py-2 text-left">単価</th>
-                    <th className="px-2 py-2 text-left">入金先</th>
+                    <th className="px-2 py-2 text-left">IG</th>
                     <th className="px-2 py-2 text-left">Drive</th>
                     <th className="px-2 py-2 text-left"></th>
                   </tr>
@@ -250,11 +246,15 @@ export default function MastersPage() {
                           {myRates.map(r => <div key={r.id}>{r.duration_minutes}分: ¥{r.rate.toLocaleString()}</div>)}
                           {myRates.length === 0 && '-'}
                         </td>
-                        <td className="px-2 py-2 text-xs text-slate-600">
-                          {i.bank_name ? `${i.bank_name} ${i.bank_branch || ''}` : '-'}
+                        <td className="px-2 py-2 text-xs">
+                          {i.instagram_handle
+                            ? <a href={`https://www.instagram.com/${i.instagram_handle}/`} target="_blank" rel="noreferrer" className="text-pink-600 hover:underline" title={`@${i.instagram_handle}`}>📷</a>
+                            : <span className="text-slate-300">-</span>}
                         </td>
                         <td className="px-2 py-2 text-xs">
-                          {i.shared_folder_url ? <a href={i.shared_folder_url} target="_blank" rel="noreferrer" className="text-blue-600 underline">📁</a> : '-'}
+                          {i.shared_folder_url
+                            ? <a href={i.shared_folder_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline" title="Driveフォルダ">📁</a>
+                            : <span className="text-slate-300">-</span>}
                         </td>
                         <td className="px-2 py-2 text-right whitespace-nowrap">
                           <button onClick={() => startEditInstructor(i)} className="text-xs px-2 py-0.5 bg-slate-200 hover:bg-slate-300 rounded">編集</button>
@@ -275,7 +275,10 @@ export default function MastersPage() {
       {editing?.kind === 'studio' && (
         <div className="fixed inset-0 bg-black/50 flex items-start justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-lg p-4 w-full max-w-2xl my-8">
-            <h2 className="font-bold mb-3">{editing.data.id ? 'スタジオ編集' : 'スタジオ追加'}</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-bold">{editing.data.id ? 'スタジオ編集' : 'スタジオ追加'}</h2>
+              <button onClick={() => setEditing(null)} className="text-2xl leading-none px-2 py-0 text-slate-400 hover:text-slate-700">✕</button>
+            </div>
             <div className="space-y-2 text-sm">
               <Field label="名称*" value={editing.data.name ?? ''} onChange={v => setEditing({ kind: 'studio', data: { ...editing.data, name: v } })} />
               <Field label="住所" value={editing.data.address ?? ''} onChange={v => setEditing({ kind: 'studio', data: { ...editing.data, address: v } })} />
@@ -312,7 +315,10 @@ export default function MastersPage() {
       {editing?.kind === 'instructor' && (
         <div className="fixed inset-0 bg-black/50 flex items-start justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-lg p-4 w-full max-w-3xl my-8">
-            <h2 className="font-bold mb-3">{editing.data.id ? 'インストラクター編集' : 'インストラクター追加'}</h2>
+            <div className="flex items-center justify-between mb-3 sticky top-0 bg-white py-1 z-10">
+              <h2 className="font-bold">{editing.data.id ? 'インストラクター編集' : 'インストラクター追加'}</h2>
+              <button onClick={() => { setEditing(null); setEditRates([]); setEditFees([]); }} className="text-2xl leading-none px-2 py-0 text-slate-400 hover:text-slate-700">✕</button>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
               <Field label="名前*" value={editing.data.name ?? ''} onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, name: v } })} />
               <Field label="フリガナ" value={editing.data.name_kana ?? ''} onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, name_kana: v } })} />

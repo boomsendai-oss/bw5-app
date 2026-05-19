@@ -1744,7 +1744,14 @@ export function MadeToOrderBanner() {
     );
   }
   if (!item) return null;
-  const expired = MTO_DEADLINE_MS <= now;
+  // ?expired=1 のクエリで強制的に締切後扱い (TARO のプレビュー用)
+  let forceExpired = false;
+  if (typeof window !== "undefined") {
+    try {
+      forceExpired = new URLSearchParams(window.location.search).get("expired") === "1";
+    } catch {}
+  }
+  const expired = forceExpired || MTO_DEADLINE_MS <= now;
   const url = `${item.url}${item.url.includes("?") ? "&" : "?"}openExternalBrowser=1`;
 
   return (

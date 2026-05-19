@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type Preorder = {
   id: number;
@@ -21,7 +22,7 @@ type Preorder = {
 export default function VideoPreordersPage() {
   const [preorders, setPreorders] = useState<Preorder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'active' | 'duplicate' | 'unsent' | 'sent'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'duplicate' | 'unsent' | 'sent'>('active');
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -205,13 +206,8 @@ export default function VideoPreordersPage() {
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
+    <StaffPageHeader title="📹 映像予約 管理" description="BW5映像データ予約・確認メール・支払いリンク管理" />
     <div className="max-w-7xl mx-auto p-4 sm:p-6">
-      <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl sm:text-2xl font-bold text-orange-700">📹 映像予約 管理</h1>
-        <div className="flex gap-2 text-xs sm:text-sm">
-          <a href="/staff/dashboard" className="text-orange-600 hover:underline">← ダッシュボード</a>
-        </div>
-      </div>
 
       {/* サマリ */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
