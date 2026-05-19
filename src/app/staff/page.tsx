@@ -30,10 +30,22 @@ const CARDS: Card[] = [
     description: 'スタジオ・インストラクター・レッスン定義',
   },
   {
-    href: '/staff/dashboard',
+    href: '/staff/insights',
     icon: '📊',
-    title: 'KPIダッシュボード',
-    description: '入会・退会・体験の月次推移と自動集計',
+    title: '経営インサイト',
+    description: '売上・顧客動態・稼働率・収益性をリアルタイム自動集計',
+  },
+  {
+    href: '/staff/payroll',
+    icon: '💰',
+    title: '月次給与計算',
+    description: 'レッスン単位で給与計算→PDF明細→Drive自動アップ',
+  },
+  {
+    href: '/staff/dashboard',
+    icon: '📈',
+    title: 'KPIスナップショット (旧)',
+    description: '月次手動入力ダッシュボード',
     stat: s => [
       { label: '月次レポート', value: s.monthly.reports },
     ],
