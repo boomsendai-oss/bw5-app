@@ -1,5 +1,31 @@
 # 🌅 朝の報告 - 2026年5月20日
 
+## 🆕 追加実装 (TARO就寝後・3:30〜4:30)
+
+### 休講申請 承認UI `/staff/cancel-requests`
+- インストラクター専用ポータルから来た休講申請を一覧
+- 「審査中」「すべて」タブ
+- 承認 + 自動休講化 / 承認のみ / 却下 の3択
+- 結果はインストラクターにメール通知
+- staffハブに「🚫 休講申請」カード追加
+
+### 月次固定費 自動計上 `/staff/expenses` (🔄 月次固定費タブ)
+- HACOMONO/Lstep/Vercel/Turso/Claude等の月額をテンプレ登録
+- 「{月}に一括計上」ボタンで一発反映 (重複は自動スキップ)
+
+### Vercel 自動デプロイ調査
+- **判明: VercelプロジェクトがGitHubリポジトリと連携されていない** (Git type=None)
+- CLI から `vercel git connect` 試行 → GitHubアカウント連携が必要でエラー
+- **要TARO対応**: vercel.com → bw5-app → Settings → Git → Connect GitHub
+- 連携後は `git push` で自動デプロイされるはず
+
+### サイドバー指示書プリセット
+- `SIDEBAR_PREP_HACOMONO_BILLING.md` を用意済み
+- そのままサイドバーに投げれば HACOMONO 課金明細クエリの特定が進む
+
+---
+
+
 ## 🆕 追加実装 (TAROフィードバック反映 / 2:30頃)
 
 ### マスターデータ画面 改修
