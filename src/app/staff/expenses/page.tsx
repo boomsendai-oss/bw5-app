@@ -44,7 +44,7 @@ export default function ExpensesPage() {
   const [ym, setYm] = useState(prevYM());
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState<'expenses' | 'pending' | 'add'>('expenses');
+  const [tab, setTab] = useState<'expenses' | 'pending' | 'add' | 'recurring'>('expenses');
   const [err, setErr] = useState('');
 
   const load = useCallback(async (target: string) => {
@@ -117,13 +117,14 @@ export default function ExpensesPage() {
         )}
 
         {/* タブ */}
-        <div className="flex gap-1 mb-2 border-b">
+        <div className="flex gap-1 mb-2 border-b flex-wrap">
           {[
             { k: 'expenses', label: `📋 経費一覧 (${data?.expenses.length ?? 0})` },
             { k: 'pending', label: `🏦 銀行明細 未確定 (${data?.pendingBankTxns.length ?? 0})` },
             { k: 'add', label: '➕ 手動追加' },
+            { k: 'recurring', label: '🔄 月次固定費' },
           ].map(t => (
-            <button key={t.k} onClick={() => setTab(t.k as 'expenses' | 'pending' | 'add')}
+            <button key={t.k} onClick={() => setTab(t.k as 'expenses' | 'pending' | 'add' | 'recurring')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-t border-b-2 transition-colors ${tab === t.k ? 'border-orange-500 text-orange-700 bg-orange-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               {t.label}
             </button>
@@ -209,8 +210,126 @@ export default function ExpensesPage() {
         {!loading && data && tab === 'add' && (
           <ManualAddForm categories={data.categories} onAdded={() => load(ym)} defaultDate={ym} />
         )}
+
+        {/* 月次固定費 */}
+        {!loading && data && tab === 'recurring' && (
+          <RecurringTab categories={data.categories} ym={ym} onChanged={() => load(ym)} />
+        )}
       </div>
     </main>
+  );
+}
+
+type RecurringItem = { id: number; category: string; subcategory: string | null; amount: number; description: string | null; active: number };
+
+function RecurringTab({ categories, ym, onChanged }: { categories: string[]; ym: string; onChanged: () => void }) {
+  const [items, setItems] = useState<RecurringItem[]>([]);
+  const [form, setForm] = useState({ category: 'システム費', subcategory: '', amount: '', description: '' });
+  const [busy, setBusy] = useState(false);
+  const [applyMsg, setApplyMsg] = useState('');
+
+  const loadItems = useCallback(async () => {
+    const r = await fetch('/api/staff/recurring-expenses', { credentials: 'include' });
+    if (r.ok) setItems((await r.json()).items ?? []);
+  }, []);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/staff/recurring-expenses', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (alive && d) setItems(d.items ?? []); });
+    return () => { alive = false; };
+  }, []);
+
+  const add = async () => {
+    const amount = parseInt(form.amount, 10);
+    if (isNaN(amount) || amount <= 0) { alert('金額は正の数値で'); return; }
+    setBusy(true);
+    const res = await fetch('/api/staff/recurring-expenses', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...form, amount, active: 1 }),
+    });
+    setBusy(false);
+    if (res.ok) {
+      setForm({ category: 'システム費', subcategory: '', amount: '', description: '' });
+      await loadItems();
+    } else { alert(await res.text()); }
+  };
+
+  const del = async (id: number) => {
+    if (!confirm('削除しますか?')) return;
+    await fetch(`/api/staff/recurring-expenses?id=${id}`, { method: 'DELETE', credentials: 'include' });
+    await loadItems();
+  };
+
+  const applyForMonth = async () => {
+    if (!confirm(`${ym} に固定費${items.length}件を一括計上しますか? (既に計上済みは自動スキップ)`)) return;
+    setBusy(true);
+    const res = await fetch('/api/staff/expenses/apply-recurring', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year_month: ym }),
+    });
+    setBusy(false);
+    if (res.ok) {
+      const d = await res.json();
+      setApplyMsg(`${ym} に ${d.inserted}件 計上 (重複スキップ: ${d.items.filter((i: { skipped: boolean }) => i.skipped).length}件)`);
+      onChanged();
+    } else { alert(await res.text()); }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-amber-50 border border-amber-200 rounded p-3">
+        <h3 className="font-bold text-sm mb-1">📌 月次固定費テンプレート</h3>
+        <p className="text-xs text-slate-600">毎月発生する経費 (HACOMONO/Lstep/Vercel等) をここに登録 → 月初に「{ym} に一括計上」ボタンで一発反映</p>
+        <button onClick={applyForMonth} disabled={busy || items.length === 0} className="mt-2 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-semibold disabled:opacity-50">
+          🔄 {ym} に一括計上 ({items.length}件)
+        </button>
+        {applyMsg && <p className="text-xs text-green-700 mt-2">{applyMsg}</p>}
+      </div>
+
+      {/* 追加フォーム */}
+      <div className="bg-white border rounded p-3">
+        <h4 className="text-xs font-bold mb-2">+ 新規追加</h4>
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-sm">
+          <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="px-2 py-1 border rounded bg-white">
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <input placeholder="サブ (Vercel等)" value={form.subcategory} onChange={e => setForm({ ...form, subcategory: e.target.value })} className="px-2 py-1 border rounded" />
+          <input type="number" placeholder="金額" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="px-2 py-1 border rounded" />
+          <input placeholder="摘要" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="px-2 py-1 border rounded sm:col-span-1" />
+          <button onClick={add} disabled={busy} className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-semibold">追加</button>
+        </div>
+      </div>
+
+      {/* 一覧 */}
+      <div className="bg-white border rounded overflow-hidden">
+        <table className="w-full text-xs">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="px-2 py-1 text-left">カテゴリ</th>
+              <th className="px-2 py-1 text-left">サブ</th>
+              <th className="px-2 py-1 text-left">摘要</th>
+              <th className="px-2 py-1 text-right">金額</th>
+              <th className="px-2 py-1"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(i => (
+              <tr key={i.id} className="border-t">
+                <td className="px-2 py-1"><span className="text-[10px] px-1 bg-orange-100 text-orange-700 rounded">{i.category}</span></td>
+                <td className="px-2 py-1">{i.subcategory ?? '—'}</td>
+                <td className="px-2 py-1 text-slate-600">{i.description ?? '—'}</td>
+                <td className="px-2 py-1 text-right font-mono">¥{i.amount.toLocaleString()}/月</td>
+                <td className="px-2 py-1"><button onClick={() => del(i.id)} className="text-slate-400 hover:text-red-600">削除</button></td>
+              </tr>
+            ))}
+            {items.length === 0 && <tr><td colSpan={5} className="py-4 text-center text-slate-400">未登録</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
