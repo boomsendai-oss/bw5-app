@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-const SQUARE_PAYMENT_URL = 'https://square.link/u/nlufWFtA';
+// Square 決済リンク (住所入力不要のカテゴリで作成された新URL)
+const SQUARE_PAYMENT_URL = 'https://square.link/u/QgqAM1c2';
 const DEFAULT_DEADLINE_ISO = '2026-05-27T23:59:00+09:00'; // 締切
 const DEFAULT_DEADLINE_LABEL = '2026年5月27日(火) 23:59';
 

@@ -8,7 +8,8 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 // 固定値 (将来 settings table に移行検討)
-const SQUARE_PAYMENT_URL = 'https://square.link/u/nlufWFtA';
+// Square 決済リンク (住所入力不要のカテゴリで作成された新URL)
+const SQUARE_PAYMENT_URL = 'https://square.link/u/QgqAM1c2';
 const DEFAULT_DEADLINE = '2026年5月27日(火) 23:59';
 
 // POST /api/staff/video-preorders/send-payment-link
