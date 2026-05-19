@@ -54,6 +54,12 @@ const CARDS: Card[] = [
     description: 'レッスン時間×単価で計算→キャンセル料調整→振込',
   },
   {
+    href: '/staff/cancel-requests',
+    icon: '🚫',
+    title: '休講申請',
+    description: 'インストラクターからの休講申請を承認/却下',
+  },
+  {
     href: '/staff/dashboard',
     icon: '📈',
     title: 'KPIスナップショット (旧)',
