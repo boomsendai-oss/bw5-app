@@ -138,9 +138,15 @@ export default function StudioBillingPage() {
             <span className="ml-3 text-slate-500">対象スタジオ:</span> <span className="font-bold">{runs.length}</span>
             <span className="ml-3 text-slate-500">合計:</span> <span className="font-bold text-orange-700">{yen(grandTotal)}</span>
           </div>
-          <button onClick={calculate} disabled={busy} className="px-3 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">
-            {busy ? '計算中...' : '🔄 計算実行'}
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={calculate} disabled={busy} className="px-3 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">
+              {busy ? '計算中...' : '🔄 計算実行'}
+            </button>
+            <a href={`/api/staff/bank-transfer/studio?year_month=${ym}`} download
+              className="px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold">
+              🏦 振込CSV (SJIS)
+            </a>
+          </div>
         </div>
         {loading && <p className="text-slate-500 text-sm">読込中...</p>}
         {!loading && runs.length === 0 && <p className="text-slate-500 text-sm p-4 bg-white rounded border">未計算。「計算実行」を押してください。</p>}

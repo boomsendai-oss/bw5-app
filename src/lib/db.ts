@@ -682,7 +682,16 @@ export async function initDb(): Promise<void> {
   await addColumnIfMissing(c, 'instructors', 'pin_hash', 'TEXT');
   await addColumnIfMissing(c, 'instructors', 'pin_set_at', 'TEXT');
   await addColumnIfMissing(c, 'instructors', 'payslip_folder_url', 'TEXT');
+  await addColumnIfMissing(c, 'instructors', 'bank_code', 'TEXT');
+  await addColumnIfMissing(c, 'instructors', 'bank_branch_code', 'TEXT');
   await addColumnIfMissing(c, 'studios', 'payment_type', "TEXT DEFAULT 'postpaid_bank'");
+  await addColumnIfMissing(c, 'studios', 'bank_code', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'bank_branch_code', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'bank_name', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'bank_branch', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'bank_account_type', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'bank_account_number', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'bank_account_holder', 'TEXT');
 
   // Seed defaults if tables empty
   const scheduleCount = await c.execute('SELECT COUNT(*) as count FROM schedule');

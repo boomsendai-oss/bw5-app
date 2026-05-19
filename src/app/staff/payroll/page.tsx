@@ -184,11 +184,19 @@ export default function PayrollPage() {
             <span className="ml-3 text-slate-500">対象者:</span> <span className="font-bold">{runs.length}人</span>
             <span className="ml-3 text-slate-500">合計:</span> <span className="font-bold text-orange-700">{yen(grandTotal)}</span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button onClick={calculate} disabled={busy}
               className="px-3 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">
               {busy ? '計算中...' : '🔄 計算実行'}
             </button>
+            <a href={`/api/staff/bank-transfer/payroll?year_month=${ym}`} download
+              className="px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold">
+              🏦 振込CSV (SJIS)
+            </a>
+            <a href={`/api/staff/bank-transfer/payroll?year_month=${ym}&encoding=utf8`} download
+              className="px-3 py-1.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 text-sm font-semibold">
+              📥 UTF-8
+            </a>
           </div>
         </div>
 
