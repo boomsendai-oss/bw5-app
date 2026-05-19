@@ -48,6 +48,7 @@ export default function MastersPage() {
   const [photoCounts, setPhotoCounts] = useState<PhotoCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<{ kind: 'studio'; data: Partial<Studio> } | { kind: 'instructor'; data: Partial<Instructor> } | null>(null);
+  const [detail, setDetail] = useState<{ kind: 'studio'; data: Studio } | { kind: 'instructor'; data: Instructor } | null>(null);
   const [editRates, setEditRates] = useState<{ duration: number; rate: number }[]>([]);
   const [editFees, setEditFees] = useState<{ studio_id: number; amount: number }[]>([]);
   const [msg, setMsg] = useState('');
@@ -189,30 +190,25 @@ export default function MastersPage() {
                 <thead className="bg-slate-50 text-slate-700">
                   <tr>
                     <th className="px-2 py-2 text-left">名称</th>
-                    <th className="px-2 py-2 text-left">料金</th>
-                    <th className="px-2 py-2 text-left">バッファ</th>
-                    <th className="px-2 py-2 text-left">住所/Map</th>
-                    <th className="px-2 py-2 text-left"></th>
+                    <th className="px-2 py-2 text-right">料金</th>
+                    <th className="px-2 py-2 text-right">バッファ</th>
+                    <th className="px-2 py-2 text-right"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {studios.map(s => (
-                    <tr key={s.id} className="border-t border-slate-100">
+                    <tr key={s.id} className="border-t border-slate-100 hover:bg-orange-50/40 cursor-pointer" onClick={() => setDetail({ kind: 'studio', data: s })}>
                       <td className="px-2 py-2 font-medium">{s.name}{!s.active && <span className="text-xs text-slate-400 ml-1">(非active)</span>}</td>
-                      <td className="px-2 py-2 text-xs">
-                        {s.pricing_model === 'hourly' ? `時間: ¥${s.hourly_rate.toLocaleString()}/h` : `ブロック`}
+                      <td className="px-2 py-2 text-xs text-right font-mono">
+                        {s.pricing_model === 'hourly' ? `¥${s.hourly_rate.toLocaleString()}/h` : `区分制`}
                       </td>
-                      <td className="px-2 py-2 text-xs">{s.daily_buffer_minutes ? `+${s.daily_buffer_minutes}分/日` : '-'}</td>
-                      <td className="px-2 py-2 text-xs text-slate-600">
-                        {s.google_map_url ? <a href={s.google_map_url} target="_blank" rel="noreferrer" className="text-blue-600 underline">Map</a> : ''} {s.address || ''}
-                      </td>
+                      <td className="px-2 py-2 text-xs text-right">{s.daily_buffer_minutes ? `+${s.daily_buffer_minutes}分` : '-'}</td>
                       <td className="px-2 py-2 text-right whitespace-nowrap">
-                        <button onClick={() => setEditing({ kind: 'studio', data: s })} className="text-xs px-2 py-0.5 bg-slate-200 hover:bg-slate-300 rounded">編集</button>
-                        <button onClick={() => remove('studios', s.id)} className="ml-1 text-xs px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded">削除</button>
+                        <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">詳細 →</span>
                       </td>
                     </tr>
                   ))}
-                  {studios.length === 0 && <tr><td colSpan={5} className="px-2 py-6 text-center text-slate-400">登録なし</td></tr>}
+                  {studios.length === 0 && <tr><td colSpan={4} className="px-2 py-6 text-center text-slate-400">登録なし</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -231,57 +227,109 @@ export default function MastersPage() {
                 <thead className="bg-slate-50 text-slate-700">
                   <tr>
                     <th className="px-2 py-2 text-left">名前</th>
-                    <th className="px-2 py-2 text-left">連絡</th>
                     <th className="px-2 py-2 text-left">単価</th>
-                    <th className="px-2 py-2 text-left">📸</th>
-                    <th className="px-2 py-2 text-left">IG</th>
-                    <th className="px-2 py-2 text-left">Drive</th>
-                    <th className="px-2 py-2 text-left"></th>
+                    <th className="px-2 py-2 text-center">IG</th>
+                    <th className="px-2 py-2 text-right"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {instructors.map(i => {
                     const myRates = rates.filter(r => r.instructor_id === i.id);
                     return (
-                      <tr key={i.id} className="border-t border-slate-100">
+                      <tr key={i.id} className="border-t border-slate-100 hover:bg-orange-50/40 cursor-pointer" onClick={() => setDetail({ kind: 'instructor', data: i })}>
                         <td className="px-2 py-2 font-medium">{i.name}{i.name_kana ? <span className="text-xs text-slate-400 ml-1">({i.name_kana})</span> : ''}</td>
-                        <td className="px-2 py-2 text-xs text-slate-600">{i.contact_email || ''}<br />{i.contact_phone || ''}</td>
                         <td className="px-2 py-2 text-xs">
-                          {myRates.map(r => <div key={r.id}>{r.duration_minutes}分: ¥{r.rate.toLocaleString()}</div>)}
-                          {myRates.length === 0 && '-'}
+                          {myRates.map(r => <span key={r.id} className="mr-2">{r.duration_minutes}分 ¥{r.rate.toLocaleString()}</span>)}
+                          {myRates.length === 0 && <span className="text-slate-300">-</span>}
                         </td>
-                        <td className="px-2 py-2 text-xs">
-                          {(() => {
-                            const cnt = photoCounts.find(p => p.instructor_id === i.id)?.count ?? 0;
-                            return cnt > 0
-                              ? <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">{cnt}</span>
-                              : <span className="text-slate-300">-</span>;
-                          })()}
-                        </td>
-                        <td className="px-2 py-2 text-xs">
+                        <td className="px-2 py-2 text-center" onClick={e => e.stopPropagation()}>
                           {i.instagram_handle
-                            ? <a href={`https://www.instagram.com/${i.instagram_handle}/`} target="_blank" rel="noreferrer" className="text-pink-600 hover:underline" title={`@${i.instagram_handle}`}>📷</a>
-                            : <span className="text-slate-300">-</span>}
-                        </td>
-                        <td className="px-2 py-2 text-xs">
-                          {i.shared_folder_url
-                            ? <a href={i.shared_folder_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline" title="Driveフォルダ">📁</a>
-                            : <span className="text-slate-300">-</span>}
+                            ? <a href={`https://www.instagram.com/${i.instagram_handle}/`} target="_blank" rel="noreferrer" className="inline-block px-2 py-0.5 bg-pink-100 hover:bg-pink-200 text-pink-700 rounded text-xs font-semibold" title={`@${i.instagram_handle}`}>📷 開く</a>
+                            : <span className="text-slate-300 text-xs">-</span>}
                         </td>
                         <td className="px-2 py-2 text-right whitespace-nowrap">
-                          <button onClick={() => startEditInstructor(i)} className="text-xs px-2 py-0.5 bg-slate-200 hover:bg-slate-300 rounded">編集</button>
-                          <button onClick={() => remove('instructors', i.id)} className="ml-1 text-xs px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded">削除</button>
+                          <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">詳細 →</span>
                         </td>
                       </tr>
                     );
                   })}
-                  {instructors.length === 0 && <tr><td colSpan={7} className="px-2 py-6 text-center text-slate-400">登録なし</td></tr>}
+                  {instructors.length === 0 && <tr><td colSpan={4} className="px-2 py-6 text-center text-slate-400">登録なし</td></tr>}
                 </tbody>
               </table>
             </div>
           </>
         )}
       </div>
+
+      {/* STUDIO DETAIL MODAL */}
+      {detail?.kind === 'studio' && (
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center p-4 z-40 overflow-y-auto" onClick={() => setDetail(null)}>
+          <div className="bg-white rounded-lg w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white">
+              <h2 className="font-bold">📍 {detail.data.name}{!detail.data.active && <span className="text-xs text-slate-400 ml-1">(非active)</span>}</h2>
+              <button onClick={() => setDetail(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
+            </div>
+            <div className="p-4 space-y-3 text-sm">
+              <DetailRow label="料金">{detail.data.pricing_model === 'hourly' ? `¥${detail.data.hourly_rate.toLocaleString()}/h` : `区分制 (詳細はJSON)`}</DetailRow>
+              <DetailRow label="バッファ">{detail.data.daily_buffer_minutes ? `+${detail.data.daily_buffer_minutes}分/日` : 'なし'}</DetailRow>
+              <DetailRow label="住所">{detail.data.address || '—'}</DetailRow>
+              <DetailRow label="Google Map">{detail.data.google_map_url ? <a href={detail.data.google_map_url} target="_blank" rel="noreferrer" className="text-blue-600 underline">{detail.data.google_map_url}</a> : '—'}</DetailRow>
+              {detail.data.pricing_model === 'block' && (
+                <DetailRow label="ブロック料金"><pre className="text-xs bg-slate-50 p-2 rounded overflow-x-auto">{detail.data.block_pricing ?? '未設定'}</pre></DetailRow>
+              )}
+              <DetailRow label="メモ">{detail.data.notes || '—'}</DetailRow>
+            </div>
+            <div className="flex gap-2 px-4 py-3 border-t bg-slate-50">
+              <button onClick={() => { const d = detail.data; setDetail(null); setEditing({ kind: 'studio', data: d }); }} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">✏️ 編集する</button>
+              <button onClick={() => { const id = detail.data.id; setDetail(null); remove('studios', id); }} className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded text-sm">削除</button>
+              <button onClick={() => setDetail(null)} className="ml-auto px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded text-sm">閉じる</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* INSTRUCTOR DETAIL MODAL */}
+      {detail?.kind === 'instructor' && (() => {
+        const myRates = rates.filter(r => r.instructor_id === detail.data.id);
+        const myFees = fees.filter(f => f.instructor_id === detail.data.id);
+        const photoCount = photoCounts.find(p => p.instructor_id === detail.data.id)?.count ?? 0;
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-start justify-center p-4 z-40 overflow-y-auto" onClick={() => setDetail(null)}>
+            <div className="bg-white rounded-lg w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white">
+                <h2 className="font-bold">👤 {detail.data.name}{detail.data.name_kana ? <span className="text-xs text-slate-400 ml-1">({detail.data.name_kana})</span> : ''}</h2>
+                <button onClick={() => setDetail(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
+              </div>
+              <div className="p-4 space-y-3 text-sm">
+                <div className="flex gap-2 flex-wrap">
+                  {detail.data.instagram_handle && <a href={`https://www.instagram.com/${detail.data.instagram_handle}/`} target="_blank" rel="noreferrer" className="px-3 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 rounded text-xs font-semibold">📷 @{detail.data.instagram_handle}</a>}
+                  {detail.data.shared_folder_url && <a href={detail.data.shared_folder_url} target="_blank" rel="noreferrer" className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs font-semibold">📁 Driveフォルダ</a>}
+                  {photoCount > 0 && <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-semibold">📸 写真 {photoCount}枚</span>}
+                </div>
+                <DetailRow label="メール">{detail.data.contact_email || '—'}</DetailRow>
+                <DetailRow label="電話">{detail.data.contact_phone || '—'}</DetailRow>
+                <DetailRow label="単価">
+                  {myRates.length > 0 ? myRates.map(r => <div key={r.id}>{r.duration_minutes}分: ¥{r.rate.toLocaleString()}</div>) : '—'}
+                </DetailRow>
+                <DetailRow label="交通費">
+                  {myFees.length > 0 ? myFees.map(f => {
+                    const studio = studios.find(s => s.id === f.studio_id);
+                    return <div key={f.id}>{studio?.name ?? `(ID:${f.studio_id})`}: ¥{f.amount.toLocaleString()}</div>;
+                  }) : '—'}
+                </DetailRow>
+                <DetailRow label="プロフィール">{detail.data.profile_text || '—'}</DetailRow>
+                <DetailRow label="銀行">{detail.data.bank_name || '—'} {detail.data.bank_branch || ''} / {detail.data.bank_account_type || ''} {detail.data.bank_account_number || ''} / {detail.data.bank_account_holder || ''}</DetailRow>
+                <DetailRow label="メモ">{detail.data.notes || '—'}</DetailRow>
+              </div>
+              <div className="flex gap-2 px-4 py-3 border-t bg-slate-50">
+                <button onClick={() => { const d = detail.data; setDetail(null); startEditInstructor(d); }} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">✏️ 編集する</button>
+                <button onClick={() => { const id = detail.data.id; setDetail(null); remove('instructors', id); }} className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded text-sm">削除</button>
+                <button onClick={() => setDetail(null)} className="ml-auto px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded text-sm">閉じる</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* STUDIO EDIT MODAL */}
       {editing?.kind === 'studio' && (
@@ -401,6 +449,15 @@ function Field({ label, value, onChange, type = 'text' }: { label: string; value
     <div>
       <label className="text-xs text-slate-600">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} className="w-full border rounded px-2 py-1 text-sm bg-white text-neutral-900" />
+    </div>
+  );
+}
+
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[100px_1fr] gap-2 py-1 border-b border-slate-100 last:border-0">
+      <div className="text-xs text-slate-500 font-semibold">{label}</div>
+      <div className="text-sm text-slate-800 break-words">{children}</div>
     </div>
   );
 }

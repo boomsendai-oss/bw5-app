@@ -209,15 +209,15 @@ export default function InsightsPage() {
         description="月次KPI自動集計ダッシュボード"
         rightExtra={
           <div className="flex items-center gap-1 flex-wrap">
-            <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'}`}>
-              {uploading ? '取込中...' : '📥 RS002'}
+            <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'}`} title="HACOMONO RS002「固定枠：レッスン別予約集計」CSV">
+              {uploading ? '取込中...' : '📥 稼働率CSV'}
               <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
                 const f = e.target.files?.[0];
-                if (f) uploadCsv('/api/staff/kpi/import-rs002', 'RS002', f);
+                if (f) uploadCsv('/api/staff/kpi/import-rs002', '稼働率', f);
                 e.target.value = '';
               }} />
             </label>
-            <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-green-50 hover:bg-green-100 border-green-200 text-green-700'}`}>
+            <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-green-50 hover:bg-green-100 border-green-200 text-green-700'}`} title="HACOMONO 課金明細 CSV (プラン/単発/入会金)">
               📥 課金明細
               <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
                 const f = e.target.files?.[0];
@@ -225,7 +225,7 @@ export default function InsightsPage() {
                 e.target.value = '';
               }} />
             </label>
-            <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700'}`}>
+            <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700'}`} title="GMO青空ネット銀行 取引CSV">
               📥 銀行CSV
               <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
                 const f = e.target.files?.[0];

@@ -18,22 +18,26 @@ type Props = {
 export default function StaffPageHeader({ title, description, rightExtra }: Props) {
   return (
     <header className="bg-white border-b border-orange-100 px-4 py-3 sticky top-0 z-10">
-      <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+      <div className="max-w-6xl mx-auto flex items-start justify-between gap-3 flex-wrap">
         <div className="flex-1 min-w-0">
-          <h1 className="text-base sm:text-lg font-bold text-orange-600 truncate">{title}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-base sm:text-lg font-bold text-orange-600 truncate">{title}</h1>
+            <Link
+              href="/staff"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-orange-50 hover:bg-orange-100 text-orange-700 text-[10px] sm:text-xs font-semibold border border-orange-200"
+            >
+              🏠 <span className="hidden sm:inline">ホーム</span>
+            </Link>
+          </div>
           {description && (
             <p className="text-[10px] sm:text-xs text-neutral-500 mt-0.5 truncate">{description}</p>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {rightExtra}
-          <Link
-            href="/staff"
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs sm:text-sm font-semibold border border-orange-200"
-          >
-            🏠 <span className="hidden sm:inline">ホームに戻る</span><span className="sm:hidden">ホーム</span>
-          </Link>
-        </div>
+        {rightExtra && (
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto sm:shrink-0 mt-1 sm:mt-0">
+            {rightExtra}
+          </div>
+        )}
       </div>
     </header>
   );
