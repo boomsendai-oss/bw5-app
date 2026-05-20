@@ -696,6 +696,8 @@ export async function initDb(): Promise<void> {
   await addColumnIfMissing(c, 'instructors', 'pin_set_at', 'TEXT');
   await addColumnIfMissing(c, 'instructors', 'payslip_folder_url', 'TEXT');
   await addColumnIfMissing(c, 'instructors', 'bank_code', 'TEXT');
+  await addColumnIfMissing(c, 'recurring_expenses', 'match_pattern', 'TEXT');
+  await addColumnIfMissing(c, 'recurring_expenses', 'budget_amount', 'INTEGER DEFAULT 0');
   await addColumnIfMissing(c, 'instructors', 'bank_branch_code', 'TEXT');
   await addColumnIfMissing(c, 'studios', 'payment_type', "TEXT DEFAULT 'postpaid_bank'");
   await addColumnIfMissing(c, 'studios', 'bank_code', 'TEXT');

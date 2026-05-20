@@ -23,10 +23,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `category must be one of ${CATEGORIES.join(', ')}` }, { status: 400 });
   }
   const result = await execute(
-    `INSERT INTO recurring_expenses (category, subcategory, amount, description, active) VALUES (?, ?, ?, ?, ?)`,
-    [body.category, body.subcategory ?? null, body.amount, body.description ?? null, body.active ?? 1]
+    `INSERT INTO recurring_expenses (category, subcategory, amount, budget_amount, description, match_pattern, active) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      body.category,
+      body.subcategory ?? null,
+      body.amount,
+      body.budget_amount ?? body.amount,
+      body.description ?? null,
+      body.match_pattern ?? null,
+      body.active ?? 1,
+    ]
   );
   return NextResponse.json({ ok: true, id: Number(result.lastInsertRowid) });
+}
+
+export async function PATCH(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
+  const body = await req.json().catch(() => ({}));
+  if (!body.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+  const fields = ['category', 'subcategory', 'amount', 'budget_amount', 'description', 'match_pattern', 'active'];
+  const sets: string[] = [];
+  const args: (string | number | null)[] = [];
+  for (const f of fields) {
+    if (body[f] !== undefined) { sets.push(`${f} = ?`); args.push(body[f]); }
+  }
+  if (sets.length === 0) return NextResponse.json({ ok: true, noop: true });
+  args.push(Number(body.id));
+  await execute(`UPDATE recurring_expenses SET ${sets.join(', ')} WHERE id = ?`, args);
+  return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(req: NextRequest) {

@@ -220,11 +220,11 @@ export default function ExpensesPage() {
   );
 }
 
-type RecurringItem = { id: number; category: string; subcategory: string | null; amount: number; description: string | null; active: number };
+type RecurringItem = { id: number; category: string; subcategory: string | null; amount: number; budget_amount: number | null; description: string | null; match_pattern: string | null; active: number };
 
 function RecurringTab({ categories, ym, onChanged }: { categories: string[]; ym: string; onChanged: () => void }) {
   const [items, setItems] = useState<RecurringItem[]>([]);
-  const [form, setForm] = useState({ category: 'システム費', subcategory: '', amount: '', description: '' });
+  const [form, setForm] = useState({ category: 'システム費', subcategory: '', amount: '', match_pattern: '', description: '' });
   const [busy, setBusy] = useState(false);
   const [applyMsg, setApplyMsg] = useState('');
 
@@ -247,11 +247,11 @@ function RecurringTab({ categories, ym, onChanged }: { categories: string[]; ym:
     const res = await fetch('/api/staff/recurring-expenses', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, amount, active: 1 }),
+      body: JSON.stringify({ ...form, amount, budget_amount: amount, active: 1 }),
     });
     setBusy(false);
     if (res.ok) {
-      setForm({ category: 'システム費', subcategory: '', amount: '', description: '' });
+      setForm({ category: 'システム費', subcategory: '', amount: '', match_pattern: '', description: '' });
       await loadItems();
     } else { alert(await res.text()); }
   };
@@ -281,10 +281,13 @@ function RecurringTab({ categories, ym, onChanged }: { categories: string[]; ym:
   return (
     <div className="space-y-3">
       <div className="bg-amber-50 border border-amber-200 rounded p-3">
-        <h3 className="font-bold text-sm mb-1">📌 月次固定費テンプレート</h3>
-        <p className="text-xs text-slate-600">毎月発生する経費 (HACOMONO/Lstep/Vercel等) をここに登録 → 月初に「{ym} に一括計上」ボタンで一発反映</p>
+        <h3 className="font-bold text-sm mb-1">📌 経常費テンプレート (固定費+変動固定費)</h3>
+        <p className="text-xs text-slate-600">
+          毎月発生する経費 (HACOMONO/Lstep/Vercel等)。<strong className="text-amber-800">摘要マッチパターン</strong>を入れておくと、銀行明細CSV取込時に該当取引を実額で**自動経費登録**。<br />
+          金額は「予算/目安」として扱い、実際は銀行明細の実額が記録されます。
+        </p>
         <button onClick={applyForMonth} disabled={busy || items.length === 0} className="mt-2 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-semibold disabled:opacity-50">
-          🔄 {ym} に一括計上 ({items.length}件)
+          🔄 {ym} に予算で一括計上 ({items.length}件) — 銀行明細マッチがなかった場合のフォールバック
         </button>
         {applyMsg && <p className="text-xs text-green-700 mt-2">{applyMsg}</p>}
       </div>
@@ -292,13 +295,14 @@ function RecurringTab({ categories, ym, onChanged }: { categories: string[]; ym:
       {/* 追加フォーム */}
       <div className="bg-white border rounded p-3">
         <h4 className="text-xs font-bold mb-2">+ 新規追加</h4>
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-6 gap-2 text-sm">
           <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="px-2 py-1 border rounded bg-white">
             {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <input placeholder="サブ (Vercel等)" value={form.subcategory} onChange={e => setForm({ ...form, subcategory: e.target.value })} className="px-2 py-1 border rounded" />
-          <input type="number" placeholder="金額" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="px-2 py-1 border rounded" />
-          <input placeholder="摘要" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="px-2 py-1 border rounded sm:col-span-1" />
+          <input type="number" placeholder="予算/目安額" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="px-2 py-1 border rounded" />
+          <input placeholder="摘要マッチ (例: HACOMONO)" value={form.match_pattern} onChange={e => setForm({ ...form, match_pattern: e.target.value })} className="px-2 py-1 border rounded" title="銀行明細の摘要にこの文字列が含まれていたら自動で経費確定" />
+          <input placeholder="説明" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="px-2 py-1 border rounded sm:col-span-1" />
           <button onClick={add} disabled={busy} className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-semibold">追加</button>
         </div>
       </div>
@@ -310,8 +314,9 @@ function RecurringTab({ categories, ym, onChanged }: { categories: string[]; ym:
             <tr>
               <th className="px-2 py-1 text-left">カテゴリ</th>
               <th className="px-2 py-1 text-left">サブ</th>
-              <th className="px-2 py-1 text-left">摘要</th>
-              <th className="px-2 py-1 text-right">金額</th>
+              <th className="px-2 py-1 text-left">摘要マッチ</th>
+              <th className="px-2 py-1 text-left">説明</th>
+              <th className="px-2 py-1 text-right">予算</th>
               <th className="px-2 py-1"></th>
             </tr>
           </thead>
@@ -320,12 +325,13 @@ function RecurringTab({ categories, ym, onChanged }: { categories: string[]; ym:
               <tr key={i.id} className="border-t">
                 <td className="px-2 py-1"><span className="text-[10px] px-1 bg-orange-100 text-orange-700 rounded">{i.category}</span></td>
                 <td className="px-2 py-1">{i.subcategory ?? '—'}</td>
+                <td className="px-2 py-1 text-blue-700 font-mono">{i.match_pattern ?? '—'}</td>
                 <td className="px-2 py-1 text-slate-600">{i.description ?? '—'}</td>
                 <td className="px-2 py-1 text-right font-mono">¥{i.amount.toLocaleString()}/月</td>
                 <td className="px-2 py-1"><button onClick={() => del(i.id)} className="text-slate-400 hover:text-red-600">削除</button></td>
               </tr>
             ))}
-            {items.length === 0 && <tr><td colSpan={5} className="py-4 text-center text-slate-400">未登録</td></tr>}
+            {items.length === 0 && <tr><td colSpan={6} className="py-4 text-center text-slate-400">未登録</td></tr>}
           </tbody>
         </table>
       </div>

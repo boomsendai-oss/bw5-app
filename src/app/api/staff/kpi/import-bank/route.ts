@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, getAll, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { parseCSV, rowsToDicts, parseDate } from '@/lib/csvUtil';
 
@@ -66,8 +66,15 @@ export async function POST(req: NextRequest) {
   }
   const records = rowsToDicts(rows, headerIdx);
 
+  // recurring_expenses をロード (摘要マッチ用)
+  type Recurring = { id: number; category: string; subcategory: string | null; match_pattern: string | null };
+  const recurring = (await getAll(
+    `SELECT id, category, subcategory, match_pattern FROM recurring_expenses WHERE active = 1 AND match_pattern IS NOT NULL AND match_pattern != ''`
+  )) as Recurring[];
+
   let imported = 0;
   let skipped = 0;
+  let autoConfirmed = 0;
   const errors: string[] = [];
 
   for (const rec of records) {
@@ -81,17 +88,43 @@ export async function POST(req: NextRequest) {
       const description = pick(rec, '摘要', '内容', 'description');
       const counterparty = pick(rec, '振込依頼人', '振込先', 'counterparty');
       const balance = parseAmount(pick(rec, '残高', 'balance'));
-      const category = guessCategory(description, counterparty);
+      // recurring_expenses の摘要マッチパターン優先 → なければヒューリスティック
+      const all = `${description} ${counterparty}`.toLowerCase();
+      let matchedRecurring: Recurring | null = null;
+      for (const r of recurring) {
+        const pat = (r.match_pattern ?? '').toLowerCase();
+        if (pat && all.includes(pat)) { matchedRecurring = r; break; }
+      }
+      const category = matchedRecurring?.category ?? guessCategory(description, counterparty);
+      const subcategory = matchedRecurring?.subcategory ?? null;
 
+      // 銀行明細に登録 (出金 かつ recurring 一致なら confirmed=1)
+      const autoConfirm = amount < 0 && matchedRecurring;
       await execute(
         `INSERT INTO bank_transactions (txn_date, amount, description, counterparty, balance_after, expense_category, confirmed, imported_at)
-         VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+         VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(txn_date, amount, description) DO UPDATE SET
            counterparty=excluded.counterparty,
            balance_after=excluded.balance_after,
            expense_category=COALESCE(bank_transactions.expense_category, excluded.expense_category)`,
-        [txnDate, amount, description || null, counterparty || null, balance || null, category]
+        [txnDate, amount, description || null, counterparty || null, balance || null, category, autoConfirm ? 1 : 0]
       );
+
+      // 自動確定 → expenses にも登録 (重複チェック)
+      if (autoConfirm && matchedRecurring) {
+        const dup = await getOne(
+          `SELECT id FROM expenses WHERE source = 'bank_txn' AND expense_date = ? AND amount = ? AND COALESCE(description, '') = COALESCE(?, '')`,
+          [txnDate, Math.abs(amount), description ?? '']
+        );
+        if (!dup) {
+          await execute(
+            `INSERT INTO expenses (expense_date, category, subcategory, amount, description, source, source_ref_id)
+             VALUES (?, ?, ?, ?, ?, 'bank_txn', ?)`,
+            [txnDate, category, subcategory, Math.abs(amount), description ?? null, matchedRecurring.id]
+          );
+          autoConfirmed++;
+        }
+      }
       imported++;
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
@@ -99,5 +132,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, total_rows: records.length, imported, skipped, errors: errors.slice(0, 5) });
+  return NextResponse.json({ ok: true, total_rows: records.length, imported, skipped, auto_confirmed: autoConfirmed, errors: errors.slice(0, 5) });
 }
