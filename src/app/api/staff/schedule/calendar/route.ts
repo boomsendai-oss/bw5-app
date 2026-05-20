@@ -18,11 +18,14 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const now = new Date();
-  const year = parseInt(url.searchParams.get('year') ?? String(now.getFullYear()), 10);
-  const month = parseInt(url.searchParams.get('month') ?? String(now.getMonth() + 1), 10);
+  // year/month は不正値・範囲外 (month=0,13, year=NaN 等) のとき今日基準にフォールバックし、
+  // YYYY-MM-DD 文字列やDate演算が破綻しないようにする
+  const rawYear = parseInt(url.searchParams.get('year') ?? '', 10);
+  const rawMonth = parseInt(url.searchParams.get('month') ?? '', 10);
+  const year = Number.isInteger(rawYear) && rawYear >= 2000 && rawYear <= 2100 ? rawYear : now.getFullYear();
+  const month = Number.isInteger(rawMonth) && rawMonth >= 1 && rawMonth <= 12 ? rawMonth : now.getMonth() + 1;
 
   // 月初〜月末
-  const monthStart = new Date(year, month - 1, 1);
   const monthEnd = new Date(year, month, 0); // 月末日
   const daysInMonth = monthEnd.getDate();
 

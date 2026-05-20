@@ -10,8 +10,10 @@ export async function GET(req: NextRequest) {
   const me = await getInstructorBySession(req);
   if (!me) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const url = new URL(req.url);
-  const ym = url.searchParams.get('year_month');
+  const ymParam = url.searchParams.get('year_month');
   const today = new Date();
+  // YYYY-MM 形式のみ受理。不正値は今月にフォールバック (不正な日付文字列でのクエリを防ぐ)
+  const ym = ymParam && /^\d{4}-(0[1-9]|1[0-2])$/.test(ymParam) ? ymParam : null;
   const target = ym ?? `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
   const [y, m] = target.split('-').map(Number);
   const lastDay = new Date(y, m, 0).getDate();

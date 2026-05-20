@@ -13,6 +13,10 @@ export const runtime = 'nodejs';
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   if (!(await isAuthorized(req))) return unauthorized();
   const { id } = await ctx.params;
+  const numId = Number(id);
+  if (!Number.isInteger(numId) || numId <= 0) {
+    return NextResponse.json({ error: 'invalid id' }, { status: 400 });
+  }
   const body = await req.json().catch(() => ({}));
   if (!['approved', 'rejected'].includes(body.status)) {
     return NextResponse.json({ error: 'status must be approved|rejected' }, { status: 400 });
@@ -23,13 +27,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
      FROM lesson_cancel_requests cr
      LEFT JOIN instructors i ON i.id = cr.instructor_id
      WHERE cr.id = ?`,
-    [Number(id)]
+    [numId]
   );
   if (!cr) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
   await execute(
     `UPDATE lesson_cancel_requests SET status = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP WHERE id = ?`,
-    [body.status, body.reviewer ?? 'staff', Number(id)]
+    [body.status, body.reviewer ?? 'staff', numId]
   );
 
   // 承認 + 該当instance_id ある場合は lesson_instance を cancelled に
