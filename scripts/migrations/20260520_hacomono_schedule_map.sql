@@ -24,3 +24,19 @@ CREATE TABLE IF NOT EXISTS hacomono_schedule_map (
 );
 
 CREATE INDEX IF NOT EXISTS idx_hacomono_map_type ON hacomono_schedule_map(entity_type);
+
+-- 実物HACOMONOエクスポートCSV準拠の追加属性 (program行に格納する)
+-- HACOMONOのスケジュールは「プログラム」がスタッフ/スペース/各種フラグを規定するため、
+-- BW5 class_name -> program 行に既定のスタッフ・スペース・トライアル数・各フラグを持たせる。
+--   default_staff_code  : 既定スタッフコード (BW5側instructorが解決できなければこれを使う)
+--   default_space_code  : 既定スペースコード (実物では program がスペースを規定)
+--   trial_capacity      : トライアル予約可能数
+--   space_selectable    : スペースの選択が可能かどうか (1/0)
+--   space_movable       : キャンセル受付終了後のスペース移動を許可するか (1/0)
+--   publish_fixed       : 公開日時を固定値で出すか (1=固定値, 0=空欄)
+ALTER TABLE hacomono_schedule_map ADD COLUMN default_staff_code TEXT;
+ALTER TABLE hacomono_schedule_map ADD COLUMN default_space_code TEXT;
+ALTER TABLE hacomono_schedule_map ADD COLUMN trial_capacity INTEGER;
+ALTER TABLE hacomono_schedule_map ADD COLUMN space_selectable INTEGER;
+ALTER TABLE hacomono_schedule_map ADD COLUMN space_movable INTEGER;
+ALTER TABLE hacomono_schedule_map ADD COLUMN publish_fixed INTEGER;

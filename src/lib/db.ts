@@ -670,6 +670,12 @@ export async function initDb(): Promise<void> {
       hacomono_code TEXT NOT NULL,
       hacomono_name TEXT,
       notes TEXT,
+      default_staff_code TEXT,
+      default_space_code TEXT,
+      trial_capacity INTEGER,
+      space_selectable INTEGER,
+      space_movable INTEGER,
+      publish_fixed INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(entity_type, bw5_key)
@@ -725,6 +731,13 @@ export async function initDb(): Promise<void> {
   await addColumnIfMissing(c, 'studios', 'bank_account_type', 'TEXT');
   await addColumnIfMissing(c, 'studios', 'bank_account_number', 'TEXT');
   await addColumnIfMissing(c, 'studios', 'bank_account_holder', 'TEXT');
+  // HACOMONO スケジュールマッピング: program行に持たせる実物準拠の既定属性
+  await addColumnIfMissing(c, 'hacomono_schedule_map', 'default_staff_code', 'TEXT');
+  await addColumnIfMissing(c, 'hacomono_schedule_map', 'default_space_code', 'TEXT');
+  await addColumnIfMissing(c, 'hacomono_schedule_map', 'trial_capacity', 'INTEGER');
+  await addColumnIfMissing(c, 'hacomono_schedule_map', 'space_selectable', 'INTEGER');
+  await addColumnIfMissing(c, 'hacomono_schedule_map', 'space_movable', 'INTEGER');
+  await addColumnIfMissing(c, 'hacomono_schedule_map', 'publish_fixed', 'INTEGER');
 
   // Seed defaults if tables empty
   const scheduleCount = await c.execute('SELECT COUNT(*) as count FROM schedule');
@@ -868,70 +881,86 @@ export async function initDb(): Promise<void> {
   }
 
   // === HACOMONO スケジュールマッピング 初期seed (空の時のみ) ===
-  // RS002データから抽出済みのコード一覧。BW5側の表記とHACOMONO表記が異なるため
-  // bw5_key にBW5の class_name / instructor名 / studio名 を入れて対応づける。
+  // 実物HACOMONOエクスポートCSV (boom_studio_lesson_*.csv) を正として抽出した対応表。
+  // HACOMONOでは「プログラム」がスタッフ/スペース/トライアル数/各フラグを規定するため、
+  //   program行: BW5 class_name -> PGコード + 既定スタッフ/スペース/トライアル/フラグ
+  //   staff行  : BW5 instructor名 -> INコード (BW5側で講師が確定する場合の優先解決用)
+  //   space行  : 参照用 (出力スペースは原則 program 既定を使う)
   // 表記変更や新クラス追加時はこのテーブルを直接 (or 将来UIで) 編集する。
-  const hacoMapCount = await c.execute('SELECT COUNT(*) as count FROM hacomono_schedule_map');
-  if (Number(hacoMapCount.rows[0].count) === 0) {
-    // [entity_type, bw5_key, hacomono_code, hacomono_name, notes]
-    const rows: [string, string, string, string, string][] = [
-      // --- プログラム (BW5 class_name -> PGコード) ---
-      ['program', 'はじめてのHH', 'PG0008', '初めてのヒップホップ', ''],
-      ['program', 'キッズHH', 'PG0009', 'KIDS HIPHOP', ''],
-      ['program', 'ベーシックダンスクラス', 'PG0010', 'ベーシックダンスクラス', ''],
-      ['program', '多賀城 HH 入門', 'PG0011', '多賀城 HIPHOP基礎', ''],
-      ['program', '多賀城 HH 初級', 'PG0012', '多賀城 HIPHOP初級', ''],
-      ['program', 'ちゃんなつ HH', 'PG0013', 'ちゃんなつ / HIPHOP', ''],
-      ['program', 'おっちゃん NJS', 'PG0015', 'おっちゃん / NEW JACK SWING', ''],
-      ['program', 'SAYUKI FS', 'PG0014', 'SAYUKI / FREE STYLE', ''],
-      ['program', 'ダンス部', 'PG0018', 'ダンス部', ''],
-      ['program', '多賀城 JAZZ', 'PG0019', '多賀城 STREET JAZZ', ''],
-      ['program', 'HIPHOP 中級', 'PG0001', 'TARO / HIPHOP 中級', ''],
-      ['program', 'HIPHOP 初級', 'PG0002', 'TARO / HIPHOP初級', ''],
-      ['program', 'K@TTSU HOUSE', 'PG0003', 'K@TTSU / HOUSE', ''],
-      ['program', '向山 ちびっこ HH', 'PG0028', '向山 キッズヒップホップ 基礎', ''],
-      ['program', '七ヶ浜 HH 入門', 'PG0005', '七ヶ浜 HIPHOP 入門', ''],
-      ['program', '七ヶ浜 HH 初級', 'PG0006', '七ヶ浜 HIPHOP 初級', ''],
-      ['program', '長町 WAACK 入門', 'PG0024', 'YURI / 長町 WAACK 入門', ''],
-      ['program', '長町 ガールズ 入門', 'PG0007', '長町 キッズガールズ 入門', ''],
-      ['program', '長町 ガールズ 初級', 'PG0027', '長町 キッズガールズ 初級', ''],
-      ['program', '多賀城 HOUSE', 'PG0017', '多賀城 HOUSE', ''],
-      ['program', 'キッズ 強化', 'PG0016', 'キッズ強化クラス', ''],
-      ['program', 'HOUSE エキスパート', 'PG0040', 'HOUSE エキスパート (選抜のみ)', ''],
-      // --- スタッフ (BW5 instructor名 -> INコード) ---
-      ['staff', 'TARO', 'IN0001', 'TARO', ''],
-      ['staff', 'ちゃんなつ', 'IN0002', 'ちゃんなつ', ''],
-      ['staff', 'SAYUKI', 'IN0003', 'SAYUKI', ''],
-      ['staff', 'おっちゃん', 'IN0004', 'おっちゃん', ''],
-      ['staff', 'KEIKO', 'IN0005', 'KEIKO', ''],
-      ['staff', 'Ryuki', 'IN0006', 'Ryuki', ''],
-      ['staff', 'K@TTSU', 'IN0007', 'K@TTSU', ''],
-      ['staff', 'YURI', 'IN0010', 'YURI', ''],
-      ['staff', 'AOI', 'IN0011', 'AOI', ''],
-      ['staff', 'ダンス部', 'IN0015', 'ダンス部', ''],
-      // --- スペース (BW5 studio名 -> SPコード) ---
-      // ※ HACOMONO側スペースは収容人数別 (20/15/30/40名)。BW5スタジオ名との対応は
-      //   暫定マッピング。実際のHACOMONOスペース設定が来たらTAROと調整する。
-      ['space', 'GOAT 大スタジオ', 'S0001_SP0008', '40名', '暫定: 大スタジオ=40名'],
-      ['space', 'GOAT 小スタジオ', 'S0001_SP0002', '15名', '暫定: 小スタジオ=15名'],
-      ["space", "T's STUDIO", 'S0001_SP0001', '20名', '暫定'],
-      ['space', 'AZUMA スタジオ', 'S0001_SP0007', '30名', '暫定'],
-      ['space', 'K スタジオ', 'S0001_SP0001', '20名', '暫定'],
-      ['space', '野のはなホール', 'S0001_SP0007', '30名', '暫定'],
-      ['space', '七ヶ浜国際村 リハーサル室', 'S0001_SP0001', '20名', '暫定'],
-      ['space', 'アクアスタジオ', 'S0001_SP0001', '20名', '暫定'],
-      ['space', 'KONAMI スタジオ', 'S0001_SP0001', '20名', '暫定'],
-      ['space', 'マイダンスショップ', 'S0001_SP0002', '15名', '暫定'],
-      ['space', '庄司ダンススタジオ', 'S0001_SP0001', '20名', '暫定'],
-    ];
-    await c.batch(
-      rows.map(([entity_type, bw5_key, hacomono_code, hacomono_name, notes]) => ({
-        sql: 'INSERT OR IGNORE INTO hacomono_schedule_map (entity_type, bw5_key, hacomono_code, hacomono_name, notes) VALUES (?, ?, ?, ?, ?)',
-        args: [entity_type, bw5_key, hacomono_code, hacomono_name, notes],
+  // program: [bw5_key, code, name, staffCode, spaceCode, trial, selectable, movable, publishFixed]
+  type HacoProg = [string, string, string, string, string, number, number, number, number];
+  const hacoPrograms: HacoProg[] = [
+    ['HIPHOP 中級', 'PG0001', 'TARO / HIPHOP 中級', 'IN0001', 'S0001_SP0001', 0, 0, 0, 1],
+    ['HIPHOP 初級', 'PG0002', 'TARO / HIPHOP初級', 'IN0001', 'S0001_SP0001', 0, 0, 0, 1],
+    ['K@TTSU HOUSE', 'PG0003', 'K@TTSU / HOUSE', 'IN0007', 'S0001_SP0001', 0, 0, 0, 1],
+    ['七ヶ浜 HH 入門', 'PG0005', '七ヶ浜 HIPHOP 入門', 'IN0017', 'S0001_SP0008', 5, 0, 0, 1],
+    ['七ヶ浜 HH 初級', 'PG0006', '七ヶ浜 HIPHOP 初級', 'IN0001', 'S0001_SP0008', 5, 0, 0, 1],
+    ['長町 ガールズ 入門', 'PG0007', '長町 キッズガールズ 入門', 'IN0005', 'S0001_SP0007', 0, 0, 0, 1],
+    ['はじめてのHH', 'PG0008', '初めてのヒップホップ', 'IN0018', 'S0001_SP0002', 0, 0, 0, 1],
+    ['キッズHH', 'PG0009', 'KIDS HIPHOP', 'IN0018', 'S0001_SP0001', 0, 0, 0, 1],
+    ['ベーシックダンスクラス', 'PG0010', 'ベーシックダンスクラス', 'IN0018', 'S0001_SP0001', 0, 0, 0, 1],
+    ['多賀城 HH 入門', 'PG0011', '多賀城 HIPHOP基礎', 'IN0011', 'S0001_SP0001', 5, 0, 0, 1],
+    ['多賀城 HH 初級', 'PG0012', '多賀城 HIPHOP初級', 'IN0011', 'S0001_SP0001', 5, 0, 0, 1],
+    ['ちゃんなつ HH', 'PG0013', 'ちゃんなつ / HIPHOP', 'IN0002', 'S0001_SP0001', 0, 1, 1, 0],
+    ['SAYUKI FS', 'PG0014', 'SAYUKI / FREE STYLE', 'IN0003', 'S0001_SP0001', 0, 1, 1, 0],
+    ['おっちゃん NJS', 'PG0015', 'おっちゃん / NEW JACK SWING', 'IN0004', 'S0001_SP0001', 0, 1, 1, 0],
+    ['キッズ 強化', 'PG0016', 'キッズ強化クラス', 'IN0001', 'S0001_SP0001', 0, 1, 1, 0],
+    ['多賀城 HOUSE', 'PG0017', '多賀城 HOUSE', 'IN0007', 'S0001_SP0001', 0, 1, 1, 0],
+    ['ダンス部', 'PG0018', 'ダンス部', 'IN0015', 'S0001_SP0001', 0, 0, 0, 1],
+    ['多賀城 JAZZ', 'PG0019', '多賀城 STREET JAZZ', 'IN0005', 'S0001_SP0001', 5, 0, 0, 0],
+    ['長町 WAACK 入門', 'PG0024', 'YURI / 長町 WAACK 入門', 'IN0010', 'S0001_SP0001', 0, 0, 0, 0],
+    ['長町 ガールズ 初級', 'PG0027', '長町 キッズガールズ 初級', 'IN0005', 'S0001_SP0001', 0, 0, 0, 0],
+    ['向山 ちびっこ HH', 'PG0028', '向山 キッズヒップホップ 基礎', 'IN0001', 'S0001_SP0001', 0, 0, 0, 0],
+    ['HOUSE エキスパート', 'PG0040', 'HOUSE エキスパート (選抜のみ)', 'IN0007', 'S0001_SP0001', 0, 1, 1, 0],
+  ];
+  // staff: [bw5_key (BW5 instructor名), INコード, HACOMONO名]
+  const hacoStaff: [string, string, string][] = [
+    ['TARO', 'IN0001', 'TARO'],
+    ['ちゃんなつ', 'IN0002', 'ちゃんなつ'],
+    ['SAYUKI', 'IN0003', 'SAYUKI'],
+    ['おっちゃん', 'IN0004', 'おっちゃん'],
+    ['KEIKO', 'IN0005', 'KEIKO'],
+    ['Ryuki', 'IN0006', 'Ryuki'],
+    ['K@TTSU', 'IN0007', 'K@TTSU'],
+    ['YURI', 'IN0010', 'YURI'],
+    ['AOI', 'IN0011', 'AOI'],
+    ['ダンス部', 'IN0015', 'ダンス部'],
+  ];
+  // space: 参照用 (出力は program 既定スペースを優先)。HACOMONO側は収容人数別。
+  const hacoSpaces: [string, string, string][] = [
+    ['S0001_SP0001', 'S0001_SP0001', '20名'],
+    ['S0001_SP0002', 'S0001_SP0002', '15名'],
+    ['S0001_SP0007', 'S0001_SP0007', '30名'],
+    ['S0001_SP0008', 'S0001_SP0008', '40名'],
+  ];
+
+  // 新規行は INSERT OR IGNORE で投入し、program行の実物準拠属性は常に UPDATE で
+  // 上書きする (旧seed済みの本番DBに新カラム値をバックフィルするため・冪等)。
+  await c.batch(
+    [
+      ...hacoPrograms.map(([key, code, name, staffCode, spaceCode, trial, sel, mov, pub]) => ({
+        sql: 'INSERT OR IGNORE INTO hacomono_schedule_map (entity_type, bw5_key, hacomono_code, hacomono_name, default_staff_code, default_space_code, trial_capacity, space_selectable, space_movable, publish_fixed) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        args: ['program', key, code, name, staffCode, spaceCode, trial, sel, mov, pub] as (string | number)[],
       })),
-      'write'
-    );
-  }
+      ...hacoStaff.map(([key, code, name]) => ({
+        sql: 'INSERT OR IGNORE INTO hacomono_schedule_map (entity_type, bw5_key, hacomono_code, hacomono_name) VALUES (?, ?, ?, ?)',
+        args: ['staff', key, code, name],
+      })),
+      ...hacoSpaces.map(([key, code, name]) => ({
+        sql: 'INSERT OR IGNORE INTO hacomono_schedule_map (entity_type, bw5_key, hacomono_code, hacomono_name) VALUES (?, ?, ?, ?)',
+        args: ['space', key, code, name],
+      })),
+      ...hacoPrograms.map(([key, code, name, staffCode, spaceCode, trial, sel, mov, pub]) => ({
+        sql: `UPDATE hacomono_schedule_map
+              SET hacomono_code = ?, hacomono_name = ?, default_staff_code = ?, default_space_code = ?,
+                  trial_capacity = ?, space_selectable = ?, space_movable = ?, publish_fixed = ?,
+                  updated_at = CURRENT_TIMESTAMP
+              WHERE entity_type = 'program' AND bw5_key = ?`,
+        args: [code, name, staffCode, spaceCode, trial, sel, mov, pub, key] as (string | number)[],
+      })),
+    ],
+    'write'
+  );
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- DBの結果は動的キーアクセス多用のため any を維持 */
