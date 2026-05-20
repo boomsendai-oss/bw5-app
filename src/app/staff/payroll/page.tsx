@@ -207,30 +207,30 @@ export default function PayrollPage() {
         )}
 
         {runs.length > 0 && (
-          <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="bg-white rounded-lg border border-neutral-200 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
               <thead className="bg-slate-50 border-b">
                 <tr>
-                  <th className="px-3 py-2 text-left">インストラクター</th>
-                  <th className="px-3 py-2 text-right">レッスン</th>
-                  <th className="px-3 py-2 text-right">交通費</th>
-                  <th className="px-3 py-2 text-right">調整</th>
-                  <th className="px-3 py-2 text-right font-bold">合計</th>
-                  <th className="px-3 py-2 text-center">状態</th>
-                  <th className="px-3 py-2 text-center">操作</th>
+                  <th className="px-3 py-2 text-left whitespace-nowrap">インストラクター</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">レッスン</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">交通費</th>
+                  <th className="px-3 py-2 text-right whitespace-nowrap">調整</th>
+                  <th className="px-3 py-2 text-right font-bold whitespace-nowrap">合計</th>
+                  <th className="px-3 py-2 text-center whitespace-nowrap">状態</th>
+                  <th className="px-3 py-2 text-center whitespace-nowrap">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {runs.map(r => (
                   <tr key={r.id} className="border-b hover:bg-orange-50/50 cursor-pointer" onClick={() => openDetail(r.id)}>
-                    <td className="px-3 py-2 font-semibold">
+                    <td className="px-3 py-2 font-semibold whitespace-nowrap">
                       {r.instructor_name}
                       {r.salary_type === 'monthly_fixed' && <span className="ml-1 text-[9px] px-1 bg-purple-100 text-purple-700 rounded">固定給</span>}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono">{yen(r.total_lesson_amount)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{yen(r.total_transit_amount)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{r.total_adjustment_amount !== 0 ? yen(r.total_adjustment_amount) : '—'}</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-orange-700">{yen(r.total_amount)}</td>
+                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{yen(r.total_lesson_amount)}</td>
+                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{yen(r.total_transit_amount)}</td>
+                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{r.total_adjustment_amount !== 0 ? yen(r.total_adjustment_amount) : '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono font-bold text-orange-700 whitespace-nowrap">{yen(r.total_amount)}</td>
                     <td className="px-3 py-2 text-center">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                         r.status === 'paid' ? 'bg-green-100 text-green-700' :
@@ -246,11 +246,11 @@ export default function PayrollPage() {
               </tbody>
               <tfoot className="bg-slate-50 border-t font-bold">
                 <tr>
-                  <td className="px-3 py-2">合計</td>
-                  <td className="px-3 py-2 text-right font-mono">{yen(runs.reduce((s, r) => s + r.total_lesson_amount, 0))}</td>
-                  <td className="px-3 py-2 text-right font-mono">{yen(runs.reduce((s, r) => s + r.total_transit_amount, 0))}</td>
-                  <td className="px-3 py-2 text-right font-mono">{yen(runs.reduce((s, r) => s + r.total_adjustment_amount, 0))}</td>
-                  <td className="px-3 py-2 text-right font-mono text-orange-700">{yen(grandTotal)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">合計</td>
+                  <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{yen(runs.reduce((s, r) => s + r.total_lesson_amount, 0))}</td>
+                  <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{yen(runs.reduce((s, r) => s + r.total_transit_amount, 0))}</td>
+                  <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{yen(runs.reduce((s, r) => s + r.total_adjustment_amount, 0))}</td>
+                  <td className="px-3 py-2 text-right font-mono text-orange-700 whitespace-nowrap">{yen(grandTotal)}</td>
                   <td colSpan={2}></td>
                 </tr>
               </tfoot>

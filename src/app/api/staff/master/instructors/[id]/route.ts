@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!(await isAuthorized(req))) return unauthorized();
   const { id } = await ctx.params;
   const body = await req.json().catch(() => ({}));
-  const allowed = ['name','name_kana','contact_email','contact_phone','instagram_handle','profile_text','profile_photo_url','shared_folder_url','bank_name','bank_branch','bank_account_type','bank_account_number','bank_account_holder','notes','active'];
+  const allowed = ['name','name_kana','contact_email','contact_phone','instagram_handle','profile_text','profile_photo_url','shared_folder_url','bank_name','bank_branch','bank_account_type','bank_account_number','bank_account_holder','notes','active','salary_type','monthly_fixed_amount'];
   const sets: string[] = [];
   const vals: unknown[] = [];
   for (const k of allowed) if (k in body) { sets.push(`${k} = ?`); vals.push(body[k]); }

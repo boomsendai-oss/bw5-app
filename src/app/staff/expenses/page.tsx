@@ -135,29 +135,29 @@ export default function ExpensesPage() {
 
         {/* 経費一覧 */}
         {!loading && data && tab === 'expenses' && (
-          <div className="bg-white rounded-lg border overflow-hidden">
-            <table className="w-full text-xs">
+          <div className="bg-white rounded-lg border overflow-x-auto">
+            <table className="w-full min-w-[560px] text-xs">
               <thead className="bg-slate-50 border-b">
                 <tr>
-                  <th className="px-2 py-1 text-left">日付</th>
-                  <th className="px-2 py-1 text-left">カテゴリ</th>
-                  <th className="px-2 py-1 text-left">サブ</th>
-                  <th className="px-2 py-1 text-left">摘要</th>
-                  <th className="px-2 py-1 text-left">ソース</th>
-                  <th className="px-2 py-1 text-right">金額</th>
+                  <th className="px-2 py-1 text-left whitespace-nowrap">日付</th>
+                  <th className="px-2 py-1 text-left whitespace-nowrap">カテゴリ</th>
+                  <th className="px-2 py-1 text-left whitespace-nowrap">サブ</th>
+                  <th className="px-2 py-1 text-left whitespace-nowrap">摘要</th>
+                  <th className="px-2 py-1 text-left whitespace-nowrap">ソース</th>
+                  <th className="px-2 py-1 text-right whitespace-nowrap">金額</th>
                   <th className="px-2 py-1"></th>
                 </tr>
               </thead>
               <tbody>
                 {data.expenses.map(e => (
                   <tr key={e.id} className="border-b hover:bg-slate-50">
-                    <td className="px-2 py-1 font-mono">{e.expense_date}</td>
-                    <td className="px-2 py-1"><span className="text-[10px] px-1 bg-orange-100 text-orange-700 rounded">{e.category}</span></td>
-                    <td className="px-2 py-1 text-slate-600">{e.subcategory ?? '—'}</td>
+                    <td className="px-2 py-1 font-mono whitespace-nowrap">{e.expense_date}</td>
+                    <td className="px-2 py-1 whitespace-nowrap"><span className="text-[10px] px-1 bg-orange-100 text-orange-700 rounded">{e.category}</span></td>
+                    <td className="px-2 py-1 text-slate-600 whitespace-nowrap">{e.subcategory ?? '—'}</td>
                     <td className="px-2 py-1 text-slate-600 max-w-xs truncate">{e.description ?? '—'}</td>
-                    <td className="px-2 py-1 text-[10px] text-slate-400">{e.source}</td>
-                    <td className="px-2 py-1 text-right font-mono font-bold">{yen(e.amount)}</td>
-                    <td className="px-2 py-1"><button onClick={() => deleteExpense(e.id)} className="text-slate-400 hover:text-red-600">削除</button></td>
+                    <td className="px-2 py-1 text-[10px] text-slate-400 whitespace-nowrap">{e.source}</td>
+                    <td className="px-2 py-1 text-right font-mono font-bold whitespace-nowrap">{yen(e.amount)}</td>
+                    <td className="px-2 py-1 whitespace-nowrap"><button onClick={() => deleteExpense(e.id)} className="text-slate-400 hover:text-red-600">削除</button></td>
                   </tr>
                 ))}
                 {data.expenses.length === 0 && <tr><td colSpan={7} className="py-4 text-center text-slate-400">経費未登録</td></tr>}
@@ -168,29 +168,29 @@ export default function ExpensesPage() {
 
         {/* 未確定銀行明細 */}
         {!loading && data && tab === 'pending' && (
-          <div className="bg-white rounded-lg border overflow-hidden">
-            <table className="w-full text-xs">
+          <div className="bg-white rounded-lg border overflow-x-auto">
+            <table className="w-full min-w-[640px] text-xs">
               <thead className="bg-slate-50 border-b">
                 <tr>
-                  <th className="px-2 py-1 text-left">日付</th>
-                  <th className="px-2 py-1 text-left">摘要</th>
-                  <th className="px-2 py-1 text-left">振込先</th>
-                  <th className="px-2 py-1 text-right">金額</th>
-                  <th className="px-2 py-1 text-left">推定</th>
-                  <th className="px-2 py-1 text-left">経費登録</th>
+                  <th className="px-2 py-1 text-left whitespace-nowrap">日付</th>
+                  <th className="px-2 py-1 text-left whitespace-nowrap">摘要</th>
+                  <th className="px-2 py-1 text-left whitespace-nowrap">振込先</th>
+                  <th className="px-2 py-1 text-right whitespace-nowrap">金額</th>
+                  <th className="px-2 py-1 text-left whitespace-nowrap">推定</th>
+                  <th className="px-2 py-1 text-left whitespace-nowrap">経費登録</th>
                 </tr>
               </thead>
               <tbody>
                 {data.pendingBankTxns.map(t => (
                   <tr key={t.id} className="border-b">
-                    <td className="px-2 py-1 font-mono">{t.txn_date}</td>
+                    <td className="px-2 py-1 font-mono whitespace-nowrap">{t.txn_date}</td>
                     <td className="px-2 py-1 max-w-xs truncate">{t.description ?? '—'}</td>
-                    <td className="px-2 py-1 text-slate-500">{t.counterparty ?? '—'}</td>
-                    <td className={`px-2 py-1 text-right font-mono ${t.amount < 0 ? 'text-red-700' : 'text-green-700'}`}>{yen(Math.abs(t.amount))}</td>
-                    <td className="px-2 py-1">
+                    <td className="px-2 py-1 text-slate-500 whitespace-nowrap">{t.counterparty ?? '—'}</td>
+                    <td className={`px-2 py-1 text-right font-mono whitespace-nowrap ${t.amount < 0 ? 'text-red-700' : 'text-green-700'}`}>{yen(Math.abs(t.amount))}</td>
+                    <td className="px-2 py-1 whitespace-nowrap">
                       {t.expense_category && <span className="text-[10px] px-1 bg-amber-100 text-amber-700 rounded">{t.expense_category}</span>}
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="px-2 py-1 whitespace-nowrap">
                       {t.amount < 0 ? (
                         <select defaultValue={t.expense_category ?? ''} onChange={e => confirmTxn(t.id, e.target.value)} className="px-1 py-0.5 border rounded text-[10px]">
                           <option value="">確定...</option>
@@ -308,27 +308,27 @@ function RecurringTab({ categories, ym, onChanged }: { categories: string[]; ym:
       </div>
 
       {/* 一覧 */}
-      <div className="bg-white border rounded overflow-hidden">
-        <table className="w-full text-xs">
+      <div className="bg-white border rounded overflow-x-auto">
+        <table className="w-full min-w-[560px] text-xs">
           <thead className="bg-slate-50">
             <tr>
-              <th className="px-2 py-1 text-left">カテゴリ</th>
-              <th className="px-2 py-1 text-left">サブ</th>
-              <th className="px-2 py-1 text-left">摘要マッチ</th>
-              <th className="px-2 py-1 text-left">説明</th>
-              <th className="px-2 py-1 text-right">予算</th>
+              <th className="px-2 py-1 text-left whitespace-nowrap">カテゴリ</th>
+              <th className="px-2 py-1 text-left whitespace-nowrap">サブ</th>
+              <th className="px-2 py-1 text-left whitespace-nowrap">摘要マッチ</th>
+              <th className="px-2 py-1 text-left whitespace-nowrap">説明</th>
+              <th className="px-2 py-1 text-right whitespace-nowrap">予算</th>
               <th className="px-2 py-1"></th>
             </tr>
           </thead>
           <tbody>
             {items.map(i => (
               <tr key={i.id} className="border-t">
-                <td className="px-2 py-1"><span className="text-[10px] px-1 bg-orange-100 text-orange-700 rounded">{i.category}</span></td>
-                <td className="px-2 py-1">{i.subcategory ?? '—'}</td>
-                <td className="px-2 py-1 text-blue-700 font-mono">{i.match_pattern ?? '—'}</td>
-                <td className="px-2 py-1 text-slate-600">{i.description ?? '—'}</td>
-                <td className="px-2 py-1 text-right font-mono">¥{i.amount.toLocaleString()}/月</td>
-                <td className="px-2 py-1"><button onClick={() => del(i.id)} className="text-slate-400 hover:text-red-600">削除</button></td>
+                <td className="px-2 py-1 whitespace-nowrap"><span className="text-[10px] px-1 bg-orange-100 text-orange-700 rounded">{i.category}</span></td>
+                <td className="px-2 py-1 whitespace-nowrap">{i.subcategory ?? '—'}</td>
+                <td className="px-2 py-1 text-blue-700 font-mono whitespace-nowrap">{i.match_pattern ?? '—'}</td>
+                <td className="px-2 py-1 text-slate-600 max-w-xs truncate">{i.description ?? '—'}</td>
+                <td className="px-2 py-1 text-right font-mono whitespace-nowrap">¥{i.amount.toLocaleString()}/月</td>
+                <td className="px-2 py-1 whitespace-nowrap"><button onClick={() => del(i.id)} className="text-slate-400 hover:text-red-600">削除</button></td>
               </tr>
             ))}
             {items.length === 0 && <tr><td colSpan={6} className="py-4 text-center text-slate-400">未登録</td></tr>}
