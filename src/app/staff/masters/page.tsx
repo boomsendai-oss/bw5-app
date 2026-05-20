@@ -595,6 +595,18 @@ export default function MastersPage() {
           const diff = (eh * 60 + em) - (sh * 60 + sm);
           return diff > 0 ? diff : null;
         };
+        // 分 → HH:MM (0-1439 にクランプ)
+        const fromMinutes = (mins: number): string => {
+          const w = ((mins % 1440) + 1440) % 1440;
+          return `${String(Math.floor(w / 60)).padStart(2, '0')}:${String(w % 60).padStart(2, '0')}`;
+        };
+        // 開始変更時: 保ちたい所要分 (旧開始終了の差、無ければ duration_minutes、無ければ60分) を保って新終了を返す
+        const shiftEnd = (newStart: string): string | null => {
+          const [sh, sm] = newStart.split(':').map(Number);
+          if (Number.isNaN(sh) || Number.isNaN(sm)) return d.default_end_time ?? null;
+          const keepDur = calcDuration(d.default_start_time, d.default_end_time) ?? d.duration_minutes ?? 60;
+          return fromMinutes(sh * 60 + sm + keepDur);
+        };
         return (
           <div className="fixed inset-0 bg-black/50 flex items-start justify-center p-4 z-50 overflow-y-auto">
             <div className="bg-white rounded-lg p-4 w-full max-w-2xl my-8">
@@ -619,7 +631,9 @@ export default function MastersPage() {
                     <label className="text-xs text-slate-600">開始時刻</label>
                     <input type="time" value={d.default_start_time ?? ''} onChange={e => {
                       const start = e.target.value;
-                      set({ default_start_time: start, duration_minutes: calcDuration(start, d.default_end_time) ?? d.duration_minutes });
+                      // 開始変更時は所要時間を保って終了を自動追従
+                      const newEnd = start ? shiftEnd(start) : d.default_end_time;
+                      set({ default_start_time: start, default_end_time: newEnd, duration_minutes: calcDuration(start, newEnd) ?? d.duration_minutes });
                     }} className="w-full border rounded px-2 py-1 text-sm bg-white text-neutral-900" />
                   </div>
                   <div>

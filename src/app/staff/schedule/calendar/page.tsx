@@ -49,6 +49,30 @@ type EditTarget = {
 
 const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
+// HH:MM ⇔ 分 変換
+const toMinutes = (hhmm: string): number | null => {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+};
+const fromMinutes = (mins: number): string => {
+  const wrapped = ((mins % 1440) + 1440) % 1440; // 0-1439 にクランプ
+  const h = Math.floor(wrapped / 60);
+  const m = wrapped % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+// 開始変更時: 旧所要時間を保って新終了を返す (算出不能なら現状維持)
+const shiftEnd = (prevStart: string, prevEnd: string, newStart: string): string => {
+  const ps = toMinutes(prevStart);
+  const pe = toMinutes(prevEnd);
+  const ns = toMinutes(newStart);
+  if (ps == null || pe == null || ns == null) return prevEnd;
+  const dur = pe - ps;
+  if (dur <= 0) return prevEnd;
+  return fromMinutes(ns + dur);
+};
+
 export default function ScheduleCalendarPage() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -361,9 +385,10 @@ export default function ScheduleCalendarPage() {
                               ? l.status === 'cancelled' ? 'bg-red-100 text-red-700 line-through' : 'bg-emerald-100 text-emerald-800'
                               : 'bg-blue-50 text-blue-800'
                           }`}
-                          title={`${l.start_time ?? '時間未設定'} ${l.class_name} (${l.instructor_name ?? '?'})`}
+                          title={`${l.start_time ? l.start_time.substring(0, 5) : '時間未設定'} ${l.class_name}${l.instructor_name ? ` (${l.instructor_name})` : ''}`}
                         >
-                          {l.start_time ? l.start_time.substring(0, 5) : '時間未設定'} {(l.class_name ?? '').replace(/​/g, '').substring(0, 8)}
+                          <span className="font-semibold">{(l.class_name ?? '').replace(/​/g, '').substring(0, 10)}</span>
+                          {l.start_time && <span className="ml-0.5 opacity-60">{l.start_time.substring(0, 5)}</span>}
                         </div>
                       ))}
                       {lessonCount > 3 && (
@@ -583,7 +608,12 @@ function AddLessonForm({ date, masters, studios, instructors, onAddFromMaster, o
         <div className="space-y-2 text-sm">
           <input placeholder="クラス名 (例: 特別ゲストレッスン)" value={custom.class_name_override} onChange={e => setCustom({ ...custom, class_name_override: e.target.value })} className="w-full px-2 py-1.5 border rounded" />
           <div className="grid grid-cols-2 gap-2">
-            <input type="time" value={custom.start_time} onChange={e => setCustom({ ...custom, start_time: e.target.value })} className="px-2 py-1.5 border rounded" />
+            <input type="time" value={custom.start_time} onChange={e => {
+              const newStart = e.target.value;
+              // 旧所要時間を保って終了を自動追従
+              const nextEnd = (custom.start_time && custom.end_time && newStart) ? shiftEnd(custom.start_time, custom.end_time, newStart) : custom.end_time;
+              setCustom({ ...custom, start_time: newStart, end_time: nextEnd });
+            }} className="px-2 py-1.5 border rounded" />
             <input type="time" value={custom.end_time} onChange={e => setCustom({ ...custom, end_time: e.target.value })} className="px-2 py-1.5 border rounded" />
           </div>
           <select value={custom.studio_id} onChange={e => setCustom({ ...custom, studio_id: e.target.value })} className="w-full px-2 py-1.5 border rounded bg-white">
@@ -646,7 +676,12 @@ function EditLessonModal({ target, studios, instructors, onClose, onSave }: {
           <div>
             <label className="text-[11px] text-slate-500 font-semibold">時間</label>
             <div className="grid grid-cols-2 gap-2 mt-0.5">
-              <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="px-2 py-1.5 border rounded" />
+              <input type="time" value={startTime} onChange={e => {
+                const newStart = e.target.value;
+                // 旧所要時間を保って終了を自動追従
+                if (startTime && endTime && newStart) setEndTime(shiftEnd(startTime, endTime, newStart));
+                setStartTime(newStart);
+              }} className="px-2 py-1.5 border rounded" />
               <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="px-2 py-1.5 border rounded" />
             </div>
           </div>
