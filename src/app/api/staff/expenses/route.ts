@@ -29,9 +29,9 @@ export async function GET(req: NextRequest) {
      FROM expenses ${where} GROUP BY category`,
     args
   );
-  // 未確定の銀行明細
+  // 未確定の銀行明細 (LIMIT 500 - 月内ぜんぶ見えるよう拡大)
   const pendingBankTxns = await getAll(
-    `SELECT * FROM bank_transactions WHERE confirmed = 0 ${ym ? `AND txn_date BETWEEN ? AND ?` : ''} ORDER BY txn_date DESC LIMIT 100`,
+    `SELECT * FROM bank_transactions WHERE confirmed = 0 ${ym ? `AND txn_date BETWEEN ? AND ?` : ''} ORDER BY txn_date DESC LIMIT 500`,
     ym ? args : []
   );
   return NextResponse.json({ expenses, summary, pendingBankTxns, categories: CATEGORIES });
