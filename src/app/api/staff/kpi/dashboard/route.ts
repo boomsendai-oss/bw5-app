@@ -110,17 +110,27 @@ export async function GET(req: NextRequest) {
   ))?.n);
 
   // ===== C: オペレーション (稼働率) =====
+  // 予約ベース稼働率 = 総予約数 / 定員。
+  // HACOMONO RS002 の「稼働率」列はチェックイン(実出席)ベースのため、
+  // まだ出席を取っていない/月途中のレッスンは予約があっても 0% と記録される
+  // (例: 多賀城HOUSE/おっちゃん系が 0% に見えていた原因)。
+  // 経営判断では「どれだけ枠が予約で埋まっているか」が重要なので予約ベースを採用。
+  // 定員が無い行のみ、保存済み稼働率にフォールバック。
+  const UTIL_EXPR =
+    `CASE WHEN capacity IS NOT NULL AND capacity > 0
+          THEN CAST(total_reservations AS REAL) / capacity
+          ELSE utilization_rate END`;
   const utilRows = await safeAll(
-    `SELECT AVG(utilization_rate) AS avg_rate, COUNT(*) AS lessons
+    `SELECT AVG(${UTIL_EXPR}) AS avg_rate, COUNT(*) AS lessons
      FROM lesson_utilization WHERE lesson_date BETWEEN ? AND ?`,
     [monthStart, monthEnd]
   );
   const avgUtilization = utilRows[0] ? Number(utilRows[0].avg_rate ?? 0) : 0;
   const utilLessonCount = utilRows[0] ? n(utilRows[0].lessons) : 0;
 
-  // クラス別稼働率 TOP10 (高い順) / ボトム10 (低い順)
+  // クラス別稼働率 TOP10 (高い順) / ボトム10 (低い順) — 予約ベース
   const topClasses = await safeAll(
-    `SELECT program_name, staff_name, AVG(utilization_rate) AS avg_rate, COUNT(*) AS cnt
+    `SELECT program_name, staff_name, AVG(${UTIL_EXPR}) AS avg_rate, COUNT(*) AS cnt
      FROM lesson_utilization WHERE lesson_date BETWEEN ? AND ?
      GROUP BY program_name, staff_name
      HAVING cnt >= 1
@@ -128,7 +138,7 @@ export async function GET(req: NextRequest) {
     [monthStart, monthEnd]
   );
   const bottomClasses = await safeAll(
-    `SELECT program_name, staff_name, AVG(utilization_rate) AS avg_rate, COUNT(*) AS cnt
+    `SELECT program_name, staff_name, AVG(${UTIL_EXPR}) AS avg_rate, COUNT(*) AS cnt
      FROM lesson_utilization WHERE lesson_date BETWEEN ? AND ?
      GROUP BY program_name, staff_name
      HAVING cnt >= 1
@@ -205,6 +215,7 @@ export async function GET(req: NextRequest) {
       top_classes: topClasses,
       bottom_classes: bottomClasses,
       data_available: utilLessonCount > 0,
+      rate_basis: '予約数 ÷ 定員', // 稼働率の計算根拠
     },
     // D 収益性
     profitability: {

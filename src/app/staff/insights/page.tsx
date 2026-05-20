@@ -10,6 +10,7 @@ type TrendData = {
   members_active: number[];
   line_friends: number[];
   churn_rate: number[];
+  utilization: number[];
   generated_at: string;
 };
 
@@ -99,6 +100,7 @@ type DashboardData = {
     top_classes: Array<{ program_name: string; staff_name: string; avg_rate: number; cnt: number }>;
     bottom_classes: Array<{ program_name: string; staff_name: string; avg_rate: number; cnt: number }>;
     data_available: boolean;
+    rate_basis?: string;
   };
   profitability: {
     revenue: number; payroll: number; studio: number;
@@ -118,6 +120,13 @@ function pct(n: number, decimals = 1): string { return `${n.toFixed(decimals)}%`
 function currentYM(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// "2026-05" → "2026年5月"
+function ymJp(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  if (!y || !m) return ym;
+  return `${y}年${m}月`;
 }
 
 function shiftYM(ym: string, delta: number): string {
@@ -337,12 +346,12 @@ export default function InsightsPage() {
         {data && (
           <>
             {/* ===== B: 顧客動態 ===== */}
-            <Section title="👥 顧客動態" hint="プラン会員ベース">
+            <Section title="👥 顧客動態" hint="在籍はHACOMONO会員 / LINEはLstep友だち">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                 <KpiCard
                   label="在籍数(月末)"
                   value={num(data.members.end_active)}
-                  sub={`月初 ${num(data.members.start_active)} → 月末`}
+                  sub={`有効会員 (boom_members) ・ 月初 ${num(data.members.start_active)}人`}
                   target={target.members_active}
                   current={data.members.end_active}
                   unit="人"
@@ -357,14 +366,14 @@ export default function InsightsPage() {
                 <KpiCard
                   label="退会率(Churn)"
                   value={pct(data.members.churn_rate)}
-                  sub="月初在籍 ÷ 退会数 (業界目安 3-5%)"
+                  sub="退会数 ÷ 月初在籍 (業界目安 3-5%)"
                   accent={data.members.churn_rate > 5 ? 'red' : data.members.churn_rate > 3 ? 'orange' : 'green'}
                   warn={data.members.churn_rate > 5}
                 />
                 <KpiCard
-                  label="LINE友だち"
+                  label="LINE友だち数"
                   value={num(data.line.friends_now)}
-                  sub="現在値 (ブロック除く)"
+                  sub="Lstep友だち (ブロック除く・在籍数とは別)"
                   target={target.line_friends}
                   current={data.line.friends_now}
                   unit="人"
@@ -453,12 +462,12 @@ export default function InsightsPage() {
             </Section>
 
             {/* ===== C: オペレーション ===== */}
-            <Section title="🎯 オペレーション" hint="クラス稼働率 (HACOMONO RS002)">
+            <Section title={`🎯 ${ymJp(ym)}の稼働率`} hint="予約数÷定員 (HACOMONO RS002)">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-3">
                 <KpiCard
-                  label="平均稼働率"
+                  label={`平均稼働率 (${ymJp(ym)})`}
                   value={data.utilization.data_available ? pct(data.utilization.average * 100) : '—'}
-                  sub={data.utilization.data_available ? `${data.utilization.lesson_count}レッスン` : 'RS002 未取込'}
+                  sub={data.utilization.data_available ? `${data.utilization.rate_basis ?? '予約数 ÷ 定員'} ・ ${data.utilization.lesson_count}レッスン` : 'RS002 未取込'}
                   target={target.utilization}
                   current={data.utilization.average * 100}
                   unit="%"
@@ -467,7 +476,7 @@ export default function InsightsPage() {
                 <KpiCard
                   label="集計レッスン数"
                   value={num(data.utilization.lesson_count)}
-                  sub="HACOMONO予約データ"
+                  sub={`${ymJp(ym)}の予約データ`}
                   accent="blue"
                 />
               </div>
@@ -571,6 +580,13 @@ export default function InsightsPage() {
                     suffix="%"
                     isPct={true}
                     lowerIsBetter
+                  />
+                  <TrendChart
+                    title="平均稼働率 (%)"
+                    values={trends.utilization ?? []}
+                    months={trends.months}
+                    suffix="%"
+                    isPct={true}
                   />
                 </div>
               </Section>
