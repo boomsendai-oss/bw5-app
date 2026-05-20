@@ -37,11 +37,15 @@ export async function GET(req: NextRequest) {
     [monthStart, monthStart]
   ))?.n);
   // 月末在籍数
+  // enrolled_at/withdrew_at は 'YYYY-MM-DD HH:MM:SS' 形式で保存されるため、
+  // 月末日の時刻付き行 (例 '2026-05-31 21:00:00') を取りこぼさないよう
+  // 境界には日付のみの monthEnd ではなく monthEndISO (…T23:59:59) を使う。
+  // 月末日の入会者が endActive から漏れて newSignups と矛盾する不具合を防ぐ。
   const endActive = n((await safeOne(
     `SELECT COUNT(*) AS n FROM boom_members
      WHERE (enrolled_at IS NULL OR enrolled_at <= ?)
        AND (withdrew_at IS NULL OR withdrew_at > ?)`,
-    [monthEnd, monthEnd]
+    [monthEndISO, monthEndISO]
   ))?.n);
   // 当月新規入会
   const newSignups = n((await safeOne(

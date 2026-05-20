@@ -62,11 +62,13 @@ export async function GET(req: NextRequest) {
          AND (withdrew_at IS NULL OR withdrew_at > ?)`,
       [monthStart, monthStart],
     ))?.n);
+    // 月末境界は monthEndISO (…T23:59:59) を使う。日付のみの monthEnd だと
+    // 月末日の時刻付き enrolled_at ('YYYY-MM-DD HH:MM:SS') を取りこぼす。
     const endActive = n((await safeOne(
       `SELECT COUNT(*) AS n FROM boom_members
        WHERE (enrolled_at IS NULL OR enrolled_at <= ?)
          AND (withdrew_at IS NULL OR withdrew_at > ?)`,
-      [monthEnd, monthEnd],
+      [monthEndISO, monthEndISO],
     ))?.n);
     const churned = n((await safeOne(
       `SELECT COUNT(*) AS n FROM boom_members WHERE withdrew_at BETWEEN ? AND ?`,
