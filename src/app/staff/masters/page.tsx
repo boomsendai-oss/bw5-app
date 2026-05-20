@@ -304,7 +304,7 @@ export default function MastersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {instructors.map(i => {
+                  {[...instructors].sort((a, b) => b.active - a.active).map(i => {
                     const myRates = rates.filter(r => r.instructor_id === i.id);
                     return (
                       <tr key={i.id} className="border-t border-slate-100 hover:bg-orange-50/40 cursor-pointer" onClick={() => setDetail({ kind: 'instructor', data: i })}>
@@ -351,8 +351,8 @@ export default function MastersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {lessons.map(l => (
-                    <tr key={l.id} className="border-t border-slate-100 hover:bg-orange-50/40 cursor-pointer" onClick={() => setDetail({ kind: 'lesson', data: l })}>
+                  {[...lessons].sort((a, b) => b.active - a.active).map(l => (
+                    <tr key={l.id} className={`border-t border-slate-100 hover:bg-orange-50/40 cursor-pointer ${l.active === 0 ? 'opacity-50' : ''}`} onClick={() => setDetail({ kind: 'lesson', data: l })}>
                       <td className="px-2 py-2 text-center font-medium">{dayLabel(l.default_day_of_week)}</td>
                       <td className="px-2 py-2 text-xs font-mono whitespace-nowrap">{l.default_start_time ?? '—'}{l.default_end_time ? `〜${l.default_end_time}` : ''}</td>
                       <td className="px-2 py-2 font-medium">{l.class_name}</td>
