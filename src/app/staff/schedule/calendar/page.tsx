@@ -35,6 +35,18 @@ type CalendarData = {
   instances_count: number;
 };
 
+// 編集対象 instance の最新情報
+type EditTarget = {
+  instance_id: number;
+  date: string;
+  class_name: string;
+  start_time: string;
+  end_time: string;
+  studio_id: number | null;
+  instructor_id: number | null;
+  notes: string | null;
+};
+
 const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
 export default function ScheduleCalendarPage() {
@@ -48,6 +60,7 @@ export default function ScheduleCalendarPage() {
   const [masters, setMasters] = useState<MasterOption[]>([]);
   const [studios, setStudios] = useState<StudioOption[]>([]);
   const [instructorsOpt, setInstructorsOpt] = useState<InstructorOption[]>([]);
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
 
   const load = useCallback(async (y: number, m: number) => {
     setLoading(true);
@@ -109,7 +122,61 @@ export default function ScheduleCalendarPage() {
     await fetch(`/api/staff/schedule/instances/${instanceId}`, { method: 'DELETE', credentials: 'include' });
     await reloadDay(date);
   };
-  const createInstanceFromMaster = async (date: string, masterId: number) => {
+
+  // master展開レッスンを instance化 (実体を1件作成して返す)
+  // status: 'scheduled' (編集用) または 'cancelled' (休講/この日だけ削除)
+  const instantiateMaster = async (date: string, masterId: number, status: 'scheduled' | 'cancelled'): Promise<number | null> => {
+    const master = masters.find(m => m.id === masterId);
+    if (!master) return null;
+    const res = await fetch('/api/staff/schedule/instances', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date,
+        start_time: master.default_start_time,
+        end_time: master.default_end_time,
+        master_id: masterId,
+        studio_id: master.default_studio_id,
+        instructor_id: master.default_instructor_id,
+        status,
+      }),
+    });
+    if (!res.ok) return null;
+    const j = await res.json().catch(() => null);
+    return j?.id ?? null;
+  };
+
+  // master展開レッスンを「この日だけ編集」: instance化して編集モーダルを開く
+  const editMasterLesson = async (date: string, l: Lesson) => {
+    if (!l.master_id) return;
+    const master = masters.find(m => m.id === l.master_id);
+    if (!master) { alert('マスター情報が読み込めませんでした'); return; }
+    const newId = await instantiateMaster(date, l.master_id, 'scheduled');
+    if (!newId) { alert('実開催の作成に失敗しました'); return; }
+    await reloadDay(date);
+    setEditTarget({
+      instance_id: newId,
+      date,
+      class_name: l.class_name,
+      start_time: master.default_start_time,
+      end_time: master.default_end_time,
+      studio_id: master.default_studio_id,
+      instructor_id: master.default_instructor_id,
+      notes: null,
+    });
+  };
+
+  // master展開レッスンを「この日だけ休講/削除」: instance化 + cancelled
+  const cancelMasterLesson = async (date: string, l: Lesson, label: string) => {
+    if (!l.master_id) return;
+    if (!confirm(`「${l.class_name}」をこの日だけ${label}にしますか?`)) return;
+    const newId = await instantiateMaster(date, l.master_id, 'cancelled');
+    if (!newId) { alert('処理に失敗しました'); return; }
+    await reloadDay(date);
+  };
+
+  // master選択 + スタジオ/インストラクター上書きで instance作成
+  const createInstanceFromMaster = async (date: string, masterId: number, studioId?: number, instructorId?: number) => {
     const master = masters.find(m => m.id === masterId);
     if (!master) return;
     await fetch('/api/staff/schedule/instances', {
@@ -120,8 +187,8 @@ export default function ScheduleCalendarPage() {
         start_time: master.default_start_time,
         end_time: master.default_end_time,
         master_id: masterId,
-        studio_id: master.default_studio_id,
-        instructor_id: master.default_instructor_id,
+        studio_id: studioId ?? master.default_studio_id,
+        instructor_id: instructorId ?? master.default_instructor_id,
         status: 'scheduled',
       }),
     });
@@ -134,6 +201,34 @@ export default function ScheduleCalendarPage() {
       body: JSON.stringify({ date, ...payload, status: 'scheduled' }),
     });
     await reloadDay(date);
+  };
+
+  // 既存instanceの編集を保存
+  const saveInstanceEdit = async (target: EditTarget, payload: { start_time: string; end_time: string; studio_id: number | null; instructor_id: number | null; notes: string | null }) => {
+    await fetch(`/api/staff/schedule/instances/${target.instance_id}`, {
+      method: 'PATCH', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    setEditTarget(null);
+    await reloadDay(target.date);
+  };
+
+  // instance編集モーダルを開く (既存instance用)
+  const openInstanceEdit = (date: string, l: Lesson) => {
+    if (!l.instance_id) return;
+    const studio = studios.find(s => s.name === l.studio_name);
+    const instructor = instructorsOpt.find(i => i.name === l.instructor_name);
+    setEditTarget({
+      instance_id: l.instance_id,
+      date,
+      class_name: l.class_name,
+      start_time: l.start_time,
+      end_time: l.end_time,
+      studio_id: studio?.id ?? null,
+      instructor_id: instructor?.id ?? null,
+      notes: l.notes ?? null,
+    });
   };
 
   // カレンダーグリッド: 前月/翌月の日付も薄く表示
@@ -334,6 +429,7 @@ export default function ScheduleCalendarPage() {
                     <div className="mt-2 flex gap-1 flex-wrap">
                       {l.source === 'instance' && l.instance_id && (
                         <>
+                          <button onClick={() => openInstanceEdit(selectedDay.date, l)} className="text-[10px] px-2 py-0.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded">編集</button>
                           {l.status === 'cancelled' ? (
                             <button onClick={() => restoreInstance(l.instance_id!, selectedDay.date)} className="text-[10px] px-2 py-0.5 bg-green-100 hover:bg-green-200 text-green-700 rounded">復活</button>
                           ) : (
@@ -343,9 +439,16 @@ export default function ScheduleCalendarPage() {
                         </>
                       )}
                       {l.source === 'master' && (
-                        <span className="text-[10px] text-slate-400">通常パターン (週次自動表示) — 変更したい日付なら「実開催登録」→ 編集</span>
+                        <>
+                          <button onClick={() => editMasterLesson(selectedDay.date, l)} className="text-[10px] px-2 py-0.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded">この日を編集</button>
+                          <button onClick={() => cancelMasterLesson(selectedDay.date, l, '休講')} className="text-[10px] px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded">この日を休講</button>
+                          <button onClick={() => cancelMasterLesson(selectedDay.date, l, '非表示')} className="text-[10px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded">この日だけ削除</button>
+                        </>
                       )}
                     </div>
+                    {l.source === 'master' && (
+                      <p className="mt-1.5 text-[10px] text-slate-400 leading-tight">通常パターン (週次自動表示)。編集/休講/削除はこの日だけ反映され、他の週は変わりません。</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -355,11 +458,22 @@ export default function ScheduleCalendarPage() {
               masters={masters}
               studios={studios}
               instructors={instructorsOpt}
-              onAddFromMaster={(masterId) => createInstanceFromMaster(selectedDay.date, masterId)}
+              onAddFromMaster={(masterId, studioId, instructorId) => createInstanceFromMaster(selectedDay.date, masterId, studioId, instructorId)}
               onAddCustom={(payload) => createCustomInstance(selectedDay.date, payload)}
             />
           </div>
         </div>
+      )}
+
+      {/* 既存instance / master実体化後の編集モーダル */}
+      {editTarget && (
+        <EditLessonModal
+          target={editTarget}
+          studios={studios}
+          instructors={instructorsOpt}
+          onClose={() => setEditTarget(null)}
+          onSave={(payload) => saveInstanceEdit(editTarget, payload)}
+        />
       )}
     </main>
   );
@@ -370,20 +484,38 @@ function AddLessonForm({ date, masters, studios, instructors, onAddFromMaster, o
   masters: MasterOption[];
   studios: StudioOption[];
   instructors: InstructorOption[];
-  onAddFromMaster: (masterId: number) => Promise<void>;
+  onAddFromMaster: (masterId: number, studioId?: number, instructorId?: number) => Promise<void>;
   onAddCustom: (payload: { start_time: string; end_time: string; class_name_override: string; studio_id?: number; instructor_id?: number; notes?: string }) => Promise<void>;
 }) {
   const [mode, setMode] = useState<'master' | 'custom'>('master');
   const [selectedMaster, setSelectedMaster] = useState<number | null>(null);
+  // マスター選択時のスタジオ/インストラクター上書き ('' = マスター通り)
+  const [masterStudio, setMasterStudio] = useState<string>('');
+  const [masterInstructor, setMasterInstructor] = useState<string>('');
   const [custom, setCustom] = useState({ start_time: '', end_time: '', class_name_override: '', studio_id: '', instructor_id: '', notes: '' });
   const [busy, setBusy] = useState(false);
+
+  const selectedMasterObj = masters.find(m => m.id === selectedMaster);
+
+  // master選択を変えたらスタジオ/インストラクターをマスター既定にリセット
+  const onSelectMaster = (val: string) => {
+    const id = val ? Number(val) : null;
+    setSelectedMaster(id);
+    const m = masters.find(x => x.id === id);
+    setMasterStudio(m?.default_studio_id != null ? String(m.default_studio_id) : '');
+    setMasterInstructor(m?.default_instructor_id != null ? String(m.default_instructor_id) : '');
+  };
 
   const submit = async () => {
     setBusy(true);
     try {
       if (mode === 'master') {
         if (!selectedMaster) { alert('クラスを選択してください'); return; }
-        await onAddFromMaster(selectedMaster);
+        await onAddFromMaster(
+          selectedMaster,
+          masterStudio ? Number(masterStudio) : undefined,
+          masterInstructor ? Number(masterInstructor) : undefined,
+        );
       } else {
         if (!custom.class_name_override || !custom.start_time || !custom.end_time) {
           alert('クラス名・開始時刻・終了時刻は必須'); return;
@@ -412,12 +544,30 @@ function AddLessonForm({ date, masters, studios, instructors, onAddFromMaster, o
       </div>
       {mode === 'master' ? (
         <div className="space-y-2">
-          <select value={selectedMaster ?? ''} onChange={e => setSelectedMaster(e.target.value ? Number(e.target.value) : null)} className="w-full px-2 py-1.5 border rounded text-sm bg-white">
+          <select value={selectedMaster ?? ''} onChange={e => onSelectMaster(e.target.value)} className="w-full px-2 py-1.5 border rounded text-sm bg-white">
             <option value="">-- 通常クラスを選択 --</option>
             {masters.map(m => (
               <option key={m.id} value={m.id}>{m.class_name} ({m.default_start_time?.substring(0, 5)}-)</option>
             ))}
           </select>
+          {selectedMasterObj && (
+            <div className="grid grid-cols-1 gap-2">
+              <label className="text-[11px] text-slate-500">
+                スタジオ (マスター通りでよければそのまま)
+                <select value={masterStudio} onChange={e => setMasterStudio(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 border rounded text-sm bg-white">
+                  <option value="">スタジオ未設定</option>
+                  {studios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </label>
+              <label className="text-[11px] text-slate-500">
+                インストラクター (マスター通りでよければそのまま)
+                <select value={masterInstructor} onChange={e => setMasterInstructor(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 border rounded text-sm bg-white">
+                  <option value="">インストラクター未設定</option>
+                  {instructors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </select>
+              </label>
+            </div>
+          )}
           <button onClick={submit} disabled={busy || !selectedMaster} className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold disabled:opacity-50">
             {busy ? '追加中...' : 'この日に追加'}
           </button>
@@ -443,6 +593,82 @@ function AddLessonForm({ date, masters, studios, instructors, onAddFromMaster, o
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function EditLessonModal({ target, studios, instructors, onClose, onSave }: {
+  target: EditTarget;
+  studios: StudioOption[];
+  instructors: InstructorOption[];
+  onClose: () => void;
+  onSave: (payload: { start_time: string; end_time: string; studio_id: number | null; instructor_id: number | null; notes: string | null }) => Promise<void>;
+}) {
+  const [startTime, setStartTime] = useState(target.start_time ? target.start_time.substring(0, 5) : '');
+  const [endTime, setEndTime] = useState(target.end_time ? target.end_time.substring(0, 5) : '');
+  const [studioId, setStudioId] = useState(target.studio_id != null ? String(target.studio_id) : '');
+  const [instructorId, setInstructorId] = useState(target.instructor_id != null ? String(target.instructor_id) : '');
+  const [notes, setNotes] = useState(target.notes ?? '');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!startTime || !endTime) { alert('開始時刻・終了時刻は必須'); return; }
+    setBusy(true);
+    try {
+      await onSave({
+        start_time: startTime,
+        end_time: endTime,
+        studio_id: studioId ? Number(studioId) : null,
+        instructor_id: instructorId ? Number(instructorId) : null,
+        notes: notes.trim() ? notes.trim() : null,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[60]" onClick={onClose}>
+      <div className="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl p-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3 pb-2 border-b">
+          <h3 className="font-bold text-base">✏️ レッスン編集 ({target.date})</h3>
+          <button onClick={onClose} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
+        </div>
+        <div className="text-sm font-bold mb-3">{target.class_name}</div>
+        <div className="space-y-3 text-sm">
+          <div>
+            <label className="text-[11px] text-slate-500 font-semibold">時間</label>
+            <div className="grid grid-cols-2 gap-2 mt-0.5">
+              <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="px-2 py-1.5 border rounded" />
+              <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="px-2 py-1.5 border rounded" />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-500 font-semibold">スタジオ</label>
+            <select value={studioId} onChange={e => setStudioId(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 border rounded bg-white">
+              <option value="">未設定</option>
+              {studios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-500 font-semibold">インストラクター</label>
+            <select value={instructorId} onChange={e => setInstructorId(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 border rounded bg-white">
+              <option value="">未設定</option>
+              {instructors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] text-slate-500 font-semibold">メモ</label>
+            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="メモ (任意)" className="mt-0.5 w-full px-2 py-1.5 border rounded" />
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={onClose} className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-sm font-semibold">キャンセル</button>
+            <button onClick={submit} disabled={busy} className="flex-1 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold disabled:opacity-50">
+              {busy ? '保存中...' : '保存'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
