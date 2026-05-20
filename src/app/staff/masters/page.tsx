@@ -39,16 +39,38 @@ type Rate = { id: number; instructor_id: number; duration_minutes: number; rate:
 type TransitFee = { id: number; instructor_id: number; studio_id: number; amount: number };
 type PhotoCount = { instructor_id: number; count: number };
 
+type Lesson = {
+  id: number;
+  class_name: string;
+  target: string | null;
+  level: string | null;
+  default_studio_id: number | null;
+  default_instructor_id: number | null;
+  default_day_of_week: number | null;
+  default_start_time: string | null;
+  default_end_time: string | null;
+  duration_minutes: number | null;
+  frequency_type: string | null;
+  active: number;
+  notes: string | null;
+  studio_name: string | null;
+  instructor_name: string | null;
+};
+
+const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+const dayLabel = (d: number | null | undefined) => (d == null ? '—' : DAY_NAMES[d] ?? String(d));
+
 export default function MastersPage() {
-  const [tab, setTab] = useState<'studios' | 'instructors'>('studios');
+  const [tab, setTab] = useState<'studios' | 'instructors' | 'lessons'>('studios');
   const [studios, setStudios] = useState<Studio[]>([]);
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [rates, setRates] = useState<Rate[]>([]);
   const [fees, setFees] = useState<TransitFee[]>([]);
   const [photoCounts, setPhotoCounts] = useState<PhotoCount[]>([]);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<{ kind: 'studio'; data: Partial<Studio> } | { kind: 'instructor'; data: Partial<Instructor> } | null>(null);
-  const [detail, setDetail] = useState<{ kind: 'studio'; data: Studio } | { kind: 'instructor'; data: Instructor } | null>(null);
+  const [editing, setEditing] = useState<{ kind: 'studio'; data: Partial<Studio> } | { kind: 'instructor'; data: Partial<Instructor> } | { kind: 'lesson'; data: Partial<Lesson> } | null>(null);
+  const [detail, setDetail] = useState<{ kind: 'studio'; data: Studio } | { kind: 'instructor'; data: Instructor } | { kind: 'lesson'; data: Lesson } | null>(null);
   const [editRates, setEditRates] = useState<{ duration: number; rate: number }[]>([]);
   const [editFees, setEditFees] = useState<{ studio_id: number; amount: number }[]>([]);
   const [msg, setMsg] = useState('');
@@ -56,21 +78,24 @@ export default function MastersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, i] = await Promise.all([
+      const [s, i, l] = await Promise.all([
         fetch('/api/staff/master/studios', { credentials: 'include' }),
         fetch('/api/staff/master/instructors', { credentials: 'include' }),
+        fetch('/api/staff/master/lessons?all=1', { credentials: 'include' }),
       ]);
-      if (s.status === 401 || i.status === 401) {
+      if (s.status === 401 || i.status === 401 || l.status === 401) {
         window.location.href = '/staff/events/login?next=/staff/masters';
         return;
       }
       const sData = await s.json();
       const iData = await i.json();
+      const lData = await l.json();
       setStudios(sData.studios || []);
       setInstructors(iData.instructors || []);
       setRates(iData.rates || []);
       setFees(iData.transit_fees || []);
       setPhotoCounts(iData.photo_counts || []);
+      setLessons(lData.lessons || []);
     } catch (e) {
       setMsg(`読込失敗: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -144,6 +169,48 @@ export default function MastersPage() {
     await load();
   };
 
+  const saveLesson = async (data: Partial<Lesson>) => {
+    try {
+      const payload = {
+        class_name: data.class_name,
+        target: data.target ?? null,
+        level: data.level ?? null,
+        default_studio_id: data.default_studio_id ?? null,
+        default_instructor_id: data.default_instructor_id ?? null,
+        default_day_of_week: data.default_day_of_week ?? null,
+        default_start_time: data.default_start_time ?? null,
+        default_end_time: data.default_end_time ?? null,
+        duration_minutes: data.duration_minutes ?? null,
+        frequency_type: data.frequency_type ?? null,
+        active: data.active ?? 1,
+        notes: data.notes ?? null,
+      };
+      if (data.id) {
+        await fetch(`/api/staff/master/lessons/${data.id}`, {
+          method: 'PATCH', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await fetch(`/api/staff/master/lessons`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
+      setEditing(null);
+      await load();
+    } catch (e) {
+      setMsg(`保存失敗: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const removeLesson = async (id: number) => {
+    if (!window.confirm('このレッスンを無効化 (active=0) しますか?')) return;
+    await fetch(`/api/staff/master/lessons/${id}`, { method: 'DELETE', credentials: 'include' });
+    await load();
+  };
+
   const startEditInstructor = (i: Partial<Instructor>) => {
     setEditing({ kind: 'instructor', data: i });
     if (i.id) {
@@ -174,6 +241,10 @@ export default function MastersPage() {
             onClick={() => setTab('instructors')}
             className={`px-4 py-1.5 rounded-full text-sm font-medium ${tab === 'instructors' ? 'bg-orange-500 text-white' : 'bg-white border border-slate-300 text-slate-700'}`}
           >👤 インストラクター ({instructors.length})</button>
+          <button
+            onClick={() => setTab('lessons')}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium ${tab === 'lessons' ? 'bg-orange-500 text-white' : 'bg-white border border-slate-300 text-slate-700'}`}
+          >📋 レッスン ({lessons.length})</button>
         </div>
 
         {loading && <p className="text-slate-500 text-sm">読込中...</p>}
@@ -259,6 +330,47 @@ export default function MastersPage() {
             </div>
           </>
         )}
+
+        {/* LESSONS LIST */}
+        {!loading && tab === 'lessons' && (
+          <>
+            <button
+              onClick={() => setEditing({ kind: 'lesson', data: { active: 1, frequency_type: 'weekly', default_day_of_week: 0 } })}
+              className="mb-3 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold"
+            >+ レッスン追加</button>
+            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-slate-700">
+                  <tr>
+                    <th className="px-2 py-2 text-center">曜日</th>
+                    <th className="px-2 py-2 text-left">時刻</th>
+                    <th className="px-2 py-2 text-left">クラス名</th>
+                    <th className="px-2 py-2 text-left">インストラクター</th>
+                    <th className="px-2 py-2 text-left">スタジオ</th>
+                    <th className="px-2 py-2 text-center">状態</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lessons.map(l => (
+                    <tr key={l.id} className="border-t border-slate-100 hover:bg-orange-50/40 cursor-pointer" onClick={() => setDetail({ kind: 'lesson', data: l })}>
+                      <td className="px-2 py-2 text-center font-medium">{dayLabel(l.default_day_of_week)}</td>
+                      <td className="px-2 py-2 text-xs font-mono whitespace-nowrap">{l.default_start_time ?? '—'}{l.default_end_time ? `〜${l.default_end_time}` : ''}</td>
+                      <td className="px-2 py-2 font-medium">{l.class_name}</td>
+                      <td className="px-2 py-2 text-xs">{l.instructor_name ?? <span className="text-slate-300">—</span>}</td>
+                      <td className="px-2 py-2 text-xs">{l.studio_name ?? <span className="text-slate-300">—</span>}</td>
+                      <td className="px-2 py-2 text-center">
+                        {l.active
+                          ? <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded">有効</span>
+                          : <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded">無効</span>}
+                      </td>
+                    </tr>
+                  ))}
+                  {lessons.length === 0 && <tr><td colSpan={6} className="px-2 py-6 text-center text-slate-400">登録なし</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
 
       {/* STUDIO DETAIL MODAL */}
@@ -330,6 +442,35 @@ export default function MastersPage() {
           </div>
         );
       })()}
+
+      {/* LESSON DETAIL MODAL */}
+      {detail?.kind === 'lesson' && (
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center p-4 z-40 overflow-y-auto" onClick={() => setDetail(null)}>
+          <div className="bg-white rounded-lg w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white">
+              <h2 className="font-bold">📋 {detail.data.class_name}{!detail.data.active && <span className="text-xs text-slate-400 ml-1">(無効)</span>}</h2>
+              <button onClick={() => setDetail(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
+            </div>
+            <div className="p-4 space-y-3 text-sm">
+              <DetailRow label="曜日">{dayLabel(detail.data.default_day_of_week)}曜</DetailRow>
+              <DetailRow label="時刻">{detail.data.default_start_time ?? '—'} 〜 {detail.data.default_end_time ?? '—'}</DetailRow>
+              <DetailRow label="所要分">{detail.data.duration_minutes != null ? `${detail.data.duration_minutes}分` : '—'}</DetailRow>
+              <DetailRow label="スタジオ">{detail.data.studio_name ?? '—'}</DetailRow>
+              <DetailRow label="インストラクター">{detail.data.instructor_name ?? '—'}</DetailRow>
+              <DetailRow label="対象">{detail.data.target || '—'}</DetailRow>
+              <DetailRow label="レベル">{detail.data.level || '—'}</DetailRow>
+              <DetailRow label="頻度">{detail.data.frequency_type || '—'}</DetailRow>
+              <DetailRow label="状態">{detail.data.active ? '有効' : '無効'}</DetailRow>
+              <DetailRow label="メモ">{detail.data.notes || '—'}</DetailRow>
+            </div>
+            <div className="flex gap-2 px-4 py-3 border-t bg-slate-50">
+              <button onClick={() => { const d = detail.data; setDetail(null); setEditing({ kind: 'lesson', data: d }); }} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">✏️ 編集する</button>
+              <button onClick={() => { const id = detail.data.id; setDetail(null); removeLesson(id); }} className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded text-sm">削除 (無効化)</button>
+              <button onClick={() => setDetail(null)} className="ml-auto px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded text-sm">閉じる</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* STUDIO EDIT MODAL */}
       {editing?.kind === 'studio' && (
@@ -440,6 +581,95 @@ export default function MastersPage() {
           </div>
         </div>
       )}
+
+      {/* LESSON EDIT MODAL */}
+      {editing?.kind === 'lesson' && (() => {
+        const d = editing.data;
+        const set = (patch: Partial<Lesson>) => setEditing({ kind: 'lesson', data: { ...d, ...patch } });
+        // 開始/終了から所要分を計算 (HH:MM)
+        const calcDuration = (start?: string | null, end?: string | null): number | null => {
+          if (!start || !end) return null;
+          const [sh, sm] = start.split(':').map(Number);
+          const [eh, em] = end.split(':').map(Number);
+          if ([sh, sm, eh, em].some(n => Number.isNaN(n))) return null;
+          const diff = (eh * 60 + em) - (sh * 60 + sm);
+          return diff > 0 ? diff : null;
+        };
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-start justify-center p-4 z-50 overflow-y-auto">
+            <div className="bg-white rounded-lg p-4 w-full max-w-2xl my-8">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-bold">{d.id ? 'レッスン編集' : 'レッスン追加'}</h2>
+                <button onClick={() => setEditing(null)} className="text-2xl leading-none px-2 py-0 text-slate-400 hover:text-slate-700">✕</button>
+              </div>
+              <div className="space-y-2 text-sm">
+                <Field label="クラス名*" value={d.class_name ?? ''} onChange={v => set({ class_name: v })} />
+                <div>
+                  <label className="text-xs text-slate-600">曜日</label>
+                  <select
+                    value={d.default_day_of_week ?? 0}
+                    onChange={e => set({ default_day_of_week: Number(e.target.value) })}
+                    className="w-full border rounded px-2 py-1 text-sm bg-white"
+                  >
+                    {DAY_NAMES.map((name, i) => <option key={i} value={i}>{name}曜</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-slate-600">開始時刻</label>
+                    <input type="time" value={d.default_start_time ?? ''} onChange={e => {
+                      const start = e.target.value;
+                      set({ default_start_time: start, duration_minutes: calcDuration(start, d.default_end_time) ?? d.duration_minutes });
+                    }} className="w-full border rounded px-2 py-1 text-sm bg-white text-neutral-900" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-600">終了時刻</label>
+                    <input type="time" value={d.default_end_time ?? ''} onChange={e => {
+                      const end = e.target.value;
+                      set({ default_end_time: end, duration_minutes: calcDuration(d.default_start_time, end) ?? d.duration_minutes });
+                    }} className="w-full border rounded px-2 py-1 text-sm bg-white text-neutral-900" />
+                  </div>
+                </div>
+                <Field label="所要分 (開始終了から自動計算)" type="number" value={String(d.duration_minutes ?? '')} onChange={v => set({ duration_minutes: v === '' ? null : (Number(v) || 0) })} />
+                <div>
+                  <label className="text-xs text-slate-600">スタジオ</label>
+                  <select
+                    value={d.default_studio_id ?? ''}
+                    onChange={e => set({ default_studio_id: e.target.value === '' ? null : Number(e.target.value) })}
+                    className="w-full border rounded px-2 py-1 text-sm bg-white"
+                  >
+                    <option value="">(未設定)</option>
+                    {studios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-600">インストラクター</label>
+                  <select
+                    value={d.default_instructor_id ?? ''}
+                    onChange={e => set({ default_instructor_id: e.target.value === '' ? null : Number(e.target.value) })}
+                    className="w-full border rounded px-2 py-1 text-sm bg-white"
+                  >
+                    <option value="">(未設定)</option>
+                    {instructors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                  </select>
+                </div>
+                <Field label="対象" value={d.target ?? ''} onChange={v => set({ target: v })} />
+                <Field label="レベル" value={d.level ?? ''} onChange={v => set({ level: v })} />
+                <Field label="頻度 (例: weekly)" value={d.frequency_type ?? ''} onChange={v => set({ frequency_type: v })} />
+                <Field label="メモ" value={d.notes ?? ''} onChange={v => set({ notes: v })} />
+                <label className="flex items-center gap-2 pt-1">
+                  <input type="checkbox" checked={!!d.active} onChange={e => set({ active: e.target.checked ? 1 : 0 })} />
+                  <span className="text-sm">有効</span>
+                </label>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={() => saveLesson(d)} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">保存</button>
+                <button onClick={() => setEditing(null)} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded text-sm">キャンセル</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </main>
   );
 }
