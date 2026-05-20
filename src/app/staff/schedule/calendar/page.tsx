@@ -688,6 +688,7 @@ function ExportModal({ onClose }: { onClose: () => void }) {
   const [tokenErr, setTokenErr] = useState<string>('');
   const [months, setMonths] = useState(3);
   const [copied, setCopied] = useState(false);
+  const [blockCopied, setBlockCopied] = useState(false);
   // HACOMONO変換のマッピング未解決チェック (期間変更のたびに再取得)
   type HacoCheck = {
     months: number;
@@ -721,6 +722,7 @@ function ExportModal({ onClose }: { onClose: () => void }) {
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const icsUrl = token ? `${origin}/api/staff/schedule/export/ics?token=${token}&months=${months}` : '';
+  const blockIcsUrl = token ? `${origin}/api/staff/schedule/export/ics?token=${token}&months=${months}&mode=block` : '';
 
   const copyIcs = async () => {
     if (!icsUrl) return;
@@ -728,6 +730,17 @@ function ExportModal({ onClose }: { onClose: () => void }) {
       await navigator.clipboard.writeText(icsUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert('コピーに失敗しました。手動で選択してください。');
+    }
+  };
+
+  const copyBlockIcs = async () => {
+    if (!blockIcsUrl) return;
+    try {
+      await navigator.clipboard.writeText(blockIcsUrl);
+      setBlockCopied(true);
+      setTimeout(() => setBlockCopied(false), 2000);
     } catch {
       alert('コピーに失敗しました。手動で選択してください。');
     }
@@ -792,6 +805,36 @@ function ExportModal({ onClose }: { onClose: () => void }) {
                 <li className="text-slate-400">※ Google側の更新反映は数時間〜最大1日かかる場合があります</li>
               </ol>
             </>
+          )}
+        </div>
+
+        {/* Lstep体験ブロック用 ICS購読 (mode=block) */}
+        <div className="mb-4 p-3 rounded-lg bg-orange-50 border border-orange-200">
+          <h4 className="text-sm font-bold text-orange-800 mb-1">🚫 Lstep体験ブロック用 ICS購読</h4>
+          <p className="text-[11px] text-slate-600 leading-snug mb-2">
+            このURLを専用Googleカレンダーに購読させ、Lstepの「Gカレ→シフト連携」に紐付けると、
+            休講日の体験予約が自動で閉じます。
+            <br />
+            <span className="text-slate-400">
+              ※ 休講にした枠の時間だけが「予定あり」として出力されます (通常のレッスン同期URLとは別物)。
+            </span>
+          </p>
+          {tokenErr ? (
+            <p className="text-xs text-red-600">トークン取得エラー: {tokenErr}</p>
+          ) : !token ? (
+            <p className="text-xs text-slate-500">トークン取得中...</p>
+          ) : (
+            <div className="flex gap-1.5 items-stretch">
+              <input
+                readOnly
+                value={blockIcsUrl}
+                onFocus={e => e.currentTarget.select()}
+                className="flex-1 px-2 py-1.5 border rounded text-[11px] font-mono bg-white text-slate-700"
+              />
+              <button onClick={copyBlockIcs} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-semibold whitespace-nowrap">
+                {blockCopied ? '✓ コピー済' : 'コピー'}
+              </button>
+            </div>
           )}
         </div>
 

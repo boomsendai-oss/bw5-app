@@ -4,10 +4,17 @@ import { buildLessonsForMonths, getOrCreateIcsExportToken, type ExportLesson } f
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-// GET /api/staff/schedule/export/ics?token=xxx&months=3
+// GET /api/staff/schedule/export/ics?token=xxx&months=3&mode=lesson|block
 //
 // 今月から指定月数分のレッスンを iCalendar (RFC 5545) で出力する。
 // Googleカレンダーの「URLで予定を追加」で購読すれば自動同期できる。
+//
+// mode (省略時/lesson): 開催レッスンを VEVENT 化 (休講は STATUS:CANCELLED)。従来挙動。
+// mode=block: Lstep体験予約ブロック用。休講(cancelled)になった枠の時間だけを
+//   STATUS:CONFIRMED の VEVENT として出力する。
+//   Lstepの「Gカレ→シフト連携」は逆ロジック (予定がある時間=予約不可) なので、
+//   休講時間に予定を入れることで、その枠の体験予約だけを閉じる。
+//   ※ ブロック用予定はCANCELLEDにしない (CANCELLEDだとLstepが予定なしと見なし枠が開く)。
 //
 // 認証: ICS購読はGoogleがCookieなしでGETするため、?token=xxx で認証する。
 //       (settingsテーブルの ics_export_token と一致すれば返す。isAuthorizedとは別系統)
@@ -20,14 +27,19 @@ export async function GET(req: NextRequest) {
   }
 
   const months = parseInt(url.searchParams.get('months') ?? '3', 10);
+  const mode = url.searchParams.get('mode') === 'block' ? 'block' : 'lesson';
   const lessons = await buildLessonsForMonths(months);
 
-  const ics = buildIcs(lessons);
+  const ics = mode === 'block'
+    ? buildBlockIcs(lessons.filter(l => l.status === 'cancelled'))
+    : buildIcs(lessons);
+
+  const filename = mode === 'block' ? 'boom-block.ics' : 'boom-schedule.ics';
 
   return new NextResponse(ics, {
     headers: {
       'Content-Type': 'text/calendar; charset=utf-8',
-      'Content-Disposition': 'inline; filename="boom-schedule.ics"',
+      'Content-Disposition': `inline; filename="${filename}"`,
       'Cache-Control': 'no-store, max-age=0',
     },
   });
@@ -90,6 +102,68 @@ function buildIcs(lessons: ExportLesson[]): string {
 
   // RFC 5545: 行区切りは CRLF
   return lines.join('\r\n') + '\r\n';
+}
+
+// ============================================
+// Lstep体験ブロック用 iCalendar 生成 (mode=block)
+//
+// 休講(cancelled)になった枠の時間だけを STATUS:CONFIRMED の予定として出す。
+// Lstepの「Gカレ→シフト連携」は予定の存在で枠を閉じるため、
+// 休講時間に予定を入れることで体験予約をブロックする (逆ロジック)。
+// 休講0件のときは VEVENT 0件の空 VCALENDAR を返す (正常)。
+// ============================================
+
+function buildBlockIcs(cancelled: ExportLesson[]): string {
+  const lines: string[] = [];
+  lines.push('BEGIN:VCALENDAR');
+  lines.push('VERSION:2.0');
+  lines.push('PRODID:-//BOOM Dance School//BW5 Block Export//JA');
+  lines.push('CALSCALE:GREGORIAN');
+  lines.push('METHOD:PUBLISH');
+  lines.push('X-WR-CALNAME:BOOM休講ブロック (Lstep体験用)');
+  lines.push('X-WR-TIMEZONE:Asia/Tokyo');
+
+  lines.push('BEGIN:VTIMEZONE');
+  lines.push('TZID:Asia/Tokyo');
+  lines.push('BEGIN:STANDARD');
+  lines.push('DTSTART:19700101T000000');
+  lines.push('TZOFFSETFROM:+0900');
+  lines.push('TZOFFSETTO:+0900');
+  lines.push('TZNAME:JST');
+  lines.push('END:STANDARD');
+  lines.push('END:VTIMEZONE');
+
+  const dtstamp = formatUtcStamp(new Date());
+
+  for (const l of cancelled) {
+    const dtstart = toLocalDateTime(l.date, l.start_time);
+    const dtend = toLocalDateTime(l.date, l.end_time);
+    if (!dtstart || !dtend) continue; // 時刻不正はスキップ
+
+    const summary = `【休講】${l.class_name}`;
+
+    lines.push('BEGIN:VEVENT');
+    lines.push(`UID:${makeBlockUid(l)}`);
+    lines.push(`DTSTAMP:${dtstamp}`);
+    lines.push(`DTSTART;TZID=Asia/Tokyo:${dtstart}`);
+    lines.push(`DTEND;TZID=Asia/Tokyo:${dtend}`);
+    lines.push(foldLine(`SUMMARY:${escapeText(summary)}`));
+    if (l.studio_name) lines.push(foldLine(`LOCATION:${escapeText(l.studio_name)}`));
+    lines.push(foldLine('DESCRIPTION:この時間は休講のため体験予約をブロックします'));
+    // Lstepは予定の存在で判定するため、ブロック予定は必ずCONFIRMEDで出す
+    lines.push('STATUS:CONFIRMED');
+    lines.push('TRANSP:OPAQUE');
+    lines.push('END:VEVENT');
+  }
+
+  lines.push('END:VCALENDAR');
+
+  return lines.join('\r\n') + '\r\n';
+}
+
+/** ブロック予定の一意UID: block-{master_id}-{date}@boom */
+function makeBlockUid(l: ExportLesson): string {
+  return `block-${l.master_id ?? 'x'}-${l.date}@boom`;
 }
 
 /** YYYY-MM-DD + HH:MM(:SS) -> ローカル日時 "YYYYMMDDTHHMMSS" (TZID=Asia/Tokyo 前提・UTC変換しない) */
