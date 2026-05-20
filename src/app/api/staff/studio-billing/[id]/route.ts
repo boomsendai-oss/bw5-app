@@ -9,6 +9,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!(await isAuthorized(req))) return unauthorized();
   const { id } = await ctx.params;
   const runId = Number(id);
+  if (!Number.isInteger(runId) || runId <= 0) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
   const run = await getOne(
     `SELECT sbr.*, s.name AS studio_name, s.pricing_model, s.hourly_rate, s.payment_type, s.daily_buffer_minutes
      FROM studio_billing_runs sbr LEFT JOIN studios s ON s.id = sbr.studio_id WHERE sbr.id = ?`,
@@ -23,6 +24,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   if (!(await isAuthorized(req))) return unauthorized();
   const { id } = await ctx.params;
+  const runId = Number(id);
+  if (!Number.isInteger(runId) || runId <= 0) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
   const body = await req.json().catch(() => ({}));
   const updates: string[] = [];
   const args: (string | number | null)[] = [];
