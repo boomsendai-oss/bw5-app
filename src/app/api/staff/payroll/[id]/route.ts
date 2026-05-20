@@ -10,6 +10,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!(await isAuthorized(req))) return unauthorized();
   const { id } = await ctx.params;
   const runId = Number(id);
+  if (!Number.isInteger(runId) || runId <= 0) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
   const run = await getOne(
     `SELECT pr.*, i.name AS instructor_name, i.salary_type,
             COALESCE(i.payslip_folder_url, i.shared_folder_url) AS payslip_folder_url,
@@ -29,6 +30,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   if (!(await isAuthorized(req))) return unauthorized();
   const { id } = await ctx.params;
+  const runId = Number(id);
+  if (!Number.isInteger(runId) || runId <= 0) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
   const body = await req.json().catch(() => ({}));
   const updates: string[] = [];
   const args: (string | number | null)[] = [];
@@ -38,7 +41,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (body.status === 'paid') { updates.push('paid_at = CURRENT_TIMESTAMP'); }
   if (updates.length === 0) return NextResponse.json({ ok: true, noop: true });
   updates.push('updated_at = CURRENT_TIMESTAMP');
-  args.push(Number(id));
+  args.push(runId);
   await execute(`UPDATE payroll_runs SET ${updates.join(', ')} WHERE id = ?`, args);
   return NextResponse.json({ ok: true });
 }

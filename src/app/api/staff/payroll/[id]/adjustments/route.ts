@@ -29,6 +29,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (!(await isAuthorized(req))) return unauthorized();
   const { id } = await ctx.params;
   const runId = Number(id);
+  if (!Number.isInteger(runId) || runId <= 0) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
   const body = await req.json().catch(() => ({}));
   if (!body.adjustment_type || !VALID_TYPES.includes(body.adjustment_type)) {
     return NextResponse.json({ error: `adjustment_type must be one of ${VALID_TYPES.join(', ')}` }, { status: 400 });
@@ -48,6 +49,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   if (!(await isAuthorized(req))) return unauthorized();
   const { id } = await ctx.params;
   const runId = Number(id);
+  if (!Number.isInteger(runId) || runId <= 0) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
   const url = new URL(req.url);
   const adjId = url.searchParams.get('adj_id');
   if (!adjId) return NextResponse.json({ error: 'adj_id required' }, { status: 400 });
