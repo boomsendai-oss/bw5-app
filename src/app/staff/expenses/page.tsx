@@ -327,7 +327,7 @@ function RecurringTab({ categories, ym, onChanged }: { categories: string[]; ym:
                 <td className="px-2 py-1 whitespace-nowrap">{i.subcategory ?? '—'}</td>
                 <td className="px-2 py-1 text-blue-700 font-mono whitespace-nowrap">{i.match_pattern ?? '—'}</td>
                 <td className="px-2 py-1 text-slate-600 max-w-xs truncate">{i.description ?? '—'}</td>
-                <td className="px-2 py-1 text-right font-mono whitespace-nowrap">¥{i.amount.toLocaleString()}/月</td>
+                <td className="px-2 py-1 text-right font-mono whitespace-nowrap">{yen(i.amount)}/月</td>
                 <td className="px-2 py-1 whitespace-nowrap"><button onClick={() => del(i.id)} className="text-slate-400 hover:text-red-600">削除</button></td>
               </tr>
             ))}

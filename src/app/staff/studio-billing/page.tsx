@@ -42,6 +42,11 @@ const PAYMENT_TYPE_LABELS: Record<string, string> = {
 };
 
 function yen(n: number): string { return `¥${Number(n).toLocaleString('ja-JP')}`; }
+// 時間表示: null/undefined/NaN を 0.0 にフォールバック (白画面クラッシュ防止)
+function hrs(n: number | null | undefined): string {
+  const v = Number(n);
+  return `${(Number.isFinite(v) ? v : 0).toFixed(1)}h`;
+}
 function prevYM(): string {
   const d = new Date();
   d.setDate(1);
@@ -170,7 +175,7 @@ export default function StudioBillingPage() {
                   <tr key={r.id} onClick={() => openDetail(r.id)} className="border-b hover:bg-orange-50/50 cursor-pointer">
                     <td className="px-3 py-2 font-semibold">{r.studio_name}</td>
                     <td className="px-3 py-2 text-center text-[10px]"><span className="px-1.5 py-0.5 bg-slate-100 rounded">{PAYMENT_TYPE_LABELS[r.payment_type] ?? r.payment_type}</span></td>
-                    <td className="px-3 py-2 text-right font-mono">{r.total_hours.toFixed(1)}h</td>
+                    <td className="px-3 py-2 text-right font-mono">{hrs(r.total_hours)}</td>
                     <td className="px-3 py-2 text-right font-mono">{yen(r.total_lesson_amount)}</td>
                     <td className="px-3 py-2 text-right font-mono">{r.total_adjustment_amount !== 0 ? yen(r.total_adjustment_amount) : '—'}</td>
                     <td className="px-3 py-2 text-right font-mono font-bold text-orange-700">{yen(r.total_amount)}</td>
@@ -187,7 +192,7 @@ export default function StudioBillingPage() {
                 <tr>
                   <td className="px-3 py-2">合計</td>
                   <td></td>
-                  <td className="px-3 py-2 text-right font-mono">{runs.reduce((s, r) => s + r.total_hours, 0).toFixed(1)}h</td>
+                  <td className="px-3 py-2 text-right font-mono">{hrs(runs.reduce((s, r) => s + Number(r.total_hours ?? 0), 0))}</td>
                   <td className="px-3 py-2 text-right font-mono">{yen(runs.reduce((s, r) => s + r.total_lesson_amount, 0))}</td>
                   <td className="px-3 py-2 text-right font-mono">{yen(runs.reduce((s, r) => s + r.total_adjustment_amount, 0))}</td>
                   <td className="px-3 py-2 text-right font-mono text-orange-700">{yen(grandTotal)}</td>
@@ -208,7 +213,7 @@ export default function StudioBillingPage() {
             </div>
             <div className="p-4 space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
-                <div className="bg-slate-50 rounded p-2"><div className="text-[10px] text-slate-500">使用時間</div><div className="font-bold">{detail.run.total_hours.toFixed(1)}h</div></div>
+                <div className="bg-slate-50 rounded p-2"><div className="text-[10px] text-slate-500">使用時間</div><div className="font-bold">{hrs(detail.run.total_hours)}</div></div>
                 <div className="bg-slate-50 rounded p-2"><div className="text-[10px] text-slate-500">レンタル料</div><div className="font-bold">{yen(detail.run.total_lesson_amount)}</div></div>
                 <div className="bg-slate-50 rounded p-2"><div className="text-[10px] text-slate-500">調整</div><div className="font-bold">{yen(detail.run.total_adjustment_amount)}</div></div>
                 <div className="bg-orange-50 rounded p-2"><div className="text-[10px] text-orange-600">合計</div><div className="font-bold text-orange-700">{yen(detail.run.total_amount)}</div></div>
@@ -231,7 +236,7 @@ export default function StudioBillingPage() {
                         <tr key={l.id} className="border-t">
                           <td className="px-2 py-1 font-mono">{l.lesson_date}</td>
                           <td className="px-2 py-1">{l.class_name ?? '—'}</td>
-                          <td className="px-2 py-1 text-right font-mono">{l.hours.toFixed(1)}h</td>
+                          <td className="px-2 py-1 text-right font-mono">{hrs(l.hours)}</td>
                           <td className="px-2 py-1 text-right font-mono">{yen(l.hourly_rate)}</td>
                           <td className="px-2 py-1 text-right font-mono">{yen(l.amount)}</td>
                         </tr>
