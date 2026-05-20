@@ -27,6 +27,34 @@ function minutesBetween(start: string, end: string): number {
   return (eh * 60 + em) - (sh * 60 + sm);
 }
 
+function toMinutes(t: string): number {
+  if (!t) return 0;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function formatTime(totalMinutes: number): string {
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+type Block = { label: string; start: string; end: string; price: number };
+
+// [minStart, maxEnd] をカバーできる最小の区分を選ぶ。
+// 候補(start<=minStart かつ end>=maxEnd)のうち price最小。なければ全日(=最も広く price最大の区分)を返す。
+function selectBlock(blocks: Block[], minStart: string, maxEnd: string): Block | null {
+  if (blocks.length === 0) return null;
+  const ms = toMinutes(minStart);
+  const me = toMinutes(maxEnd);
+  const covering = blocks.filter(b => toMinutes(b.start) <= ms && toMinutes(b.end) >= me);
+  if (covering.length > 0) {
+    return covering.reduce((best, b) => (b.price < best.price ? b : best));
+  }
+  // カバーできる区分がない場合は全日相当(終了が最も遅く、開始が最も早い=最大価格)をフォールバック
+  return blocks.reduce((best, b) => (b.price > best.price ? b : best));
+}
+
 function calcPaymentDate(yearMonth: string, paymentType: string): string {
   // prepaid: 当月分を前月末日 / postpaid: 当月分を翌月15日
   const [y, m] = yearMonth.split('-').map(Number);
@@ -98,6 +126,18 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
   }
   const studioMap = new Map(studios.map(s => [s.id, s]));
 
+  // 区分制(block)スタジオ用: studio_id → date → その日のレッスン時間帯リスト
+  type BlockLesson = { start: string; end: string };
+  const blockLessons = new Map<number, Map<string, BlockLesson[]>>();
+  function recordBlockLesson(studioId: number, date: string, start: string, end: string) {
+    if (!start || !end) return;
+    let byDate = blockLessons.get(studioId);
+    if (!byDate) { byDate = new Map(); blockLessons.set(studioId, byDate); }
+    const arr = byDate.get(date) ?? [];
+    arr.push({ start, end });
+    byDate.set(date, arr);
+  }
+
   // 1) lesson_instances 集計
   const expandedKeys = new Set<string>();
   for (const ins of instances) {
@@ -106,6 +146,11 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
     const result = resultsMap.get(ins.studio_id);
     const studio = studioMap.get(ins.studio_id);
     if (!result || !studio) continue;
+    // 区分制スタジオは時間貸し計上をスキップし、日付ごとに時間帯を収集して後段で区分料金を計上する
+    if (studio.pricing_model === 'block') {
+      recordBlockLesson(studio.id, ins.date, ins.start_time, ins.end_time);
+      continue;
+    }
     const dm = minutesBetween(ins.start_time, ins.end_time) + (studio.daily_buffer_minutes ?? 0);
     const hours = dm / 60;
     const amount = studio.pricing_model === 'hourly' ? Math.ceil(hours * studio.hourly_rate) : 0;
@@ -134,6 +179,15 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
       const result = resultsMap.get(master.default_studio_id);
       const studio = studioMap.get(master.default_studio_id);
       if (!result || !studio) continue;
+      // 区分制スタジオは時間貸し計上をスキップし、日付ごとに時間帯を収集して後段で区分料金を計上する
+      if (studio.pricing_model === 'block') {
+        const end = master.default_end_time
+          || (master.default_start_time && master.duration_minutes
+            ? formatTime(toMinutes(master.default_start_time) + master.duration_minutes)
+            : '');
+        recordBlockLesson(studio.id, dateStr, master.default_start_time, end);
+        continue;
+      }
       const dm = (master.duration_minutes ?? (master.default_start_time && master.default_end_time ? minutesBetween(master.default_start_time, master.default_end_time) : 0)) + (studio.daily_buffer_minutes ?? 0);
       const hours = dm / 60;
       const amount = studio.pricing_model === 'hourly' ? Math.ceil(hours * studio.hourly_rate) : 0;
@@ -151,37 +205,50 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
     }
   }
 
-  // 3) block_pricing スタジオ (七ヶ浜国際村等) → ブロック単位で計上 (現状はTAROが手動で調整項目として加算する設計でも可)
-  // ※ block_pricing JSON仕様: [{"label":"夜間","start":"17:00","end":"22:00","price":3000}] 想定
+  // 3) block_pricing スタジオ (七ヶ浜国際村等) → 区分単位で計上
+  // 1日単位の区分レンタル。その日のレッスン群の最早開始〜最遅終了をカバーする最小区分の料金を、その日に1回だけ計上する。
+  // ※ block_pricing JSON仕様: [{"label":"夜間","start":"17:00","end":"22:00","price":1100}, ...]
   for (const studio of studios) {
-    if (studio.pricing_model !== 'block' || !studio.block_pricing) continue;
-    try {
-      const blocks = JSON.parse(studio.block_pricing) as Array<{ label: string; start: string; end: string; price: number }>;
-      const result = resultsMap.get(studio.id);
-      if (!result) continue;
-      // どの日にこのスタジオが使われたか
-      const usedDates = new Set<string>();
-      for (const line of result.lines) usedDates.add(line.lesson_date);
-      for (const dateStr of usedDates) {
-        // 該当日付の全レッスンが入る最小ブロックを推定 (簡易: 最初のブロックを使う)
-        const block = blocks[0];
-        if (block) {
-          result.lines.push({
-            lesson_date: dateStr,
-            class_name: `[${block.label}区分]`,
-            hours: 0,
-            hourly_rate: 0,
-            amount: block.price,
-            source: 'block_rental',
-            source_ref_id: null,
-          });
-          result.total_lesson_amount += block.price;
-        }
+    if (studio.pricing_model !== 'block') continue;
+    const result = resultsMap.get(studio.id);
+    if (!result) continue;
+    const byDate = blockLessons.get(studio.id);
+    if (!byDate) continue; // 当月利用なし → 料金0
+    let blocks: Block[] = [];
+    if (studio.block_pricing) {
+      try {
+        const parsed = JSON.parse(studio.block_pricing);
+        if (Array.isArray(parsed)) blocks = parsed as Block[];
+      } catch {
+        blocks = []; // パース失敗時はフォールバック(料金0)
       }
-      // hourlyで計算した分を消す(区分料金で上書きされるべき)
-      // ただしレッスン明細は残す(参考表示)
-    } catch {
-      // パースエラーは無視
+    }
+    const dates = Array.from(byDate.keys()).sort((a, b) => a.localeCompare(b));
+    for (const dateStr of dates) {
+      const lessons = byDate.get(dateStr) ?? [];
+      if (lessons.length === 0) continue;
+      let minStart = lessons[0].start;
+      let maxEnd = lessons[0].end;
+      for (const l of lessons) {
+        if (toMinutes(l.start) < toMinutes(minStart)) minStart = l.start;
+        if (toMinutes(l.end) > toMinutes(maxEnd)) maxEnd = l.end;
+      }
+      const block = selectBlock(blocks, minStart, maxEnd);
+      // レッスン実時間合計(分) を hours として記録
+      const totalLessonMinutes = lessons.reduce((sum, l) => sum + minutesBetween(l.start, l.end), 0);
+      const hours = totalLessonMinutes / 60;
+      const price = block?.price ?? 0;
+      result.lines.push({
+        lesson_date: dateStr,
+        class_name: block ? `[${block.label}]` : '[区分未設定]',
+        hours,
+        hourly_rate: 0,
+        amount: price,
+        source: 'block_rental',
+        source_ref_id: null,
+      });
+      result.total_hours += hours;
+      result.total_lesson_amount += price;
     }
   }
 
