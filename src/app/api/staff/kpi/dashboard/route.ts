@@ -80,6 +80,10 @@ export async function GET(req: NextRequest) {
 
   // LINE友だち数 (現在値) と前月差
   const lineFriendsNow = n((await safeOne(`SELECT COUNT(*) AS n FROM lstep_friends WHERE blocked = 0`))?.n);
+  // ブロック済み友だち数 と ブロック率 (配信健全性KPI)
+  const lineBlocked = n((await safeOne(`SELECT COUNT(*) AS n FROM lstep_friends WHERE blocked = 1`))?.n);
+  const lineTotal = n((await safeOne(`SELECT COUNT(*) AS n FROM lstep_friends`))?.n);
+  const lineBlockRate = lineTotal > 0 ? (lineBlocked / lineTotal) * 100 : 0;
 
   // ===== A: 売上系 =====
   // hacomono_billing_records が無ければ未取込
@@ -198,6 +202,9 @@ export async function GET(req: NextRequest) {
     },
     line: {
       friends_now: lineFriendsNow,
+      blocked: lineBlocked,
+      total: lineTotal,
+      block_rate: lineBlockRate,
     },
     // A 売上系
     revenue: {

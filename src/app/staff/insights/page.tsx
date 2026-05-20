@@ -87,7 +87,7 @@ type DashboardData = {
     churned: number; net_growth: number; churn_rate: number;
   };
   trial: { count: number; enrolled_within_14d: number; cvr: number };
-  line: { friends_now: number };
+  line: { friends_now: number; blocked: number; total: number; block_rate: number };
   revenue: {
     core: number;
     breakdown: { plan: number; ticket: number; enrollment_fee: number; other: number };
@@ -347,7 +347,7 @@ export default function InsightsPage() {
           <>
             {/* ===== B: 顧客動態 ===== */}
             <Section title="👥 顧客動態" hint="在籍はHACOMONO会員 / LINEはLstep友だち">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
                 <KpiCard
                   label="在籍数(月末)"
                   value={num(data.members.end_active)}
@@ -378,6 +378,13 @@ export default function InsightsPage() {
                   current={data.line.friends_now}
                   unit="人"
                   accent="green"
+                />
+                <KpiCard
+                  label="LINEブロック率"
+                  value={pct(data.line.block_rate)}
+                  sub={`ブロック ${num(data.line.blocked)}人 / 全${num(data.line.total)}人 (業界平均20%前後)`}
+                  accent={data.line.block_rate >= 30 ? 'red' : data.line.block_rate >= 25 ? 'orange' : 'green'}
+                  warn={data.line.block_rate >= 30}
                 />
               </div>
             </Section>
