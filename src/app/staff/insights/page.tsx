@@ -2,6 +2,80 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import StaffPageHeader from '@/components/StaffPageHeader';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+
+type TrendData = {
+  months: string[];
+  revenue: number[];
+  members_active: number[];
+  line_friends: number[];
+  churn_rate: number[];
+  generated_at: string;
+};
+
+type TrendPoint = { month: string; value: number };
+
+function ymToShort(ym: string): string {
+  const [y, m] = ym.split('-');
+  return `${y.slice(2)}/${m}`;
+}
+
+function trendPoints(months: string[], values: number[]): TrendPoint[] {
+  return months.map((m, i) => ({ month: ymToShort(m), value: values[i] ?? 0 }));
+}
+
+function deltaLabel(values: number[], suffix: string, isPct: boolean): { latest: string; delta: string; positive: boolean } {
+  const latest = values[values.length - 1] ?? 0;
+  const prev = values[values.length - 2] ?? 0;
+  const latestStr = isPct ? `${latest.toFixed(1)}${suffix}` : `${num(Math.round(latest))}${suffix}`;
+  if (prev === 0) return { latest: latestStr, delta: '—', positive: latest >= 0 };
+  const diff = ((latest - prev) / Math.abs(prev)) * 100;
+  const sign = diff >= 0 ? '+' : '';
+  return { latest: latestStr, delta: `${sign}${diff.toFixed(1)}%`, positive: diff >= 0 };
+}
+
+function TrendChart({ title, values, months, suffix, isPct, lowerIsBetter }: {
+  title: string;
+  values: number[];
+  months: string[];
+  suffix: string;
+  isPct: boolean;
+  lowerIsBetter?: boolean;
+}) {
+  const data = trendPoints(months, values);
+  const { latest, delta, positive } = deltaLabel(values, suffix, isPct);
+  const good = lowerIsBetter ? !positive : positive;
+  return (
+    <div className="bg-white border border-orange-200 rounded-xl p-3">
+      <div className="flex items-baseline justify-between mb-1">
+        <div className="text-[11px] text-neutral-500 font-medium">{title}</div>
+        <div className="text-[10px] font-mono text-neutral-400">{delta}</div>
+      </div>
+      <div className="flex items-baseline gap-2 mb-1">
+        <span className="text-lg font-bold text-orange-700">{latest}</span>
+        <span className={`text-[10px] font-semibold ${good ? 'text-green-600' : 'text-red-600'}`}>
+          {delta !== '—' ? (positive ? '↑' : '↓') : ''}
+        </span>
+      </div>
+      <div style={{ height: 160 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
+            <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="#94a3b8" />
+            <YAxis tick={{ fontSize: 10 }} stroke="#94a3b8" />
+            <Tooltip
+              contentStyle={{ fontSize: 11, padding: '4px 8px' }}
+              formatter={(v) => {
+                const num1 = typeof v === 'number' ? v : Number(v);
+                return isPct ? `${num1.toFixed(1)}${suffix}` : `${num(Math.round(num1))}${suffix}`;
+              }}
+            />
+            <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} dot={{ r: 3, fill: '#f97316' }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
 
 type DashboardData = {
   year_month: string;
@@ -118,6 +192,7 @@ const TARGET_LABELS: Record<string, { label: string; unit: string; placeholder: 
 export default function InsightsPage() {
   const [ym, setYm] = useState(currentYM());
   const [data, setData] = useState<DashboardData | null>(null);
+  const [trends, setTrends] = useState<TrendData | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -192,6 +267,19 @@ export default function InsightsPage() {
   }, []);
 
   useEffect(() => { load(ym); }, [ym, load]);
+
+  const loadTrends = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/staff/kpi/trends?months=6`, { credentials: 'include' });
+      if (!res.ok) return;
+      const d: TrendData = await res.json();
+      setTrends(d);
+    } catch {
+      // silent
+    }
+  }, []);
+
+  useEffect(() => { loadTrends(); }, [loadTrends]);
 
   const target = data?.targets ?? {};
 
@@ -451,6 +539,42 @@ export default function InsightsPage() {
                 </div>
               </div>
             </Section>
+
+            {trends && trends.months.length > 0 && (
+              <Section title="📈 トレンド (過去6ヶ月)" hint="月次推移">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <TrendChart
+                    title="本業売上 (円)"
+                    values={trends.revenue}
+                    months={trends.months}
+                    suffix="円"
+                    isPct={false}
+                  />
+                  <TrendChart
+                    title="在籍数 (人)"
+                    values={trends.members_active}
+                    months={trends.months}
+                    suffix="人"
+                    isPct={false}
+                  />
+                  <TrendChart
+                    title="LINE友だち (人)"
+                    values={trends.line_friends}
+                    months={trends.months}
+                    suffix="人"
+                    isPct={false}
+                  />
+                  <TrendChart
+                    title="退会率 (%)"
+                    values={trends.churn_rate}
+                    months={trends.months}
+                    suffix="%"
+                    isPct={true}
+                    lowerIsBetter
+                  />
+                </div>
+              </Section>
+            )}
 
             <p className="text-[10px] text-slate-400 text-right mt-4">
               生成: {new Date(data.generated_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
