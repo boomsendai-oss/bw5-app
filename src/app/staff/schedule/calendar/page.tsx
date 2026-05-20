@@ -61,6 +61,7 @@ export default function ScheduleCalendarPage() {
   const [studios, setStudios] = useState<StudioOption[]>([]);
   const [instructorsOpt, setInstructorsOpt] = useState<InstructorOption[]>([]);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+  const [showExport, setShowExport] = useState(false);
 
   const load = useCallback(async (y: number, m: number) => {
     setLoading(true);
@@ -284,7 +285,10 @@ export default function ScheduleCalendarPage() {
         title="📅 レッスンカレンダー"
         description="月別のレッスン予定 (lesson_master + instances から自動展開)"
         rightExtra={
-          <button onClick={goToday} className="px-3 py-1 rounded text-xs bg-slate-100 hover:bg-slate-200 border border-slate-300">今日</button>
+          <div className="flex gap-1.5">
+            <button onClick={() => setShowExport(true)} className="px-3 py-1 rounded text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold">📤 エクスポート</button>
+            <button onClick={goToday} className="px-3 py-1 rounded text-xs bg-slate-100 hover:bg-slate-200 border border-slate-300">今日</button>
+          </div>
         }
       />
 
@@ -464,6 +468,9 @@ export default function ScheduleCalendarPage() {
           </div>
         </div>
       )}
+
+      {/* エクスポート (ICS購読 / CSV) モーダル */}
+      {showExport && <ExportModal onClose={() => setShowExport(false)} />}
 
       {/* 既存instance / master実体化後の編集モーダル */}
       {editTarget && (
@@ -667,6 +674,112 @@ function EditLessonModal({ target, studios, instructors, onClose, onSave }: {
               {busy ? '保存中...' : '保存'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// エクスポート (外部カレンダー連携) モーダル
+// - ICS購読URL (token付き) を表示・コピー → Googleカレンダーで購読すると自動同期
+// - 汎用CSVダウンロード (HACOMONO/Lstep変換の素材)
+function ExportModal({ onClose }: { onClose: () => void }) {
+  const [token, setToken] = useState<string | null>(null);
+  const [tokenErr, setTokenErr] = useState<string>('');
+  const [months, setMonths] = useState(3);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/staff/schedule/export/token', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(d => { if (!cancelled) setToken(d.token ?? null); })
+      .catch(e => { if (!cancelled) setTokenErr(e instanceof Error ? e.message : String(e)); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const icsUrl = token ? `${origin}/api/staff/schedule/export/ics?token=${token}&months=${months}` : '';
+
+  const copyIcs = async () => {
+    if (!icsUrl) return;
+    try {
+      await navigator.clipboard.writeText(icsUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert('コピーに失敗しました。手動で選択してください。');
+    }
+  };
+
+  const downloadCsv = () => {
+    window.open(`/api/staff/schedule/export/csv?months=${months}`, '_blank');
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[60]" onClick={onClose}>
+      <div className="bg-white w-full sm:max-w-lg sm:rounded-xl rounded-t-2xl p-4 max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3 pb-2 border-b">
+          <h3 className="font-bold text-base">📤 スケジュールをエクスポート</h3>
+          <button onClick={onClose} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
+        </div>
+
+        {/* 期間選択 */}
+        <div className="mb-4">
+          <label className="text-[11px] text-slate-500 font-semibold">出力期間 (今月から)</label>
+          <select value={months} onChange={e => setMonths(Number(e.target.value))} className="mt-0.5 w-full px-2 py-1.5 border rounded text-sm bg-white">
+            <option value={1}>1ヶ月</option>
+            <option value={2}>2ヶ月</option>
+            <option value={3}>3ヶ月</option>
+            <option value={6}>6ヶ月</option>
+            <option value={12}>12ヶ月</option>
+          </select>
+        </div>
+
+        {/* ICS購読 */}
+        <div className="mb-4 p-3 rounded-lg bg-orange-50 border border-orange-200">
+          <h4 className="text-sm font-bold text-orange-800 mb-1">📅 Googleカレンダーに自動同期 (ICS購読)</h4>
+          <p className="text-[11px] text-slate-600 leading-snug mb-2">
+            下のURLをGoogleカレンダーに登録すると、BW5のレッスン予定が自動で反映されます。
+            休講にした回は「キャンセル済み」として表示されます。
+          </p>
+          {tokenErr ? (
+            <p className="text-xs text-red-600">トークン取得エラー: {tokenErr}</p>
+          ) : !token ? (
+            <p className="text-xs text-slate-500">トークン取得中...</p>
+          ) : (
+            <>
+              <div className="flex gap-1.5 items-stretch">
+                <input
+                  readOnly
+                  value={icsUrl}
+                  onFocus={e => e.currentTarget.select()}
+                  className="flex-1 px-2 py-1.5 border rounded text-[11px] font-mono bg-white text-slate-700"
+                />
+                <button onClick={copyIcs} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-semibold whitespace-nowrap">
+                  {copied ? '✓ コピー済' : 'コピー'}
+                </button>
+              </div>
+              <ol className="mt-2 text-[11px] text-slate-600 leading-relaxed list-decimal pl-4 space-y-0.5">
+                <li>上のURLをコピー</li>
+                <li>Googleカレンダー左の「他のカレンダー」➕ → 「URLで追加」</li>
+                <li>URLを貼り付けて「カレンダーを追加」</li>
+                <li className="text-slate-400">※ Google側の更新反映は数時間〜最大1日かかる場合があります</li>
+              </ol>
+            </>
+          )}
+        </div>
+
+        {/* CSV */}
+        <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+          <h4 className="text-sm font-bold text-slate-700 mb-1">📄 汎用CSVダウンロード</h4>
+          <p className="text-[11px] text-slate-600 leading-snug mb-2">
+            日付・時刻・クラス・インストラクター・スタジオ・ステータスの一覧 (UTF-8 BOM付き)。
+            HACOMONO/Lstep向け変換の素材に使えます。
+          </p>
+          <button onClick={downloadCsv} className="w-full py-2 bg-slate-700 hover:bg-slate-800 text-white rounded text-sm font-semibold">
+            CSVをダウンロード ({months}ヶ月分)
+          </button>
         </div>
       </div>
     </div>
