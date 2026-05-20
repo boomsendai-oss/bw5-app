@@ -66,12 +66,16 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
     class_name: string | null; studio_name: string | null; duration_minutes: number | null;
     transit_fee_override: number | null;
   };
+  // 休講(cancelled)も含めて全インスタンスを取得する。
+  // - 開催インスタンスは給与に計上 (下記 1))
+  // - 休講インスタンスは計上しないが、その master+日付を expandedKeys に登録して
+  //   master 週次展開での再計上(=休講なのに給与に乗る)を防ぐ (下記 2))
   const instances = (await getAll(
     `SELECT li.*, lm.class_name, s.name AS studio_name, lm.duration_minutes
      FROM lesson_instances li
      LEFT JOIN lesson_master lm ON lm.id = li.master_id
      LEFT JOIN studios s ON s.id = li.studio_id
-     WHERE li.date BETWEEN ? AND ? AND li.status != 'cancelled'`,
+     WHERE li.date BETWEEN ? AND ?`,
     [monthStart, monthEnd]
   )) as InstanceRow[];
 
@@ -106,8 +110,12 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
   // 1) lesson_instances から確定分を計上
   const expandedKeys = new Set<string>();
   for (const ins of instances) {
+    // master+日付を記録し、後段の master 週次展開での重複/再計上を防ぐ。
+    // (休講インスタンスも記録する → 休講日の master 再展開を抑止)
+    if (ins.master_id != null) expandedKeys.add(`${ins.master_id}_${ins.date}`);
+    // 休講は給与に計上しない
+    if (ins.status === 'cancelled') continue;
     if (!ins.instructor_id) continue;
-    expandedKeys.add(`${ins.master_id ?? ''}_${ins.date}`);
     const result = resultsMap.get(ins.instructor_id);
     if (!result) continue;
     if (result.salary_type === 'monthly_fixed') continue;
