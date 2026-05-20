@@ -88,6 +88,12 @@ const CARDS: Card[] = [
     ],
   },
   {
+    href: '/staff/schedule/sync',
+    icon: '📡',
+    title: 'カレンダー連携',
+    description: '3カレンダー(Google/HACOMONO/Lstep)へのスケジュール配信',
+  },
+  {
     href: '/staff/operations',
     icon: '🔄',
     title: '運営オペレーション',

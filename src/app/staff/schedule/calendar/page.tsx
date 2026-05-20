@@ -762,6 +762,14 @@ function ExportModal({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
         </div>
 
+        {/* 連携ハブ導線: 設定手順・接続状況をまとめて見たいときはこちら */}
+        <a
+          href="/staff/schedule/sync"
+          className="block mb-4 p-2.5 rounded-lg bg-orange-100 border border-orange-200 text-[11px] text-orange-800 hover:bg-orange-200 font-semibold"
+        >
+          📡 カレンダー連携ハブを開く（3カレンダーの設定手順・接続状況をまとめて確認）→
+        </a>
+
         {/* 期間選択 */}
         <div className="mb-4">
           <label className="text-[11px] text-slate-500 font-semibold">出力期間 (今月から)</label>
