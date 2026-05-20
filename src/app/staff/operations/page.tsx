@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type SyncSummary = {
   new_members: number;
@@ -153,10 +154,11 @@ export default function OperationsPage() {
 
   return (
     <main className="min-h-screen bg-neutral-50">
-      <header className="bg-white border-b border-orange-100 px-4 py-3 sticky top-0 z-10">
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-orange-600">運営オペレーション</h1>
-          <div className="flex gap-3">
+      <StaffPageHeader
+        title="🔄 運営オペレーション"
+        description="月次CSV突合・紐付け推測・月次レポート生成"
+        rightExtra={
+          <>
             <Link href="/staff/schedule" className="text-xs text-orange-600 underline">
               スケジュール
             </Link>
@@ -166,9 +168,9 @@ export default function OperationsPage() {
             <Link href="/staff/video-preorders" className="text-xs text-orange-600 underline">
               映像予約
             </Link>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className="px-3 py-3 space-y-4 max-w-2xl mx-auto">
         <section className="bg-white border border-neutral-200 rounded-xl p-4 space-y-3">
