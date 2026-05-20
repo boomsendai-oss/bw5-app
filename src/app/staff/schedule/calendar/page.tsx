@@ -688,6 +688,18 @@ function ExportModal({ onClose }: { onClose: () => void }) {
   const [tokenErr, setTokenErr] = useState<string>('');
   const [months, setMonths] = useState(3);
   const [copied, setCopied] = useState(false);
+  // HACOMONO変換のマッピング未解決チェック (期間変更のたびに再取得)
+  type HacoCheck = {
+    months: number;
+    rowCount: number;
+    matchedCount: number;
+    unresolvedCount: number;
+    unresolvedDetail: { programs: string[]; staff: string[]; spaces: string[] };
+  };
+  const [hacoCheck, setHacoCheck] = useState<HacoCheck | null>(null);
+  const [hacoCheckErr, setHacoCheckErr] = useState('');
+  // 取得済みデータが現在の期間と一致するときのみ表示 (期間変更直後は「確認中」)
+  const hacoCheckFresh = hacoCheck && hacoCheck.months === months ? hacoCheck : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -697,6 +709,15 @@ function ExportModal({ onClose }: { onClose: () => void }) {
       .catch(e => { if (!cancelled) setTokenErr(e instanceof Error ? e.message : String(e)); });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/staff/schedule/export/hacomono?months=${months}&format=json`, { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then(d => { if (!cancelled) { setHacoCheckErr(''); setHacoCheck({ ...d, months }); } })
+      .catch(e => { if (!cancelled) setHacoCheckErr(e instanceof Error ? e.message : String(e)); });
+    return () => { cancelled = true; };
+  }, [months]);
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
   const icsUrl = token ? `${origin}/api/staff/schedule/export/ics?token=${token}&months=${months}` : '';
@@ -714,6 +735,10 @@ function ExportModal({ onClose }: { onClose: () => void }) {
 
   const downloadCsv = () => {
     window.open(`/api/staff/schedule/export/csv?months=${months}`, '_blank');
+  };
+
+  const downloadHacomono = () => {
+    window.open(`/api/staff/schedule/export/hacomono?months=${months}`, '_blank');
   };
 
   return (
@@ -779,6 +804,49 @@ function ExportModal({ onClose }: { onClose: () => void }) {
           </p>
           <button onClick={downloadCsv} className="w-full py-2 bg-slate-700 hover:bg-slate-800 text-white rounded text-sm font-semibold">
             CSVをダウンロード ({months}ヶ月分)
+          </button>
+        </div>
+
+        {/* HACOMONO形式CSV */}
+        <div className="mt-4 p-3 rounded-lg bg-orange-50 border border-orange-200">
+          <h4 className="text-sm font-bold text-orange-800 mb-1">🔄 HACOMONO形式CSV (スケジュールインポート用)</h4>
+          <p className="text-[11px] text-slate-600 leading-snug mb-2">
+            HACOMONOの「スケジュールインポート」にそのままアップロードできる形式 (UTF-8 BOM付き)。
+            開始日時がキーで、既存と一致すれば更新・無ければ新規。休講は「非公開レッスン」として出力します。
+          </p>
+
+          {!hacoCheckFresh && hacoCheckErr ? (
+            <p className="text-xs text-red-600 mb-2">マッピング確認エラー: {hacoCheckErr}</p>
+          ) : !hacoCheckFresh ? (
+            <p className="text-xs text-slate-500 mb-2">マッピング確認中...</p>
+          ) : (
+            <div className="mb-2 text-[11px]">
+              <p className="text-slate-700">
+                {months}ヶ月分 {hacoCheckFresh.rowCount}件中、
+                <span className="font-semibold text-green-700"> {hacoCheckFresh.matchedCount}件マッチ</span>
+                {hacoCheckFresh.unresolvedCount > 0 && (
+                  <span className="font-semibold text-red-600"> / {hacoCheckFresh.unresolvedCount}件 未解決</span>
+                )}
+              </p>
+              {hacoCheckFresh.unresolvedCount > 0 && (
+                <div className="mt-1 p-2 rounded bg-red-50 border border-red-200 text-red-700 leading-relaxed">
+                  <p className="font-semibold mb-0.5">⚠️ 以下はコードが空欄で出力されます (要マッピング追加):</p>
+                  {hacoCheckFresh.unresolvedDetail.programs.length > 0 && (
+                    <p>プログラム: {hacoCheckFresh.unresolvedDetail.programs.join('、')}</p>
+                  )}
+                  {hacoCheckFresh.unresolvedDetail.staff.length > 0 && (
+                    <p>スタッフ: {hacoCheckFresh.unresolvedDetail.staff.join('、')}</p>
+                  )}
+                  {hacoCheckFresh.unresolvedDetail.spaces.length > 0 && (
+                    <p>スペース: {hacoCheckFresh.unresolvedDetail.spaces.join('、')}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <button onClick={downloadHacomono} className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">
+            HACOMONO形式CSVをダウンロード ({months}ヶ月分)
           </button>
         </div>
       </div>

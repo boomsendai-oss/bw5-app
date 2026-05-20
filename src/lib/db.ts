@@ -660,6 +660,24 @@ export async function initDb(): Promise<void> {
     )`, args: [] },
 
     {
+      // === HACOMONO スケジュールインポートCSV 変換用マッピング ===
+      // BW5の class_name / instructor名 / studio名 → HACOMONOコード対応表。
+      // entity_type: 'program' | 'staff' | 'space'
+      sql: `CREATE TABLE IF NOT EXISTS hacomono_schedule_map (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_type TEXT NOT NULL,
+      bw5_key TEXT NOT NULL,
+      hacomono_code TEXT NOT NULL,
+      hacomono_name TEXT,
+      notes TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(entity_type, bw5_key)
+    )`,
+      args: [],
+    },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_hacomono_map_type ON hacomono_schedule_map(entity_type)`, args: [] },
+    {
       // 売り切れ商品の追加注文（後日発送）
       sql: `CREATE TABLE IF NOT EXISTS restock_orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -847,6 +865,72 @@ export async function initDb(): Promise<void> {
       sql: 'INSERT INTO music_releases (artist, title, jacket_url, apple_music_url, spotify_url, amazon_music_url, youtube_music_url, release_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       args: ['BOOM Dance School', 'Give Me A Reason', '/images/character/boomkun_2d.png', '', '', '', '', '2026-05-05T12:00:00', 1],
     });
+  }
+
+  // === HACOMONO スケジュールマッピング 初期seed (空の時のみ) ===
+  // RS002データから抽出済みのコード一覧。BW5側の表記とHACOMONO表記が異なるため
+  // bw5_key にBW5の class_name / instructor名 / studio名 を入れて対応づける。
+  // 表記変更や新クラス追加時はこのテーブルを直接 (or 将来UIで) 編集する。
+  const hacoMapCount = await c.execute('SELECT COUNT(*) as count FROM hacomono_schedule_map');
+  if (Number(hacoMapCount.rows[0].count) === 0) {
+    // [entity_type, bw5_key, hacomono_code, hacomono_name, notes]
+    const rows: [string, string, string, string, string][] = [
+      // --- プログラム (BW5 class_name -> PGコード) ---
+      ['program', 'はじめてのHH', 'PG0008', '初めてのヒップホップ', ''],
+      ['program', 'キッズHH', 'PG0009', 'KIDS HIPHOP', ''],
+      ['program', 'ベーシックダンスクラス', 'PG0010', 'ベーシックダンスクラス', ''],
+      ['program', '多賀城 HH 入門', 'PG0011', '多賀城 HIPHOP基礎', ''],
+      ['program', '多賀城 HH 初級', 'PG0012', '多賀城 HIPHOP初級', ''],
+      ['program', 'ちゃんなつ HH', 'PG0013', 'ちゃんなつ / HIPHOP', ''],
+      ['program', 'おっちゃん NJS', 'PG0015', 'おっちゃん / NEW JACK SWING', ''],
+      ['program', 'SAYUKI FS', 'PG0014', 'SAYUKI / FREE STYLE', ''],
+      ['program', 'ダンス部', 'PG0018', 'ダンス部', ''],
+      ['program', '多賀城 JAZZ', 'PG0019', '多賀城 STREET JAZZ', ''],
+      ['program', 'HIPHOP 中級', 'PG0001', 'TARO / HIPHOP 中級', ''],
+      ['program', 'HIPHOP 初級', 'PG0002', 'TARO / HIPHOP初級', ''],
+      ['program', 'K@TTSU HOUSE', 'PG0003', 'K@TTSU / HOUSE', ''],
+      ['program', '向山 ちびっこ HH', 'PG0028', '向山 キッズヒップホップ 基礎', ''],
+      ['program', '七ヶ浜 HH 入門', 'PG0005', '七ヶ浜 HIPHOP 入門', ''],
+      ['program', '七ヶ浜 HH 初級', 'PG0006', '七ヶ浜 HIPHOP 初級', ''],
+      ['program', '長町 WAACK 入門', 'PG0024', 'YURI / 長町 WAACK 入門', ''],
+      ['program', '長町 ガールズ 入門', 'PG0007', '長町 キッズガールズ 入門', ''],
+      ['program', '長町 ガールズ 初級', 'PG0027', '長町 キッズガールズ 初級', ''],
+      ['program', '多賀城 HOUSE', 'PG0017', '多賀城 HOUSE', ''],
+      ['program', 'キッズ 強化', 'PG0016', 'キッズ強化クラス', ''],
+      ['program', 'HOUSE エキスパート', 'PG0040', 'HOUSE エキスパート (選抜のみ)', ''],
+      // --- スタッフ (BW5 instructor名 -> INコード) ---
+      ['staff', 'TARO', 'IN0001', 'TARO', ''],
+      ['staff', 'ちゃんなつ', 'IN0002', 'ちゃんなつ', ''],
+      ['staff', 'SAYUKI', 'IN0003', 'SAYUKI', ''],
+      ['staff', 'おっちゃん', 'IN0004', 'おっちゃん', ''],
+      ['staff', 'KEIKO', 'IN0005', 'KEIKO', ''],
+      ['staff', 'Ryuki', 'IN0006', 'Ryuki', ''],
+      ['staff', 'K@TTSU', 'IN0007', 'K@TTSU', ''],
+      ['staff', 'YURI', 'IN0010', 'YURI', ''],
+      ['staff', 'AOI', 'IN0011', 'AOI', ''],
+      ['staff', 'ダンス部', 'IN0015', 'ダンス部', ''],
+      // --- スペース (BW5 studio名 -> SPコード) ---
+      // ※ HACOMONO側スペースは収容人数別 (20/15/30/40名)。BW5スタジオ名との対応は
+      //   暫定マッピング。実際のHACOMONOスペース設定が来たらTAROと調整する。
+      ['space', 'GOAT 大スタジオ', 'S0001_SP0008', '40名', '暫定: 大スタジオ=40名'],
+      ['space', 'GOAT 小スタジオ', 'S0001_SP0002', '15名', '暫定: 小スタジオ=15名'],
+      ["space", "T's STUDIO", 'S0001_SP0001', '20名', '暫定'],
+      ['space', 'AZUMA スタジオ', 'S0001_SP0007', '30名', '暫定'],
+      ['space', 'K スタジオ', 'S0001_SP0001', '20名', '暫定'],
+      ['space', '野のはなホール', 'S0001_SP0007', '30名', '暫定'],
+      ['space', '七ヶ浜国際村 リハーサル室', 'S0001_SP0001', '20名', '暫定'],
+      ['space', 'アクアスタジオ', 'S0001_SP0001', '20名', '暫定'],
+      ['space', 'KONAMI スタジオ', 'S0001_SP0001', '20名', '暫定'],
+      ['space', 'マイダンスショップ', 'S0001_SP0002', '15名', '暫定'],
+      ['space', '庄司ダンススタジオ', 'S0001_SP0001', '20名', '暫定'],
+    ];
+    await c.batch(
+      rows.map(([entity_type, bw5_key, hacomono_code, hacomono_name, notes]) => ({
+        sql: 'INSERT OR IGNORE INTO hacomono_schedule_map (entity_type, bw5_key, hacomono_code, hacomono_name, notes) VALUES (?, ?, ?, ?, ?)',
+        args: [entity_type, bw5_key, hacomono_code, hacomono_name, notes],
+      })),
+      'write'
+    );
   }
 }
 
