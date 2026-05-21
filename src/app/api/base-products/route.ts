@@ -43,10 +43,15 @@ export async function GET() {
             : it.variations
             ? it.variations.reduce((s, v) => s + (v.variation_stock ?? 0), 0)
             : 0;
+        const price = it.price ?? 0;
+        const properPrice = it.proper_price ?? 0;
+        const onSale = properPrice > 0 && properPrice > price;
         return {
           item_id: it.item_id,
           title: it.title,
-          price: it.price ?? 0,
+          price,
+          proper_price: properPrice || null,
+          on_sale: onSale,
           stock,
           sold_out: stock <= 0,
           image_url:

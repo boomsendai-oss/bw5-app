@@ -188,8 +188,8 @@ export default function BackstageSection() {
                   alt="backstage"
                   fill
                   sizes="(max-width: 640px) 100vw, 480px"
+                  quality={75}
                   style={{ objectFit: 'cover', pointerEvents: 'none' }}
-                  unoptimized
                   priority={idx === 0}
                   draggable={false}
                 />
