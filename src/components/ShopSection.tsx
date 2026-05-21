@@ -221,11 +221,13 @@ const VIDEO_PREORDER_DEADLINE = new Date("2026-05-19T23:59:59+09:00");
 
 export function isVideoPreorderClosed(): boolean {
   if (typeof window !== "undefined") {
-    // ?expired=1 のクエリパラメータが付いている場合は強制的に「締切後」として扱う
-    // 5/20 0:00 以降の画面プレビュー用 (TAROの動作確認専用)
     try {
       const params = new URLSearchParams(window.location.search);
+      // ?expired=1 → 強制的に「締切後」(TAROの動作確認専用)
       if (params.get("expired") === "1") return true;
+      // ?late=<token> → 締切後でも「受付中」扱いでフォームを開けるようにする。
+      // (締切に間に合わなかった人専用の特別リンク。実際の可否はサーバー側で検証)
+      if ((params.get("late") ?? "").length > 0) return false;
     } catch {}
   }
   return Date.now() > VIDEO_PREORDER_DEADLINE.getTime();
@@ -1260,6 +1262,13 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
     setSubmitting(true);
     setResult(null);
     try {
+      // 締切後の特別受付リンク (?late=<token>) の場合はトークンを同送する
+      let bypass = "";
+      if (typeof window !== "undefined") {
+        try {
+          bypass = new URLSearchParams(window.location.search).get("late") ?? "";
+        } catch {}
+      }
       const res = await fetch("/api/video-preorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1268,6 +1277,7 @@ function VideoPreorderModal({ item, onClose }: { item: MerchItem; onClose: () =>
           buyer_name: buyerName.trim(),
           email: email.trim(),
           phone: phone.trim(),
+          ...(bypass ? { bypass } : {}),
         }),
       });
       const data = await res.json();

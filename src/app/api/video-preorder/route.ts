@@ -8,20 +8,30 @@ export const dynamic = 'force-dynamic';
 // 締切後は 410 Gone で受付拒否
 const PREORDER_DEADLINE = new Date('2026-05-20T00:00:00+09:00');
 
+// 締切後の「特別受付リンク」用トークン。
+// 締切に間に合わなかった人にだけ /?late=<TOKEN> のURLを渡すと、
+// このトークン付きの申込のみ締切後でも受け付ける(全体の締切は閉じたまま)。
+// このファイルはサーバー専用(APIルート)なので、値はブラウザのバンドルに出ない。
+const LATE_BYPASS_TOKEN = '_qbDm6BMFR6oEsAG';
+
 interface PreorderBody {
   merch_id: number;
   buyer_name: string;
   email: string;
   phone: string;
   note?: string;
+  bypass?: string;
 }
 
 // POST /api/video-preorder — 映像データ販売の事前予約
 export async function POST(req: NextRequest) {
   try {
-    // 締切チェック (最初に実行)
+    const body = (await req.json()) as PreorderBody;
+
+    // 締切チェック。締切後でも、正しい特別受付トークン付きの申込のみ許可。
     const now = new Date();
-    if (now >= PREORDER_DEADLINE) {
+    const hasValidBypass = body.bypass === LATE_BYPASS_TOKEN;
+    if (now >= PREORDER_DEADLINE && !hasValidBypass) {
       return NextResponse.json(
         {
           error: '映像データの予約受付は終了しました。',
@@ -31,8 +41,6 @@ export async function POST(req: NextRequest) {
         { status: 410 } // Gone = もう利用できない
       );
     }
-
-    const body = (await req.json()) as PreorderBody;
 
     const required = ['merch_id', 'buyer_name', 'email', 'phone'] as const;
     for (const k of required) {
@@ -49,10 +57,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '商品が見つかりません' }, { status: 404 });
     }
 
+    // 締切後の特別受付は note に印を付け、管理画面で識別できるようにする
+    const noteBase = body.note ?? '';
+    const finalNote = hasValidBypass
+      ? `${noteBase ? noteBase + ' / ' : ''}[締切後特別受付]`
+      : noteBase;
+
     const result = await execute(
       `INSERT INTO video_preorders (merch_id, buyer_name, email, phone, note, status)
        VALUES (?, ?, ?, ?, ?, 'waiting')`,
-      [body.merch_id, body.buyer_name, body.email, body.phone, body.note ?? '']
+      [body.merch_id, body.buyer_name, body.email, body.phone, finalNote]
     );
 
     const preorderId = Number(result.lastInsertRowid);
