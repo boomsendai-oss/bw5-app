@@ -448,6 +448,17 @@ export async function initDb(): Promise<void> {
     { sql: `CREATE INDEX IF NOT EXISTS idx_util_program ON lesson_utilization(program_code)`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_util_staff ON lesson_utilization(staff_code)`, args: [] },
 
+    // クラス別KPI稼働率の分類上書き (2026-05-21)
+    // ダッシュボードの平均稼働率を「通常クラス」のみで算出するための分類。
+    // category: 'new'|'watch'|'normal'|'exclude' (NULLなら launched_at/しきい値で自動判定)
+    { sql: `CREATE TABLE IF NOT EXISTS class_kpi_overrides (
+      program_name TEXT PRIMARY KEY,
+      category TEXT,
+      launched_at TEXT,
+      note TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`, args: [] },
+
     { sql: `CREATE TABLE IF NOT EXISTS hacomono_billing_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       billing_date TEXT NOT NULL,

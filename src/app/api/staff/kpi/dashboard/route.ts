@@ -128,31 +128,90 @@ export async function GET(req: NextRequest) {
     `CASE WHEN capacity IS NOT NULL AND capacity > 0
           THEN CAST(total_reservations AS REAL) / capacity
           ELSE utilization_rate END`;
-  const utilRows = await safeAll(
-    `SELECT AVG(${UTIL_EXPR}) AS avg_rate, COUNT(*) AS lessons
-     FROM lesson_utilization WHERE lesson_date BETWEEN ? AND ?`,
-    [monthStart, monthEnd]
-  );
-  const avgUtilization = utilRows[0] ? Number(utilRows[0].avg_rate ?? 0) : 0;
-  const utilLessonCount = utilRows[0] ? n(utilRows[0].lessons) : 0;
 
-  // クラス別稼働率 TOP10 (高い順) / ボトム10 (低い順) — 予約ベース
-  const topClasses = await safeAll(
+  // クラス別 (program_name, staff_name) 集計 — 当月。
+  // ここで取得した各クラスを後段でカテゴリ分類し、ヘッドライン平均は
+  // 「通常クラス(normal)」のみで予約数 (cnt) 重み付けして算出する。
+  const utilClassRows = await safeAll(
     `SELECT program_name, staff_name, AVG(${UTIL_EXPR}) AS avg_rate, COUNT(*) AS cnt
      FROM lesson_utilization WHERE lesson_date BETWEEN ? AND ?
      GROUP BY program_name, staff_name
-     HAVING cnt >= 1
-     ORDER BY avg_rate DESC LIMIT 10`,
+     HAVING cnt >= 1`,
     [monthStart, monthEnd]
   );
-  const bottomClasses = await safeAll(
-    `SELECT program_name, staff_name, AVG(${UTIL_EXPR}) AS avg_rate, COUNT(*) AS cnt
-     FROM lesson_utilization WHERE lesson_date BETWEEN ? AND ?
-     GROUP BY program_name, staff_name
-     HAVING cnt >= 1
-     ORDER BY avg_rate ASC LIMIT 10`,
-    [monthStart, monthEnd]
-  );
+
+  // 分類上書き設定 (program_name 単位)
+  const overrideRows = await safeAll(`SELECT program_name, category, launched_at FROM class_kpi_overrides`);
+  const overrideMap = new Map<string, { category: string | null; launched_at: string | null }>();
+  for (const o of overrideRows) {
+    overrideMap.set(o.program_name as string, {
+      category: (o.category as string | null) ?? null,
+      launched_at: (o.launched_at as string | null) ?? null,
+    });
+  }
+
+  // しきい値 (settings に行があれば尊重、無ければデフォルト)
+  const lowThrRow = await safeOne(`SELECT value FROM settings WHERE key = 'kpi_util_low_threshold'`);
+  const graceRow = await safeOne(`SELECT value FROM settings WHERE key = 'kpi_util_new_grace_months'`);
+  const lowThreshold = lowThrRow && lowThrRow.value != null ? Number(lowThrRow.value) : 0.20;
+  const graceMonths = graceRow && graceRow.value != null ? Number(graceRow.value) : 6;
+
+  // 立ち上げ期判定の基準日 (今日) と grace 期間の起点
+  const now = new Date();
+  const graceCutoff = new Date(now.getFullYear(), now.getMonth() - graceMonths, now.getDate());
+
+  type ClassAgg = { program_name: string; staff_name: string; avg_rate: number; cnt: number; launched_at?: string };
+  const normalClasses: ClassAgg[] = [];
+  const newClasses: ClassAgg[] = [];
+  const watchClasses: ClassAgg[] = [];
+  const excludedClasses: ClassAgg[] = [];
+
+  for (const r of utilClassRows) {
+    const programName = (r.program_name as string | null) ?? '';
+    const staffName = (r.staff_name as string | null) ?? '';
+    const avgRate = Number(r.avg_rate ?? 0);
+    const cnt = n(r.cnt);
+    const ov = overrideMap.get(programName);
+    const base: ClassAgg = { program_name: programName, staff_name: staffName, avg_rate: avgRate, cnt };
+
+    // 優先順位: excluded > new > watch > normal
+    // 1) excluded: program_name === 'イベント' または override.category === 'exclude'
+    if (programName === 'イベント' || ov?.category === 'exclude') {
+      excludedClasses.push(base);
+      continue;
+    }
+    // 2) new(立ち上げ期): override.category === 'new'、または launched_at が grace_months 以内
+    const launchedAt = ov?.launched_at ?? null;
+    const isNewByDate = !!launchedAt && new Date(launchedAt) >= graceCutoff;
+    if (ov?.category === 'new' || (ov?.category == null && isNewByDate)) {
+      newClasses.push({ ...base, launched_at: launchedAt ?? undefined });
+      continue;
+    }
+    // override.category === 'normal' は強制的に通常 (自動watch判定を上書き)
+    if (ov?.category === 'normal') {
+      normalClasses.push(base);
+      continue;
+    }
+    // 3) watch(要対策): override.category === 'watch'、または avg_rate < low_threshold
+    if (ov?.category === 'watch' || avgRate < lowThreshold) {
+      watchClasses.push(base);
+      continue;
+    }
+    // 4) normal(通常)
+    normalClasses.push(base);
+  }
+
+  // ヘッドライン平均 = normal クラスのみ・予約数 (cnt) 重み付け
+  const normalWeightSum = normalClasses.reduce((a, c) => a + c.cnt, 0);
+  const normalWeightedRate = normalClasses.reduce((a, c) => a + c.avg_rate * c.cnt, 0);
+  const avgUtilization = normalWeightSum > 0 ? normalWeightedRate / normalWeightSum : 0;
+  const utilLessonCount = normalWeightSum;
+  // data_available は分類前の元データの有無で判定 (全件除外でも未取込扱いにしない)
+  const utilHasData = utilClassRows.length > 0;
+
+  // TOP/BOTTOM は通常クラスから算出 (後方互換)
+  const topClasses = [...normalClasses].sort((a, b) => b.avg_rate - a.avg_rate).slice(0, 10);
+  const bottomClasses = [...normalClasses].sort((a, b) => a.avg_rate - b.avg_rate).slice(0, 10);
 
   // ===== D: 収益性 =====
   const payrollTotal = n((await safeOne(
@@ -220,13 +279,20 @@ export async function GET(req: NextRequest) {
       video_preorder_count: videoCount,
     },
     // C オペレーション
+    // average/lesson_count は normal(通常)クラスのみ・予約数重み付け。
+    // new(立ち上げ期)/watch(要対策)/excluded(除外) は別枠で返す。
     utilization: {
       average: avgUtilization,
       lesson_count: utilLessonCount,
+      data_available: utilHasData,
+      rate_basis: '予約数 ÷ 定員', // 稼働率の計算根拠
+      low_threshold: lowThreshold,
+      grace_months: graceMonths,
       top_classes: topClasses,
       bottom_classes: bottomClasses,
-      data_available: utilLessonCount > 0,
-      rate_basis: '予約数 ÷ 定員', // 稼働率の計算根拠
+      new_classes: newClasses,
+      watch_classes: watchClasses,
+      excluded_classes: excludedClasses,
     },
     // D 収益性
     profitability: {

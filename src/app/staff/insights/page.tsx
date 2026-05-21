@@ -101,6 +101,11 @@ type DashboardData = {
     bottom_classes: Array<{ program_name: string; staff_name: string; avg_rate: number; cnt: number }>;
     data_available: boolean;
     rate_basis?: string;
+    low_threshold?: number;
+    grace_months?: number;
+    new_classes?: Array<{ program_name: string; staff_name: string; avg_rate: number; cnt: number; launched_at?: string }>;
+    watch_classes?: Array<{ program_name: string; staff_name: string; avg_rate: number; cnt: number }>;
+    excluded_classes?: Array<{ program_name: string; staff_name: string; avg_rate: number; cnt: number }>;
   };
   profitability: {
     revenue: number; payroll: number; studio: number;
@@ -474,7 +479,9 @@ export default function InsightsPage() {
                 <KpiCard
                   label={`平均稼働率 (${ymJp(ym)})`}
                   value={data.utilization.data_available ? pct(data.utilization.average * 100) : '—'}
-                  sub={data.utilization.data_available ? `${data.utilization.rate_basis ?? '予約数 ÷ 定員'} ・ ${data.utilization.lesson_count}レッスン` : 'RS002 未取込'}
+                  sub={data.utilization.data_available
+                    ? `通常クラスのみ ・ ${data.utilization.lesson_count}レッスン${(data.utilization.excluded_classes?.length ?? 0) > 0 ? ` ・ 除外${data.utilization.excluded_classes!.length}件` : ''}`
+                    : 'RS002 未取込'}
                   target={target.utilization}
                   current={data.utilization.average * 100}
                   unit="%"
@@ -483,35 +490,89 @@ export default function InsightsPage() {
                 <KpiCard
                   label="集計レッスン数"
                   value={num(data.utilization.lesson_count)}
-                  sub={`${ymJp(ym)}の予約データ`}
+                  sub="通常クラスの予約データ"
                   accent="blue"
                 />
               </div>
               {data.utilization.data_available && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="bg-white border border-green-200 rounded-lg p-3">
-                    <div className="text-xs font-bold text-green-700 mb-2">🔥 稼働率TOP</div>
-                    <ul className="space-y-1 text-xs">
-                      {data.utilization.top_classes.map((c, i) => (
-                        <li key={i} className="flex justify-between gap-2">
-                          <span className="truncate">{c.program_name} <span className="text-slate-400">/ {c.staff_name}</span></span>
-                          <span className="font-mono font-bold text-green-700">{pct(c.avg_rate * 100, 0)}</span>
-                        </li>
-                      ))}
-                    </ul>
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="bg-white border border-green-200 rounded-lg p-3">
+                      <div className="text-xs font-bold text-green-700 mb-2">🔥 稼働率TOP <span className="font-normal text-slate-400">(通常クラス)</span></div>
+                      <ul className="space-y-1 text-xs">
+                        {data.utilization.top_classes.map((c, i) => (
+                          <li key={i} className="flex justify-between gap-2">
+                            <span className="truncate">{c.program_name} <span className="text-slate-400">/ {c.staff_name}</span></span>
+                            <span className="font-mono font-bold text-green-700">{pct(c.avg_rate * 100, 0)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="bg-white border border-red-200 rounded-lg p-3">
+                      <div className="text-xs font-bold text-red-700 mb-2">⚠️ 稼働率BOTTOM <span className="font-normal text-slate-400">(通常クラス)</span></div>
+                      <ul className="space-y-1 text-xs">
+                        {data.utilization.bottom_classes.map((c, i) => (
+                          <li key={i} className="flex justify-between gap-2">
+                            <span className="truncate">{c.program_name} <span className="text-slate-400">/ {c.staff_name}</span></span>
+                            <span className="font-mono font-bold text-red-700">{pct(c.avg_rate * 100, 0)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
-                  <div className="bg-white border border-red-200 rounded-lg p-3">
-                    <div className="text-xs font-bold text-red-700 mb-2">⚠️ 稼働率BOTTOM</div>
-                    <ul className="space-y-1 text-xs">
-                      {data.utilization.bottom_classes.map((c, i) => (
-                        <li key={i} className="flex justify-between gap-2">
-                          <span className="truncate">{c.program_name} <span className="text-slate-400">/ {c.staff_name}</span></span>
-                          <span className="font-mono font-bold text-red-700">{pct(c.avg_rate * 100, 0)}</span>
-                        </li>
-                      ))}
-                    </ul>
+
+                  {/* 別枠: 立ち上げ期 / 要対策 */}
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                      <div className="text-xs font-bold text-orange-700 mb-2">
+                        🌱 立ち上げ期クラス
+                        <span className="font-normal text-orange-400"> (直近{data.utilization.grace_months ?? 6}ヶ月)</span>
+                      </div>
+                      {(data.utilization.new_classes?.length ?? 0) === 0 ? (
+                        <div className="text-[11px] text-slate-400">該当なし</div>
+                      ) : (
+                        <ul className="space-y-1 text-xs">
+                          {data.utilization.new_classes!.map((c, i) => (
+                            <li key={i} className="flex justify-between gap-2">
+                              <span className="truncate">
+                                {c.program_name} <span className="text-slate-400">/ {c.staff_name}</span>
+                                {c.launched_at && <span className="text-orange-400"> ・{c.launched_at}〜</span>}
+                              </span>
+                              <span className="font-mono font-bold text-orange-700">{pct(c.avg_rate * 100, 0)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="bg-amber-50 border border-amber-300 rounded-lg p-3">
+                      <div className="text-xs font-bold text-amber-700 mb-2">
+                        ⚠️ 要対策クラス
+                        <span className="font-normal text-amber-500"> (稼働率{Math.round((data.utilization.low_threshold ?? 0.2) * 100)}%未満)</span>
+                      </div>
+                      {(data.utilization.watch_classes?.length ?? 0) === 0 ? (
+                        <div className="text-[11px] text-slate-400">該当なし</div>
+                      ) : (
+                        <ul className="space-y-1 text-xs">
+                          {data.utilization.watch_classes!.map((c, i) => (
+                            <li key={i} className="flex justify-between gap-2">
+                              <span className="truncate">
+                                {c.program_name} <span className="text-slate-400">/ {c.staff_name} ・{c.cnt}回</span>
+                              </span>
+                              <span className="font-mono font-bold text-amber-700">{pct(c.avg_rate * 100, 0)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   </div>
-                </div>
+
+                  {(data.utilization.excluded_classes?.length ?? 0) > 0 && (
+                    <div className="mt-2 text-[10px] text-slate-400">
+                      除外: イベント等 {data.utilization.excluded_classes!.length}件
+                      （{data.utilization.excluded_classes!.map(c => c.program_name).join('・')}）
+                    </div>
+                  )}
+                </>
               )}
             </Section>
 
