@@ -31,7 +31,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const allowed = [
     'class_name', 'target', 'level', 'default_studio_id', 'default_instructor_id',
     'default_day_of_week', 'default_start_time', 'default_end_time', 'duration_minutes',
-    'frequency_type', 'active', 'notes',
+    'frequency_type', 'override_rate', 'active', 'notes',
   ];
   const sets: string[] = [];
   const vals: unknown[] = [];

@@ -51,14 +51,37 @@ type Lesson = {
   default_end_time: string | null;
   duration_minutes: number | null;
   frequency_type: string | null;
+  override_rate: number | null;
   active: number;
   notes: string | null;
   studio_name: string | null;
   instructor_name: string | null;
 };
 
+// スタジオの区分料金1行
+type PriceBlock = { label: string; start: string; end: string; price: number };
+
 const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 const dayLabel = (d: number | null | undefined) => (d == null ? '—' : DAY_NAMES[d] ?? String(d));
+
+// block_pricing(JSON文字列 or 配列)を PriceBlock[] にパース。失敗時は空配列
+function parseBlocks(raw: unknown): PriceBlock[] {
+  let arr: unknown = raw;
+  if (typeof raw === 'string') {
+    if (!raw.trim()) return [];
+    try { arr = JSON.parse(raw); } catch { return []; }
+  }
+  if (!Array.isArray(arr)) return [];
+  return arr.map((b) => {
+    const o = (b ?? {}) as Record<string, unknown>;
+    return {
+      label: typeof o.label === 'string' ? o.label : '',
+      start: typeof o.start === 'string' ? o.start : '',
+      end: typeof o.end === 'string' ? o.end : '',
+      price: Number(o.price) || 0,
+    };
+  });
+}
 
 export default function MastersPage() {
   const [tab, setTab] = useState<'studios' | 'instructors' | 'lessons'>('studios');
@@ -73,6 +96,7 @@ export default function MastersPage() {
   const [detail, setDetail] = useState<{ kind: 'studio'; data: Studio } | { kind: 'instructor'; data: Instructor } | { kind: 'lesson'; data: Lesson } | null>(null);
   const [editRates, setEditRates] = useState<{ duration: number; rate: number }[]>([]);
   const [editFees, setEditFees] = useState<{ studio_id: number; amount: number }[]>([]);
+  const [editBlocks, setEditBlocks] = useState<PriceBlock[]>([]);
   const [msg, setMsg] = useState('');
 
   const load = useCallback(async () => {
@@ -107,24 +131,36 @@ export default function MastersPage() {
 
   const saveStudio = async (data: Partial<Studio>) => {
     try {
+      // 区分制のときは編集中の区分行を block_pricing として送る (JSON化はAPI側)。
+      // 時間単価のときは block_pricing に触らない (既存挙動を維持)。
+      const payload: Record<string, unknown> = { ...data };
+      if (data.pricing_model === 'block') {
+        payload.block_pricing = editBlocks.filter(b => b.start || b.end || b.label || b.price);
+      }
       if (data.id) {
         await fetch(`/api/staff/master/studios/${data.id}`, {
           method: 'PATCH', credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
+          body: JSON.stringify(payload),
         });
       } else {
         await fetch(`/api/staff/master/studios`, {
           method: 'POST', credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
+          body: JSON.stringify(payload),
         });
       }
       setEditing(null);
+      setEditBlocks([]);
       await load();
     } catch (e) {
       setMsg(`保存失敗: ${e instanceof Error ? e.message : String(e)}`);
     }
+  };
+
+  const startEditStudio = (s: Partial<Studio>) => {
+    setEditing({ kind: 'studio', data: s });
+    setEditBlocks(parseBlocks(s.block_pricing));
   };
 
   const saveInstructor = async (data: Partial<Instructor>) => {
@@ -182,6 +218,7 @@ export default function MastersPage() {
         default_end_time: data.default_end_time ?? null,
         duration_minutes: data.duration_minutes ?? null,
         frequency_type: data.frequency_type ?? null,
+        override_rate: data.override_rate ?? null,
         active: data.active ?? 1,
         notes: data.notes ?? null,
       };
@@ -253,7 +290,7 @@ export default function MastersPage() {
         {!loading && tab === 'studios' && (
           <>
             <button
-              onClick={() => setEditing({ kind: 'studio', data: { pricing_model: 'hourly', daily_buffer_minutes: 0, active: 1 } })}
+              onClick={() => startEditStudio({ pricing_model: 'hourly', daily_buffer_minutes: 0, active: 1 })}
               className="mb-3 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold"
             >+ スタジオ追加</button>
             <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
@@ -308,7 +345,7 @@ export default function MastersPage() {
                     const myRates = rates.filter(r => r.instructor_id === i.id);
                     return (
                       <tr key={i.id} className="border-t border-slate-100 hover:bg-orange-50/40 cursor-pointer" onClick={() => setDetail({ kind: 'instructor', data: i })}>
-                        <td className="px-2 py-2 font-medium">{i.name}{i.name_kana ? <span className="text-xs text-slate-400 ml-1">({i.name_kana})</span> : ''}</td>
+                        <td className="px-2 py-2 font-medium">{i.name}</td>
                         <td className="px-2 py-2 text-xs">
                           {myRates.map(r => <span key={r.id} className="mr-2">{r.duration_minutes}分 ¥{r.rate.toLocaleString()}</span>)}
                           {myRates.length === 0 && <span className="text-slate-300">-</span>}
@@ -382,17 +419,30 @@ export default function MastersPage() {
               <button onClick={() => setDetail(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
             </div>
             <div className="p-4 space-y-3 text-sm">
-              <DetailRow label="料金">{detail.data.pricing_model === 'hourly' ? `¥${detail.data.hourly_rate.toLocaleString()}/h` : `区分制 (詳細はJSON)`}</DetailRow>
+              <DetailRow label="料金">{detail.data.pricing_model === 'hourly' ? `¥${detail.data.hourly_rate.toLocaleString()}/h` : `区分制`}</DetailRow>
               <DetailRow label="バッファ">{detail.data.daily_buffer_minutes ? `+${detail.data.daily_buffer_minutes}分/日` : 'なし'}</DetailRow>
               <DetailRow label="住所">{detail.data.address || '—'}</DetailRow>
               <DetailRow label="Google Map">{detail.data.google_map_url ? <a href={detail.data.google_map_url} target="_blank" rel="noreferrer" className="text-blue-600 underline">{detail.data.google_map_url}</a> : '—'}</DetailRow>
-              {detail.data.pricing_model === 'block' && (
-                <DetailRow label="ブロック料金"><pre className="text-xs bg-slate-50 p-2 rounded overflow-x-auto">{detail.data.block_pricing ?? '未設定'}</pre></DetailRow>
-              )}
+              {detail.data.pricing_model === 'block' && (() => {
+                const blocks = parseBlocks(detail.data.block_pricing);
+                return (
+                  <DetailRow label="区分料金">
+                    {blocks.length === 0 ? '未設定' : (
+                      <div className="space-y-0.5">
+                        {blocks.map((b, i) => (
+                          <div key={i} className="text-sm">
+                            {b.label ? `${b.label}: ` : ''}{b.start || '—'}〜{b.end || '—'} ¥{b.price.toLocaleString()}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </DetailRow>
+                );
+              })()}
               <DetailRow label="メモ">{detail.data.notes || '—'}</DetailRow>
             </div>
             <div className="flex gap-2 px-4 py-3 border-t bg-slate-50">
-              <button onClick={() => { const d = detail.data; setDetail(null); setEditing({ kind: 'studio', data: d }); }} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">✏️ 編集する</button>
+              <button onClick={() => { const d = detail.data; setDetail(null); startEditStudio(d); }} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">✏️ 編集する</button>
               <button onClick={() => { const id = detail.data.id; setDetail(null); remove('studios', id); }} className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded text-sm">削除</button>
               <button onClick={() => setDetail(null)} className="ml-auto px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded text-sm">閉じる</button>
             </div>
@@ -409,7 +459,7 @@ export default function MastersPage() {
           <div className="fixed inset-0 bg-black/50 flex items-start justify-center p-4 z-40 overflow-y-auto" onClick={() => setDetail(null)}>
             <div className="bg-white rounded-lg w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-white">
-                <h2 className="font-bold">👤 {detail.data.name}{detail.data.name_kana ? <span className="text-xs text-slate-400 ml-1">({detail.data.name_kana})</span> : ''}</h2>
+                <h2 className="font-bold">👤 {detail.data.name}</h2>
                 <button onClick={() => setDetail(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
               </div>
               <div className="p-4 space-y-3 text-sm">
@@ -418,6 +468,7 @@ export default function MastersPage() {
                   {detail.data.shared_folder_url && <a href={detail.data.shared_folder_url} target="_blank" rel="noreferrer" className="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs font-semibold">📁 Driveフォルダ</a>}
                   {photoCount > 0 && <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-semibold">📸 写真 {photoCount}枚</span>}
                 </div>
+                <DetailRow label="フリガナ">{detail.data.name_kana || '—'}</DetailRow>
                 <DetailRow label="メール">{detail.data.contact_email || '—'}</DetailRow>
                 <DetailRow label="電話">{detail.data.contact_phone || '—'}</DetailRow>
                 <DetailRow label="単価">
@@ -460,6 +511,7 @@ export default function MastersPage() {
               <DetailRow label="対象">{detail.data.target || '—'}</DetailRow>
               <DetailRow label="レベル">{detail.data.level || '—'}</DetailRow>
               <DetailRow label="頻度">{detail.data.frequency_type || '—'}</DetailRow>
+              <DetailRow label="単価上書き">{detail.data.override_rate != null ? `¥${detail.data.override_rate.toLocaleString()}` : '—'}</DetailRow>
               <DetailRow label="状態">{detail.data.active ? '有効' : '無効'}</DetailRow>
               <DetailRow label="メモ">{detail.data.notes || '—'}</DetailRow>
             </div>
@@ -478,7 +530,7 @@ export default function MastersPage() {
           <div className="bg-white rounded-lg p-4 w-full max-w-2xl my-8">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-bold">{editing.data.id ? 'スタジオ編集' : 'スタジオ追加'}</h2>
-              <button onClick={() => setEditing(null)} className="text-2xl leading-none px-2 py-0 text-slate-400 hover:text-slate-700">✕</button>
+              <button onClick={() => { setEditing(null); setEditBlocks([]); }} className="text-2xl leading-none px-2 py-0 text-slate-400 hover:text-slate-700">✕</button>
             </div>
             <div className="space-y-2 text-sm">
               <Field label="名称*" value={editing.data.name ?? ''} onChange={v => setEditing({ kind: 'studio', data: { ...editing.data, name: v } })} />
@@ -499,14 +551,53 @@ export default function MastersPage() {
                 <Field label="1時間あたり単価 (¥)" type="number" value={String(editing.data.hourly_rate ?? 0)} onChange={v => setEditing({ kind: 'studio', data: { ...editing.data, hourly_rate: Number(v) || 0 } })} />
               )}
               {editing.data.pricing_model === 'block' && (
-                <Field label="ブロック料金 (JSON 例: [{&quot;start&quot;:&quot;17:00&quot;,&quot;end&quot;:&quot;22:00&quot;,&quot;price&quot;:1100}])" value={typeof editing.data.block_pricing === 'string' ? editing.data.block_pricing : JSON.stringify(editing.data.block_pricing ?? [])} onChange={v => setEditing({ kind: 'studio', data: { ...editing.data, block_pricing: v } })} />
+                <div>
+                  <label className="text-xs text-slate-600">区分料金 (時間帯ごとの料金)</label>
+                  <div className="mt-1 space-y-2">
+                    {editBlocks.length === 0 && <p className="text-xs text-slate-400">区分がありません。「+ 区分追加」で追加してください。</p>}
+                    {editBlocks.map((b, i) => (
+                      <div key={i} className="flex flex-wrap gap-2 items-center">
+                        <input
+                          type="text"
+                          value={b.label}
+                          onChange={e => { const nb = [...editBlocks]; nb[i] = { ...nb[i], label: e.target.value }; setEditBlocks(nb); }}
+                          className="border rounded px-2 py-1 text-sm w-28 bg-white text-neutral-900"
+                          placeholder="ラベル(夜間等)"
+                        />
+                        <input
+                          type="time"
+                          value={b.start}
+                          onChange={e => { const nb = [...editBlocks]; nb[i] = { ...nb[i], start: e.target.value }; setEditBlocks(nb); }}
+                          className="border rounded px-2 py-1 text-sm bg-white text-neutral-900"
+                        />
+                        <span className="text-xs">〜</span>
+                        <input
+                          type="time"
+                          value={b.end}
+                          onChange={e => { const nb = [...editBlocks]; nb[i] = { ...nb[i], end: e.target.value }; setEditBlocks(nb); }}
+                          className="border rounded px-2 py-1 text-sm bg-white text-neutral-900"
+                        />
+                        <input
+                          type="number"
+                          value={b.price}
+                          onChange={e => { const nb = [...editBlocks]; nb[i] = { ...nb[i], price: Number(e.target.value) || 0 }; setEditBlocks(nb); }}
+                          className="border rounded px-2 py-1 text-sm w-24 bg-white text-neutral-900"
+                          placeholder="料金"
+                        />
+                        <span className="text-xs">¥</span>
+                        <button onClick={() => setEditBlocks(editBlocks.filter((_, j) => j !== i))} className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded">×</button>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={() => setEditBlocks([...editBlocks, { label: '', start: '', end: '', price: 0 }])} className="mt-2 text-xs px-2 py-1 bg-slate-200 rounded">+ 区分追加</button>
+                </div>
               )}
               <Field label="1日あたりバッファ分数 (例: 30)" type="number" value={String(editing.data.daily_buffer_minutes ?? 0)} onChange={v => setEditing({ kind: 'studio', data: { ...editing.data, daily_buffer_minutes: Number(v) || 0 } })} />
               <Field label="メモ" value={editing.data.notes ?? ''} onChange={v => setEditing({ kind: 'studio', data: { ...editing.data, notes: v } })} />
             </div>
             <div className="flex gap-2 mt-4">
               <button onClick={() => saveStudio(editing.data)} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">保存</button>
-              <button onClick={() => setEditing(null)} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded text-sm">キャンセル</button>
+              <button onClick={() => { setEditing(null); setEditBlocks([]); }} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded text-sm">キャンセル</button>
             </div>
           </div>
         </div>
@@ -670,6 +761,7 @@ export default function MastersPage() {
                 <Field label="対象" value={d.target ?? ''} onChange={v => set({ target: v })} />
                 <Field label="レベル" value={d.level ?? ''} onChange={v => set({ level: v })} />
                 <Field label="頻度 (例: weekly)" value={d.frequency_type ?? ''} onChange={v => set({ frequency_type: v })} />
+                <Field label="単価上書き (¥・空欄でインストラクター標準単価)" type="number" value={d.override_rate == null ? '' : String(d.override_rate)} onChange={v => set({ override_rate: v === '' ? null : (Number(v) || 0) })} />
                 <Field label="メモ" value={d.notes ?? ''} onChange={v => set({ notes: v })} />
                 <label className="flex items-center gap-2 pt-1">
                   <input type="checkbox" checked={!!d.active} onChange={e => set({ active: e.target.checked ? 1 : 0 })} />
