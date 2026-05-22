@@ -142,12 +142,6 @@ export default function ScheduleCalendarPage() {
     });
     await reloadDay(date);
   };
-  const deleteInstance = async (instanceId: number, date: string) => {
-    if (!confirm('このレッスンを削除しますか? (元に戻せません)')) return;
-    await fetch(`/api/staff/schedule/instances/${instanceId}`, { method: 'DELETE', credentials: 'include' });
-    await reloadDay(date);
-  };
-
   // master展開レッスンを instance化 (実体を1件作成して返す)
   // status: 'scheduled' (編集用) または 'cancelled' (休講/この日だけ削除)
   const instantiateMaster = async (date: string, masterId: number, status: 'scheduled' | 'cancelled'): Promise<number | null> => {
@@ -458,26 +452,30 @@ export default function ScheduleCalendarPage() {
                     <div className="mt-2 flex gap-1 flex-wrap">
                       {l.source === 'instance' && l.instance_id && (
                         <>
-                          <button onClick={() => openInstanceEdit(selectedDay.date, l)} className="text-[10px] px-2 py-0.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded">編集</button>
+                          <button onClick={() => openInstanceEdit(selectedDay.date, l)} className="text-[10px] px-2 py-0.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded">この日を編集</button>
                           {l.status === 'cancelled' ? (
-                            <button onClick={() => restoreInstance(l.instance_id!, selectedDay.date)} className="text-[10px] px-2 py-0.5 bg-green-100 hover:bg-green-200 text-green-700 rounded">復活</button>
+                            <button onClick={() => restoreInstance(l.instance_id!, selectedDay.date)} className="text-[10px] px-2 py-0.5 bg-green-100 hover:bg-green-200 text-green-700 rounded">この日を復活</button>
                           ) : (
-                            <button onClick={() => cancelInstance(l.instance_id!, selectedDay.date)} className="text-[10px] px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded">休講にする</button>
+                            <button onClick={() => cancelInstance(l.instance_id!, selectedDay.date)} className="text-[10px] px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded">この日を休講</button>
                           )}
-                          <button onClick={() => deleteInstance(l.instance_id!, selectedDay.date)} className="text-[10px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded">削除</button>
                         </>
                       )}
                       {l.source === 'master' && (
                         <>
                           <button onClick={() => editMasterLesson(selectedDay.date, l)} className="text-[10px] px-2 py-0.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded">この日を編集</button>
                           <button onClick={() => cancelMasterLesson(selectedDay.date, l, '休講')} className="text-[10px] px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded">この日を休講</button>
-                          <button onClick={() => cancelMasterLesson(selectedDay.date, l, '非表示')} className="text-[10px] px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded">この日だけ削除</button>
                         </>
                       )}
                     </div>
-                    {l.source === 'master' && (
-                      <p className="mt-1.5 text-[10px] text-slate-400 leading-tight">通常パターン (週次自動表示)。編集/休講/削除はこの日だけ反映され、他の週は変わりません。</p>
-                    )}
+                    <p className="mt-1.5 text-[10px] text-slate-400 leading-tight">
+                      {l.source === 'master'
+                        ? '繰り返しクラスの通常パターン (週次自動表示)。ここでの編集・休講はこの日1回だけに反映され、他の週は変わりません。'
+                        : 'この日1回分の予定です。編集・休講はこの日だけに反映されます。'}
+                      <br />
+                      繰り返しクラスそのもの (時間・曜日・講師の恒久変更や廃止) は
+                      <a href="/staff/masters" className="text-orange-600 hover:underline font-semibold">マスター画面</a>
+                      で行ってください。
+                    </p>
                   </div>
                 ))}
               </div>
