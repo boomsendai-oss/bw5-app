@@ -93,11 +93,15 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
     studio_id: number | null; master_id: number | null;
     class_name: string | null; status: string;
   };
+  // 休講(cancelled)も含めて全インスタンスを取得する。
+  // - 開催分は使用料に計上
+  // - 休講分は計上しないが、master+日付を expandedKeys に登録して
+  //   master 週次展開での再計上(=休講なのに使用料に乗る)を防ぐ
   const instances = (await getAll(
     `SELECT li.id, li.date, li.start_time, li.end_time, li.studio_id, li.master_id, lm.class_name, li.status
      FROM lesson_instances li
      LEFT JOIN lesson_master lm ON lm.id = li.master_id
-     WHERE li.date BETWEEN ? AND ? AND li.status != 'cancelled'`,
+     WHERE li.date BETWEEN ? AND ?`,
     [monthStart, monthEnd]
   )) as InstanceRow[];
 
@@ -141,8 +145,12 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
   // 1) lesson_instances 集計
   const expandedKeys = new Set<string>();
   for (const ins of instances) {
+    // master+日付を記録し、後段の master 週次展開での重複/再計上を防ぐ
+    // (休講インスタンスも記録する → 休講日の master 再展開を抑止)
+    if (ins.master_id != null) expandedKeys.add(`${ins.master_id}_${ins.date}`);
+    // 休講は使用料に計上しない
+    if (ins.status === 'cancelled') continue;
     if (!ins.studio_id) continue;
-    expandedKeys.add(`${ins.master_id ?? ''}_${ins.date}`);
     const result = resultsMap.get(ins.studio_id);
     const studio = studioMap.get(ins.studio_id);
     if (!result || !studio) continue;
