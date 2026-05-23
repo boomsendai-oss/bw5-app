@@ -6,7 +6,7 @@ export type BillingLine = {
   hours: number;
   hourly_rate: number;
   amount: number;
-  source: 'lesson_instance' | 'lesson_master_expanded' | 'block_rental';
+  source: 'lesson_instance' | 'lesson_master_expanded' | 'block_rental' | 'daily_buffer';
   source_ref_id: number | null;
 };
 
@@ -144,6 +144,9 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
 
   // 1) lesson_instances 集計
   const expandedKeys = new Set<string>();
+  // 時間貸しスタジオで「その日にレッスンがある (スタジオ,日付)」を記録。
+  // 日次バッファ(daily_buffer_minutes)は後段でこのキーごとに1回だけ加算する。
+  const hourlyDayKeys = new Set<string>();
   for (const ins of instances) {
     // master+日付を記録し、後段の master 週次展開での重複/再計上を防ぐ
     // (休講インスタンスも記録する → 休講日の master 再展開を抑止)
@@ -159,7 +162,9 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
       recordBlockLesson(studio.id, ins.date, ins.start_time, ins.end_time);
       continue;
     }
-    const dm = minutesBetween(ins.start_time, ins.end_time) + (studio.daily_buffer_minutes ?? 0);
+    if (studio.pricing_model === 'hourly') hourlyDayKeys.add(`${studio.id}_${ins.date}`);
+    // バッファは加算しない (後段で日次に1回だけ加算)
+    const dm = minutesBetween(ins.start_time, ins.end_time);
     const hours = dm / 60;
     const amount = studio.pricing_model === 'hourly' ? Math.ceil(hours * studio.hourly_rate) : 0;
     result.lines.push({
@@ -196,7 +201,9 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
         recordBlockLesson(studio.id, dateStr, master.default_start_time, end);
         continue;
       }
-      const dm = (master.duration_minutes ?? (master.default_start_time && master.default_end_time ? minutesBetween(master.default_start_time, master.default_end_time) : 0)) + (studio.daily_buffer_minutes ?? 0);
+      if (studio.pricing_model === 'hourly') hourlyDayKeys.add(`${studio.id}_${dateStr}`);
+      // バッファは加算しない (後段で日次に1回だけ加算)
+      const dm = (master.duration_minutes ?? (master.default_start_time && master.default_end_time ? minutesBetween(master.default_start_time, master.default_end_time) : 0));
       const hours = dm / 60;
       const amount = studio.pricing_model === 'hourly' ? Math.ceil(hours * studio.hourly_rate) : 0;
       result.lines.push({
@@ -211,6 +218,35 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
       result.total_hours += hours;
       result.total_lesson_amount += amount;
     }
+  }
+
+  // 2.5) 日次バッファを (スタジオ,日付) ごとに1回だけ加算する。
+  //   従来は各レッスンに daily_buffer を足していたため、1日に複数レッスンがある日は
+  //   バッファが二重(以上)に計上されていた (例: 多賀城 入門+初級 で +60分)。
+  //   daily_buffer_minutes は本来「その日のレンタル1回分の準備/休憩/退出オーバーヘッド」
+  //   なので、1日1回だけ加算するのが正しい。
+  for (const key of hourlyDayKeys) {
+    const sep = key.indexOf('_');
+    const sid = Number(key.slice(0, sep));
+    const dateStr = key.slice(sep + 1);
+    const studio = studioMap.get(sid);
+    const result = resultsMap.get(sid);
+    if (!studio || !result || studio.pricing_model !== 'hourly') continue;
+    const buf = studio.daily_buffer_minutes ?? 0;
+    if (buf <= 0) continue;
+    const hours = buf / 60;
+    const amount = Math.ceil(hours * studio.hourly_rate);
+    result.lines.push({
+      lesson_date: dateStr,
+      class_name: `（準備・バッファ ${buf}分）`,
+      hours,
+      hourly_rate: studio.hourly_rate,
+      amount,
+      source: 'daily_buffer',
+      source_ref_id: null,
+    });
+    result.total_hours += hours;
+    result.total_lesson_amount += amount;
   }
 
   // 3) block_pricing スタジオ (七ヶ浜国際村等) → 区分単位で計上
