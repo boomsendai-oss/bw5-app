@@ -96,6 +96,13 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
      WHERE lm.active = 1`
   )) as MasterRow[];
 
+  // master の override_rate (特別単価) マップ。
+  // instance 化されたレッスン (確定/凍結 materialize 含む) でも master の特別単価を反映するため、
+  // section 1 (instance) でも参照する。これが無いと materialize 後に override_rate が失われる
+  // (例: HOUSE エキスパート ¥8,000 が通常単価 ¥6,000 に落ちる)。
+  const masterOverrideMap = new Map<number, number | null>();
+  for (const mm of masters) masterOverrideMap.set(mm.id, mm.override_rate);
+
   const resultsMap = new Map<number, PayrollResult>();
   for (const ins of instructors) {
     resultsMap.set(ins.id, {
@@ -124,7 +131,10 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
     if (!result) continue;
     if (result.salary_type === 'monthly_fixed') continue;
     const dm = ins.duration_minutes ?? minutesBetween(ins.start_time, ins.end_time);
-    const rate = rateMap.get(`${ins.instructor_id}_${dm}`) ?? 0;
+    // master に override_rate (特別単価) があればそれを優先。なければ単価表 (instructor×分) を引く。
+    // (master 展開パス section 2 と同じ優先順位にして、materialize 前後で金額が変わらないようにする)
+    const overrideRate = ins.master_id != null ? masterOverrideMap.get(ins.master_id) : null;
+    const rate = overrideRate ?? rateMap.get(`${ins.instructor_id}_${dm}`) ?? 0;
     // 交通費は per-lesson ではなく per-(スタジオ×日) で1回だけ計上
     const transitCandidate = ins.transit_fee_override ?? (ins.studio_id ? (transitMap.get(`${ins.instructor_id}_${ins.studio_id}`) ?? 0) : 0);
     let transit = 0;
