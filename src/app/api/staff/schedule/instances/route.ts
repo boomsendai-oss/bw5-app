@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +28,24 @@ export async function POST(req: NextRequest) {
   if (!body.master_id && !body.class_name_override) {
     return NextResponse.json({ error: 'master_id か class_name_override が必要' }, { status: 400 });
   }
+  // 冪等性: 既存マスターの instance 化は (master_id, date) で重複を防ぐ。
+  // 同じ master+date の instance が既にあれば、新規作成せず既存を再利用する
+  // (status 指定があれば更新)。これにより「この日だけ編集/休講」を繰り返しても
+  // 同じレッスンが重複して増殖しない。
+  if (body.master_id) {
+    const existing = await getOne(
+      `SELECT id FROM lesson_instances WHERE master_id = ? AND date = ? LIMIT 1`,
+      [body.master_id, body.date]
+    );
+    if (existing) {
+      const existingId = Number(existing.id);
+      if (body.status) {
+        await execute(`UPDATE lesson_instances SET status = ? WHERE id = ?`, [body.status, existingId]);
+      }
+      return NextResponse.json({ ok: true, id: existingId, master_id: body.master_id, reused: true });
+    }
+  }
+
   // 特別レッスン用に簡易lesson_masterを作る (再利用のため)
   let masterId = body.master_id ?? null;
   if (!masterId && body.class_name_override) {
