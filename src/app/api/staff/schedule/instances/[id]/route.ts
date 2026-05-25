@@ -28,6 +28,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
   if (updates.length === 0) return NextResponse.json({ ok: true, noop: true });
   updates.push('updated_at = CURRENT_TIMESTAMP');
+  // 手動編集された instance は「自動実体化(確定スナップショット)」ではなくなる。
+  // → 確定解除時に削除されず、決定として残る。
+  updates.push('auto_materialized = 0');
   args.push(numId);
   await execute(`UPDATE lesson_instances SET ${updates.join(', ')} WHERE id = ?`, args);
 
@@ -64,7 +67,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   const numId = parseId(id);
   if (numId === null) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
   await execute(
-    `UPDATE lesson_instances SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    `UPDATE lesson_instances SET status = 'cancelled', auto_materialized = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
     [numId]
   );
   return NextResponse.json({ ok: true, cancelled: true });

@@ -756,6 +756,9 @@ export async function initDb(): Promise<void> {
   await addColumnIfMissing(c, 'studios', 'bank_account_type', 'TEXT');
   await addColumnIfMissing(c, 'studios', 'bank_account_number', 'TEXT');
   await addColumnIfMissing(c, 'studios', 'bank_account_holder', 'TEXT');
+  // 月の確定(凍結)時に master から自動実体化した instance かどうか (1=自動)。
+  // 手動編集 (PATCH/休講) で 0 に落ちる。確定解除時は 1 のものだけ削除して master と再同期する。
+  await addColumnIfMissing(c, 'lesson_instances', 'auto_materialized', 'INTEGER DEFAULT 0');
   // HACOMONO スケジュールマッピング: program行に持たせる実物準拠の既定属性
   await addColumnIfMissing(c, 'hacomono_schedule_map', 'default_staff_code', 'TEXT');
   await addColumnIfMissing(c, 'hacomono_schedule_map', 'default_space_code', 'TEXT');

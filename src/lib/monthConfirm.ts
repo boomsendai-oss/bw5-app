@@ -86,8 +86,8 @@ export async function materializeMonth(yearMonth: string): Promise<number> {
       if (!mst.default_start_time || !mst.default_end_time) continue; // 時間未設定マスターは展開対象外
       if (existing.has(`${mst.id}_${dateStr}`)) continue;
       await execute(
-        `INSERT INTO lesson_instances (master_id, date, start_time, end_time, studio_id, instructor_id, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'scheduled')`,
+        `INSERT INTO lesson_instances (master_id, date, start_time, end_time, studio_id, instructor_id, status, auto_materialized)
+         VALUES (?, ?, ?, ?, ?, ?, 'scheduled', 1)`,
         [mst.id, dateStr, mst.default_start_time, mst.default_end_time, mst.default_studio_id, mst.default_instructor_id]
       );
       // 連続実体化を防ぐため、このループ内でも既存扱いにする
@@ -113,9 +113,21 @@ export async function confirmMonth(yearMonth: string, note?: string): Promise<{ 
 
 /**
  * 月の確定を解除 (= master と再同期)。
- * materialize した instance は残す (手動編集分と区別がつかないため安全側)。
- * 確定解除後は master 週次展開が再開する。
+ * 確定時に自動実体化した未編集の instance (auto_materialized=1) のみ削除し、
+ * 確定前の状態に戻す → master 週次展開が再開する。
+ * 手動で作成/編集/休講した instance (auto_materialized=0) は決定として残す。
  */
 export async function unconfirmMonth(yearMonth: string): Promise<void> {
+  const [y, m] = yearMonth.split('-').map(Number);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) {
+    throw new Error(`invalid yearMonth: ${yearMonth}`);
+  }
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const startStr = `${yearMonth}-01`;
+  const endStr = `${yearMonth}-${String(daysInMonth).padStart(2, '0')}`;
+  await execute(
+    `DELETE FROM lesson_instances WHERE date BETWEEN ? AND ? AND auto_materialized = 1`,
+    [startStr, endStr]
+  );
   await execute(`DELETE FROM month_confirmations WHERE year_month = ?`, [yearMonth]);
 }

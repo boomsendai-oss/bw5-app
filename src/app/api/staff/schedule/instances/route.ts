@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     if (existing) {
       const existingId = Number(existing.id);
       if (body.status) {
-        await execute(`UPDATE lesson_instances SET status = ? WHERE id = ?`, [body.status, existingId]);
+        await execute(`UPDATE lesson_instances SET status = ?, auto_materialized = 0 WHERE id = ?`, [body.status, existingId]);
       }
       return NextResponse.json({ ok: true, id: existingId, master_id: body.master_id, reused: true });
     }
