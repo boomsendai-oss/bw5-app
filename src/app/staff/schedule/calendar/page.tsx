@@ -472,59 +472,53 @@ export default function ScheduleCalendarPage() {
             {selectedDay.lessons.length === 0 ? (
               <p className="text-sm text-slate-500 py-4">この日はレッスン無し</p>
             ) : (
-              <div className="space-y-2 mb-3">
-                {selectedDay.lessons.map((l, i) => (
+              <div className="space-y-1 mb-3">
+                {selectedDay.lessons.map((l, i) => {
+                  const btn = 'text-[11px] px-2 py-0.5 rounded';
+                  const isInst = l.source === 'instance';
+                  const cancelled = l.status === 'cancelled';
+                  return (
                   <div
                     key={i}
-                    className={`p-3 rounded-lg border ${
-                      l.source === 'instance'
-                        ? l.status === 'cancelled' ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'
+                    className={`px-2 py-1.5 rounded border ${
+                      isInst
+                        ? cancelled ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'
                         : 'bg-blue-50 border-blue-200'
                     }`}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-sm font-bold">
-                        {l.start_time ? l.start_time.substring(0, 5) : '時間未設定'} - {l.end_time ? l.end_time.substring(0, 5) : ''}
-                      </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-white text-slate-600 border">
-                        {l.source === 'instance' ? '実開催' : 'マスター展開'}
-                      </span>
+                    {/* 1行: 時間 スペース レッスン名 */}
+                    <div className={`flex items-center gap-2 ${cancelled ? 'text-red-400 line-through' : ''}`}>
+                      <span className="font-mono text-xs font-bold whitespace-nowrap">{l.start_time ? l.start_time.substring(0, 5) : '--:--'}</span>
+                      <span className="text-[11px] text-slate-500 whitespace-nowrap">{l.studio_name ?? '-'}</span>
+                      <span className="text-sm font-semibold truncate">{l.class_name}</span>
                     </div>
-                    <div className="font-bold mt-1">{l.class_name}</div>
-                    <div className="text-xs text-slate-600 mt-0.5">
-                      👤 {l.instructor_name ?? '未設定'} / 📍 {l.studio_name ?? '未設定'}
-                    </div>
-                    {l.status === 'cancelled' && (
-                      <div className="mt-1 inline-block text-xs px-2 py-0.5 rounded bg-red-100 text-red-700">休講</div>
-                    )}
-                    {l.notes && (
-                      <div className="mt-1 text-xs text-slate-600">📝 {l.notes}</div>
-                    )}
+                    {l.notes && <div className="text-[11px] text-slate-500 mt-0.5 truncate">📝 {l.notes}</div>}
                     {/* アクション */}
-                    <div className="mt-2 flex gap-1 flex-wrap">
-                      {l.source === 'instance' && l.instance_id && (
+                    <div className="mt-1 flex gap-1 flex-wrap">
+                      {isInst && l.instance_id && (
                         <>
-                          <button onClick={() => openInstanceEdit(selectedDay.date, l)} className="text-[10px] px-2 py-0.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded">この日を編集</button>
-                          {l.status === 'cancelled' ? (
-                            <button onClick={() => restoreInstance(l.instance_id!, selectedDay.date)} className="text-[10px] px-2 py-0.5 bg-green-100 hover:bg-green-200 text-green-700 rounded">この日を復活</button>
+                          <button onClick={() => openInstanceEdit(selectedDay.date, l)} className={`${btn} bg-orange-100 hover:bg-orange-200 text-orange-700`}>編集</button>
+                          {cancelled ? (
+                            <button onClick={() => restoreInstance(l.instance_id!, selectedDay.date)} className={`${btn} bg-green-100 hover:bg-green-200 text-green-700`}>復活</button>
                           ) : (
-                            <button onClick={() => cancelInstance(l.instance_id!, selectedDay.date)} className="text-[10px] px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded">この日を休講(中止・記録に残す)</button>
+                            <button onClick={() => cancelInstance(l.instance_id!, selectedDay.date)} className={`${btn} bg-red-100 hover:bg-red-200 text-red-700`}>休講</button>
                           )}
-                          <button onClick={() => setMoveTarget({ fromDate: selectedDay.date, lesson: l })} className="text-[10px] px-2 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded">移動</button>
-                          <button onClick={() => removeInstance(l.instance_id!, selectedDay.date, l.class_name)} className="text-[10px] px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded">このレッスンを削除(なかったことに)</button>
+                          <button onClick={() => setMoveTarget({ fromDate: selectedDay.date, lesson: l })} className={`${btn} bg-sky-100 hover:bg-sky-200 text-sky-700`}>移動</button>
+                          <button onClick={() => removeInstance(l.instance_id!, selectedDay.date, l.class_name)} className={`${btn} bg-slate-200 hover:bg-slate-300 text-slate-700`}>削除</button>
                         </>
                       )}
-                      {l.source === 'master' && (
+                      {!isInst && (
                         <>
-                          <button onClick={() => editMasterLesson(selectedDay.date, l)} className="text-[10px] px-2 py-0.5 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded">この日を編集</button>
-                          <button onClick={() => cancelMasterLesson(selectedDay.date, l)} className="text-[10px] px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-700 rounded">この日を休講(中止・記録に残す)</button>
-                          <button onClick={() => setMoveTarget({ fromDate: selectedDay.date, lesson: l })} className="text-[10px] px-2 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded">移動</button>
-                          <button onClick={() => removeMasterLesson(selectedDay.date, l)} className="text-[10px] px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded">このレッスンを削除(なかったことに)</button>
+                          <button onClick={() => editMasterLesson(selectedDay.date, l)} className={`${btn} bg-orange-100 hover:bg-orange-200 text-orange-700`}>編集</button>
+                          <button onClick={() => cancelMasterLesson(selectedDay.date, l)} className={`${btn} bg-red-100 hover:bg-red-200 text-red-700`}>休講</button>
+                          <button onClick={() => setMoveTarget({ fromDate: selectedDay.date, lesson: l })} className={`${btn} bg-sky-100 hover:bg-sky-200 text-sky-700`}>移動</button>
+                          <button onClick={() => removeMasterLesson(selectedDay.date, l)} className={`${btn} bg-slate-200 hover:bg-slate-300 text-slate-700`}>削除</button>
                         </>
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             <AddLessonForm
