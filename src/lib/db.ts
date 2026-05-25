@@ -719,6 +719,20 @@ export async function initDb(): Promise<void> {
     )`,
       args: [],
     },
+    {
+      // === 月の確定/凍結 (Phase2 ①) ===
+      // ある月を「確定」するとレッスン予定をスナップショット化(materialize)し、
+      // lesson_master の変更がその月へ遡及反映されないようにする。
+      // 各展開サイト(calendar/payroll/studioBilling/scheduleExport)は確定済み月で
+      // master 週次展開をスキップし instance のみを使う。手動編集は確定後も常に可能。
+      sql: `CREATE TABLE IF NOT EXISTS month_confirmations (
+      year_month TEXT PRIMARY KEY,
+      confirmed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      materialized_count INTEGER DEFAULT 0,
+      note TEXT
+    )`,
+      args: [],
+    },
   ], 'write');
 
   // ============================================

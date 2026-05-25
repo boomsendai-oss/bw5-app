@@ -33,6 +33,7 @@ type CalendarData = {
   days: Day[];
   masters_count: number;
   instances_count: number;
+  confirmed: boolean;
 };
 
 // 編集対象 instance の最新情報
@@ -87,6 +88,7 @@ export default function ScheduleCalendarPage() {
   const [instructorsOpt, setInstructorsOpt] = useState<InstructorOption[]>([]);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [showExport, setShowExport] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const load = useCallback(async (y: number, m: number) => {
     setLoading(true);
@@ -117,6 +119,35 @@ export default function ScheduleCalendarPage() {
     // lesson_master 一覧 (専用APIなければmaster別途取得用)
     fetch('/api/staff/master/lessons', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => { if (d?.lessons) setMasters(d.lessons); }).catch(() => {});
   }, []);
+
+  // 月の確定(凍結)/確定解除。
+  // 確定: その月の予定を instance としてスナップショット化し、master 変更の遡及反映を止める。
+  //   手動編集 (編集/休講/削除/移動/全休/追加) は確定後も可能。
+  // 確定解除: master と再同期 (master 週次展開が再開)。
+  const toggleConfirm = async () => {
+    if (!data) return;
+    if (data.confirmed) {
+      if (!confirm(`${year}年${month}月の確定を解除しますか?\n\nマスターの変更がこの月に再び反映されるようになります(マスターと再同期)。`)) return;
+      setConfirmBusy(true);
+      try {
+        await fetch(`/api/staff/schedule/confirm?year=${year}&month=${month}`, { method: 'DELETE', credentials: 'include' });
+        await load(year, month);
+      } finally { setConfirmBusy(false); }
+    } else {
+      if (!confirm(`${year}年${month}月を確定(凍結)しますか?\n\n現在のカレンダー内容をスナップショットとして固定します。以降マスターを変更してもこの月には反映されません。\n(個別の編集・休講・削除・追加は確定後も可能です)`)) return;
+      setConfirmBusy(true);
+      try {
+        const res = await fetch('/api/staff/schedule/confirm', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year, month }),
+        });
+        const j = await res.json().catch(() => ({}));
+        await load(year, month);
+        if (j?.created != null) alert(`${year}年${month}月を確定しました。\n(${j.created}件のレッスンを実体化)`);
+      } finally { setConfirmBusy(false); }
+    }
+  };
 
   const reloadDay = async (date: string) => {
     await load(year, month);
@@ -361,11 +392,34 @@ export default function ScheduleCalendarPage() {
         {/* 月切り替えバー */}
         <div className="bg-white rounded-lg border border-neutral-200 p-3 mb-3 flex items-center justify-between">
           <button onClick={prevMonth} className="px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-sm font-semibold">◀</button>
-          <h2 className="text-lg sm:text-xl font-bold text-orange-700">
+          <h2 className="text-lg sm:text-xl font-bold text-orange-700 flex items-center gap-2">
             {year}年 {month}月
+            {data?.confirmed && <span className="text-[10px] px-1.5 py-0.5 bg-sky-100 text-sky-700 rounded font-bold align-middle">🔒 確定済</span>}
           </h2>
           <button onClick={nextMonth} className="px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-sm font-semibold">▶</button>
         </div>
+
+        {/* 月の確定/確定解除バー */}
+        {data && (
+          <div className={`rounded-lg border p-3 mb-3 flex items-center justify-between gap-2 ${data.confirmed ? 'bg-sky-50 border-sky-200' : 'bg-amber-50 border-amber-200'}`}>
+            <p className="text-xs text-slate-600 leading-snug">
+              {data.confirmed
+                ? '🔒 この月は確定(凍結)済みです。マスターを変更してもこの月には反映されません。個別の編集・休講・削除・追加は可能です。'
+                : 'この月は未確定です。マスターの変更が自動反映されます。給与/スタジオ料金/明細を確定したら「この月を確定」してください。'}
+            </p>
+            <button
+              onClick={toggleConfirm}
+              disabled={confirmBusy}
+              className={`shrink-0 px-3 py-1.5 rounded text-xs font-semibold disabled:opacity-50 ${
+                data.confirmed
+                  ? 'bg-white border border-sky-300 text-sky-700 hover:bg-sky-100'
+                  : 'bg-orange-500 hover:bg-orange-600 text-white'
+              }`}
+            >
+              {confirmBusy ? '処理中...' : data.confirmed ? '確定を解除' : '✓ この月を確定'}
+            </button>
+          </div>
+        )}
 
         {err && (
           <div className="mb-3 p-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm">読込エラー: {err}</div>

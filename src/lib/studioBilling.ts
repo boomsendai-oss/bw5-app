@@ -1,4 +1,5 @@
 import { execute, getAll, getOne } from './db';
+import { isMonthConfirmed } from './monthConfirm';
 
 export type BillingLine = {
   lesson_date: string;
@@ -181,7 +182,9 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
   }
 
   // 2) lesson_master 週次展開
-  for (let d = 1; d <= lastDay; d++) {
+  // 確定(凍結)済み月では master 展開しない (確定時に materialize 済み instance のみで計算)。
+  const confirmed = await isMonthConfirmed(yearMonth);
+  for (let d = 1; !confirmed && d <= lastDay; d++) {
     const dateObj = new Date(y, m - 1, d);
     const dateStr = `${yearMonth}-${String(d).padStart(2, '0')}`;
     const dow = dateObj.getDay();

@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import { getAll, getOne, execute } from './db';
+import { getConfirmedMonthsSet } from './monthConfirm';
 
 // ============================================
 // マスタースケジュール エクスポート共通ロジック
@@ -98,6 +99,9 @@ export async function buildLessonsForMonths(months: number): Promise<ExportLesso
 
   const lessons: ExportLesson[] = [];
 
+  // 確定(凍結)済み月では master 週次展開をスキップ (instance スナップショットのみ)
+  const confirmedMonths = await getConfirmedMonthsSet();
+
   // 期間内の各日を走査
   const cursor = new Date(baseYear, baseMonth - 1, 1);
   const last = new Date(endDateObj.getFullYear(), endDateObj.getMonth(), endDateObj.getDate());
@@ -133,7 +137,9 @@ export async function buildLessonsForMonths(months: number): Promise<ExportLesso
     }
 
     // b) master展開 (該当日に同masterのinstanceが無い場合のみ)
-    for (const mas of masters) {
+    // 確定(凍結)済み月は master 展開しない
+    const ymOfDay = ds.slice(0, 7); // 'YYYY-MM'
+    for (const mas of confirmedMonths.has(ymOfDay) ? [] : masters) {
       if (mas.day_of_week !== dow) continue;
       const alreadyExpanded = dayInstances.some(i => i.master_id === mas.id);
       if (alreadyExpanded) continue;

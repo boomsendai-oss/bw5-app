@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { isMonthConfirmed } from '@/lib/monthConfirm';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -28,6 +29,11 @@ export async function GET(req: NextRequest) {
   // 月初〜月末
   const monthEnd = new Date(year, month, 0); // 月末日
   const daysInMonth = monthEnd.getDate();
+
+  // この月が「確定(凍結)」済みなら master 週次展開をスキップし instance のみを使う。
+  // (確定時に materialize 済みなので予定は instance として残っている)
+  const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
+  const confirmed = await isMonthConfirmed(yearMonth);
 
   // 1. lesson_instances を取得
   const startStr = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -129,7 +135,8 @@ export async function GET(req: NextRequest) {
     }
 
     // b) lesson_master の週次展開 (instance が無い場合のみ表示)
-    for (const m of masters) {
+    // 確定(凍結)済み月では master 展開しない (instance スナップショットのみ)
+    for (const m of confirmed ? [] : masters) {
       if (m.day_of_week !== dow) continue;
       // 該当 master の instance がこの日に既にあればスキップ
       const alreadyExpanded = dayInstances.some(i => i.master_id === m.id);
@@ -161,5 +168,6 @@ export async function GET(req: NextRequest) {
     days,
     masters_count: masters.length,
     instances_count: instances.length,
+    confirmed,
   });
 }
