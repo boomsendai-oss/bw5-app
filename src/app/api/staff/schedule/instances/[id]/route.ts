@@ -19,7 +19,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const numId = parseId(id);
   if (numId === null) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
   const body = await req.json().catch(() => ({}));
-  const fields = ['start_time', 'end_time', 'studio_id', 'instructor_id', 'status', 'notes'];
+  // date: 別日付へのリスケ(移動)用。start_time/end_time等の編集と同じく PATCH で更新できる。
+  const fields = ['date', 'start_time', 'end_time', 'studio_id', 'instructor_id', 'status', 'notes'];
   const updates: string[] = [];
   const args: (string | number | null)[] = [];
   for (const f of fields) {

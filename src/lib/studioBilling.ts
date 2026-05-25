@@ -149,10 +149,10 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
   const hourlyDayKeys = new Set<string>();
   for (const ins of instances) {
     // master+日付を記録し、後段の master 週次展開での重複/再計上を防ぐ
-    // (休講インスタンスも記録する → 休講日の master 再展開を抑止)
+    // (休講/削除インスタンスも記録する → その日の master 再展開を抑止)
     if (ins.master_id != null) expandedKeys.add(`${ins.master_id}_${ins.date}`);
-    // 休講は使用料に計上しない
-    if (ins.status === 'cancelled') continue;
+    // 休講(cancelled)・削除(removed)は使用料に計上しない
+    if (ins.status === 'cancelled' || ins.status === 'removed') continue;
     if (!ins.studio_id) continue;
     const result = resultsMap.get(ins.studio_id);
     const studio = studioMap.get(ins.studio_id);

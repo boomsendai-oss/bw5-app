@@ -111,6 +111,9 @@ export async function buildLessonsForMonths(months: number): Promise<ExportLesso
     // a) インスタンス (実開催/休講)
     const dayInstances = instances.filter(i => i.date.startsWith(ds));
     for (const ins of dayInstances) {
+      // status='removed' は「そもそも無かった」扱い → エクスポート(ICS/CSV/HACOMONO)に出さない。
+      // (alreadyExpanded 判定は dayInstances 全件を使うので master 週次再展開は抑止される)
+      if (ins.status === 'removed') continue;
       lessons.push({
         date: ds,
         day_of_week: dow,

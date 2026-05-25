@@ -110,6 +110,10 @@ export async function GET(req: NextRequest) {
     // a) lesson_instances からその日のレッスン
     const dayInstances = instances.filter(i => i.date.startsWith(dateStr));
     for (const ins of dayInstances) {
+      // status='removed' は「そもそも無かった」扱い → カレンダー一覧に出さない。
+      // (休講=cancelled は横線表示で残す)。ただし下記 b) の alreadyExpanded 判定には
+      //  dayInstances 全件を使うので、master 週次再展開は removed でも抑止される。
+      if (ins.status === 'removed') continue;
       lessons.push({
         source: 'instance',
         instance_id: ins.id,
