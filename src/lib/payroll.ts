@@ -109,6 +109,9 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
 
   // 1) lesson_instances から確定分を計上
   const expandedKeys = new Set<string>();
+  // 交通費は (インストラクター×スタジオ×日) ごとに1回だけ計上する。
+  // (1日に同じスタジオで複数レッスンを担当しても、移動は1往復なので交通費は1回)
+  const transitCharged = new Set<string>();
   for (const ins of instances) {
     // master+日付を記録し、後段の master 週次展開での重複/再計上を防ぐ。
     // (休講インスタンスも記録する → 休講日の master 再展開を抑止)
@@ -121,7 +124,17 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
     if (result.salary_type === 'monthly_fixed') continue;
     const dm = ins.duration_minutes ?? minutesBetween(ins.start_time, ins.end_time);
     const rate = rateMap.get(`${ins.instructor_id}_${dm}`) ?? 0;
-    const transit = ins.transit_fee_override ?? (ins.studio_id ? (transitMap.get(`${ins.instructor_id}_${ins.studio_id}`) ?? 0) : 0);
+    // 交通費は per-lesson ではなく per-(スタジオ×日) で1回だけ計上
+    const transitCandidate = ins.transit_fee_override ?? (ins.studio_id ? (transitMap.get(`${ins.instructor_id}_${ins.studio_id}`) ?? 0) : 0);
+    let transit = 0;
+    if (transitCandidate > 0) {
+      if (ins.studio_id) {
+        const tkey = `${ins.instructor_id}_${ins.studio_id}_${ins.date}`;
+        if (!transitCharged.has(tkey)) { transit = transitCandidate; transitCharged.add(tkey); }
+      } else {
+        transit = transitCandidate; // スタジオ不明の上書きはそのまま計上
+      }
+    }
     result.lines.push({
       lesson_date: ins.date,
       class_name: ins.class_name,
@@ -150,7 +163,13 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
       if (result.salary_type === 'monthly_fixed') continue;
       const dm = master.duration_minutes ?? (master.default_start_time && master.default_end_time ? minutesBetween(master.default_start_time, master.default_end_time) : 0);
       const rate = master.override_rate ?? rateMap.get(`${master.default_instructor_id}_${dm}`) ?? 0;
-      const transit = master.default_studio_id ? (transitMap.get(`${master.default_instructor_id}_${master.default_studio_id}`) ?? 0) : 0;
+      // 交通費は per-(スタジオ×日) で1回だけ計上 (instance分と共通Setで重複防止)
+      const transitCandidate = master.default_studio_id ? (transitMap.get(`${master.default_instructor_id}_${master.default_studio_id}`) ?? 0) : 0;
+      let transit = 0;
+      if (transitCandidate > 0 && master.default_studio_id) {
+        const tkey = `${master.default_instructor_id}_${master.default_studio_id}_${dateStr}`;
+        if (!transitCharged.has(tkey)) { transit = transitCandidate; transitCharged.add(tkey); }
+      }
       result.lines.push({
         lesson_date: dateStr,
         class_name: master.class_name,
