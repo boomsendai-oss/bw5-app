@@ -215,6 +215,26 @@ export default function ScheduleCalendarPage() {
     await reloadDay(date);
   };
 
+  // スタジオ全休: その日の全レッスンを一括で削除(removed)にする
+  const removeAllForDay = async () => {
+    if (!selectedDay) return;
+    const targets = selectedDay.lessons;
+    if (targets.length === 0) return;
+    if (!confirm(`${selectedDay.date} の${targets.length}レッスンを全て削除（スタジオ全休）にしますか?\n(カレンダーから消えます。給与・スタジオ料金には元々計上されません)`)) return;
+    for (const l of targets) {
+      if (l.source === 'instance' && l.instance_id) {
+        await fetch(`/api/staff/schedule/instances/${l.instance_id}`, {
+          method: 'PATCH', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'removed' }),
+        });
+      } else if (l.master_id) {
+        await instantiateMaster(selectedDay.date, l.master_id, 'removed');
+      }
+    }
+    await reloadDay(selectedDay.date);
+  };
+
   // レッスンを別日付へ移動 (リスケ)
   // - 既存instance: その instance の date を新日付へ PATCH。
   //   master紐付きなら元日付に removed instance を残し、master 週次再展開を防ぐ。
@@ -469,6 +489,9 @@ export default function ScheduleCalendarPage() {
               </h3>
               <button onClick={() => setSelectedDay(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
             </div>
+            {selectedDay.lessons.length > 0 && (
+              <button onClick={removeAllForDay} className="w-full mb-2 text-xs px-2 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded font-semibold">🚫 スタジオ全休（この日の{selectedDay.lessons.length}レッスンを全削除）</button>
+            )}
             {selectedDay.lessons.length === 0 ? (
               <p className="text-sm text-slate-500 py-4">この日はレッスン無し</p>
             ) : (
