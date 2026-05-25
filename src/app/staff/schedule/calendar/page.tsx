@@ -38,6 +38,7 @@ type CalendarData = {
 // 編集対象 instance の最新情報
 type EditTarget = {
   instance_id: number;
+  master_id: number | null;
   date: string;
   class_name: string;
   start_time: string;
@@ -85,7 +86,6 @@ export default function ScheduleCalendarPage() {
   const [studios, setStudios] = useState<StudioOption[]>([]);
   const [instructorsOpt, setInstructorsOpt] = useState<InstructorOption[]>([]);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
-  const [moveTarget, setMoveTarget] = useState<{ fromDate: string; lesson: Lesson } | null>(null);
   const [showExport, setShowExport] = useState(false);
 
   const load = useCallback(async (y: number, m: number) => {
@@ -176,6 +176,7 @@ export default function ScheduleCalendarPage() {
     await reloadDay(date);
     setEditTarget({
       instance_id: newId,
+      master_id: l.master_id ?? null,
       date,
       class_name: l.class_name,
       start_time: master.default_start_time,
@@ -235,36 +236,6 @@ export default function ScheduleCalendarPage() {
     await reloadDay(selectedDay.date);
   };
 
-  // レッスンを別日付へ移動 (リスケ)
-  // - 既存instance: その instance の date を新日付へ PATCH。
-  //   master紐付きなら元日付に removed instance を残し、master 週次再展開を防ぐ。
-  // - master展開レッスン: 新日付に instance化(scheduled) し、元日付に removed instance を残す。
-  const moveLesson = async (fromDate: string, l: Lesson, toDate: string) => {
-    if (toDate === fromDate) return;
-    if (l.source === 'instance' && l.instance_id) {
-      await fetch(`/api/staff/schedule/instances/${l.instance_id}`, {
-        method: 'PATCH', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: toDate }),
-      });
-      // master紐付きの instance を動かすと元日付が空き、master が再展開されてしまうので、
-      // 元日付に removed の番兵 instance を残して再展開を抑止する。
-      if (l.master_id) {
-        await instantiateMaster(fromDate, l.master_id, 'removed');
-      }
-    } else if (l.source === 'master' && l.master_id) {
-      // 新日付に実体を作成
-      const newId = await instantiateMaster(toDate, l.master_id, 'scheduled');
-      if (!newId) { alert('移動に失敗しました'); return; }
-      // 元日付は removed で塞ぐ (master 再展開を防ぐ)
-      await instantiateMaster(fromDate, l.master_id, 'removed');
-    } else {
-      return;
-    }
-    // 元日付の表示を更新するため一覧を再読込し、元日付パネルを更新
-    await reloadDay(fromDate);
-  };
-
   // master選択 + スタジオ/インストラクター上書きで instance作成
   const createInstanceFromMaster = async (date: string, masterId: number, studioId?: number, instructorId?: number) => {
     const master = masters.find(m => m.id === masterId);
@@ -294,12 +265,16 @@ export default function ScheduleCalendarPage() {
   };
 
   // 既存instanceの編集を保存
-  const saveInstanceEdit = async (target: EditTarget, payload: { start_time: string; end_time: string; studio_id: number | null; instructor_id: number | null; notes: string | null }) => {
+  const saveInstanceEdit = async (target: EditTarget, payload: { date: string; start_time: string; end_time: string; studio_id: number | null; instructor_id: number | null; notes: string | null }) => {
     await fetch(`/api/staff/schedule/instances/${target.instance_id}`, {
       method: 'PATCH', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    // 日付を別日に変更した場合、元日付に master が週次再展開されないよう removed 番兵を残す
+    if (payload.date !== target.date && target.master_id) {
+      await instantiateMaster(target.date, target.master_id, 'removed');
+    }
     setEditTarget(null);
     await reloadDay(target.date);
   };
@@ -311,6 +286,7 @@ export default function ScheduleCalendarPage() {
     const instructor = instructorsOpt.find(i => i.name === l.instructor_name);
     setEditTarget({
       instance_id: l.instance_id,
+      master_id: l.master_id ?? null,
       date,
       class_name: l.class_name,
       start_time: l.start_time,
@@ -527,7 +503,6 @@ export default function ScheduleCalendarPage() {
                           ) : (
                             <button onClick={() => cancelInstance(l.instance_id!, selectedDay.date)} className={`${btn} bg-red-100 hover:bg-red-200 text-red-700`}>休講</button>
                           )}
-                          <button onClick={() => setMoveTarget({ fromDate: selectedDay.date, lesson: l })} className={`${btn} bg-sky-100 hover:bg-sky-200 text-sky-700`}>移動</button>
                           <button onClick={() => removeInstance(l.instance_id!, selectedDay.date, l.class_name)} className={`${btn} bg-slate-200 hover:bg-slate-300 text-slate-700`}>削除</button>
                         </>
                       )}
@@ -535,7 +510,6 @@ export default function ScheduleCalendarPage() {
                         <>
                           <button onClick={() => editMasterLesson(selectedDay.date, l)} className={`${btn} bg-orange-100 hover:bg-orange-200 text-orange-700`}>編集</button>
                           <button onClick={() => cancelMasterLesson(selectedDay.date, l)} className={`${btn} bg-red-100 hover:bg-red-200 text-red-700`}>休講</button>
-                          <button onClick={() => setMoveTarget({ fromDate: selectedDay.date, lesson: l })} className={`${btn} bg-sky-100 hover:bg-sky-200 text-sky-700`}>移動</button>
                           <button onClick={() => removeMasterLesson(selectedDay.date, l)} className={`${btn} bg-slate-200 hover:bg-slate-300 text-slate-700`}>削除</button>
                         </>
                       )}
@@ -571,67 +545,7 @@ export default function ScheduleCalendarPage() {
         />
       )}
 
-      {/* レッスン移動 (別日付へリスケ) モーダル */}
-      {moveTarget && (
-        <MoveLessonModal
-          fromDate={moveTarget.fromDate}
-          lesson={moveTarget.lesson}
-          onClose={() => setMoveTarget(null)}
-          onMove={async (toDate) => {
-            await moveLesson(moveTarget.fromDate, moveTarget.lesson, toDate);
-            setMoveTarget(null);
-          }}
-        />
-      )}
     </main>
-  );
-}
-
-// レッスンを別日付へ移動するモーダル (日付ピッカー)
-function MoveLessonModal({ fromDate, lesson, onClose, onMove }: {
-  fromDate: string;
-  lesson: Lesson;
-  onClose: () => void;
-  onMove: (toDate: string) => Promise<void>;
-}) {
-  const [toDate, setToDate] = useState(fromDate);
-  const [busy, setBusy] = useState(false);
-
-  const submit = async () => {
-    if (!toDate) { alert('移動先の日付を選んでください'); return; }
-    if (toDate === fromDate) { alert('同じ日付です。別の日付を選んでください'); return; }
-    setBusy(true);
-    try {
-      await onMove(toDate);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[60]" onClick={onClose}>
-      <div className="bg-white w-full sm:max-w-sm sm:rounded-xl rounded-t-2xl p-4" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3 pb-2 border-b">
-          <h3 className="font-bold text-base">🔀 レッスンを移動</h3>
-          <button onClick={onClose} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
-        </div>
-        <div className="text-sm font-bold mb-1">{lesson.class_name}</div>
-        <div className="text-xs text-slate-500 mb-3">
-          {lesson.start_time ? lesson.start_time.substring(0, 5) : '時間未設定'} / 現在: {fromDate}
-        </div>
-        <label className="text-[11px] text-slate-500 font-semibold">移動先の日付</label>
-        <input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 border rounded text-sm bg-white" />
-        <p className="mt-2 text-[10px] text-slate-400 leading-tight">
-          時間・スタジオ・講師はそのまま移動します (移動後に「この日を編集」で個別調整できます)。元の日付からは消えます。
-        </p>
-        <div className="flex gap-2 pt-3">
-          <button onClick={onClose} className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-sm font-semibold">キャンセル</button>
-          <button onClick={submit} disabled={busy} className="flex-1 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold disabled:opacity-50">
-            {busy ? '移動中...' : 'この日付へ移動'}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -763,8 +677,9 @@ function EditLessonModal({ target, studios, instructors, onClose, onSave }: {
   studios: StudioOption[];
   instructors: InstructorOption[];
   onClose: () => void;
-  onSave: (payload: { start_time: string; end_time: string; studio_id: number | null; instructor_id: number | null; notes: string | null }) => Promise<void>;
+  onSave: (payload: { date: string; start_time: string; end_time: string; studio_id: number | null; instructor_id: number | null; notes: string | null }) => Promise<void>;
 }) {
+  const [editDate, setEditDate] = useState(target.date);
   const [startTime, setStartTime] = useState(target.start_time ? target.start_time.substring(0, 5) : '');
   const [endTime, setEndTime] = useState(target.end_time ? target.end_time.substring(0, 5) : '');
   const [studioId, setStudioId] = useState(target.studio_id != null ? String(target.studio_id) : '');
@@ -777,6 +692,7 @@ function EditLessonModal({ target, studios, instructors, onClose, onSave }: {
     setBusy(true);
     try {
       await onSave({
+        date: editDate,
         start_time: startTime,
         end_time: endTime,
         studio_id: studioId ? Number(studioId) : null,
@@ -797,6 +713,10 @@ function EditLessonModal({ target, studios, instructors, onClose, onSave }: {
         </div>
         <div className="text-sm font-bold mb-3">{target.class_name}</div>
         <div className="space-y-3 text-sm">
+          <div>
+            <label className="text-[11px] text-slate-500 font-semibold">日付（変更すると別日へ移動）</label>
+            <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 border rounded bg-white" />
+          </div>
           <div>
             <label className="text-[11px] text-slate-500 font-semibold">時間</label>
             <div className="grid grid-cols-2 gap-2 mt-0.5">
