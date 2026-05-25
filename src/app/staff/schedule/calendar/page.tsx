@@ -491,6 +491,7 @@ export default function ScheduleCalendarPage() {
                       <span className="font-mono text-xs font-bold whitespace-nowrap">{l.start_time ? l.start_time.substring(0, 5) : '--:--'}</span>
                       <span className="text-[11px] text-slate-500 whitespace-nowrap">{l.studio_name ?? '-'}</span>
                       <span className="text-sm font-semibold truncate">{l.class_name}</span>
+                      {l.instructor_name && <span className="text-[11px] text-slate-500 whitespace-nowrap">👤{l.instructor_name}</span>}
                     </div>
                     {l.notes && <div className="text-[11px] text-slate-500 mt-0.5 truncate">📝 {l.notes}</div>}
                     {/* アクション */}
