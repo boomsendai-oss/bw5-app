@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +30,19 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   updates.push('updated_at = CURRENT_TIMESTAMP');
   args.push(numId);
   await execute(`UPDATE lesson_instances SET ${updates.join(', ')} WHERE id = ?`, args);
+
+  // 別日へ移動(date変更)した場合: 移動先に残っている「同じmasterの古い removed 番兵」を掃除する。
+  // (レッスンを行ったり来たり組み替えても、不要な番兵レコードが溜まらないようにする)
+  if (body.date !== undefined) {
+    const row = await getOne(`SELECT master_id FROM lesson_instances WHERE id = ?`, [numId]);
+    const mid = row?.master_id;
+    if (mid != null) {
+      await execute(
+        `DELETE FROM lesson_instances WHERE master_id = ? AND date = ? AND status = 'removed' AND id != ?`,
+        [mid, body.date, numId]
+      );
+    }
+  }
   return NextResponse.json({ ok: true });
 }
 
