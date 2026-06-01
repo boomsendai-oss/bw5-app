@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getAll, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { getActiveMemberCount, getMonthlyRevenue } from '@/lib/kpiMetrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -86,7 +87,12 @@ export async function POST(req: NextRequest) {
       `SELECT status, plan_name, enrolled_at, withdrew_at FROM boom_members`
     )) as MemberRow[];
 
-    let totalActive = 0;
+    // 在籍数は正準ロジック(日付ウィンドウ方式)で算出。
+    // status='active' でのカウントは過去月でズレるため使わない(経営インサイトと統一)。
+    const totalActive = await getActiveMemberCount(ym);
+
+    // プラン内訳(ticket/monthly/rest/other)は現在 active な会員の plan_name で分類。
+    // 当月末在籍数(totalActive)とは母数が一致しないことがあるが、内訳の参考値として保持。
     let ticket = 0;
     let monthly = 0;
     let rest = 0;
@@ -97,7 +103,6 @@ export async function POST(req: NextRequest) {
 
     for (const m of members) {
       if (m.status === 'active') {
-        totalActive += 1;
         const c = classifyPlan(m.plan_name);
         if (c === 'ticket') ticket += 1;
         else if (c === 'monthly') monthly += 1;
@@ -109,6 +114,9 @@ export async function POST(req: NextRequest) {
       if (m.enrolled_at && m.enrolled_at >= monthStart && m.enrolled_at < nextStart) newSignup += 1;
       if (m.withdrew_at && m.withdrew_at >= monthStart && m.withdrew_at < nextStart) churn += 1;
     }
+
+    // 当月売上(正準: hacomono_billing_records 実集計)
+    const monthlyRevenue = await getMonthlyRevenue(ym);
 
     // ---- Lstep 友だち ----
     type LstepRow = { blocked: number; role: string | null };
@@ -252,13 +260,22 @@ export async function POST(req: NextRequest) {
     );
     const notesJson = JSON.stringify({ auto: true, generated_at: new Date().toISOString(), detail });
 
+    // monthly_expense は既存値(手動入力されている可能性)を尊重。無ければ0。
+    const monthlyExpense = Number(
+      (existing as { monthly_expense?: number } | null)?.monthly_expense ?? 0
+    );
+    const monthlyProfit = monthlyRevenue - monthlyExpense;
+
     if (existing) {
-      // 金額は手動入力された可能性があるので保持
+      // 売上は正準ロジックで上書き(従来は0固定で保存されダッシュボード/月次が¥0になっていた)。
+      // monthly_expense は既存値を保持し、profit = revenue - expense で再計算。
       await execute(
         `UPDATE kpi_snapshots SET
           line_friends = ?,
           hacomono_members_active = ?,
           hacomono_members_retired = ?,
+          monthly_revenue = ?,
+          monthly_profit = ?,
           trial_count = ?,
           new_signup_count = ?,
           retention_count = ?,
@@ -270,6 +287,8 @@ export async function POST(req: NextRequest) {
           lstepTotal - lstepBlocked,
           totalActive,
           withdrewTotal,
+          monthlyRevenue,
+          monthlyProfit,
           tReserved,
           newSignup,
           tConverted,
@@ -285,12 +304,15 @@ export async function POST(req: NextRequest) {
            hacomono_members_active, hacomono_members_retired,
            monthly_revenue, monthly_expense, monthly_profit,
            trial_count, new_signup_count, retention_count, churn_count, notes
-         ) VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           snapshotDate,
           lstepTotal - lstepBlocked,
           totalActive,
           withdrewTotal,
+          monthlyRevenue,
+          monthlyExpense,
+          monthlyProfit,
           tReserved,
           newSignup,
           tConverted,

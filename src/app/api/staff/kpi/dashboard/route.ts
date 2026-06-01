@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { getActiveMemberCount } from '@/lib/kpiMetrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -36,17 +37,9 @@ export async function GET(req: NextRequest) {
        AND (withdrew_at IS NULL OR withdrew_at > ?)`,
     [monthStart, monthStart]
   ))?.n);
-  // 月末在籍数
-  // enrolled_at/withdrew_at は 'YYYY-MM-DD HH:MM:SS' 形式で保存されるため、
-  // 月末日の時刻付き行 (例 '2026-05-31 21:00:00') を取りこぼさないよう
-  // 境界には日付のみの monthEnd ではなく monthEndISO (…T23:59:59) を使う。
-  // 月末日の入会者が endActive から漏れて newSignups と矛盾する不具合を防ぐ。
-  const endActive = n((await safeOne(
-    `SELECT COUNT(*) AS n FROM boom_members
-     WHERE (enrolled_at IS NULL OR enrolled_at <= ?)
-       AND (withdrew_at IS NULL OR withdrew_at > ?)`,
-    [monthEndISO, monthEndISO]
-  ))?.n);
+  // 月末在籍数 — 正準ロジック(src/lib/kpiMetrics.ts)に集約。
+  // この関数は上記インラインSQLと同一定義(月末境界 monthEndISO で <= / >)。
+  const endActive = await getActiveMemberCount(ym);
   // 当月新規入会
   const newSignups = n((await safeOne(
     `SELECT COUNT(*) AS n FROM boom_members WHERE enrolled_at BETWEEN ? AND ?`,

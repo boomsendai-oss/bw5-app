@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { getActiveMemberCount } from '@/lib/kpiMetrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,6 +21,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // 在籍数は正準ロジック(当月末・日付ウィンドウ方式)で算出し経営インサイトと統一。
+  const now = new Date();
+  const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
   const [
     membersActive,
     membersWithdrew,
@@ -33,7 +38,7 @@ export async function GET(req: NextRequest) {
     unlinkedMembers,
     monthlyReports,
   ] = await Promise.all([
-    count(`SELECT COUNT(*) as n FROM boom_members WHERE status = 'active'`),
+    getActiveMemberCount(currentYm).catch(() => 0),
     count(`SELECT COUNT(*) as n FROM boom_members WHERE status = 'withdrew'`),
     count(`SELECT COUNT(*) as n FROM lesson_schedule WHERE status = 'active'`),
     count(`SELECT COUNT(*) as n FROM video_preorders WHERE (status IS NULL OR status != 'duplicate')`),
