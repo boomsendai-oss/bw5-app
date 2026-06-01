@@ -292,11 +292,11 @@ export default function PayrollPage() {
         {runs.length > 0 && (
           <div className="sm:hidden space-y-2.5">
             {runs.map(r => (
-              <div key={r.id} className="bg-white rounded-xl border border-neutral-200 p-3 shadow-sm">
+              <div key={r.id} className={`rounded-xl p-3 shadow-sm ${r.status === 'confirmed' ? 'bg-emerald-50 border-2 border-emerald-400' : 'bg-white border border-neutral-200'}`}>
                 {/* 名前 + バッジ */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-bold text-base">{r.instructor_name}</span>
+                    <span className="font-bold text-base">{r.instructor_name}{r.status === 'confirmed' && ' ✨'}</span>
                     {r.salary_type === 'monthly_fixed' && (
                       <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">固定給</span>
                     )}
