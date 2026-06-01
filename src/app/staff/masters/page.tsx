@@ -33,6 +33,8 @@ type Instructor = {
   bank_account_holder: string | null;
   notes: string | null;
   active: number;
+  salary_type: string | null;
+  monthly_fixed_amount: number | null;
 };
 
 type Rate = { id: number; instructor_id: number; duration_minutes: number; rate: number };
@@ -481,6 +483,7 @@ export default function MastersPage() {
                   }) : '—'}
                 </DetailRow>
                 <DetailRow label="プロフィール">{detail.data.profile_text || '—'}</DetailRow>
+                <DetailRow label="給与体系">{detail.data.salary_type === 'monthly_fixed' ? `固定給 ¥${(detail.data.monthly_fixed_amount ?? 0).toLocaleString()}/月` : '時給制 (レッスン単価)'}</DetailRow>
                 <DetailRow label="銀行">{detail.data.bank_name || '—'} {detail.data.bank_branch || ''} / {detail.data.bank_account_type || ''} {detail.data.bank_account_number || ''} / {detail.data.bank_account_holder || ''}</DetailRow>
                 <DetailRow label="メモ">{detail.data.notes || '—'}</DetailRow>
               </div>
@@ -626,6 +629,30 @@ export default function MastersPage() {
               <Field label="口座番号" value={editing.data.bank_account_number ?? ''} onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, bank_account_number: v } })} />
               <Field label="口座名義" value={editing.data.bank_account_holder ?? ''} onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, bank_account_holder: v } })} />
               <Field label="メモ" value={editing.data.notes ?? ''} onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, notes: v } })} />
+
+              <label className="block">
+                <span className="text-xs text-slate-500">給与体系</span>
+                <select
+                  value={editing.data.salary_type ?? 'per_lesson'}
+                  onChange={e => setEditing({ kind: 'instructor', data: { ...editing.data, salary_type: e.target.value } })}
+                  className="w-full border rounded px-2 py-1 text-sm bg-white"
+                >
+                  <option value="per_lesson">時給制 (レッスン単価)</option>
+                  <option value="monthly_fixed">固定給 (月額固定)</option>
+                </select>
+              </label>
+              {editing.data.salary_type === 'monthly_fixed' && (
+                <label className="block">
+                  <span className="text-xs text-slate-500">固定給額 (月額 ¥)</span>
+                  <input
+                    type="number"
+                    value={editing.data.monthly_fixed_amount ?? ''}
+                    onChange={e => setEditing({ kind: 'instructor', data: { ...editing.data, monthly_fixed_amount: e.target.value === '' ? null : Number(e.target.value) } })}
+                    className="w-full border rounded px-2 py-1 text-sm bg-white"
+                    placeholder="例: 70000"
+                  />
+                </label>
+              )}
             </div>
 
             <div className="mt-4">
