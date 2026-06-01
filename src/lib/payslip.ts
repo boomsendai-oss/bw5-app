@@ -68,6 +68,30 @@ function getLogoSrc(): string {
   return logoSrcCache;
 }
 
+// サーバーレスChromium(Vercel)には日本語フォントが無く、漢字・かなが空白になる。
+// フォントを base64 で @font-face に埋め込めば、fontconfig も外部DLも不要で確実に描画される
+// (ロゴ画像の base64 埋め込みと同じ理屈)。
+let jpFontFaceCache: string | null = null;
+function getJpFontFace(): string {
+  if (jpFontFaceCache !== null) return jpFontFaceCache;
+  const fontPath = path.join(
+    process.cwd(),
+    "src",
+    "assets",
+    "NotoSansJP-Regular.ttf"
+  );
+  try {
+    const b64 = fs.readFileSync(fontPath).toString("base64");
+    jpFontFaceCache =
+      `@font-face{font-family:'BoomJP';` +
+      `src:url(data:font/ttf;base64,${b64}) format('truetype');` +
+      `font-weight:400;font-style:normal;}`;
+  } catch {
+    jpFontFaceCache = "";
+  }
+  return jpFontFaceCache;
+}
+
 export function buildPayslipHtml(data: PayslipData): string {
   const { run, lines, adjustments } = data;
   const [yy, mmRaw] = run.year_month.split("-");
@@ -106,8 +130,9 @@ export function buildPayslipHtml(data: PayslipData): string {
   const logoTag = logoSrc ? `<img src="${logoSrc}" alt="BOOM">` : "";
 
   return `<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><style>
+  ${getJpFontFace()}
   @page{size:A4;margin:16mm}*{box-sizing:border-box}
-  body{font-family:"Hiragino Sans","Noto Sans JP","Hiragino Kaku Gothic ProN",sans-serif;color:#1f2433;font-size:12px}
+  body{font-family:'BoomJP',"Hiragino Sans","Noto Sans JP","Hiragino Kaku Gothic ProN",sans-serif;color:#1f2433;font-size:12px}
   .top{display:flex;align-items:center;gap:14px;border-bottom:3px solid ${NAVY};padding-bottom:10px;margin-bottom:16px}
   .top img{height:60px;width:auto;border-radius:6px}
   .titlebox h1{font-size:19px;margin:0 0 2px;color:${NAVY};letter-spacing:1px}
@@ -161,15 +186,8 @@ async function launchBrowser(): Promise<Browser> {
   if (isVercel) {
     const chromiumMod = await import("@sparticuz/chromium");
     const chromium = chromiumMod.default ?? chromiumMod;
-    // サーバーレスChromiumには日本語フォントが無く、漢字・かなが空白で出力される。
-    // puppeteer.launch の前に Noto Sans JP を登録して日本語を描画できるようにする。
-    try {
-      await chromium.font(
-        "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf"
-      );
-    } catch (e) {
-      console.error("payslip: 日本語フォント読み込み失敗", e);
-    }
+    // 日本語フォントは buildPayslipHtml() の @font-face(base64埋め込み)で確実に描画するため、
+    // ここでの chromium.font() による外部DL登録は不要(fontconfig 依存で不安定だった)。
     return puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
