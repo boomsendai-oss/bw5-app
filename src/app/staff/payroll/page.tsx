@@ -18,6 +18,8 @@ type PayrollRun = {
   pdf_url: string | null;
   payslip_folder_url: string | null;
   generated_at: string | null;
+  drive_file_id: string | null;
+  payslip_uploaded_at: string | null;
 };
 
 type Line = {
@@ -106,6 +108,49 @@ export default function PayrollPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const [rowBusy, setRowBusy] = useState<Record<number, string>>({});
+
+  const uploadOne = async (runId: number): Promise<boolean> => {
+    setRowBusy(s => ({ ...s, [runId]: "up" }));
+    try {
+      const res = await fetch(`/api/staff/payroll/${runId}/payslip/upload`, { method: "POST", credentials: "include" });
+      if (!res.ok) { throw new Error(await res.text()); }
+      return true;
+    } catch (e) {
+      setErr(`アップロード失敗(run ${runId}): ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    } finally {
+      setRowBusy(s => { const n = { ...s }; delete n[runId]; return n; });
+    }
+  };
+
+  const deleteOne = async (runId: number) => {
+    if (!confirm("Driveの明細PDFを削除しますか?")) return;
+    setRowBusy(s => ({ ...s, [runId]: "del" }));
+    try {
+      const res = await fetch(`/api/staff/payroll/${runId}/payslip`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error(await res.text());
+    } catch (e) {
+      setErr(`削除失敗: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRowBusy(s => { const n = { ...s }; delete n[runId]; return n; });
+      await load(ym);
+    }
+  };
+
+  const uploadAll = async () => {
+    if (!confirm(`${runs.length}名分の明細をDriveへアップロードします。よろしいですか?`)) return;
+    setBusy(true);
+    let ok = 0, ng = 0;
+    for (const r of runs) {
+      const success = await uploadOne(r.id);
+      success ? ok++ : ng++;
+    }
+    setBusy(false);
+    await load(ym);
+    alert(`アップロード完了: 成功 ${ok} / 失敗 ${ng}`);
   };
 
   const openDetail = async (runId: number) => {
@@ -197,6 +242,10 @@ export default function PayrollPage() {
               className="px-3 py-1.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 text-sm font-semibold">
               📥 UTF-8
             </a>
+            <button onClick={uploadAll} disabled={busy || runs.length === 0}
+              className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50">
+              ⬆ 全員アップ
+            </button>
           </div>
         </div>
 
@@ -239,8 +288,23 @@ export default function PayrollPage() {
                       }`}>
                         {r.status === 'paid' ? '振込済' : r.status === 'confirmed' ? '確定' : '下書き'}
                       </span>
+                      {r.payslip_uploaded_at && <span className="ml-1 text-[9px] px-1 bg-emerald-100 text-emerald-700 rounded">配布済</span>}
                     </td>
-                    <td className="px-3 py-2 text-center text-xs text-orange-600">詳細 →</td>
+                    <td className="px-3 py-2 text-center text-xs whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                      <a href={`/api/staff/payroll/${r.id}/pdf`} target="_blank" rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline mr-2" title="PDFプレビュー">👁</a>
+                      <button onClick={() => uploadOne(r.id).then(() => load(ym))} disabled={!!rowBusy[r.id]}
+                        className="text-emerald-700 hover:underline mr-2 disabled:opacity-40">
+                        {rowBusy[r.id] === "up" ? "..." : r.drive_file_id ? "再アップ" : "⬆アップ"}
+                      </button>
+                      {r.drive_file_id && (
+                        <>
+                          {r.pdf_url && <a href={r.pdf_url} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:underline mr-2" title="Driveで開く">📁</a>}
+                          <button onClick={() => deleteOne(r.id)} disabled={!!rowBusy[r.id]}
+                            className="text-red-600 hover:underline disabled:opacity-40" title="削除">🗑</button>
+                        </>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
