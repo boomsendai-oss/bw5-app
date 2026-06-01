@@ -138,10 +138,14 @@ export default function PayrollPage() {
   const deleteOne = async (runId: number) => {
     if (!confirm("Driveの明細PDFを削除しますか?")) return;
     setRowBusy(s => ({ ...s, [runId]: "del" }));
+    // 楽観的: 配布済バッジを即消す
+    const prev = runs;
+    setRuns(rs => rs.map(r => r.id === runId ? { ...r, drive_file_id: null, payslip_uploaded_at: null } : r));
     try {
       const res = await fetch(`/api/staff/payroll/${runId}/payslip`, { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error(await res.text());
     } catch (e) {
+      setRuns(prev); // ロールバック
       setErr(`削除失敗: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setRowBusy(s => { const n = { ...s }; delete n[runId]; return n; });
@@ -167,19 +171,37 @@ export default function PayrollPage() {
     if (drafts.length === 0) { alert('確定対象(下書き)がありません'); return; }
     if (!confirm(`下書きの${drafts.length}名を「確定」にします。よろしいですか?`)) return;
     setBusy(true);
+    setErr('');
+    const draftIds = new Set(drafts.map(d => d.id));
+    const prev = runs;
+    // 楽観的: 下書き全員を即 confirmed に
+    setRuns(rs => rs.map(r => draftIds.has(r.id) ? { ...r, status: 'confirmed' } : r));
+    const failed: number[] = [];
     for (const r of drafts) {
       try {
-        await fetch(`/api/staff/payroll/${r.id}`, {
+        const res = await fetch(`/api/staff/payroll/${r.id}`, {
           method: 'PATCH',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'confirmed' }),
         });
-      } catch {}
+        if (!res.ok) throw new Error(await res.text());
+      } catch {
+        failed.push(r.id);
+      }
+    }
+    if (failed.length > 0) {
+      // 失敗分だけ元の状態に戻す
+      const failedSet = new Set(failed);
+      setRuns(rs => rs.map(r => {
+        if (!failedSet.has(r.id)) return r;
+        const orig = prev.find(p => p.id === r.id);
+        return orig ? { ...r, status: orig.status } : r;
+      }));
+      setErr(`確定失敗: ${failed.length}名(他${drafts.length - failed.length}名は確定済)`);
     }
     setBusy(false);
-    await load(ym);
-    alert(`${drafts.length}名を確定しました`);
+    alert(`${drafts.length - failed.length}名を確定しました${failed.length ? ` / 失敗 ${failed.length}名` : ''}`);
   };
 
   const openDetail = async (runId: number) => {
@@ -232,6 +254,27 @@ export default function PayrollPage() {
     }
   };
 
+  // 楽観的ステータス変更(カード用): 即画面反映 → 裏でPATCH → 失敗ならロールバック
+  const changeStatus = async (runId: number, next: string) => {
+    const prev = runs;
+    setRowBusy(s => ({ ...s, [runId]: 'status' }));
+    setRuns(rs => rs.map(r => r.id === runId ? { ...r, status: next } : r)); // 楽観的
+    try {
+      const res = await fetch(`/api/staff/payroll/${runId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+    } catch (e) {
+      setRuns(prev); // ロールバック
+      setErr(`状態変更失敗: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRowBusy(s => { const n = { ...s }; delete n[runId]; return n; });
+    }
+  };
+
   const grandTotal = runs.reduce((s, r) => s + r.total_amount, 0);
 
   return (
@@ -260,8 +303,8 @@ export default function PayrollPage() {
           </div>
           <div className="flex gap-2 flex-wrap">
             <button onClick={calculate} disabled={busy}
-              className="px-3 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">
-              {busy ? '計算中...' : '🔄 計算実行'}
+              className="px-3 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold disabled:opacity-50 active:scale-95 transition">
+              {busy ? '⏳ 処理中…' : '🔄 計算実行'}
             </button>
             <a href={`/api/staff/bank-transfer/payroll?year_month=${ym}`} download
               className="px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold">
@@ -272,12 +315,12 @@ export default function PayrollPage() {
               📥 UTF-8
             </a>
             <button onClick={uploadAll} disabled={busy || runs.length === 0}
-              className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50">
-              ⬆ 全員アップ
+              className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50 active:scale-95 transition">
+              {busy ? '⏳ 処理中…' : '⬆ 全員アップ'}
             </button>
             <button onClick={confirmAll} disabled={busy || runs.length === 0}
-              className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50">
-              ✓ 全員確定
+              className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 active:scale-95 transition">
+              {busy ? '⏳ 処理中…' : '✓ 全員確定'}
             </button>
           </div>
         </div>
@@ -326,31 +369,31 @@ export default function PayrollPage() {
                 {/* ボタン */}
                 <div className="flex gap-2 mt-3">
                   <a href={previewUrl(r)} target="_blank" rel="noopener noreferrer"
-                    className="flex-1 text-center border border-blue-200 text-blue-600 bg-blue-50 py-2.5 rounded-lg text-sm">
+                    className="flex-1 text-center border border-blue-200 text-blue-600 bg-blue-50 py-2.5 rounded-lg text-sm active:scale-95 transition">
                     👁 プレビュー
                   </a>
                   <button onClick={() => uploadOne(r.id).then(() => load(ym))} disabled={!!rowBusy[r.id]}
-                    className="flex-1 bg-emerald-600 text-white py-2.5 rounded-lg text-sm font-bold disabled:opacity-50">
-                    {rowBusy[r.id] === 'up' ? '...' : r.drive_file_id ? '⬆ 再アップ' : '⬆ アップ'}
+                    className="flex-1 bg-emerald-600 text-white py-2.5 rounded-lg text-sm font-bold disabled:opacity-50 active:scale-95 transition">
+                    {rowBusy[r.id] === 'up' ? '⏳ アップ中…' : r.drive_file_id ? '⬆ 再アップ' : '⬆ アップ'}
                   </button>
                   {r.drive_file_id && (
                     <button onClick={() => deleteOne(r.id)} disabled={!!rowBusy[r.id]}
-                      className="basis-12 shrink-0 border border-red-200 text-red-600 bg-red-50 py-2.5 rounded-lg disabled:opacity-50">
-                      🗑
+                      className="basis-12 shrink-0 border border-red-200 text-red-600 bg-red-50 py-2.5 rounded-lg disabled:opacity-50 active:scale-95 transition">
+                      {rowBusy[r.id] === 'del' ? '⏳' : '🗑'}
                     </button>
                   )}
                 </div>
 
                 {/* 状態変更 */}
                 {r.status === 'draft' && (
-                  <button onClick={() => updateStatus(r.id, 'confirmed')} disabled={!!rowBusy[r.id]}
-                    className="mt-2 w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-bold disabled:opacity-50">
+                  <button onClick={() => changeStatus(r.id, 'confirmed')} disabled={!!rowBusy[r.id]}
+                    className="mt-2 w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-bold disabled:opacity-50 active:scale-95 transition">
                     ✓ 確定する
                   </button>
                 )}
                 {r.status === 'confirmed' && (
-                  <button onClick={() => updateStatus(r.id, 'draft')} disabled={!!rowBusy[r.id]}
-                    className="mt-2 w-full py-2 rounded-lg border border-slate-300 text-slate-600 text-xs disabled:opacity-50">
+                  <button onClick={() => changeStatus(r.id, 'draft')} disabled={!!rowBusy[r.id]}
+                    className="mt-2 w-full py-2 rounded-lg border border-slate-300 text-slate-600 text-xs disabled:opacity-50 active:scale-95 transition">
                     下書きに戻す
                   </button>
                 )}
@@ -414,14 +457,14 @@ export default function PayrollPage() {
                       <a href={previewUrl(r)} target="_blank" rel="noopener noreferrer"
                         className="text-blue-600 hover:underline mr-2" title="PDFプレビュー">👁</a>
                       <button onClick={() => uploadOne(r.id).then(() => load(ym))} disabled={!!rowBusy[r.id]}
-                        className="text-emerald-700 hover:underline mr-2 disabled:opacity-40">
-                        {rowBusy[r.id] === "up" ? "..." : r.drive_file_id ? "再アップ" : "⬆アップ"}
+                        className="text-emerald-700 hover:underline mr-2 disabled:opacity-40 active:scale-95 transition inline-block">
+                        {rowBusy[r.id] === "up" ? "アップ中…" : r.drive_file_id ? "再アップ" : "⬆アップ"}
                       </button>
                       {r.drive_file_id && (
                         <>
                           {r.pdf_url && <a href={r.pdf_url} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:underline mr-2" title="Driveで開く">📁</a>}
                           <button onClick={() => deleteOne(r.id)} disabled={!!rowBusy[r.id]}
-                            className="text-red-600 hover:underline disabled:opacity-40" title="削除">🗑</button>
+                            className="text-red-600 hover:underline disabled:opacity-40 active:scale-95 transition inline-block" title="削除">{rowBusy[r.id] === "del" ? "削除中…" : "🗑"}</button>
                         </>
                       )}
                     </td>
