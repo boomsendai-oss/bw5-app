@@ -41,9 +41,16 @@ export function toHankakuKana(s: string): string {
   s = hiraToKana(s);
   let r = '';
   for (const ch of s) {
+    const code = ch.charCodeAt(0);
     if (KANA_FULL_TO_HALF[ch]) {
       r += KANA_FULL_TO_HALF[ch];
+    } else if (code >= 0xff61 && code <= 0xff9f) {
+      // 既に半角カナ(ﾜ ｺ ｳ 等・濁点含む)はそのまま通す
+      r += ch;
     } else if (/[A-Za-z0-9]/.test(ch)) {
+      r += ch;
+    } else if (ch === '-' || ch === '.') {
+      // 半角ハイフン・ピリオドはそのまま
       r += ch;
     } else if (ch.charCodeAt(0) >= 0xff10 && ch.charCodeAt(0) <= 0xff19) {
       r += String.fromCharCode(ch.charCodeAt(0) - 0xfee0); // 全角数字
@@ -79,17 +86,17 @@ function normalizeAccountType(s: string | null | undefined): string {
   return '1';
 }
 
-// GMO青空ネット銀行 総合振込フォーマット (CSV形式)
-// 1行目: ヘッダー
-// 2行目以降: データ
-// ※ GMO公式の正確な仕様は要確認だが、一般的な全銀協フォーマットCSV版を採用
+// GMOあおぞらネット銀行 総合振込フォーマット (CSV形式)
+// 2026年4月の実績CSV(GMOで取込成功済)に準拠:
+//   ヘッダー行なし / 8列固定
+//   銀行C(4), 支店C(3), 預金種別(1=普通), 口座番号(7), 受取人カナ, 金額, 区分(=1固定), 依頼人カナ
+//   例: 0038,102,1,9253691,ｷﾑﾗｹｲｺ,60000,1,ﾌﾞｰﾑ
 export function generateBankTransferCsv(
   lines: BankTransferLine[],
   options: { requester_name?: string; transfer_date?: string } = {}
 ): string {
-  const header = ['銀行コード','支店コード','預金種目','口座番号','受取人名(半角カナ)','振込金額','EDI情報','振込依頼人名'];
-  const rows = [header.join(',')];
-  const requester = toHankakuKana(options.requester_name ?? 'ﾌﾞｰﾑ ﾀﾞﾝｽｽｸｰﾙ');
+  const rows: string[] = []; // ヘッダー行なし
+  const requester = toHankakuKana(options.requester_name ?? 'ﾌﾞｰﾑ');
   for (const l of lines) {
     if (!l.bank_code || !l.account_number || l.amount <= 0) continue;
     const row = [
@@ -99,7 +106,7 @@ export function generateBankTransferCsv(
       l.account_number.padStart(7, '0'),
       toHankakuKana(l.recipient_name).substring(0, 30),
       String(l.amount),
-      '',
+      '1', // 区分: 4月実績では全行 1
       requester.substring(0, 30),
     ];
     rows.push(row.map(escapeCsv).join(','));
