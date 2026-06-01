@@ -308,11 +308,7 @@ export default function PayrollPage() {
             </button>
             <a href={`/api/staff/bank-transfer/payroll?year_month=${ym}`} download
               className="px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold">
-              🏦 振込CSV (SJIS)
-            </a>
-            <a href={`/api/staff/bank-transfer/payroll?year_month=${ym}&encoding=utf8`} download
-              className="px-3 py-1.5 rounded bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 text-sm font-semibold">
-              📥 UTF-8
+              🏦 振込CSV
             </a>
             <button onClick={uploadAll} disabled={busy || runs.length === 0}
               className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50 active:scale-95 transition">
