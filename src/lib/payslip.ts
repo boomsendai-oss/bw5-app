@@ -107,7 +107,7 @@ export function buildPayslipHtml(data: PayslipData): string {
 
   return `<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><style>
   @page{size:A4;margin:16mm}*{box-sizing:border-box}
-  body{font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN",sans-serif;color:#1f2433;font-size:12px}
+  body{font-family:"Hiragino Sans","Noto Sans JP","Hiragino Kaku Gothic ProN",sans-serif;color:#1f2433;font-size:12px}
   .top{display:flex;align-items:center;gap:14px;border-bottom:3px solid ${NAVY};padding-bottom:10px;margin-bottom:16px}
   .top img{height:60px;width:auto;border-radius:6px}
   .titlebox h1{font-size:19px;margin:0 0 2px;color:${NAVY};letter-spacing:1px}
@@ -161,6 +161,15 @@ async function launchBrowser(): Promise<Browser> {
   if (isVercel) {
     const chromiumMod = await import("@sparticuz/chromium");
     const chromium = chromiumMod.default ?? chromiumMod;
+    // サーバーレスChromiumには日本語フォントが無く、漢字・かなが空白で出力される。
+    // puppeteer.launch の前に Noto Sans JP を登録して日本語を描画できるようにする。
+    try {
+      await chromium.font(
+        "https://cdn.jsdelivr.net/fontsource/fonts/noto-sans-jp@latest/japanese-400-normal.ttf"
+      );
+    } catch (e) {
+      console.error("payslip: 日本語フォント読み込み失敗", e);
+    }
     return puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
