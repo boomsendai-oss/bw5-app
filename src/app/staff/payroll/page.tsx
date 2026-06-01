@@ -162,6 +162,26 @@ export default function PayrollPage() {
     alert(`アップロード完了: 成功 ${ok} / 失敗 ${ng}`);
   };
 
+  const confirmAll = async () => {
+    const drafts = runs.filter(r => r.status === 'draft');
+    if (drafts.length === 0) { alert('確定対象(下書き)がありません'); return; }
+    if (!confirm(`下書きの${drafts.length}名を「確定」にします。よろしいですか?`)) return;
+    setBusy(true);
+    for (const r of drafts) {
+      try {
+        await fetch(`/api/staff/payroll/${r.id}`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'confirmed' }),
+        });
+      } catch {}
+    }
+    setBusy(false);
+    await load(ym);
+    alert(`${drafts.length}名を確定しました`);
+  };
+
   const openDetail = async (runId: number) => {
     const res = await fetch(`/api/staff/payroll/${runId}`, { credentials: 'include' });
     if (!res.ok) return;
@@ -255,6 +275,10 @@ export default function PayrollPage() {
               className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50">
               ⬆ 全員アップ
             </button>
+            <button onClick={confirmAll} disabled={busy || runs.length === 0}
+              className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50">
+              ✓ 全員確定
+            </button>
           </div>
         </div>
 
@@ -316,6 +340,20 @@ export default function PayrollPage() {
                     </button>
                   )}
                 </div>
+
+                {/* 状態変更 */}
+                {r.status === 'draft' && (
+                  <button onClick={() => updateStatus(r.id, 'confirmed')} disabled={!!rowBusy[r.id]}
+                    className="mt-2 w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-bold disabled:opacity-50">
+                    ✓ 確定する
+                  </button>
+                )}
+                {r.status === 'confirmed' && (
+                  <button onClick={() => updateStatus(r.id, 'draft')} disabled={!!rowBusy[r.id]}
+                    className="mt-2 w-full py-2 rounded-lg border border-slate-300 text-slate-600 text-xs disabled:opacity-50">
+                    下書きに戻す
+                  </button>
+                )}
 
                 {/* 詳細リンク */}
                 <div className="text-right mt-1.5">
