@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
-import { getActiveMemberCount } from '@/lib/kpiMetrics';
+import { getActiveMemberCount, getUtilizationRate } from '@/lib/kpiMetrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -194,10 +194,12 @@ export async function GET(req: NextRequest) {
     normalClasses.push(base);
   }
 
-  // ヘッドライン平均 = normal クラスのみ・予約数 (cnt) 重み付け
+  // ヘッドライン平均 = normal クラスのみ・予約数 (cnt) 重み付け。
+  // 正準ロジックは src/lib/kpiMetrics.ts の getUtilizationRate に集約。
+  // ここの分類(上の normalClasses/newClasses/...)はクラス別リスト表示用に
+  // 残すが、ヘッドラインの数値は正準関数を呼んで二重定義を排除する。
   const normalWeightSum = normalClasses.reduce((a, c) => a + c.cnt, 0);
-  const normalWeightedRate = normalClasses.reduce((a, c) => a + c.avg_rate * c.cnt, 0);
-  const avgUtilization = normalWeightSum > 0 ? normalWeightedRate / normalWeightSum : 0;
+  const avgUtilization = await getUtilizationRate(ym);
   const utilLessonCount = normalWeightSum;
   // data_available は分類前の元データの有無で判定 (全件除外でも未取込扱いにしない)
   const utilHasData = utilClassRows.length > 0;

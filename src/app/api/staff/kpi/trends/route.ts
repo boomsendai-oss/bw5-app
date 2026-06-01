@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { getUtilizationRate } from '@/lib/kpiMetrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -32,12 +33,10 @@ export async function GET(req: NextRequest) {
     `SELECT COUNT(*) AS n FROM lstep_friends WHERE blocked = 0`,
   ))?.n);
 
-  // 予約ベース稼働率 (dashboard route と同一ロジック)。
-  // RS002 のチェックインベース稼働率は未出席レッスンが 0% になるため予約ベースを採用。
-  const UTIL_EXPR =
-    `CASE WHEN capacity IS NOT NULL AND capacity > 0
-          THEN CAST(total_reservations AS REAL) / capacity
-          ELSE utilization_rate END`;
+  // 稼働率は dashboard route(経営インサイト)と同一の正準ロジックを使う。
+  // src/lib/kpiMetrics.ts の getUtilizationRate に集約済み:
+  //   通常クラスのみ・予約数重み付け(excluded/new/watch を除外)。
+  // これによりインサイトのヘッドライン稼働率とトレンドの最新月が一致する。
 
   const now = new Date();
   const monthsArr: string[] = [];
@@ -85,13 +84,9 @@ export async function GET(req: NextRequest) {
     );
     const rev = billingRows.length > 0 ? n(billingRows[0].total) : 0;
 
-    // 月平均稼働率 (%) — 予約ベース
-    const utilRows = await safeAll(
-      `SELECT AVG(${UTIL_EXPR}) AS avg_rate
-       FROM lesson_utilization WHERE lesson_date BETWEEN ? AND ?`,
-      [monthStart, monthEnd],
-    );
-    const utilPct = utilRows.length > 0 ? n(utilRows[0].avg_rate) * 100 : 0;
+    // 月の稼働率 (%) — dashboard と同一の正準ロジック(通常クラスのみ・予約数重み付け)
+    let utilPct = 0;
+    try { utilPct = (await getUtilizationRate(ym)) * 100; } catch { utilPct = 0; }
 
     monthsArr.push(ym);
     revenue.push(rev);

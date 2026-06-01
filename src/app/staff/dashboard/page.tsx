@@ -37,6 +37,15 @@ const BLUE = '#0ea5e9';
 const GREEN = '#16a34a';
 const PURPLE = '#9333ea';
 
+// CVR(体験→入会)の唯一の定義:
+// 「当月体験者のうち14日以内に入会した実数(retention_count) ÷ 体験数(trial_count)」。
+// カードもグラフもこの関数を使い、二重定義を排除する。
+// new_signup_count(当月入会総数)は体験者本人かに関わらず数えるため CVR には使わない。
+function computeCvr(s: { trial_count: number; retention_count: number } | undefined | null): number | null {
+  if (!s || !s.trial_count) return null;
+  return (s.retention_count / s.trial_count) * 100;
+}
+
 function formatYM(date: string): string {
   const m = /^(\d{4})-(\d{2})/.exec(date);
   if (!m) return date;
@@ -216,16 +225,9 @@ export default function DashboardPage() {
   const latest = snapshots[0];
   const prev = snapshots[1];
 
-  // CVR (体験→入会)
-  const cvr = useMemo(() => {
-    if (!latest || !latest.trial_count) return null;
-    return (latest.new_signup_count / latest.trial_count) * 100;
-  }, [latest]);
-
-  const prevCvr = useMemo(() => {
-    if (!prev || !prev.trial_count) return null;
-    return (prev.new_signup_count / prev.trial_count) * 100;
-  }, [prev]);
+  // CVR (体験→入会) — カード・グラフ共通の computeCvr を使う(14日以内入会の実数 ÷ 体験数)
+  const cvr = useMemo(() => computeCvr(latest), [latest]);
+  const prevCvr = useMemo(() => computeCvr(prev), [prev]);
 
   // 過去6ヶ月推移: 体験/入会/退会/CVR
   const chartFlowData = useMemo(() => {
@@ -234,7 +236,7 @@ export default function DashboardPage() {
       .slice()
       .reverse()
       .map((s) => {
-        const cvr = s.trial_count > 0 ? (s.retention_count / s.trial_count) * 100 : 0;
+        const cvr = computeCvr(s) ?? 0;
         return {
           month: formatYM(s.snapshot_date),
           体験: s.trial_count,

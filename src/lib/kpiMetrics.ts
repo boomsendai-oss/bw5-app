@@ -1,4 +1,4 @@
-import { getOne } from './db';
+import { getOne, getAll } from './db';
 
 /**
  * 経営KPIの「正準(canonical)」集計ロジック。
@@ -59,4 +59,94 @@ export async function getMonthlyRevenue(ym: string): Promise<number> {
     [monthStart, monthEnd]
   );
   return Number(row?.total ?? 0);
+}
+
+/**
+ * 指定月の稼働率(0〜1の実数)。ym='YYYY-MM'。
+ *
+ * dashboard route(経営インサイト)の「ヘッドライン稼働率(avgUtilization)」と
+ * 同一定義。SQL・分類ロジック・重み付けを **そのまま** 集約してある:
+ *   - 予約ベース: capacity があれば total_reservations / capacity、無ければ
+ *     保存済み utilization_rate にフォールバック。
+ *   - クラス別(program_name, staff_name)に AVG で集計後、各クラスを
+ *     excluded / new(立ち上げ期) / watch(要対策) / normal に分類。
+ *   - ヘッドライン = normal(通常)クラスのみ・予約数(cnt)重み付け平均。
+ *
+ * trends route もこの関数を呼ぶことで、インサイトのヘッドライン稼働率と
+ * トレンドグラフの最新月が完全一致する。
+ */
+export async function getUtilizationRate(ym: string): Promise<number> {
+  const [y, m] = splitYm(ym);
+  const lastDay = new Date(y, m, 0).getDate();
+  const monthStart = `${ym}-01`;
+  const monthEnd = `${ym}-${String(lastDay).padStart(2, '0')}`;
+
+  const UTIL_EXPR =
+    `CASE WHEN capacity IS NOT NULL AND capacity > 0
+          THEN CAST(total_reservations AS REAL) / capacity
+          ELSE utilization_rate END`;
+
+  // クラス別 (program_name, staff_name) 集計 — 当月。
+  const utilClassRows = (await getAll(
+    `SELECT program_name, staff_name, AVG(${UTIL_EXPR}) AS avg_rate, COUNT(*) AS cnt
+     FROM lesson_utilization WHERE lesson_date BETWEEN ? AND ?
+     GROUP BY program_name, staff_name
+     HAVING cnt >= 1`,
+    [monthStart, monthEnd]
+  )) as Record<string, unknown>[];
+
+  if (utilClassRows.length === 0) return 0;
+
+  // 分類上書き設定 (program_name 単位)
+  const overrideRows = (await getAll(
+    `SELECT program_name, category, launched_at FROM class_kpi_overrides`
+  )) as Record<string, unknown>[];
+  const overrideMap = new Map<string, { category: string | null; launched_at: string | null }>();
+  for (const o of overrideRows) {
+    overrideMap.set(o.program_name as string, {
+      category: (o.category as string | null) ?? null,
+      launched_at: (o.launched_at as string | null) ?? null,
+    });
+  }
+
+  // しきい値 (settings に行があれば尊重、無ければデフォルト)
+  const lowThrRow = await getOne(`SELECT value FROM settings WHERE key = 'kpi_util_low_threshold'`);
+  const graceRow = await getOne(`SELECT value FROM settings WHERE key = 'kpi_util_new_grace_months'`);
+  const lowThreshold = lowThrRow && lowThrRow.value != null ? Number(lowThrRow.value) : 0.20;
+  const graceMonths = graceRow && graceRow.value != null ? Number(graceRow.value) : 6;
+
+  // 立ち上げ期判定の基準日 (今日) と grace 期間の起点
+  const now = new Date();
+  const graceCutoff = new Date(now.getFullYear(), now.getMonth() - graceMonths, now.getDate());
+
+  let normalWeightSum = 0;
+  let normalWeightedRate = 0;
+
+  for (const r of utilClassRows) {
+    const programName = (r.program_name as string | null) ?? '';
+    const avgRate = Number(r.avg_rate ?? 0);
+    const cnt = Number(r.cnt ?? 0);
+    const ov = overrideMap.get(programName);
+
+    // 優先順位: excluded > new > watch > normal
+    // 1) excluded: program_name === 'イベント' または override.category === 'exclude'
+    if (programName === 'イベント' || ov?.category === 'exclude') continue;
+    // 2) new(立ち上げ期): override.category === 'new'、または launched_at が grace_months 以内
+    const launchedAt = ov?.launched_at ?? null;
+    const isNewByDate = !!launchedAt && new Date(launchedAt) >= graceCutoff;
+    if (ov?.category === 'new' || (ov?.category == null && isNewByDate)) continue;
+    // override.category === 'normal' は強制的に通常 (自動watch判定を上書き)
+    if (ov?.category === 'normal') {
+      normalWeightSum += cnt;
+      normalWeightedRate += avgRate * cnt;
+      continue;
+    }
+    // 3) watch(要対策): override.category === 'watch'、または avg_rate < low_threshold
+    if (ov?.category === 'watch' || avgRate < lowThreshold) continue;
+    // 4) normal(通常)
+    normalWeightSum += cnt;
+    normalWeightedRate += avgRate * cnt;
+  }
+
+  return normalWeightSum > 0 ? normalWeightedRate / normalWeightSum : 0;
 }
