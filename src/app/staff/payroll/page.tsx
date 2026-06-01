@@ -255,8 +255,81 @@ export default function PayrollPage() {
           <p className="text-slate-500 text-sm p-4 bg-white rounded border">この月の計算結果はまだありません。「計算実行」を押してください。</p>
         )}
 
+        {/* スマホ: カード型レイアウト */}
         {runs.length > 0 && (
-          <div className="bg-white rounded-lg border border-neutral-200 overflow-x-auto">
+          <div className="sm:hidden space-y-2.5">
+            {runs.map(r => (
+              <div key={r.id} className="bg-white rounded-xl border border-neutral-200 p-3 shadow-sm">
+                {/* 名前 + バッジ */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-bold text-base">{r.instructor_name}</span>
+                    {r.salary_type === 'monthly_fixed' && (
+                      <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">固定給</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      r.status === 'paid' ? 'bg-green-100 text-green-700' :
+                      r.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
+                      'bg-slate-100 text-slate-600'
+                    }`}>
+                      {r.status === 'paid' ? '振込済' : r.status === 'confirmed' ? '確定' : '下書き'}
+                    </span>
+                    {r.payslip_uploaded_at && (
+                      <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded">配布済</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 合計金額 */}
+                <div className="text-2xl font-extrabold text-orange-700 mt-1">{yen(r.total_amount)}</div>
+
+                {/* 内訳 */}
+                <div className="text-xs text-slate-500 mt-0.5">
+                  レッスン{yen(r.total_lesson_amount)}・交通{yen(r.total_transit_amount)}・調整{r.total_adjustment_amount !== 0 ? yen(r.total_adjustment_amount) : '—'}
+                </div>
+
+                {/* ボタン */}
+                <div className="flex gap-2 mt-3">
+                  <a href={`/api/staff/payroll/${r.id}/pdf`} target="_blank" rel="noopener noreferrer"
+                    className="flex-1 text-center border border-blue-200 text-blue-600 bg-blue-50 py-2.5 rounded-lg text-sm">
+                    👁 プレビュー
+                  </a>
+                  <button onClick={() => uploadOne(r.id).then(() => load(ym))} disabled={!!rowBusy[r.id]}
+                    className="flex-1 bg-emerald-600 text-white py-2.5 rounded-lg text-sm font-bold disabled:opacity-50">
+                    {rowBusy[r.id] === 'up' ? '...' : r.drive_file_id ? '⬆ 再アップ' : '⬆ アップ'}
+                  </button>
+                  {r.drive_file_id && (
+                    <button onClick={() => deleteOne(r.id)} disabled={!!rowBusy[r.id]}
+                      className="basis-12 shrink-0 border border-red-200 text-red-600 bg-red-50 py-2.5 rounded-lg disabled:opacity-50">
+                      🗑
+                    </button>
+                  )}
+                </div>
+
+                {/* 詳細リンク */}
+                <div className="text-right mt-1.5">
+                  <button onClick={() => openDetail(r.id)} className="text-xs text-slate-400 hover:text-slate-600">
+                    詳細を見る ›
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {/* 合計ミニカード */}
+            <div className="bg-slate-50 rounded-xl border border-neutral-200 p-3 text-sm">
+              <div className="flex justify-between"><span className="text-slate-500">レッスン計</span><span className="font-mono">{yen(runs.reduce((s, r) => s + r.total_lesson_amount, 0))}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">交通計</span><span className="font-mono">{yen(runs.reduce((s, r) => s + r.total_transit_amount, 0))}</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">調整計</span><span className="font-mono">{yen(runs.reduce((s, r) => s + r.total_adjustment_amount, 0))}</span></div>
+              <div className="flex justify-between border-t mt-1 pt-1 font-bold"><span>合計</span><span className="font-mono text-orange-700">{yen(grandTotal)}</span></div>
+            </div>
+          </div>
+        )}
+
+        {/* PC: 既存テーブル (現状維持) */}
+        {runs.length > 0 && (
+          <div className="hidden sm:block bg-white rounded-lg border border-neutral-200 overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
               <thead className="bg-slate-50 border-b">
                 <tr>
