@@ -72,6 +72,15 @@ export default function PayrollPage() {
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [adjForm, setAdjForm] = useState<{ type: string; amount: string; description: string }>({ type: 'event_bonus', amount: '', description: '' });
 
+  // プレビューURL: アップ済みならDriveの埋め込みプレビュー(高速・キャッシュ済)、未アップはサーバー生成
+  const previewUrl = (r: PayrollRun): string => {
+    if (r.drive_file_id) {
+      // Driveの直接プレビュー(Googleがキャッシュ配信するため即表示)
+      return `https://drive.google.com/file/d/${r.drive_file_id}/view`;
+    }
+    return `/api/staff/payroll/${r.id}/pdf`;
+  };
+
   const load = useCallback(async (target: string) => {
     setLoading(true);
     setErr('');
@@ -292,7 +301,7 @@ export default function PayrollPage() {
 
                 {/* ボタン */}
                 <div className="flex gap-2 mt-3">
-                  <a href={`/api/staff/payroll/${r.id}/pdf`} target="_blank" rel="noopener noreferrer"
+                  <a href={previewUrl(r)} target="_blank" rel="noopener noreferrer"
                     className="flex-1 text-center border border-blue-200 text-blue-600 bg-blue-50 py-2.5 rounded-lg text-sm">
                     👁 プレビュー
                   </a>
@@ -364,7 +373,7 @@ export default function PayrollPage() {
                       {r.payslip_uploaded_at && <span className="ml-1 text-[9px] px-1 bg-emerald-100 text-emerald-700 rounded">配布済</span>}
                     </td>
                     <td className="px-3 py-2 text-center text-xs whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                      <a href={`/api/staff/payroll/${r.id}/pdf`} target="_blank" rel="noopener noreferrer"
+                      <a href={previewUrl(r)} target="_blank" rel="noopener noreferrer"
                         className="text-blue-600 hover:underline mr-2" title="PDFプレビュー">👁</a>
                       <button onClick={() => uploadOne(r.id).then(() => load(ym))} disabled={!!rowBusy[r.id]}
                         className="text-emerald-700 hover:underline mr-2 disabled:opacity-40">
