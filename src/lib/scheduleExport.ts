@@ -52,6 +52,8 @@ type MasterRow = {
   frequency_type: string | null;
   studio_name: string | null;
   instructor_name: string | null;
+  start_date: string | null; // この日以降のみ展開 (NULL=制限なし)
+  end_date: string | null;   // この日まで展開、翌日以降は生成しない (NULL=制限なし)
 };
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -65,11 +67,19 @@ const dateStr = (y: number, m: number, d: number) => `${y}-${pad(m)}-${pad(d)}`;
  *   (ICSは STATUS:CANCELLED、CSVは「休講」として扱う。除外は呼び出し側の責務)
  * - master展開は該当インスタンスが既にある日付ではスキップ (重複防止)
  */
-export async function buildLessonsForMonths(months: number): Promise<ExportLesson[]> {
+export async function buildLessonsForMonths(months: number, startYm?: string): Promise<ExportLesson[]> {
   const safeMonths = Math.max(1, Math.min(24, Math.floor(months) || 1));
-  const now = new Date();
-  const baseYear = now.getFullYear();
-  const baseMonth = now.getMonth() + 1; // 1-12
+  // startYm ('YYYY-MM') 指定時はその月を起点に。未指定なら今月起点(従来挙動)。
+  let baseYear: number;
+  let baseMonth: number;
+  if (startYm && /^\d{4}-\d{2}$/.test(startYm)) {
+    baseYear = parseInt(startYm.slice(0, 4), 10);
+    baseMonth = parseInt(startYm.slice(5, 7), 10);
+  } else {
+    const now = new Date();
+    baseYear = now.getFullYear();
+    baseMonth = now.getMonth() + 1; // 1-12
+  }
 
   // 期間 (今月初日 〜 (baseMonth + months - 1) の月末日)
   const startStr = dateStr(baseYear, baseMonth, 1);
@@ -90,6 +100,7 @@ export async function buildLessonsForMonths(months: number): Promise<ExportLesso
   const masters = (await getAll(
     `SELECT lm.id, lm.class_name, lm.default_day_of_week AS day_of_week, lm.default_start_time AS start_time,
             lm.default_end_time AS end_time, lm.duration_minutes, lm.frequency_type,
+            lm.start_date, lm.end_date,
             s.name AS studio_name, i.name AS instructor_name
      FROM lesson_master lm
      LEFT JOIN studios s ON s.id = lm.default_studio_id
@@ -98,6 +109,21 @@ export async function buildLessonsForMonths(months: number): Promise<ExportLesso
   )) as MasterRow[];
 
   const lessons: ExportLesson[] = [];
+
+  // master の開始日/終了日マップ (instance 側も範囲外なら抑止するため。active 問わず取得)
+  const dateRangeRows = (await getAll(
+    `SELECT id, start_date, end_date FROM lesson_master WHERE start_date IS NOT NULL OR end_date IS NOT NULL`
+  )) as { id: number; start_date: string | null; end_date: string | null }[];
+  const masterDateRange = new Map(dateRangeRows.map(r => [r.id, r]));
+  // 該当日がそのmasterの開始日〜終了日の範囲外なら true (= 生成・表示しない)
+  const outOfRange = (masterId: number | null, ds: string): boolean => {
+    if (masterId == null) return false;
+    const r = masterDateRange.get(masterId);
+    if (!r) return false;
+    if (r.start_date && ds < r.start_date) return true;
+    if (r.end_date && ds > r.end_date) return true;
+    return false;
+  };
 
   // 確定(凍結)済み月では master 週次展開をスキップ (instance スナップショットのみ)
   const confirmedMonths = await getConfirmedMonthsSet();
@@ -118,6 +144,8 @@ export async function buildLessonsForMonths(months: number): Promise<ExportLesso
       // status='removed' は「そもそも無かった」扱い → エクスポート(ICS/CSV/HACOMONO)に出さない。
       // (alreadyExpanded 判定は dayInstances 全件を使うので master 週次再展開は抑止される)
       if (ins.status === 'removed') continue;
+      // 終了したレッスン(master終了日超過)は休講インスタンスが残っていても出さない
+      if (outOfRange(ins.master_id, ds)) continue;
       lessons.push({
         date: ds,
         day_of_week: dow,
@@ -141,6 +169,8 @@ export async function buildLessonsForMonths(months: number): Promise<ExportLesso
     const ymOfDay = ds.slice(0, 7); // 'YYYY-MM'
     for (const mas of confirmedMonths.has(ymOfDay) ? [] : masters) {
       if (mas.day_of_week !== dow) continue;
+      // 開始日/終了日の範囲外は生成しない (終了したレッスンを二度と出さない)
+      if (outOfRange(mas.id, ds)) continue;
       const alreadyExpanded = dayInstances.some(i => i.master_id === mas.id);
       if (alreadyExpanded) continue;
       lessons.push({

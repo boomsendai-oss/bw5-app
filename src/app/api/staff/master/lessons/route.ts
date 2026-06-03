@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
     `INSERT INTO lesson_master
        (class_name, target, level, default_studio_id, default_instructor_id,
         default_day_of_week, default_start_time, default_end_time, duration_minutes,
-        frequency_type, override_rate, active, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        frequency_type, override_rate, active, notes, start_date, end_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       body.class_name,
       body.target ?? null,
@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
       body.override_rate ?? null,
       body.active ?? 1,
       body.notes ?? null,
+      body.start_date ?? null,
+      body.end_date ?? null,
     ]
   );
   return NextResponse.json({ ok: true, id: Number(result.lastInsertRowid) });

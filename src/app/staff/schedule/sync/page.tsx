@@ -55,6 +55,92 @@ export default function ScheduleSyncPage() {
   const blockIcsUrl =
     token && origin ? `${origin}/api/staff/schedule/export/ics?token=${token}&months=3&mode=block` : '';
 
+  // ===== Google所有カレンダー連携 (Lstep休講ブロック用) =====
+  const [gcalConnected, setGcalConnected] = useState<boolean | null>(null);
+  const [gcalId, setGcalId] = useState<string | null>(null);
+  const [gcalSyncing, setGcalSyncing] = useState(false);
+  const [gcalMsg, setGcalMsg] = useState<string>('');
+
+  // ===== 公開Googleレッスンカレンダー (sync-lesson-calendar / 差分同期) =====
+  const [lcConnected, setLcConnected] = useState<boolean | null>(null);
+  const [lcEmbedUrl, setLcEmbedUrl] = useState<string | null>(null);
+  const [lcSyncing, setLcSyncing] = useState(false);
+  const [lcMsg, setLcMsg] = useState<string>('');
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/staff/schedule/sync-lesson-calendar', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { connected?: boolean; embedUrl?: string | null } | null) => {
+        if (!cancelled && d) {
+          setLcConnected(!!d.connected);
+          setLcEmbedUrl(d.embedUrl ?? null);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const runLessonSync = async () => {
+    setLcSyncing(true);
+    setLcMsg('');
+    try {
+      const res = await fetch('/api/staff/schedule/sync-lesson-calendar?months=3', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        setLcMsg(`❌ ${d.error ?? res.status}`);
+        return;
+      }
+      setLcEmbedUrl(d.embedUrl ?? null);
+      setLcMsg(`✅ 同期完了：全${d.total}件（新規 ${d.created} / 更新 ${d.updated} / 維持 ${d.kept} / 削除 ${d.deleted}）`);
+    } catch (e) {
+      setLcMsg(e instanceof Error ? e.message : '通信エラー');
+    } finally {
+      setLcSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/staff/schedule/sync-google-calendar', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { connected?: boolean; calendarId?: string | null } | null) => {
+        if (!cancelled && d) {
+          setGcalConnected(!!d.connected);
+          setGcalId(d.calendarId ?? null);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const runGcalSync = async () => {
+    setGcalSyncing(true);
+    setGcalMsg('');
+    try {
+      const res = await fetch('/api/staff/schedule/sync-google-calendar?months=3', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        setGcalMsg(`❌ ${d.error ?? res.status}`);
+        return;
+      }
+      setGcalId(d.calendarId ?? null);
+      setGcalMsg(`✅ 同期完了：休講 ${d.total_cancelled}件（新規 ${d.created} / 維持 ${d.kept} / 削除 ${d.deleted}）`);
+    } catch (e) {
+      setGcalMsg(e instanceof Error ? e.message : '通信エラー');
+    } finally {
+      setGcalSyncing(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-neutral-50 pb-20">
       <StaffPageHeader
@@ -125,6 +211,56 @@ export default function ScheduleSyncPage() {
           </div>
         </section>
 
+        {/* ===== カード0: 公開Googleレッスンカレンダー (差分同期・本命) ===== */}
+        <Card
+          icon="📅"
+          title="公開Googleレッスンカレンダー"
+          subtitle="生徒・スタッフ・関係者みんなで共有"
+          status={{ tone: 'green', label: '✅ 1時間ごと自動 + 手動' }}
+        >
+          <p className="text-[11px] text-neutral-600 leading-relaxed">
+            BOOMが所有する<b>公開Googleカレンダー</b>に、アプリのレッスン予定を反映します。
+            <b>1時間ごとに自動同期</b>されます。変更を<b>すぐ反映したいときは下のボタン</b>を押してください（差分のみ書き換えるので何度押してもOK）。
+          </p>
+
+          {lcConnected === false && (
+            <Note tone="amber">
+              Googleカレンダー未連携です。下の「Lstep」カードの「🔗 Googleカレンダーを連携する」から連携してください（同じ連携を共用します）。
+            </Note>
+          )}
+
+          {lcEmbedUrl && (
+            <div>
+              <p className="text-[10px] text-neutral-500 font-semibold mb-0.5">📣 生徒に渡す公開リンク（このまま共有OK）</p>
+              <div className="flex gap-1.5 items-stretch">
+                <input
+                  readOnly
+                  value={lcEmbedUrl}
+                  onFocus={e => e.currentTarget.select()}
+                  className="flex-1 px-2 py-1.5 border rounded text-[11px] font-mono bg-white text-neutral-700 min-w-0"
+                />
+                <button
+                  onClick={() => { navigator.clipboard?.writeText(lcEmbedUrl); setLcMsg('📋 公開リンクをコピーしました'); }}
+                  className="px-3 py-1.5 bg-neutral-200 hover:bg-neutral-300 rounded text-xs font-semibold whitespace-nowrap"
+                >コピー</button>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={runLessonSync}
+            disabled={lcSyncing}
+            className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-neutral-300 text-white text-sm font-bold rounded-lg py-2.5"
+          >
+            {lcSyncing ? '同期中…' : '🔄 今すぐGoogleカレンダーへ同期する'}
+          </button>
+          {lcMsg && <p className="text-[11px] text-neutral-700">{lcMsg}</p>}
+
+          <Note tone="neutral">
+            押し忘れても1時間以内に自動で反映されます。急ぎのときだけボタンを押せばOKです。
+          </Note>
+        </Card>
+
         {/* ===== カード1: Google ===== */}
         <Card
           icon="📅"
@@ -160,10 +296,25 @@ export default function ScheduleSyncPage() {
           status={{ tone: 'amber', label: '半自動 (CSV)' }}
         >
           <p className="text-[11px] text-neutral-600 leading-relaxed">
-            HACOMONOの「スケジュールインポート」にそのまま投入できる29列の実物準拠CSV（UTF-8 BOM付き）を出力します。期間を選んでダウンロードしてください。
+            HACOMONOは毎週レッスン枠を自動生成します。アプリの実予定とズレる「消すべき枠」（5週目・全休・休講・月1/2回クラスの非開催週）を、月ごとに自動リスト化します。
           </p>
 
-          <HacomonoDownload />
+          <Link
+            href="/staff/schedule/hacomono-tasks"
+            className="block text-center bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg py-2.5"
+          >
+            🗑 今月のHACOMONO調整リストを見る
+          </Link>
+
+          <details className="text-[11px]">
+            <summary className="cursor-pointer text-neutral-500">CSV取込（全件インポート用・上級者向け）</summary>
+            <div className="pt-2">
+              <p className="text-[11px] text-neutral-500 leading-relaxed mb-1.5">
+                ⚠️ HACOMONOは枠を自動生成済みのため、全件インポートすると枠が二重になります。通常は上の「調整リスト」を使ってください。
+              </p>
+              <HacomonoDownload />
+            </div>
+          </details>
 
           <Steps
             title="設定手順"
@@ -187,28 +338,65 @@ export default function ScheduleSyncPage() {
           subtitle="体験予約の開閉"
           status={{ tone: 'green', label: '層2自動 + 層1手動' }}
         >
-          {/* 層2 */}
+          {/* 層2: Google所有カレンダー方式 (ICS購読はLstep非対応のため廃止) */}
           <div className="rounded-lg bg-orange-50 border border-orange-200 p-3 space-y-2">
             <h4 className="text-xs font-bold text-orange-800">
               <Badge tone="green">層2</Badge> 休講の開閉（自動）
             </h4>
             <p className="text-[11px] text-neutral-600 leading-relaxed">
-              休講にした枠の時間だけを「予定あり」として出力する休講ブロックICSです。Lstepの「Gカレ→シフト連携」は予定がある時間の予約を閉じる逆ロジックのため、休講日の体験予約が自動で閉じます。
+              休講にした枠を、BOOMが<b>所有するGoogleカレンダー</b>に自動で書き込みます。Lstepはこの所有カレンダーを「シフトに連携」することで、休講日の体験予約が自動で閉じます。
+              <br />
+              <span className="text-amber-700">※ ICS購読カレンダーはLstepが非対応（所有者でないと連携不可）なため、この方式に変更しました。</span>
             </p>
-            <CopyUrlBox
-              label="休講ブロックICS購読URL (mode=block, 3ヶ月分)"
-              url={blockIcsUrl}
-              token={token}
-              tokenErr={tokenErr}
-            />
+
+            {gcalConnected === false && (
+              <a
+                href="/api/staff/google/calendar-connect"
+                className="block text-center bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg py-2.5"
+              >
+                🔗 Googleカレンダーを連携する（初回のみ）
+              </a>
+            )}
+
+            {gcalConnected && (
+              <div className="space-y-2">
+                <div className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1.5">
+                  ✅ Google連携済み
+                </div>
+                {gcalId && (
+                  <div>
+                    <div className="text-[10px] text-neutral-500 mb-0.5">所有カレンダーID（Lstep連携設定に貼り付け）</div>
+                    <div className="flex items-center gap-1.5">
+                      <code className="flex-1 text-[10px] bg-neutral-100 border border-neutral-200 rounded px-2 py-1.5 break-all">{gcalId}</code>
+                      <button
+                        onClick={() => { navigator.clipboard?.writeText(gcalId); setGcalMsg('📋 カレンダーIDをコピーしました'); }}
+                        className="text-[10px] px-2 py-1.5 rounded bg-neutral-200 hover:bg-neutral-300 whitespace-nowrap"
+                      >コピー</button>
+                    </div>
+                  </div>
+                )}
+                <button
+                  onClick={runGcalSync}
+                  disabled={gcalSyncing}
+                  className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-neutral-300 text-white text-xs font-bold rounded-lg py-2.5"
+                >
+                  {gcalSyncing ? '同期中…' : '🔄 休講をカレンダーへ同期する'}
+                </button>
+                <a href="/api/staff/google/calendar-connect" className="block text-center text-[10px] text-neutral-400 underline">
+                  別のGoogleアカウントで連携し直す
+                </a>
+              </div>
+            )}
+            {gcalMsg && <p className="text-[11px] text-neutral-700">{gcalMsg}</p>}
+
             <Steps
-              title="設定手順"
+              title="Lstep側の設定手順（連携後）"
               items={[
-                '専用のGoogleカレンダーを新規作成',
-                'そのカレンダーに上のブロックICS URLを購読登録',
-                'Lstep → 予約設定 → 外部サービス連携',
-                '各予約枠に作成したGoogleカレンダーを紐付け',
-                '「Googleカレンダーをシフトに連携」を選択',
+                '上の「Googleカレンダーを連携」→ boom.sendai で認証',
+                '表示された所有カレンダーIDをコピー',
+                'Lstep → 予約設定 → 外部サービス連携 → Googleカレンダー連携設定を追加',
+                'カレンダーIDを貼り付け、予約枠を選び「Googleカレンダーをシフトに連携」',
+                '休講を設定したら、このページで「休講をカレンダーへ同期」を実行',
               ]}
             />
           </div>

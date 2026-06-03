@@ -56,6 +56,8 @@ type Lesson = {
   override_rate: number | null;
   active: number;
   notes: string | null;
+  start_date: string | null;
+  end_date: string | null;
   studio_name: string | null;
   instructor_name: string | null;
 };
@@ -223,6 +225,8 @@ export default function MastersPage() {
         override_rate: data.override_rate ?? null,
         active: data.active ?? 1,
         notes: data.notes ?? null,
+        start_date: data.start_date ?? null,
+        end_date: data.end_date ?? null,
       };
       if (data.id) {
         await fetch(`/api/staff/master/lessons/${data.id}`, {
@@ -514,6 +518,8 @@ export default function MastersPage() {
               <DetailRow label="対象">{detail.data.target || '—'}</DetailRow>
               <DetailRow label="レベル">{detail.data.level || '—'}</DetailRow>
               <DetailRow label="頻度">{detail.data.frequency_type || '—'}</DetailRow>
+              <DetailRow label="開始日">{detail.data.start_date || '—'}</DetailRow>
+              <DetailRow label="終了日">{detail.data.end_date ? `${detail.data.end_date} (この日がラスト)` : '—'}</DetailRow>
               <DetailRow label="単価上書き">{detail.data.override_rate != null ? `¥${detail.data.override_rate.toLocaleString()}` : '—'}</DetailRow>
               <DetailRow label="状態">{detail.data.active ? '有効' : '無効'}</DetailRow>
               <DetailRow label="メモ">{detail.data.notes || '—'}</DetailRow>
@@ -790,6 +796,8 @@ export default function MastersPage() {
                 <Field label="頻度 (例: weekly)" value={d.frequency_type ?? ''} onChange={v => set({ frequency_type: v })} />
                 <Field label="単価上書き (¥・空欄でインストラクター標準単価)" type="number" value={d.override_rate == null ? '' : String(d.override_rate)} onChange={v => set({ override_rate: v === '' ? null : (Number(v) || 0) })} />
                 <Field label="メモ" value={d.notes ?? ''} onChange={v => set({ notes: v })} />
+                <Field label="開始日 (この日から開講・空欄=制限なし)" type="date" value={d.start_date ?? ''} onChange={v => set({ start_date: v === '' ? null : v })} />
+                <Field label="終了日 (この日がラスト・翌日以降は二度と生成しない・空欄=制限なし)" type="date" value={d.end_date ?? ''} onChange={v => set({ end_date: v === '' ? null : v })} />
                 <label className="flex items-center gap-2 pt-1">
                   <input type="checkbox" checked={!!d.active} onChange={e => set({ active: e.target.checked ? 1 : 0 })} />
                   <span className="text-sm">有効</span>

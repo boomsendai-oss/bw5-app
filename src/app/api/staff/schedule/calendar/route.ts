@@ -77,11 +77,13 @@ export async function GET(req: NextRequest) {
     default_instructor_id: number | null;
     studio_name: string | null;
     instructor_name: string | null;
+    start_date: string | null;
+    end_date: string | null;
   };
   const masters = (await getAll(
     `SELECT lm.id, lm.class_name, lm.default_day_of_week AS day_of_week, lm.default_start_time AS start_time,
             lm.default_end_time AS end_time, lm.duration_minutes, lm.frequency_type,
-            lm.default_studio_id, lm.default_instructor_id,
+            lm.default_studio_id, lm.default_instructor_id, lm.start_date, lm.end_date,
             s.name AS studio_name, i.name AS instructor_name
      FROM lesson_master lm
      LEFT JOIN studios s ON s.id = lm.default_studio_id
@@ -138,6 +140,9 @@ export async function GET(req: NextRequest) {
     // 確定(凍結)済み月では master 展開しない (instance スナップショットのみ)
     for (const m of confirmed ? [] : masters) {
       if (m.day_of_week !== dow) continue;
+      // 開始日/終了日の範囲外は展開しない (終了したレッスンを二度と出さない)
+      if (m.start_date && dateStr < m.start_date) continue;
+      if (m.end_date && dateStr > m.end_date) continue;
       // 該当 master の instance がこの日に既にあればスキップ
       const alreadyExpanded = dayInstances.some(i => i.master_id === m.id);
       if (alreadyExpanded) continue;
