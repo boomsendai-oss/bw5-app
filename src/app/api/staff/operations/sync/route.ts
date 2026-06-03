@@ -113,16 +113,22 @@ async function handleSync(req: NextRequest) {
     plan_name: string | null;
     plan_started_at: string | null;
     plan_continued_months: string | null;
+    guardian_relation: string | null;
+    rep_name: string | null;
     status: 'active' | 'withdrew';
   };
 
   const mapHacomono = (r: Record<string, string>, status: 'active' | 'withdrew'): MemberSnapshot | null => {
     const mid = (r['メンバーID'] ?? '').trim();
     if (!mid) return null;
+    // 代表氏名は会員本人と別人(=保護者)のときだけ意味を持つので、同名なら null にする
+    const repNameRaw = (r['代表氏名'] ?? '').trim();
+    const fullName = (r['氏名'] ?? '').trim();
+    const repName = repNameRaw && repNameRaw !== fullName ? repNameRaw : null;
     return {
       hacomono_member_id: mid,
       hacomono_kaiin_no: (r['会員番号'] ?? '').trim() || null,
-      full_name: (r['氏名'] ?? '').trim(),
+      full_name: fullName,
       full_name_kana: (r['氏名カナ'] ?? '').trim(),
       birthday: parseDate(r['生年月日']),
       email: (r['メールアドレス'] ?? '').trim() || null,
@@ -133,6 +139,9 @@ async function handleSync(req: NextRequest) {
       plan_name: (r['契約プラン名'] ?? '').trim() || null,
       plan_started_at: parseDate(r['プラン契約適用開始日']),
       plan_continued_months: (r['プラン継続期間'] ?? '').trim() || null,
+      // 緊急連絡先続柄(母/父等)。子供会員なら保護者の存在を示す強いシグナル。
+      guardian_relation: (r['緊急連絡先続柄'] ?? '').trim() || null,
+      rep_name: repName,
       status,
     };
   };
@@ -174,8 +183,9 @@ async function handleSync(req: NextRequest) {
     INSERT INTO boom_members
       (hacomono_member_id, hacomono_kaiin_no, full_name, full_name_kana, birthday,
        email, phone, enrolled_at, withdrew_at, status,
-       plan_code, plan_name, plan_started_at, plan_continued_months, updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
+       plan_code, plan_name, plan_started_at, plan_continued_months,
+       guardian_relation, rep_name, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
     ON CONFLICT(hacomono_member_id) DO UPDATE SET
       hacomono_kaiin_no=excluded.hacomono_kaiin_no,
       full_name=excluded.full_name,
@@ -190,6 +200,8 @@ async function handleSync(req: NextRequest) {
       plan_name=excluded.plan_name,
       plan_started_at=excluded.plan_started_at,
       plan_continued_months=excluded.plan_continued_months,
+      guardian_relation=excluded.guardian_relation,
+      rep_name=excluded.rep_name,
       updated_at=CURRENT_TIMESTAMP
   `;
 
@@ -213,6 +225,8 @@ async function handleSync(req: NextRequest) {
       m.plan_name,
       m.plan_started_at,
       m.plan_continued_months,
+      m.guardian_relation,
+      m.rep_name,
     ] as (string | number | null)[],
   }));
   for (let i = 0; i < memberStatements.length; i += 50) {

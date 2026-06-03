@@ -147,6 +147,9 @@ async function handleImport(req: NextRequest) {
     lesson_name: string | null;
     status: TrialStatus;
     member_id: number | null;
+    applicant_name: string | null;
+    applicant_name_kana: string | null;
+    applicant_age: number | null;
   };
 
   const parsedRows: Parsed[] = [];
@@ -163,6 +166,14 @@ async function handleImport(req: NextRequest) {
     const statusRaw = pick(r, ['ステータス', '状態', 'status']);
     const status = normalizeStatus(statusRaw);
 
+    // 申込者名(=受講する子の本名)・カナ・年齢。会員との突合キーになる最重要データ。
+    // 「お名前」が無い旧フォーマットは「お客さま」(姓/カナ 結合) からのフォールバック。
+    const applicantName = pick(r, ['お名前', '氏名', '受講者名', 'お客さま']) || null;
+    const applicantKana = pick(r, ['お名前(カナ)', 'お名前（カナ）', '氏名カナ', 'カナ']) || null;
+    const ageRaw = pick(r, ['ご年齢', '年齢', 'age']);
+    const ageNum = ageRaw ? parseInt(ageRaw.replace(/[^0-9]/g, ''), 10) : NaN;
+    const applicantAge = Number.isFinite(ageNum) && ageNum > 0 && ageNum < 120 ? ageNum : null;
+
     let memberId: number | null = null;
     if (lstepId) {
       memberId = memberByLid.get(lstepId) ?? null;
@@ -174,6 +185,9 @@ async function handleImport(req: NextRequest) {
       lesson_name: lessonName,
       status,
       member_id: memberId,
+      applicant_name: applicantName,
+      applicant_name_kana: applicantKana,
+      applicant_age: applicantAge,
     });
   }
 
@@ -223,33 +237,44 @@ async function handleImport(req: NextRequest) {
                   status = ?,
                   status_source = 'lstep_calendar_csv',
                   status_updated_at = ?,
-                  member_id = COALESCE(?, member_id)
+                  member_id = COALESCE(?, member_id),
+                  applicant_name = COALESCE(?, applicant_name),
+                  applicant_name_kana = COALESCE(?, applicant_name_kana),
+                  applicant_age = COALESCE(?, applicant_age)
                 WHERE id = ?`,
-          args: [p.lesson_name, p.status, nowIso, p.member_id, ex.id],
+          args: [p.lesson_name, p.status, nowIso, p.member_id, p.applicant_name, p.applicant_name_kana, p.applicant_age, ex.id],
         });
         updateCount += 1;
       } else {
-        // lesson_name / member_id の補完だけ
+        // lesson_name / member_id / 申込者情報 の補完だけ
         stmts.push({
           sql: `UPDATE trial_records SET
                   lesson_name = COALESCE(?, lesson_name),
-                  member_id = COALESCE(?, member_id)
+                  member_id = COALESCE(?, member_id),
+                  applicant_name = COALESCE(?, applicant_name),
+                  applicant_name_kana = COALESCE(?, applicant_name_kana),
+                  applicant_age = COALESCE(?, applicant_age)
                 WHERE id = ?`,
-          args: [p.lesson_name, p.member_id, ex.id],
+          args: [p.lesson_name, p.member_id, p.applicant_name, p.applicant_name_kana, p.applicant_age, ex.id],
         });
       }
     } else {
       stmts.push({
         sql: `INSERT INTO trial_records
-                (lstep_id, member_id, reserved_at, lesson_name, status, status_source, status_updated_at)
-              VALUES (?, ?, ?, ?, ?, 'lstep_calendar_csv', ?)
+                (lstep_id, member_id, reserved_at, lesson_name, status, status_source, status_updated_at,
+                 applicant_name, applicant_name_kana, applicant_age)
+              VALUES (?, ?, ?, ?, ?, 'lstep_calendar_csv', ?, ?, ?, ?)
               ON CONFLICT(lstep_id, reserved_at) DO UPDATE SET
                 lesson_name = COALESCE(excluded.lesson_name, trial_records.lesson_name),
                 status = excluded.status,
                 status_source = excluded.status_source,
                 status_updated_at = excluded.status_updated_at,
-                member_id = COALESCE(excluded.member_id, trial_records.member_id)`,
-        args: [p.lstep_id, p.member_id, p.reserved_at, p.lesson_name, p.status, nowIso],
+                member_id = COALESCE(excluded.member_id, trial_records.member_id),
+                applicant_name = COALESCE(excluded.applicant_name, trial_records.applicant_name),
+                applicant_name_kana = COALESCE(excluded.applicant_name_kana, trial_records.applicant_name_kana),
+                applicant_age = COALESCE(excluded.applicant_age, trial_records.applicant_age)`,
+        args: [p.lstep_id, p.member_id, p.reserved_at, p.lesson_name, p.status, nowIso,
+               p.applicant_name, p.applicant_name_kana, p.applicant_age],
       });
       newCount += 1;
     }

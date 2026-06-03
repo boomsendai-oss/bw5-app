@@ -29,6 +29,8 @@ type SyncDetails = {
   lstep_new_unmatched: { lstep_id: string; display_name: string; system_display_name: string; real_name: string }[];
 };
 
+type LineType = '本人LINE' | '保護者LINE' | '要確認';
+
 type LinkCandidate = {
   lstep_id: string;
   system_display_name: string;
@@ -37,6 +39,8 @@ type LinkCandidate = {
   confidence: '高' | '中';
   reasons: string[];
   relation_suggestion: '本人' | '保護者' | '講師';
+  line_type?: LineType;
+  source?: '体験予約' | 'Lstep表示名';
 };
 
 type LinkSuggestion = {
@@ -63,6 +67,34 @@ export default function OperationsPage() {
   const [error, setError] = useState<string>('');
   // member_id -> 状態 ('done'=紐付け完了, 'rejected:lstep_id'=候補拒否中)
   const [linkState, setLinkState] = useState<Record<number, { done?: { lstep: string; relation: string }; rejected: Set<string> }>>({});
+  // 未紐付けバックログの一括候補
+  const [backfill, setBackfill] = useState<LinkSuggestion[] | null>(null);
+  const [backfillSummary, setBackfillSummary] = useState<{ unlinked_members: number; with_candidates: number; without_candidates: number } | null>(null);
+  const [backfillLoading, setBackfillLoading] = useState(false);
+
+  const runBackfill = async () => {
+    setBackfillLoading(true);
+    setBackfill(null);
+    setBackfillSummary(null);
+    try {
+      const res = await fetch('/api/staff/operations/link-suggest', { credentials: 'include' });
+      if (res.status === 401) {
+        window.location.href = '/staff/events/login?next=/staff/operations';
+        return;
+      }
+      const data = await res.json();
+      if (!res.ok) {
+        alert(`候補計算に失敗: ${data.error ?? res.status}`);
+        return;
+      }
+      setBackfill(data.link_suggestions ?? []);
+      setBackfillSummary(data.summary ?? null);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '通信エラー');
+    } finally {
+      setBackfillLoading(false);
+    }
+  };
 
   const approveLink = async (memberId: number, cand: LinkCandidate) => {
     try {
@@ -152,6 +184,81 @@ export default function OperationsPage() {
 
   const downloadUrl = (type: string) => `/api/staff/operations/download?type=${type}`;
 
+  // 紐付け候補リストの描画 (sync結果・未紐付けバックログ 共通)
+  const renderSuggestionList = (suggestions: LinkSuggestion[]) => (
+    <ul className="space-y-3">
+      {suggestions.map((s) => {
+        const state = linkState[s.member_id];
+        const done = state?.done;
+        const rejected = state?.rejected ?? new Set<string>();
+        const visible = s.candidates.filter((c) => !rejected.has(c.lstep_id));
+        const topConf = visible[0]?.confidence;
+        return (
+          <li key={s.member_id} className="border border-neutral-200 rounded-lg p-3 space-y-2">
+            <div className="text-sm font-bold text-neutral-800">
+              {s.full_name} <span className="text-[11px] font-normal text-neutral-500">({s.full_name_kana})</span>
+            </div>
+            {done ? (
+              <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1.5">
+                ✅ 紐付け完了 ({done.relation}) / Lstep: {done.lstep}
+              </div>
+            ) : visible.length === 0 ? (
+              <div className="text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded px-2 py-1.5">
+                候補なし / 手動紐付け必要
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {visible.map((c) => {
+                  const isHi = c.confidence === '高';
+                  const btnCls = isHi
+                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                    : 'bg-yellow-500 hover:bg-yellow-600 text-white';
+                  return (
+                    <li key={c.lstep_id} className="border border-neutral-100 rounded p-2 space-y-1 bg-neutral-50">
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-neutral-800">
+                        <span className="font-medium">{c.system_display_name || c.line_register_name || '(名前なし)'}</span>
+                        {c.line_type && <LineTypeBadge type={c.line_type} />}
+                        {c.source === '体験予約' && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">体験予約一致</span>
+                        )}
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${isHi ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-800'}`}>
+                          {isHi ? '🟢 高信頼' : '🟡 中信頼'} / スコア:{c.score}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-neutral-600">
+                        根拠: {c.reasons.join(' / ')} ／ 推測役割: <span className="font-medium">{c.relation_suggestion}</span>
+                      </div>
+                      <div className="text-[10px] text-neutral-400">Lstep ID: {c.lstep_id}</div>
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <button
+                          onClick={() => approveLink(s.member_id, c)}
+                          className={`text-xs font-bold rounded px-3 py-1.5 ${btnCls}`}
+                        >
+                          ✓ 承認 ({c.relation_suggestion})
+                        </button>
+                        <button
+                          onClick={() => rejectCandidate(s.member_id, c.lstep_id)}
+                          className="text-xs rounded px-3 py-1.5 bg-neutral-200 hover:bg-neutral-300 text-neutral-700"
+                        >
+                          別人
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {!done && visible.length > 0 && topConf && (
+              <div className="text-[10px] text-neutral-400">
+                {topConf === '高' ? '推奨: トップ候補で承認してOKそう' : '要注意: 中信頼/要確認のみ — TARO目視確認推奨'}
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+
   return (
     <main className="min-h-screen bg-neutral-50">
       <StaffPageHeader
@@ -207,6 +314,31 @@ export default function OperationsPage() {
           {error && <p className="text-xs text-red-600">{error}</p>}
         </section>
 
+        {/* 未紐付け会員の一括候補 (バックログ解消) */}
+        <section className="bg-white border border-orange-200 rounded-xl p-4 space-y-3">
+          <h2 className="text-base font-bold text-orange-700">🔗 未紐付け会員の LINE 候補</h2>
+          <p className="text-xs text-neutral-500">
+            まだ LINE と紐付いていない在籍会員すべてについて、体験予約データ(友だちID + カナ名)から候補を一括計算します。
+            LINE種別(本人/保護者/要確認)も自動判定します。
+          </p>
+          <button
+            onClick={runBackfill}
+            disabled={backfillLoading}
+            className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-neutral-300 text-white font-bold py-3 rounded-lg text-sm"
+          >
+            {backfillLoading ? '計算中…' : '▶ 未紐付け会員の候補を計算'}
+          </button>
+          {backfillSummary && (
+            <p className="text-[11px] text-neutral-600">
+              未紐付け {backfillSummary.unlinked_members}人中 / 候補あり {backfillSummary.with_candidates}人 / 候補なし(手動) {backfillSummary.without_candidates}人
+            </p>
+          )}
+          {backfill && backfill.length > 0 && renderSuggestionList(backfill)}
+          {backfill && backfill.length === 0 && backfillSummary && (
+            <p className="text-xs text-neutral-500">自動候補が見つかった会員はいませんでした。</p>
+          )}
+        </section>
+
         {result && (
           <>
             <section className="bg-white border border-neutral-200 rounded-xl p-4 space-y-2">
@@ -258,81 +390,9 @@ export default function OperationsPage() {
 
             {result.link_suggestions && result.link_suggestions.length > 0 && (
               <section className="bg-white border border-orange-200 rounded-xl p-4 space-y-3">
-                <h2 className="text-base font-bold text-orange-700">🔗 紐付け候補</h2>
-                <p className="text-[11px] text-neutral-500">新規入会者の Lstep 候補を自動推測しました。✓ 承認で紐付け確定します。</p>
-                <ul className="space-y-3">
-                  {result.link_suggestions.map((s) => {
-                    const state = linkState[s.member_id];
-                    const done = state?.done;
-                    const rejected = state?.rejected ?? new Set<string>();
-                    const visible = s.candidates.filter((c) => !rejected.has(c.lstep_id));
-                    const topConf = visible[0]?.confidence;
-                    return (
-                      <li key={s.member_id} className="border border-neutral-200 rounded-lg p-3 space-y-2">
-                        <div className="text-sm font-bold text-neutral-800">
-                          {s.full_name} <span className="text-[11px] font-normal text-neutral-500">({s.full_name_kana})</span>
-                        </div>
-                        {done ? (
-                          <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1.5">
-                            ✅ 紐付け完了 ({done.relation}) / Lstep: {done.lstep}
-                          </div>
-                        ) : visible.length === 0 ? (
-                          <div className="text-xs text-neutral-500 bg-neutral-50 border border-neutral-200 rounded px-2 py-1.5">
-                            候補なし / 手動紐付け必要
-                          </div>
-                        ) : (
-                          <ul className="space-y-2">
-                            {visible.map((c) => {
-                              const isHi = c.confidence === '高';
-                              const btnCls = isHi
-                                ? 'bg-green-600 hover:bg-green-700 text-white'
-                                : 'bg-yellow-500 hover:bg-yellow-600 text-white';
-                              return (
-                                <li key={c.lstep_id} className="border border-neutral-100 rounded p-2 space-y-1 bg-neutral-50">
-                                  <div className="text-xs text-neutral-800">
-                                    <span className="font-medium">{c.system_display_name || c.line_register_name || '(名前なし)'}</span>
-                                    <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded ${isHi ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-800'}`}>
-                                      {isHi ? '🟢 高信頼' : '🟡 中信頼'} / スコア:{c.score}
-                                    </span>
-                                  </div>
-                                  <div className="text-[11px] text-neutral-600">
-                                    根拠: {c.reasons.join(' / ')} ／ 推測役割: <span className="font-medium">{c.relation_suggestion}</span>
-                                  </div>
-                                  <div className="text-[10px] text-neutral-400">Lstep ID: {c.lstep_id}</div>
-                                  <div className="flex flex-wrap gap-1.5 pt-1">
-                                    <button
-                                      onClick={() => approveLink(s.member_id, c)}
-                                      className={`text-xs font-bold rounded px-3 py-1.5 ${btnCls}`}
-                                    >
-                                      ✓ 承認 ({c.relation_suggestion})
-                                    </button>
-                                    <button
-                                      onClick={() => rejectCandidate(s.member_id, c.lstep_id)}
-                                      className="text-xs rounded px-3 py-1.5 bg-neutral-200 hover:bg-neutral-300 text-neutral-700"
-                                    >
-                                      別人
-                                    </button>
-                                    <button
-                                      onClick={() => alert('手動選択 (Lstep検索) は未実装です')}
-                                      className="text-xs rounded px-3 py-1.5 bg-white border border-neutral-300 text-neutral-600"
-                                    >
-                                      手動選択
-                                    </button>
-                                  </div>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        )}
-                        {!done && visible.length > 0 && topConf && (
-                          <div className="text-[10px] text-neutral-400">
-                            {topConf === '高' ? '推奨: トップ候補で承認してOKそう' : '要注意: 中信頼のみ — TARO目視確認推奨'}
-                          </div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
+                <h2 className="text-base font-bold text-orange-700">🔗 紐付け候補 (新規入会者)</h2>
+                <p className="text-[11px] text-neutral-500">体験予約のカナ名で会員と突合し、LINE種別(本人/保護者/要確認)を自動判定しました。✓ 承認で紐付け確定します。</p>
+                {renderSuggestionList(result.link_suggestions)}
               </section>
             )}
 
@@ -388,6 +448,17 @@ function DownloadBtn({ href, label }: { href: string; label: string }) {
       📥 {label}
     </a>
   );
+}
+
+function LineTypeBadge({ type }: { type: '本人LINE' | '保護者LINE' | '要確認' }) {
+  const cls =
+    type === '保護者LINE'
+      ? 'bg-purple-100 text-purple-700'
+      : type === '本人LINE'
+        ? 'bg-blue-100 text-blue-700'
+        : 'bg-amber-100 text-amber-800';
+  const icon = type === '保護者LINE' ? '👪' : type === '本人LINE' ? '🙋' : '❓';
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded ${cls}`}>{icon} {type}</span>;
 }
 
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
