@@ -110,6 +110,9 @@ export default function MastersPage() {
   const [editFees, setEditFees] = useState<{ studio_id: number; amount: number }[]>([]);
   const [editBlocks, setEditBlocks] = useState<PriceBlock[]>([]);
   const [msg, setMsg] = useState('');
+  // 既存インストラクターの slug 編集ロック (誤変更によるURL消失防止)
+  const [slugLocked, setSlugLocked] = useState(true);
+  const [originalSlug, setOriginalSlug] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -264,6 +267,9 @@ export default function MastersPage() {
 
   const startEditInstructor = (i: Partial<Instructor>) => {
     setEditing({ kind: 'instructor', data: i });
+    // slug は既存編集ならロック、新規ならアンロック
+    setSlugLocked(!!i.id && !!i.slug);
+    setOriginalSlug(i.slug ?? null);
     if (i.id) {
       const myRates = rates.filter(r => r.instructor_id === i.id).map(r => ({ duration: r.duration_minutes, rate: r.rate }));
       const myFees = fees.filter(f => f.instructor_id === i.id).map(f => ({ studio_id: f.studio_id, amount: f.amount }));
@@ -733,11 +739,41 @@ export default function MastersPage() {
                 </span>
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                <Field
-                  label="slug (URL用。半角英数推奨。日本語もOK。スペース・/ ・? ・# は避ける)"
-                  value={editing.data.slug ?? ''}
-                  onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, slug: v } })}
-                />
+                {slugLocked ? (
+                  <label className="block">
+                    <span className="text-xs text-slate-500">slug (URL用。基本変更不要)</span>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        readOnly
+                        value={editing.data.slug ?? ''}
+                        className="flex-1 border rounded px-2 py-1 text-sm bg-slate-100 text-slate-600 cursor-not-allowed"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ok = window.confirm(
+                            `⚠️ slug を変更しようとしています\n\n` +
+                            `現在: "${originalSlug}"\n` +
+                            `HPの現在のURL: boom-hp.pages.dev/instructors/${originalSlug}\n\n` +
+                            `slug を変更すると、現在のURLが 404 になります。` +
+                            `SNSやLINEで過去にシェアしたリンクが切れる可能性があります。\n\n` +
+                            `本当に変更しますか?`
+                          );
+                          if (ok) setSlugLocked(false);
+                        }}
+                        className="text-xs px-3 py-1 bg-slate-700 hover:bg-slate-900 text-white rounded whitespace-nowrap"
+                      >
+                        ✏️ 編集する
+                      </button>
+                    </div>
+                  </label>
+                ) : (
+                  <Field
+                    label="slug (URL用。半角英数推奨。日本語もOK。スペース・/ ・? ・# は避ける)"
+                    value={editing.data.slug ?? ''}
+                    onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, slug: v } })}
+                  />
+                )}
                 <Field
                   label="ジャンル (例: HIPHOP)"
                   value={editing.data.genre ?? ''}
