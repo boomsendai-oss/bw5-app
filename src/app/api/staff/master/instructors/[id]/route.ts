@@ -27,7 +27,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const numId = parseId(id);
   if (numId === null) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
   const body = await req.json().catch(() => ({}));
-  const allowed = ['name','name_kana','contact_email','contact_phone','instagram_handle','profile_text','profile_photo_url','shared_folder_url','bank_name','bank_branch','bank_account_type','bank_account_number','bank_account_holder','notes','active','salary_type','monthly_fixed_amount'];
+  const allowed = ['name','name_kana','contact_email','contact_phone','instagram_handle','profile_text','profile_photo_url','shared_folder_url','bank_name','bank_branch','bank_account_type','bank_account_number','bank_account_holder','notes','active','salary_type','monthly_fixed_amount','slug','genre','crews','career_text','public_display_order'];
   const sets: string[] = [];
   const vals: unknown[] = [];
   for (const k of allowed) if (k in body) { sets.push(`${k} = ?`); vals.push(body[k]); }

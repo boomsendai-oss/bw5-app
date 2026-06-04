@@ -35,6 +35,12 @@ type Instructor = {
   active: number;
   salary_type: string | null;
   monthly_fixed_amount: number | null;
+  // HP公開情報
+  slug: string | null;
+  genre: string | null;
+  crews: string | null;
+  career_text: string | null;
+  public_display_order: number | null;
 };
 
 type Rate = { id: number; instructor_id: number; duration_minutes: number; rate: number };
@@ -628,7 +634,6 @@ export default function MastersPage() {
               <Field label="Instagram (@なし)" value={editing.data.instagram_handle ?? ''} onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, instagram_handle: v } })} />
               <Field label="共有Driveフォルダ URL" value={editing.data.shared_folder_url ?? ''} onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, shared_folder_url: v } })} />
               <Field label="プロフィール写真 URL" value={editing.data.profile_photo_url ?? ''} onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, profile_photo_url: v } })} />
-              <Field label="プロフィール文" value={editing.data.profile_text ?? ''} onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, profile_text: v } })} />
               <Field label="銀行名" value={editing.data.bank_name ?? ''} onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, bank_name: v } })} />
               <Field label="支店" value={editing.data.bank_branch ?? ''} onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, bank_branch: v } })} />
               <Field label="口座種別 (普通/当座)" value={editing.data.bank_account_type ?? ''} onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, bank_account_type: v } })} />
@@ -659,6 +664,70 @@ export default function MastersPage() {
                   />
                 </label>
               )}
+            </div>
+
+            {/* ============ HP公開情報 ============ */}
+            <div className="mt-6 border-t-2 border-orange-200 pt-4">
+              <h3 className="font-bold text-sm mb-3 text-orange-700 flex items-center gap-2">
+                🌐 HP公開情報
+                <span className="text-xs font-normal text-slate-500">
+                  boom-hp.pages.dev で表示される内容
+                </span>
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                <Field
+                  label="slug (URL用 / 半角英数。例: taro)"
+                  value={editing.data.slug ?? ''}
+                  onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, slug: v } })}
+                />
+                <Field
+                  label="ジャンル (例: HIPHOP)"
+                  value={editing.data.genre ?? ''}
+                  onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, genre: v } })}
+                />
+                <Field
+                  label="クルー (複数なら / で区切り)"
+                  value={editing.data.crews ?? ''}
+                  onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, crews: v } })}
+                />
+                <label className="block">
+                  <span className="text-xs text-slate-500">HP表示順 (小さい順)</span>
+                  <input
+                    type="number"
+                    value={editing.data.public_display_order ?? ''}
+                    onChange={e => setEditing({ kind: 'instructor', data: { ...editing.data, public_display_order: e.target.value === '' ? null : Number(e.target.value) } })}
+                    className="w-full border rounded px-2 py-1 text-sm bg-white"
+                    placeholder="例: 1"
+                  />
+                </label>
+              </div>
+              <div className="mt-3 space-y-2">
+                <label className="block">
+                  <span className="text-xs text-slate-500">プロフィール (自己紹介・スタンス。改行OK)</span>
+                  <textarea
+                    value={editing.data.profile_text ?? ''}
+                    onChange={e => setEditing({ kind: 'instructor', data: { ...editing.data, profile_text: e.target.value } })}
+                    className="w-full border rounded px-2 py-1 text-sm bg-white"
+                    rows={4}
+                    placeholder="例: HIPHOPダンサー。エネルギッシュなダンスと明るいキャラクターで…"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs text-slate-500">経歴 (受賞歴・出演イベント等。改行OK)</span>
+                  <textarea
+                    value={editing.data.career_text ?? ''}
+                    onChange={e => setEditing({ kind: 'instructor', data: { ...editing.data, career_text: e.target.value } })}
+                    className="w-full border rounded px-2 py-1 text-sm bg-white"
+                    rows={5}
+                    placeholder="例:&#10;2018 JDD vol.19 FINALIST&#10;2020 全国大会優勝&#10;2022〜 BOOM 講師"
+                  />
+                </label>
+              </div>
+              <p className="mt-3 text-xs text-slate-500 leading-relaxed">
+                💡 編集後、HPに反映するには <code className="bg-slate-100 px-1 rounded">boom-hp</code> プロジェクトでデプロイが必要 (TARO に依頼 or 自分でビルド)
+                <br />
+                ※ slug は変更しないことを推奨（URL が変わる）
+              </p>
             </div>
 
             <div className="mt-4">
