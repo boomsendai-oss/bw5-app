@@ -275,12 +275,68 @@ export default function MastersPage() {
     }
   };
 
+  // ============ HP再デプロイ ============
+  const [hpDeploying, setHpDeploying] = useState(false);
+  const [hpDeployMsg, setHpDeployMsg] = useState<string | null>(null);
+  const triggerHpDeploy = async () => {
+    if (hpDeploying) return;
+    if (!confirm('HPに最新データを反映します。\n（DBの内容を取得して boom-hp.pages.dev を再ビルド。3〜5分で完了）\n\n続行しますか?')) return;
+    setHpDeploying(true);
+    setHpDeployMsg(null);
+    try {
+      const r = await fetch('/api/staff/hp-deploy', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const j = await r.json();
+      if (r.ok) {
+        setHpDeployMsg(`✅ ${j.message ?? 'デプロイ開始'}`);
+      } else {
+        setHpDeployMsg(`❌ ${j.error ?? '不明なエラー'}`);
+      }
+    } catch (e) {
+      setHpDeployMsg(`❌ 通信エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setHpDeploying(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
       <StaffPageHeader title="🗂️ マスターデータ管理" description="スタジオ・インストラクター・レッスン定義" />
 
       <div className="max-w-6xl mx-auto p-4 sm:p-6">
         {msg && <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded text-sm">{msg}</div>}
+
+        {/* HPに反映ボタン */}
+        <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between flex-wrap gap-2">
+          <div className="text-sm text-slate-700">
+            <span className="font-semibold">🌐 BOOM HP</span>
+            <span className="text-slate-500 ml-2">編集内容はHPに自動反映されません。「反映」を押すと再ビルドが走ります。</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href="https://boom-hp.pages.dev"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 rounded text-slate-700"
+            >
+              HPを開く ↗
+            </a>
+            <button
+              onClick={triggerHpDeploy}
+              disabled={hpDeploying}
+              className="text-sm px-4 py-1.5 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white rounded font-semibold"
+            >
+              {hpDeploying ? '⏳ デプロイ中...' : '🔄 HPに反映'}
+            </button>
+          </div>
+          {hpDeployMsg && (
+            <div className="w-full text-xs text-slate-700 bg-white border border-slate-200 rounded p-2 mt-1">
+              {hpDeployMsg}
+            </div>
+          )}
+        </div>
 
         {/* Tabs */}
         <div className="flex gap-2 mb-4">
