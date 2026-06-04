@@ -64,6 +64,8 @@ type Lesson = {
   notes: string | null;
   start_date: string | null;
   end_date: string | null;
+  // HP公開用 (boom-hp.pages.dev/classes に表示)
+  description_text: string | null;
   studio_name: string | null;
   instructor_name: string | null;
 };
@@ -860,17 +862,47 @@ export default function MastersPage() {
                     {instructors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
                   </select>
                 </div>
-                <Field label="対象" value={d.target ?? ''} onChange={v => set({ target: v })} />
-                <Field label="レベル" value={d.level ?? ''} onChange={v => set({ level: v })} />
                 <Field label="頻度 (例: weekly)" value={d.frequency_type ?? ''} onChange={v => set({ frequency_type: v })} />
                 <Field label="単価上書き (¥・空欄でインストラクター標準単価)" type="number" value={d.override_rate == null ? '' : String(d.override_rate)} onChange={v => set({ override_rate: v === '' ? null : (Number(v) || 0) })} />
-                <Field label="メモ" value={d.notes ?? ''} onChange={v => set({ notes: v })} />
+                <Field label="社内メモ" value={d.notes ?? ''} onChange={v => set({ notes: v })} />
                 <Field label="開始日 (この日から開講・空欄=制限なし)" type="date" value={d.start_date ?? ''} onChange={v => set({ start_date: v === '' ? null : v })} />
                 <Field label="終了日 (この日がラスト・翌日以降は二度と生成しない・空欄=制限なし)" type="date" value={d.end_date ?? ''} onChange={v => set({ end_date: v === '' ? null : v })} />
                 <label className="flex items-center gap-2 pt-1">
                   <input type="checkbox" checked={!!d.active} onChange={e => set({ active: e.target.checked ? 1 : 0 })} />
                   <span className="text-sm">有効</span>
                 </label>
+              </div>
+
+              {/* ============ HP公開情報 ============ */}
+              <div className="mt-6 border-t-2 border-orange-200 pt-4">
+                <h3 className="font-bold text-sm mb-3 text-orange-700 flex items-center gap-2">
+                  🌐 HP公開情報
+                  <span className="text-xs font-normal text-slate-500">
+                    boom-hp.pages.dev/classes に表示される
+                  </span>
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <Field
+                    label="対象 (例: 4歳〜12歳 / 中学生〜大人)"
+                    value={d.target ?? ''}
+                    onChange={v => set({ target: v })}
+                  />
+                  <Field
+                    label="レベル (例: 初心者 / 初級〜中級)"
+                    value={d.level ?? ''}
+                    onChange={v => set({ level: v })}
+                  />
+                  <label className="block">
+                    <span className="text-xs text-slate-500">クラス説明 (HPの体験予約導線。改行OK)</span>
+                    <textarea
+                      value={d.description_text ?? ''}
+                      onChange={e => set({ description_text: e.target.value })}
+                      className="w-full border rounded px-2 py-1 text-sm bg-white"
+                      rows={4}
+                      placeholder="例: 腕を大きく振るダイナミックなダンス。表現力を磨きたい方にオススメです。"
+                    />
+                  </label>
+                </div>
               </div>
               <div className="flex gap-2 mt-4">
                 <button onClick={() => saveLesson(d)} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">保存</button>
