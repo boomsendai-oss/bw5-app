@@ -734,7 +734,7 @@ export default function MastersPage() {
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                 <Field
-                  label="slug (URL用 / 半角英数。例: taro)"
+                  label="slug (URL用。半角英数推奨。日本語もOK。スペース・/ ・? ・# は避ける)"
                   value={editing.data.slug ?? ''}
                   onChange={v => setEditing({ kind: 'instructor', data: { ...editing.data, slug: v } })}
                 />
