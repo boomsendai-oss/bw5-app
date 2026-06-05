@@ -145,13 +145,20 @@ export default function MastersPage() {
   useEffect(() => { load(); }, [load]);
 
   const saveStudio = async (data: Partial<Studio>) => {
+    // 区分制のときは編集中の区分行を block_pricing として送る (JSON化はAPI側)。
+    const payload: Record<string, unknown> = { ...data };
+    if (data.pricing_model === 'block') {
+      payload.block_pricing = editBlocks.filter(b => b.start || b.end || b.label || b.price);
+    }
+    // 1. モーダル即閉じる
+    setEditing(null);
+    setEditBlocks([]);
+    // 2. 楽観的更新 (既存編集時)
+    if (data.id) {
+      setStudios(prev => prev.map(s => s.id === data.id ? { ...s, ...(payload as Partial<Studio>) } as Studio : s));
+    }
+    // 3. API送信 (バックグラウンド)
     try {
-      // 区分制のときは編集中の区分行を block_pricing として送る (JSON化はAPI側)。
-      // 時間単価のときは block_pricing に触らない (既存挙動を維持)。
-      const payload: Record<string, unknown> = { ...data };
-      if (data.pricing_model === 'block') {
-        payload.block_pricing = editBlocks.filter(b => b.start || b.end || b.label || b.price);
-      }
       if (data.id) {
         await fetch(`/api/staff/master/studios/${data.id}`, {
           method: 'PATCH', credentials: 'include',
@@ -165,11 +172,11 @@ export default function MastersPage() {
           body: JSON.stringify(payload),
         });
       }
-      setEditing(null);
-      setEditBlocks([]);
-      await load();
+      // 4. 整合性のため静かに再同期 (await しない)
+      load();
     } catch (e) {
       setMsg(`保存失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load(); // エラー時は強制再同期
     }
   };
 
@@ -179,6 +186,18 @@ export default function MastersPage() {
   };
 
   const saveInstructor = async (data: Partial<Instructor>) => {
+    // 楽観的更新用のスナップショット
+    const ratesSnapshot = editRates;
+    const feesSnapshot = editFees;
+    // 1. モーダル即閉じる
+    setEditing(null);
+    setEditRates([]);
+    setEditFees([]);
+    // 2. 楽観的更新 (既存編集時)
+    if (data.id) {
+      setInstructors(prev => prev.map(i => i.id === data.id ? { ...i, ...data } as Instructor : i));
+    }
+    // 3. API送信 (バックグラウンド)
     try {
       let id = data.id;
       if (id) {
@@ -201,44 +220,59 @@ export default function MastersPage() {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          rates: editRates.map(r => ({ duration_minutes: r.duration, rate: r.rate })),
-          transit_fees: editFees,
+          rates: ratesSnapshot.map(r => ({ duration_minutes: r.duration, rate: r.rate })),
+          transit_fees: feesSnapshot,
         }),
       });
-      setEditing(null);
-      setEditRates([]);
-      setEditFees([]);
-      await load();
+      // 4. 整合性のため静かに再同期 (await しない)
+      load();
     } catch (e) {
       setMsg(`保存失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load();
     }
   };
 
   const remove = async (kind: 'studios' | 'instructors', id: number) => {
     if (!window.confirm('削除してよろしいですか?')) return;
-    await fetch(`/api/staff/master/${kind}/${id}`, { method: 'DELETE', credentials: 'include' });
-    await load();
+    // 楽観的にローカルstateから消す
+    if (kind === 'studios') setStudios(prev => prev.filter(s => s.id !== id));
+    if (kind === 'instructors') setInstructors(prev => prev.filter(i => i.id !== id));
+    try {
+      await fetch(`/api/staff/master/${kind}/${id}`, { method: 'DELETE', credentials: 'include' });
+      load(); // 静かに整合
+    } catch (e) {
+      setMsg(`削除失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load();
+    }
   };
 
   const saveLesson = async (data: Partial<Lesson>) => {
+    const payload = {
+      class_name: data.class_name,
+      target: data.target ?? null,
+      level: data.level ?? null,
+      default_studio_id: data.default_studio_id ?? null,
+      default_instructor_id: data.default_instructor_id ?? null,
+      default_day_of_week: data.default_day_of_week ?? null,
+      default_start_time: data.default_start_time ?? null,
+      default_end_time: data.default_end_time ?? null,
+      duration_minutes: data.duration_minutes ?? null,
+      frequency_type: data.frequency_type ?? null,
+      override_rate: data.override_rate ?? null,
+      active: data.active ?? 1,
+      notes: data.notes ?? null,
+      start_date: data.start_date ?? null,
+      end_date: data.end_date ?? null,
+      description_text: data.description_text ?? null,
+    };
+    // 1. モーダル即閉じる
+    setEditing(null);
+    // 2. 楽観的更新 (既存編集時)
+    if (data.id) {
+      setLessons(prev => prev.map(l => l.id === data.id ? { ...l, ...(payload as Partial<Lesson>) } as Lesson : l));
+    }
+    // 3. API送信 (バックグラウンド)
     try {
-      const payload = {
-        class_name: data.class_name,
-        target: data.target ?? null,
-        level: data.level ?? null,
-        default_studio_id: data.default_studio_id ?? null,
-        default_instructor_id: data.default_instructor_id ?? null,
-        default_day_of_week: data.default_day_of_week ?? null,
-        default_start_time: data.default_start_time ?? null,
-        default_end_time: data.default_end_time ?? null,
-        duration_minutes: data.duration_minutes ?? null,
-        frequency_type: data.frequency_type ?? null,
-        override_rate: data.override_rate ?? null,
-        active: data.active ?? 1,
-        notes: data.notes ?? null,
-        start_date: data.start_date ?? null,
-        end_date: data.end_date ?? null,
-      };
       if (data.id) {
         await fetch(`/api/staff/master/lessons/${data.id}`, {
           method: 'PATCH', credentials: 'include',
@@ -252,17 +286,25 @@ export default function MastersPage() {
           body: JSON.stringify(payload),
         });
       }
-      setEditing(null);
-      await load();
+      // 4. 整合性のため静かに再同期 (await しない)
+      load();
     } catch (e) {
       setMsg(`保存失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load();
     }
   };
 
   const removeLesson = async (id: number) => {
     if (!window.confirm('このレッスンを無効化 (active=0) しますか?')) return;
-    await fetch(`/api/staff/master/lessons/${id}`, { method: 'DELETE', credentials: 'include' });
-    await load();
+    // 楽観的に active を 0 に
+    setLessons(prev => prev.map(l => l.id === id ? { ...l, active: 0 } : l));
+    try {
+      await fetch(`/api/staff/master/lessons/${id}`, { method: 'DELETE', credentials: 'include' });
+      load(); // 静かに整合
+    } catch (e) {
+      setMsg(`削除失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load();
+    }
   };
 
   const startEditInstructor = (i: Partial<Instructor>) => {
