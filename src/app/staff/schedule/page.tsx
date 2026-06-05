@@ -113,63 +113,113 @@ export default function SchedulePage() {
       alert('クラス名を入力してください');
       return;
     }
-    const method = editingId ? 'PATCH' : 'POST';
-    const url = editingId ? `/api/staff/schedule/${editingId}` : '/api/staff/schedule';
-    const res = await fetch(url, {
-      method,
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(editing),
-    });
-    if (!res.ok) {
-      alert('保存失敗');
-      return;
-    }
+    // 1. ローカルフォーム値をスナップショット (state clear 前にキャプチャ)
+    const snapshot = editing;
+    const snapshotId = editingId;
+    const method = snapshotId ? 'PATCH' : 'POST';
+    const url = snapshotId ? `/api/staff/schedule/${snapshotId}` : '/api/staff/schedule';
+    // 2. モーダル即閉じる
     setEditing(null);
     setEditingId(null);
-    await load();
+    // 3. ローカルstateを楽観的に更新 (既存編集の場合のみ)
+    if (snapshotId) {
+      const updater = (list: Schedule[]) =>
+        list.map((x) => (x.id === snapshotId ? { ...x, ...snapshot, id: snapshotId } as Schedule : x));
+      setRegular((prev) => updater(prev));
+      setExceptions((prev) => updater(prev));
+    }
+    // 4. API送信 (バックグラウンド)
+    try {
+      const res = await fetch(url, {
+        method,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(snapshot),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      load(); // fire-and-forget で整合性チェック
+    } catch (e) {
+      alert(`保存失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load(); // エラー時は強制再同期
+    }
   };
 
   const removeOne = async (id: number) => {
     if (!confirm('このスケジュールを廃止しますか？')) return;
-    const res = await fetch(`/api/staff/schedule/${id}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
-    if (res.ok) {
-      setEditing(null);
-      setEditingId(null);
-      await load();
+    // モーダル即閉じる + 楽観的にローカルから除去
+    setEditing(null);
+    setEditingId(null);
+    setRegular((prev) => prev.filter((x) => x.id !== id));
+    setExceptions((prev) => prev.filter((x) => x.id !== id));
+    try {
+      const res = await fetch(`/api/staff/schedule/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      load();
+    } catch (e) {
+      alert(`削除失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load();
     }
   };
 
   const submitCancel = async () => {
     if (!cancelTarget || !cancelDate) return;
+    // スナップショット
+    const target = cancelTarget;
+    const date = cancelDate;
     const body = {
-      class_name: cancelTarget.class_name,
-      day_of_week: cancelTarget.day_of_week,
-      start_time: cancelTarget.start_time,
-      end_time: cancelTarget.end_time,
-      target: cancelTarget.target,
-      location: cancelTarget.location,
-      instructor: cancelTarget.instructor,
+      class_name: target.class_name,
+      day_of_week: target.day_of_week,
+      start_time: target.start_time,
+      end_time: target.end_time,
+      target: target.target,
+      location: target.location,
+      instructor: target.instructor,
       status: '休講',
-      exception_date: cancelDate,
+      exception_date: date,
       exception_type: '休講',
-      base_schedule_id: cancelTarget.id,
+      base_schedule_id: target.id,
     };
-    const res = await fetch('/api/staff/schedule', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) {
-      setCancelTarget(null);
-      setCancelDate('');
-      await load();
-    } else {
-      alert('登録失敗');
+    // モーダル即閉じる + 楽観的に例外リストへ追加
+    setCancelTarget(null);
+    setCancelDate('');
+    const optimisticId = -Date.now(); // 一時IDを負値で。再ロードで本物に置換される。
+    const optimisticEntry: Schedule = {
+      id: optimisticId,
+      day_of_week: target.day_of_week,
+      start_time: target.start_time,
+      end_time: target.end_time,
+      class_name: target.class_name,
+      target: target.target,
+      location: target.location,
+      instructor: target.instructor,
+      status: '休講',
+      notes: null,
+      exception_date: date,
+      exception_type: '休講',
+      override_start_time: null,
+      override_end_time: null,
+      override_location: null,
+      override_instructor: null,
+      base_schedule_id: target.id,
+      created_at: null,
+      updated_at: null,
+    };
+    setExceptions((prev) => [...prev, optimisticEntry]);
+    try {
+      const res = await fetch('/api/staff/schedule', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      load();
+    } catch (e) {
+      alert(`登録失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load();
     }
   };
 

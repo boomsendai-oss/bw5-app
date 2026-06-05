@@ -111,9 +111,10 @@ export default function PayrollPage() {
         body: JSON.stringify({ year_month: ym }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-      await load(ym);
+      load(ym); // fire-and-forget
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
+      load(ym);
     } finally {
       setBusy(false);
     }
@@ -144,12 +145,13 @@ export default function PayrollPage() {
     try {
       const res = await fetch(`/api/staff/payroll/${runId}/payslip`, { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error(await res.text());
+      load(ym); // fire-and-forget
     } catch (e) {
       setRuns(prev); // ロールバック
       setErr(`削除失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load(ym);
     } finally {
       setRowBusy(s => { const n = { ...s }; delete n[runId]; return n; });
-      await load(ym);
     }
   };
 
@@ -218,39 +220,102 @@ export default function PayrollPage() {
       alert('金額(数値)と説明を入力してください');
       return;
     }
-    const res = await fetch(`/api/staff/payroll/${detail.run.id}/adjustments`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        adjustment_type: adjForm.type,
-        amount,
-        description: adjForm.description.trim(),
-      }),
+    // スナップショット
+    const snapForm = { ...adjForm };
+    const snapDetail = detail;
+    const runId = detail.run.id;
+    // 楽観的: 仮IDで即追加 + 合計反映
+    const tempId = -Date.now();
+    const optimisticAdj: Adjustment = {
+      id: tempId,
+      adjustment_type: snapForm.type,
+      amount,
+      description: snapForm.description.trim(),
+      created_at: new Date().toISOString(),
+    };
+    setDetail({
+      ...snapDetail,
+      adjustments: [...snapDetail.adjustments, optimisticAdj],
+      run: {
+        ...snapDetail.run,
+        total_adjustment_amount: snapDetail.run.total_adjustment_amount + amount,
+        total_amount: snapDetail.run.total_amount + amount,
+      },
     });
-    if (!res.ok) { alert(`エラー: ${await res.text()}`); return; }
+    setRuns(rs => rs.map(r => r.id === runId
+      ? { ...r, total_adjustment_amount: r.total_adjustment_amount + amount, total_amount: r.total_amount + amount }
+      : r));
     setAdjForm({ type: 'event_bonus', amount: '', description: '' });
-    await openDetail(detail.run.id);
-    await load(ym);
+    try {
+      const res = await fetch(`/api/staff/payroll/${runId}/adjustments`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adjustment_type: snapForm.type,
+          amount,
+          description: snapForm.description.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      openDetail(runId); // fire-and-forget
+      load(ym);
+    } catch (e) {
+      setErr(`調整追加失敗: ${e instanceof Error ? e.message : String(e)}`);
+      openDetail(runId);
+      load(ym);
+    }
   };
 
   const deleteAdjustment = async (adjId: number) => {
     if (!detail || !confirm('この調整項目を削除しますか?')) return;
-    await fetch(`/api/staff/payroll/${detail.run.id}/adjustments?adj_id=${adjId}`, { method: 'DELETE', credentials: 'include' });
-    await openDetail(detail.run.id);
-    await load(ym);
+    const snapDetail = detail;
+    const runId = detail.run.id;
+    const target = snapDetail.adjustments.find(a => a.id === adjId);
+    if (!target) return;
+    // 楽観的: 即削除 + 合計反映
+    setDetail({
+      ...snapDetail,
+      adjustments: snapDetail.adjustments.filter(a => a.id !== adjId),
+      run: {
+        ...snapDetail.run,
+        total_adjustment_amount: snapDetail.run.total_adjustment_amount - target.amount,
+        total_amount: snapDetail.run.total_amount - target.amount,
+      },
+    });
+    setRuns(rs => rs.map(r => r.id === runId
+      ? { ...r, total_adjustment_amount: r.total_adjustment_amount - target.amount, total_amount: r.total_amount - target.amount }
+      : r));
+    try {
+      const res = await fetch(`/api/staff/payroll/${runId}/adjustments?adj_id=${adjId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error(await res.text());
+      openDetail(runId); // fire-and-forget
+      load(ym);
+    } catch (e) {
+      setErr(`調整削除失敗: ${e instanceof Error ? e.message : String(e)}`);
+      openDetail(runId);
+      load(ym);
+    }
   };
 
   const updateStatus = async (runId: number, status: string) => {
-    const res = await fetch(`/api/staff/payroll/${runId}`, {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    if (res.ok) {
-      if (detail?.run.id === runId) await openDetail(runId);
-      await load(ym);
+    // 楽観的: 即反映
+    setRuns(rs => rs.map(r => r.id === runId ? { ...r, status } : r));
+    if (detail?.run.id === runId) {
+      setDetail(d => d ? { ...d, run: { ...d.run, status } } : d);
+    }
+    try {
+      const res = await fetch(`/api/staff/payroll/${runId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      load(ym); // fire-and-forget
+    } catch (e) {
+      setErr(`状態変更失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load(ym);
     }
   };
 

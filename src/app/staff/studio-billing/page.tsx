@@ -87,8 +87,11 @@ export default function StudioBillingPage() {
         body: JSON.stringify({ year_month: ym }),
       });
       if (!res.ok) throw new Error(await res.text());
-      await load(ym);
-    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+      load(ym); // fire-and-forget
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      load(ym);
+    }
     finally { setBusy(false); }
   };
 
@@ -101,29 +104,94 @@ export default function StudioBillingPage() {
     if (!detail) return;
     const amount = parseInt(adjForm.amount, 10);
     if (isNaN(amount) || !adjForm.description.trim()) { alert('金額(数値)と説明を入力'); return; }
-    await fetch(`/api/staff/studio-billing/${detail.run.id}/adjustments`, {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adjustment_type: adjForm.type, amount, description: adjForm.description.trim() }),
+    // スナップショット
+    const snapForm = { ...adjForm };
+    const snapDetail = detail;
+    const runId = detail.run.id;
+    const tempId = -Date.now();
+    const optimisticAdj: Adj = {
+      id: tempId,
+      adjustment_type: snapForm.type,
+      amount,
+      description: snapForm.description.trim(),
+    };
+    // 楽観的: 即追加 + 合計反映
+    setDetail({
+      ...snapDetail,
+      adjustments: [...snapDetail.adjustments, optimisticAdj],
+      run: {
+        ...snapDetail.run,
+        total_adjustment_amount: snapDetail.run.total_adjustment_amount + amount,
+        total_amount: snapDetail.run.total_amount + amount,
+      },
     });
+    setRuns(rs => rs.map(r => r.id === runId
+      ? { ...r, total_adjustment_amount: r.total_adjustment_amount + amount, total_amount: r.total_amount + amount }
+      : r));
     setAdjForm({ type: 'cancellation_fee', amount: '', description: '' });
-    await openDetail(detail.run.id);
-    await load(ym);
+    try {
+      const res = await fetch(`/api/staff/studio-billing/${runId}/adjustments`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adjustment_type: snapForm.type, amount, description: snapForm.description.trim() }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      openDetail(runId); // fire-and-forget
+      load(ym);
+    } catch (e) {
+      setErr(`調整追加失敗: ${e instanceof Error ? e.message : String(e)}`);
+      openDetail(runId);
+      load(ym);
+    }
   };
   const delAdj = async (adjId: number) => {
     if (!detail || !confirm('削除しますか?')) return;
-    await fetch(`/api/staff/studio-billing/${detail.run.id}/adjustments?adj_id=${adjId}`, { method: 'DELETE', credentials: 'include' });
-    await openDetail(detail.run.id);
-    await load(ym);
+    const snapDetail = detail;
+    const runId = detail.run.id;
+    const target = snapDetail.adjustments.find(a => a.id === adjId);
+    if (!target) return;
+    // 楽観的: 即削除 + 合計反映
+    setDetail({
+      ...snapDetail,
+      adjustments: snapDetail.adjustments.filter(a => a.id !== adjId),
+      run: {
+        ...snapDetail.run,
+        total_adjustment_amount: snapDetail.run.total_adjustment_amount - target.amount,
+        total_amount: snapDetail.run.total_amount - target.amount,
+      },
+    });
+    setRuns(rs => rs.map(r => r.id === runId
+      ? { ...r, total_adjustment_amount: r.total_adjustment_amount - target.amount, total_amount: r.total_amount - target.amount }
+      : r));
+    try {
+      const res = await fetch(`/api/staff/studio-billing/${runId}/adjustments?adj_id=${adjId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error(await res.text());
+      openDetail(runId); // fire-and-forget
+      load(ym);
+    } catch (e) {
+      setErr(`調整削除失敗: ${e instanceof Error ? e.message : String(e)}`);
+      openDetail(runId);
+      load(ym);
+    }
   };
   const updateStatus = async (runId: number, status: string) => {
-    await fetch(`/api/staff/studio-billing/${runId}`, {
-      method: 'PATCH', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    if (detail?.run.id === runId) await openDetail(runId);
-    await load(ym);
+    // 楽観的: 即反映
+    setRuns(rs => rs.map(r => r.id === runId ? { ...r, status } : r));
+    if (detail?.run.id === runId) {
+      setDetail(d => d ? { ...d, run: { ...d.run, status } } : d);
+    }
+    try {
+      const res = await fetch(`/api/staff/studio-billing/${runId}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      load(ym); // fire-and-forget
+    } catch (e) {
+      setErr(`状態変更失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load(ym);
+    }
   };
 
   const grandTotal = runs.reduce((s, r) => s + r.total_amount, 0);

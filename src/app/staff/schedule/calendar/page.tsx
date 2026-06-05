@@ -157,22 +157,65 @@ export default function ScheduleCalendarPage() {
     if (d) setSelectedDay(d);
   };
 
+  // 指定インスタンスのステータスをローカルstateに楽観反映 (selectedDay + data 両方)
+  const patchLessonStatusLocal = (instanceId: number, date: string, status: string) => {
+    setSelectedDay((prev) => {
+      if (!prev || prev.date !== date) return prev;
+      return {
+        ...prev,
+        lessons: prev.lessons.map((l) =>
+          l.instance_id === instanceId ? { ...l, status } : l,
+        ),
+      };
+    });
+    setData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        days: prev.days.map((d) =>
+          d.date === date
+            ? {
+                ...d,
+                lessons: d.lessons.map((l) =>
+                  l.instance_id === instanceId ? { ...l, status } : l,
+                ),
+              }
+            : d,
+        ),
+      };
+    });
+  };
+
   const cancelInstance = async (instanceId: number, date: string) => {
     if (!confirm('このレッスンを休講にしますか?')) return;
-    await fetch(`/api/staff/schedule/instances/${instanceId}`, {
-      method: 'PATCH', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'cancelled' }),
-    });
-    await reloadDay(date);
+    patchLessonStatusLocal(instanceId, date, 'cancelled');
+    try {
+      const res = await fetch(`/api/staff/schedule/instances/${instanceId}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'cancelled' }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      load(year, month);
+    } catch (e) {
+      setErr(`休講失敗: ${e instanceof Error ? e.message : String(e)}`);
+      reloadDay(date);
+    }
   };
   const restoreInstance = async (instanceId: number, date: string) => {
-    await fetch(`/api/staff/schedule/instances/${instanceId}`, {
-      method: 'PATCH', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'scheduled' }),
-    });
-    await reloadDay(date);
+    patchLessonStatusLocal(instanceId, date, 'scheduled');
+    try {
+      const res = await fetch(`/api/staff/schedule/instances/${instanceId}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'scheduled' }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      load(year, month);
+    } catch (e) {
+      setErr(`復活失敗: ${e instanceof Error ? e.message : String(e)}`);
+      reloadDay(date);
+    }
   };
   // master展開レッスンを instance化 (実体を1件作成して返す)
   // status: 'scheduled' (編集用) / 'cancelled' (休講・記録に残す) / 'removed' (なかったことに・非表示)

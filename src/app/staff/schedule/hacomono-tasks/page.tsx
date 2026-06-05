@@ -117,9 +117,30 @@ export default function HacomonoTasksPage() {
 
   // 削除済み(または取消)を記録
   const markDone = async (items: DeleteItem[], done: boolean) => {
+    // スナップショット & 楽観的にローカル更新
+    const keys = new Set(items.map((i) => `${i.date}|${i.start_time}|${i.class_name}`));
+    setData((prev) => {
+      if (!prev) return prev;
+      const nextDeletes = prev.deletes.map((d) =>
+        keys.has(`${d.date}|${d.start_time}|${d.class_name}`) ? { ...d, done } : d,
+      );
+      const done_count = nextDeletes.filter((d) => d.done).length;
+      const remaining_count = nextDeletes.length - done_count;
+      const nextPlan = prev.plan_by_class
+        .map((cls) => ({
+          ...cls,
+          items: cls.items
+            .map((it) =>
+              keys.has(`${it.date}|${it.start_time}|${it.class_name}`) ? { ...it, done } : it,
+            )
+            .filter((it) => !it.done),
+        }))
+        .filter((cls) => cls.items.length > 0);
+      return { ...prev, deletes: nextDeletes, done_count, remaining_count, plan_by_class: nextPlan };
+    });
     try {
       if (done) {
-        await fetch('/api/staff/schedule/hacomono-delete-log', {
+        const res = await fetch('/api/staff/schedule/hacomono-delete-log', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -127,15 +148,18 @@ export default function HacomonoTasksPage() {
             items: items.map((i) => ({ date: i.date, start_time: i.start_time, class_name: i.class_name, pg_code: i.pg_code, action: 'deleted' })),
           }),
         });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
       } else {
         for (const i of items) {
           const q = new URLSearchParams({ date: i.date, start_time: i.start_time, class_name: i.class_name });
-          await fetch(`/api/staff/schedule/hacomono-delete-log?${q.toString()}`, { method: 'DELETE', credentials: 'include' });
+          const res = await fetch(`/api/staff/schedule/hacomono-delete-log?${q.toString()}`, { method: 'DELETE', credentials: 'include' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
         }
       }
-      await load(month);
-    } catch {
-      alert('記録に失敗しました');
+      load(month);
+    } catch (e) {
+      setErr(`記録失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load(month);
     }
   };
 

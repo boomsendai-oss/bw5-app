@@ -47,13 +47,27 @@ export default function CancelRequestsPage() {
   const decide = async (id: number, status: 'approved' | 'rejected', applyToInstance: boolean) => {
     const label = status === 'approved' ? '承認' : '却下';
     if (!confirm(`この休講申請を${label}しますか?${applyToInstance && status === 'approved' ? '\n(該当レッスンを自動で「休講」化します)' : ''}`)) return;
-    const res = await fetch(`/api/staff/cancel-requests/${id}`, {
-      method: 'PATCH', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, apply: applyToInstance, reviewer: 'TARO' }),
-    });
-    if (!res.ok) { alert(`エラー: ${await res.text()}`); return; }
-    await load();
+
+    // 楽観的更新: 該当 item の status を即時反映
+    const nowIso = new Date().toISOString();
+    setItems(prev => prev.map(it =>
+      it.id === id
+        ? { ...it, status, reviewed_by: 'TARO', reviewed_at: nowIso }
+        : it
+    ));
+
+    try {
+      const res = await fetch(`/api/staff/cancel-requests/${id}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, apply: applyToInstance, reviewer: 'TARO' }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      load(); // fire-and-forget で再同期
+    } catch (e) {
+      setErr(`失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load(); // 強制再同期でロールバック
+    }
   };
 
   return (

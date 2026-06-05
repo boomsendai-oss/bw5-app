@@ -66,20 +66,41 @@ export default function ExpensesPage() {
 
   const confirmTxn = async (txnId: number, category: string) => {
     if (!category) return;
-    const res = await fetch('/api/staff/expenses/confirm-bank', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ txn_id: txnId, category }),
-    });
-    if (res.ok) await load(ym);
-    else alert(`エラー: ${await res.text()}`);
+    // 楽観的更新: 未確定リストから該当行を即座に削除
+    setData(prev => prev ? {
+      ...prev,
+      pendingBankTxns: prev.pendingBankTxns.filter(t => t.id !== txnId),
+    } : prev);
+    try {
+      const res = await fetch('/api/staff/expenses/confirm-bank', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txn_id: txnId, category }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      load(ym);
+    } catch (e) {
+      setErr(`確定失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load(ym);
+    }
   };
 
   const deleteExpense = async (id: number) => {
     if (!confirm('この経費を削除しますか?')) return;
-    await fetch(`/api/staff/expenses?id=${id}`, { method: 'DELETE', credentials: 'include' });
-    await load(ym);
+    // 楽観的更新: 該当行を即座に削除
+    setData(prev => prev ? {
+      ...prev,
+      expenses: prev.expenses.filter(e => e.id !== id),
+    } : prev);
+    try {
+      const res = await fetch(`/api/staff/expenses?id=${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error(await res.text());
+      load(ym);
+    } catch (e) {
+      setErr(`削除失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load(ym);
+    }
   };
 
   const totalExpense = data?.expenses.reduce((s, e) => s + e.amount, 0) ?? 0;
@@ -243,23 +264,50 @@ function RecurringTab({ categories, ym, onChanged }: { categories: string[]; ym:
   const add = async () => {
     const amount = parseInt(form.amount, 10);
     if (isNaN(amount) || amount <= 0) { alert('金額は正の数値で'); return; }
+    // 楽観的更新: 仮IDで一覧の末尾に追加 (id 衝突回避で負数)
+    const tempId = -Date.now();
+    const optimisticItem: RecurringItem = {
+      id: tempId,
+      category: form.category,
+      subcategory: form.subcategory || null,
+      amount,
+      budget_amount: amount,
+      description: form.description || null,
+      match_pattern: form.match_pattern || null,
+      active: 1,
+    };
+    setItems(prev => [...prev, optimisticItem]);
+    const snapshot = form;
+    setForm({ category: 'システム費', subcategory: '', amount: '', match_pattern: '', description: '' });
     setBusy(true);
-    const res = await fetch('/api/staff/recurring-expenses', {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, amount, budget_amount: amount, active: 1 }),
-    });
-    setBusy(false);
-    if (res.ok) {
-      setForm({ category: 'システム費', subcategory: '', amount: '', match_pattern: '', description: '' });
-      await loadItems();
-    } else { alert(await res.text()); }
+    try {
+      const res = await fetch('/api/staff/recurring-expenses', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...snapshot, amount, budget_amount: amount, active: 1 }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      loadItems();
+    } catch (e) {
+      alert(`追加失敗: ${e instanceof Error ? e.message : String(e)}`);
+      loadItems();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const del = async (id: number) => {
     if (!confirm('削除しますか?')) return;
-    await fetch(`/api/staff/recurring-expenses?id=${id}`, { method: 'DELETE', credentials: 'include' });
-    await loadItems();
+    // 楽観的更新: 該当行を即座に削除
+    setItems(prev => prev.filter(i => i.id !== id));
+    try {
+      const res = await fetch(`/api/staff/recurring-expenses?id=${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error(await res.text());
+      loadItems();
+    } catch (e) {
+      alert(`削除失敗: ${e instanceof Error ? e.message : String(e)}`);
+      loadItems();
+    }
   };
 
   const applyForMonth = async () => {

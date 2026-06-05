@@ -90,6 +90,13 @@ export default function VideoPreordersPage() {
     if (!window.confirm(`${ids.length}件に確認メールを送信します。よろしいですか?`)) return;
     setBusy(true);
     setMessage(`${ids.length}件 送信中...`);
+    // 楽観的更新: 対象行の confirmation_email_sent_at を即座に埋める
+    const idSet = new Set(ids);
+    const nowIso = new Date().toISOString();
+    setPreorders(prev => prev.map(p => idSet.has(p.id) && !p.confirmation_email_sent_at
+      ? { ...p, confirmation_email_sent_at: nowIso }
+      : p));
+    setSelected(new Set());
     try {
       const res = await fetch('/api/staff/video-preorders/send-confirmation', {
         method: 'POST',
@@ -100,10 +107,10 @@ export default function VideoPreordersPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setMessage(`✅ 送信完了: 成功 ${data.sent} / スキップ ${data.skipped} / 失敗 ${data.failed}`);
-      setSelected(new Set());
-      await load();
+      load();
     } catch (e) {
       setMessage(`❌ 送信失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load();
     } finally {
       setBusy(false);
     }
@@ -113,16 +120,16 @@ export default function VideoPreordersPage() {
     if (!window.confirm('未払いの方全員にリマインダーを送信します（手動モード）。よろしいですか?')) return;
     setBusy(true);
     setMessage('リマインダー送信中...');
+    // 未払い・リンク送信済 を抽出
+    const targetIds = preorders
+      .filter(p => p.payment_link_sent_at && !p.payment_paid_at && p.status !== 'duplicate' && p.status !== 'cancelled' && p.email)
+      .map(p => p.id);
+    if (targetIds.length === 0) {
+      setMessage('対象なし (未払い・リンク送信済 が0件)');
+      setBusy(false);
+      return;
+    }
     try {
-      // 未払い・リンク送信済 を抽出
-      const targetIds = preorders
-        .filter(p => p.payment_link_sent_at && !p.payment_paid_at && p.status !== 'duplicate' && p.status !== 'cancelled' && p.email)
-        .map(p => p.id);
-      if (targetIds.length === 0) {
-        setMessage('対象なし (未払い・リンク送信済 が0件)');
-        setBusy(false);
-        return;
-      }
       const res = await fetch('/api/staff/video-preorders/send-payment-reminder', {
         method: 'POST',
         credentials: 'include',
@@ -132,9 +139,10 @@ export default function VideoPreordersPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setMessage(`✅ リマインダー送信完了: 成功 ${data.sent} / 失敗 ${data.failed} (期限まで${data.daysRemaining}日)`);
-      await load();
+      load();
     } catch (e) {
       setMessage(`❌ 送信失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load();
     } finally {
       setBusy(false);
     }
@@ -145,6 +153,13 @@ export default function VideoPreordersPage() {
     if (!window.confirm(`${ids.length}件に決済リンクを送信します。よろしいですか?`)) return;
     setBusy(true);
     setMessage(`${ids.length}件 決済リンク送信中...`);
+    // 楽観的更新: 対象行の payment_link_sent_at を即座に埋める
+    const idSet = new Set(ids);
+    const nowIso = new Date().toISOString();
+    setPreorders(prev => prev.map(p => idSet.has(p.id)
+      ? { ...p, payment_link_sent_at: p.payment_link_sent_at ?? nowIso }
+      : p));
+    setSelected(new Set());
     try {
       const res = await fetch('/api/staff/video-preorders/send-payment-link', {
         method: 'POST',
@@ -155,10 +170,10 @@ export default function VideoPreordersPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setMessage(`✅ 決済リンク送信完了: 成功 ${data.sent} / スキップ ${data.skipped} / 失敗 ${data.failed}`);
-      setSelected(new Set());
-      await load();
+      load();
     } catch (e) {
       setMessage(`❌ 送信失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load();
     } finally {
       setBusy(false);
     }
@@ -166,6 +181,8 @@ export default function VideoPreordersPage() {
 
   const markStatus = async (id: number, status: 'active' | 'duplicate' | 'cancelled') => {
     setBusy(true);
+    // 楽観的更新: status を即座に変更
+    setPreorders(prev => prev.map(p => p.id === id ? { ...p, status } : p));
     try {
       const res = await fetch(`/api/staff/video-preorders/${id}`, {
         method: 'PATCH',
@@ -178,9 +195,10 @@ export default function VideoPreordersPage() {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       setMessage(`✅ #${id} を ${status} に変更`);
-      await load();
+      load();
     } catch (e) {
       setMessage(`❌ 更新失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load();
     } finally {
       setBusy(false);
     }

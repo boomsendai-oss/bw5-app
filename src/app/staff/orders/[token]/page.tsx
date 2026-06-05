@@ -64,12 +64,31 @@ export default function StaffOrdersPage() {
   }, []);
 
   const markStatus = async (id: number, status: string) => {
-    await fetch(`/api/staff/orders?token=${encodeURIComponent(token)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, status }),
+    // 楽観的更新: 該当 order の status を即時反映 + summary もずらす
+    setData(prev => {
+      if (!prev) return prev;
+      const orders = prev.orders.map(o => o.id === id ? { ...o, status } : o);
+      const pending = orders.filter(o => isPendingStatus(o.status)).length;
+      const paid = orders.filter(o => isPaidStatus(o.status)).length;
+      return {
+        ...prev,
+        orders,
+        summary: { ...prev.summary, pending, paid },
+      };
     });
-    load();
+
+    try {
+      const res = await fetch(`/api/staff/orders?token=${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      load(); // fire-and-forget で再同期 (8秒ポーリングをブロックしない)
+    } catch (e) {
+      console.error('markStatus failed:', e instanceof Error ? e.message : String(e));
+      load(); // 強制再同期でロールバック
+    }
   };
 
   const isPendingStatus = (s: string) => s === 'pending' || s === 'pending_cash' || s === 'awaiting_payment';
