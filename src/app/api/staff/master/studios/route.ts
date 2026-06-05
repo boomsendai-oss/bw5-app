@@ -18,8 +18,8 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   if (!body.name) return NextResponse.json({ error: 'name required' }, { status: 400 });
   const result = await execute(
-    `INSERT INTO studios (name, address, google_map_url, pricing_model, hourly_rate, block_pricing, daily_buffer_minutes, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO studios (name, address, google_map_url, pricing_model, hourly_rate, block_pricing, daily_buffer_minutes, notes, is_public, map_embed_url, access_text)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       body.name,
       body.address ?? null,
@@ -29,6 +29,9 @@ export async function POST(req: NextRequest) {
       body.block_pricing ? JSON.stringify(body.block_pricing) : null,
       body.daily_buffer_minutes ?? 0,
       body.notes ?? null,
+      body.is_public ?? 1,
+      body.map_embed_url ?? null,
+      body.access_text ?? null,
     ]
   );
   return NextResponse.json({ ok: true, id: Number(result.lastInsertRowid) });

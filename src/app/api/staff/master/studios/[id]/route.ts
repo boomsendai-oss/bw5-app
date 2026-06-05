@@ -27,7 +27,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const numId = parseId(id);
   if (numId === null) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
   const body = await req.json().catch(() => ({}));
-  const allowed = ['name','address','google_map_url','pricing_model','hourly_rate','block_pricing','daily_buffer_minutes','notes','active'];
+  const allowed = ['name','address','google_map_url','pricing_model','hourly_rate','block_pricing','daily_buffer_minutes','notes','active','is_public','map_embed_url','access_text'];
   const sets: string[] = [];
   const vals: unknown[] = [];
   for (const k of allowed) {

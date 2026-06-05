@@ -14,6 +14,10 @@ type Studio = {
   daily_buffer_minutes: number;
   notes: string | null;
   active: number;
+  // HP公開情報
+  is_public: number | null;
+  map_embed_url: string | null;
+  access_text: string | null;
 };
 
 type Instructor = {
@@ -41,6 +45,7 @@ type Instructor = {
   crews: string | null;
   career_text: string | null;
   public_display_order: number | null;
+  video_url: string | null;
 };
 
 type Rate = { id: number; instructor_id: number; duration_minutes: number; rate: number };
@@ -68,6 +73,9 @@ type Lesson = {
   description_text: string | null;
   studio_name: string | null;
   instructor_name: string | null;
+  is_public: number | null;
+  video_url: string | null;
+  slug: string | null;
 };
 
 // スタジオの区分料金1行
@@ -113,6 +121,9 @@ export default function MastersPage() {
   // 既存インストラクターの slug 編集ロック (誤変更によるURL消失防止)
   const [slugLocked, setSlugLocked] = useState(true);
   const [originalSlug, setOriginalSlug] = useState<string | null>(null);
+  // レッスン編集モーダル用 slug ロック (インストラクターと同様)
+  const [lessonSlugLocked, setLessonSlugLocked] = useState(true);
+  const [lessonOriginalSlug, setLessonOriginalSlug] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -264,6 +275,9 @@ export default function MastersPage() {
       start_date: data.start_date ?? null,
       end_date: data.end_date ?? null,
       description_text: data.description_text ?? null,
+      is_public: data.is_public ?? 1,
+      video_url: data.video_url ?? null,
+      slug: data.slug ?? null,
     };
     // 1. モーダル即閉じる
     setEditing(null);
@@ -305,6 +319,12 @@ export default function MastersPage() {
       setMsg(`削除失敗: ${e instanceof Error ? e.message : String(e)}`);
       load();
     }
+  };
+
+  const startEditLesson = (l: Partial<Lesson>) => {
+    setEditing({ kind: 'lesson', data: l });
+    setLessonSlugLocked(!!l.id && !!l.slug);
+    setLessonOriginalSlug(l.slug ?? null);
   };
 
   const startEditInstructor = (i: Partial<Instructor>) => {
@@ -490,7 +510,7 @@ export default function MastersPage() {
         {!loading && tab === 'lessons' && (
           <>
             <button
-              onClick={() => setEditing({ kind: 'lesson', data: { active: 1, frequency_type: 'weekly', default_day_of_week: 0 } })}
+              onClick={() => startEditLesson({ active: 1, frequency_type: 'weekly', default_day_of_week: 0, is_public: 1 })}
               className="mb-3 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold"
             >+ レッスン追加</button>
             <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
@@ -637,7 +657,7 @@ export default function MastersPage() {
               <DetailRow label="メモ">{detail.data.notes || '—'}</DetailRow>
             </div>
             <div className="flex gap-2 px-4 py-3 border-t bg-slate-50">
-              <button onClick={() => { const d = detail.data; setDetail(null); setEditing({ kind: 'lesson', data: d }); }} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">✏️ 編集する</button>
+              <button onClick={() => { const d = detail.data; setDetail(null); startEditLesson(d); }} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">✏️ 編集する</button>
               <button onClick={() => { const id = detail.data.id; setDetail(null); removeLesson(id); }} className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded text-sm">削除 (無効化)</button>
               <button onClick={() => setDetail(null)} className="ml-auto px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded text-sm">閉じる</button>
             </div>
@@ -716,6 +736,50 @@ export default function MastersPage() {
               <Field label="1日あたりバッファ分数 (例: 30)" type="number" value={String(editing.data.daily_buffer_minutes ?? 0)} onChange={v => setEditing({ kind: 'studio', data: { ...editing.data, daily_buffer_minutes: Number(v) || 0 } })} />
               <Field label="メモ" value={editing.data.notes ?? ''} onChange={v => setEditing({ kind: 'studio', data: { ...editing.data, notes: v } })} />
             </div>
+
+            {/* ============ HP公開情報 ============ */}
+            <div className="mt-6 border-t-2 border-orange-200 pt-4">
+              <h3 className="font-bold text-sm mb-3 text-orange-700 flex items-center gap-2">
+                🌐 HP公開情報
+                <span className="text-xs font-normal text-slate-500">
+                  boom-hp.pages.dev で表示される内容
+                </span>
+              </h3>
+              <div className="space-y-2 text-sm">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!editing.data.is_public}
+                    onChange={e => setEditing({ kind: 'studio', data: { ...editing.data, is_public: e.target.checked ? 1 : 0 } })}
+                  />
+                  <span className="text-sm">HPに表示</span>
+                </label>
+                <label className="block">
+                  <span className="text-xs text-slate-500">Google Maps 埋め込みURL</span>
+                  <input
+                    type="text"
+                    value={editing.data.map_embed_url ?? ''}
+                    onChange={e => setEditing({ kind: 'studio', data: { ...editing.data, map_embed_url: e.target.value } })}
+                    className="w-full border rounded px-2 py-1 text-sm bg-white"
+                    placeholder="https://www.google.com/maps/embed?..."
+                  />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    Google Maps の「共有」→「地図を埋め込む」で取得した <code>https://www.google.com/maps/embed?...</code> のURL
+                  </span>
+                </label>
+                <label className="block">
+                  <span className="text-xs text-slate-500">アクセス説明文 (改行OK)</span>
+                  <textarea
+                    value={editing.data.access_text ?? ''}
+                    onChange={e => setEditing({ kind: 'studio', data: { ...editing.data, access_text: e.target.value } })}
+                    className="w-full border rounded px-2 py-1 text-sm bg-white"
+                    rows={4}
+                    placeholder="例: 仙台駅西口より徒歩5分。1階にコンビニがあるビルの3階。"
+                  />
+                </label>
+              </div>
+            </div>
+
             <div className="flex gap-2 mt-4">
               <button onClick={() => saveStudio(editing.data)} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">保存</button>
               <button onClick={() => { setEditing(null); setEditBlocks([]); }} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded text-sm">キャンセル</button>
@@ -838,6 +902,19 @@ export default function MastersPage() {
                 </label>
               </div>
               <div className="mt-3 space-y-2">
+                <label className="block">
+                  <span className="text-xs text-slate-500">動画URL (YouTube)</span>
+                  <input
+                    type="text"
+                    value={editing.data.video_url ?? ''}
+                    onChange={e => setEditing({ kind: 'instructor', data: { ...editing.data, video_url: e.target.value } })}
+                    className="w-full border rounded px-2 py-1 text-sm bg-white"
+                    placeholder="例: https://www.youtube.com/watch?v=ABC123 または ABC123"
+                  />
+                  <span className="text-[11px] text-slate-500 mt-0.5 block">
+                    YouTube のフルURL or ID。例: https://www.youtube.com/watch?v=ABC123 または ABC123
+                  </span>
+                </label>
                 <label className="block">
                   <span className="text-xs text-slate-500">プロフィール (自己紹介・スタンス。改行OK)</span>
                   <textarea
@@ -1016,6 +1093,14 @@ export default function MastersPage() {
                   </span>
                 </h3>
                 <div className="space-y-2 text-sm">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={!!d.is_public}
+                      onChange={e => set({ is_public: e.target.checked ? 1 : 0 })}
+                    />
+                    <span className="text-sm">HPに表示</span>
+                  </label>
                   <Field
                     label="対象 (例: 4歳〜12歳 / 中学生〜大人)"
                     value={d.target ?? ''}
@@ -1036,6 +1121,54 @@ export default function MastersPage() {
                       placeholder="例: 腕を大きく振るダイナミックなダンス。表現力を磨きたい方にオススメです。"
                     />
                   </label>
+                  <label className="block">
+                    <span className="text-xs text-slate-500">動画URL (YouTube)</span>
+                    <input
+                      type="text"
+                      value={d.video_url ?? ''}
+                      onChange={e => set({ video_url: e.target.value })}
+                      className="w-full border rounded px-2 py-1 text-sm bg-white"
+                      placeholder="例: https://www.youtube.com/watch?v=ABC123 または ABC123"
+                    />
+                    <span className="text-[11px] text-slate-500 mt-0.5 block">
+                      YouTube のフルURL or ID。例: https://www.youtube.com/watch?v=ABC123 または ABC123
+                    </span>
+                  </label>
+                  {lessonSlugLocked ? (
+                    <label className="block">
+                      <span className="text-xs text-slate-500">slug (URL用。基本変更不要)</span>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          readOnly
+                          value={d.slug ?? ''}
+                          className="flex-1 border rounded px-2 py-1 text-sm bg-slate-100 text-slate-600 cursor-not-allowed"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ok = window.confirm(
+                              `⚠️ slug を変更しようとしています\n\n` +
+                              `現在: "${lessonOriginalSlug}"\n` +
+                              `HPの現在のURL: boom-hp.pages.dev/classes/${lessonOriginalSlug}\n\n` +
+                              `slug を変更すると、現在のURLが 404 になります。` +
+                              `SNSやLINEで過去にシェアしたリンクが切れる可能性があります。\n\n` +
+                              `本当に変更しますか?`
+                            );
+                            if (ok) setLessonSlugLocked(false);
+                          }}
+                          className="text-xs px-3 py-1 bg-slate-700 hover:bg-slate-900 text-white rounded whitespace-nowrap"
+                        >
+                          ✏️ 編集する
+                        </button>
+                      </div>
+                    </label>
+                  ) : (
+                    <Field
+                      label="slug (URL用。半角英数推奨。日本語もOK。スペース・/ ・? ・# は避ける)"
+                      value={d.slug ?? ''}
+                      onChange={v => set({ slug: v })}
+                    />
+                  )}
                 </div>
               </div>
               <div className="flex gap-2 mt-4">

@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
        (class_name, target, level, default_studio_id, default_instructor_id,
         default_day_of_week, default_start_time, default_end_time, duration_minutes,
         frequency_type, override_rate, active, notes, start_date, end_date,
-        description_text)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        description_text, is_public, video_url, slug)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       body.class_name,
       body.target ?? null,
@@ -52,6 +52,9 @@ export async function POST(req: NextRequest) {
       body.start_date ?? null,
       body.end_date ?? null,
       body.description_text ?? null,
+      body.is_public ?? 1,
+      body.video_url ?? null,
+      body.slug ?? null,
     ]
   );
   return NextResponse.json({ ok: true, id: Number(result.lastInsertRowid) });

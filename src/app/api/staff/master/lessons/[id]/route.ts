@@ -32,7 +32,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     'class_name', 'target', 'level', 'default_studio_id', 'default_instructor_id',
     'default_day_of_week', 'default_start_time', 'default_end_time', 'duration_minutes',
     'frequency_type', 'override_rate', 'active', 'notes', 'start_date', 'end_date',
-    'description_text',
+    'description_text', 'is_public', 'video_url', 'slug',
   ];
   const sets: string[] = [];
   const vals: unknown[] = [];
