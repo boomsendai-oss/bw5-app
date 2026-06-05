@@ -137,6 +137,12 @@ const CARDS: Card[] = [
     title: 'バックステージ',
     description: '出演者情報・写真公開フェーズ',
   },
+  {
+    href: '/staff/blog',
+    icon: '📝',
+    title: 'ブログ',
+    description: 'BOOM公式HPのブログ記事を作成・編集・公開',
+  },
 ];
 
 export default function StaffHubPage() {
