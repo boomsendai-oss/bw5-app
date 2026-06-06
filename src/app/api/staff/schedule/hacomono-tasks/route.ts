@@ -32,11 +32,13 @@ export async function GET(req: NextRequest) {
 
   const dow = ['日', '月', '火', '水', '木', '金', '土'];
 
+  // IDベース結合: lesson_master.id ↔ hacomono_schedule_map.lesson_master_id で紐付け
+  // (旧設計の class_name 文字列マッチは class_name 変更で切れるため廃止)
   const deletes = (await getAll(
     `SELECT li.date, li.start_time, li.end_time, li.status,
             lm.class_name,
-            (SELECT hacomono_code FROM hacomono_schedule_map WHERE bw5_key = lm.class_name LIMIT 1) AS pg_code,
-            (SELECT hacomono_name FROM hacomono_schedule_map WHERE bw5_key = lm.class_name LIMIT 1) AS hacomono_name
+            (SELECT hacomono_code FROM hacomono_schedule_map WHERE lesson_master_id = lm.id LIMIT 1) AS pg_code,
+            (SELECT hacomono_name FROM hacomono_schedule_map WHERE lesson_master_id = lm.id LIMIT 1) AS hacomono_name
      FROM lesson_instances li
      LEFT JOIN lesson_master lm ON lm.id = li.master_id
      WHERE li.date LIKE ? AND li.status IN ('removed', 'cancelled')
@@ -86,13 +88,14 @@ export async function GET(req: NextRequest) {
   const planByClass = Array.from(byClass.values());
 
   // 参考: アプリで開催予定だが HACOMONO マッピングが無いクラス (手動追加が要るかも)
+  // IDベース判定 (旧設計の class_name 文字列マッチは廃止)
   const adds = (await getAll(
     `SELECT DISTINCT lm.class_name
      FROM lesson_instances li
      LEFT JOIN lesson_master lm ON lm.id = li.master_id
      WHERE li.date LIKE ? AND li.status = 'scheduled'
        AND lm.class_name IS NOT NULL
-       AND NOT EXISTS (SELECT 1 FROM hacomono_schedule_map m WHERE m.bw5_key = lm.class_name)
+       AND NOT EXISTS (SELECT 1 FROM hacomono_schedule_map m WHERE m.lesson_master_id = lm.id)
      ORDER BY lm.class_name`,
     [`${month}%`]
   )) as Array<{ class_name: string }>;
@@ -100,12 +103,13 @@ export async function GET(req: NextRequest) {
   // ⚠️ 幻枠リスク: アプリで終了/無効になったのに HACOMONO 側の終了設定が未済のクラス。
   //   HACOMONO は終了月を入れないと枠を無限生成するため、お客さんが誤予約しうる。
   //   hacomono_closed=1 (HACOMONO側も終了設定済み) のものは除外。
+  // IDベース結合
   const dowFull = ['日', '月', '火', '水', '木', '金', '土'];
   const phantomRows = (await getAll(
-    `SELECT m.bw5_key, m.hacomono_code, m.hacomono_name,
+    `SELECT lm.class_name AS bw5_key, m.hacomono_code, m.hacomono_name,
             lm.active, lm.end_date, lm.default_day_of_week AS dow
      FROM hacomono_schedule_map m
-     JOIN lesson_master lm ON lm.class_name = m.bw5_key
+     JOIN lesson_master lm ON lm.id = m.lesson_master_id
      WHERE m.entity_type = 'program' AND COALESCE(m.hacomono_closed, 0) = 0
        AND ( lm.active = 0 OR (lm.end_date IS NOT NULL AND lm.end_date < ?) )`,
     [`${month}-01`]
