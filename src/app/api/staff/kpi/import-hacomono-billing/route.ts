@@ -110,16 +110,26 @@ export async function POST(req: NextRequest) {
         category = partial ?? guessProductCategory(productName);
       }
 
+      // boom_member_id を hacomono_member_id 経由で解決
+      let boomMemberId: number | null = null;
+      if (memberId) {
+        const bm = (await getAll(
+          `SELECT id FROM boom_members WHERE hacomono_member_id = ?`, [memberId]
+        )) as { id: number }[];
+        if (bm.length > 0) boomMemberId = bm[0].id;
+      }
+
       await execute(
         `INSERT INTO hacomono_billing_records
-         (billing_date, member_id, kaiin_no, product_name, product_category, amount, payment_method, status, imported_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         (billing_date, member_id, kaiin_no, boom_member_id, product_name, product_category, amount, payment_method, status, imported_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(billing_date, member_id, product_name, amount) DO UPDATE SET
            product_category=excluded.product_category,
+           boom_member_id=excluded.boom_member_id,
            payment_method=excluded.payment_method,
            status=excluded.status,
            imported_at=CURRENT_TIMESTAMP`,
-        [billingDate, memberId || null, kaiinNo || null, productName || null, category, amount, paymentMethod || null, status || null]
+        [billingDate, memberId || null, kaiinNo || null, boomMemberId, productName || null, category, amount, paymentMethod || null, status || null]
       );
       imported++;
     } catch (e) {

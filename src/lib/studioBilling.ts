@@ -4,6 +4,7 @@ import { isMonthConfirmed } from './monthConfirm';
 export type BillingLine = {
   lesson_date: string;
   class_name: string | null;
+  lesson_master_id: number | null;
   hours: number;
   hourly_rate: number;
   amount: number;
@@ -171,6 +172,7 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
     result.lines.push({
       lesson_date: ins.date,
       class_name: ins.class_name,
+      lesson_master_id: ins.master_id ?? null,
       hours,
       hourly_rate: studio.hourly_rate,
       amount,
@@ -212,6 +214,7 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
       result.lines.push({
         lesson_date: dateStr,
         class_name: master.class_name,
+        lesson_master_id: master.id,
         hours,
         hourly_rate: studio.hourly_rate,
         amount,
@@ -242,6 +245,7 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
     result.lines.push({
       lesson_date: dateStr,
       class_name: `（準備・バッファ ${buf}分）`,
+      lesson_master_id: null,
       hours,
       hourly_rate: studio.hourly_rate,
       amount,
@@ -288,6 +292,7 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
       result.lines.push({
         lesson_date: dateStr,
         class_name: block ? `[${block.label}]` : '[区分未設定]',
+        lesson_master_id: null,
         hours,
         hourly_rate: 0,
         amount: price,
@@ -342,9 +347,9 @@ export async function persistStudioBillingRun(yearMonth: string, result: StudioB
 
   for (const line of result.lines) {
     await execute(
-      `INSERT INTO studio_billing_lines (studio_billing_run_id, lesson_date, class_name, hours, hourly_rate, amount, source, source_ref_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [runId, line.lesson_date, line.class_name, line.hours, line.hourly_rate, line.amount, line.source, line.source_ref_id]
+      `INSERT INTO studio_billing_lines (studio_billing_run_id, lesson_date, class_name, lesson_master_id, hours, hourly_rate, amount, source, source_ref_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [runId, line.lesson_date, line.class_name, line.lesson_master_id, line.hours, line.hourly_rate, line.amount, line.source, line.source_ref_id]
     );
   }
 

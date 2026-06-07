@@ -6,6 +6,8 @@ export type PayrollLine = {
   class_name: string | null;
   duration_minutes: number | null;
   studio_name: string | null;
+  studio_id: number | null;
+  lesson_master_id: number | null;
   lesson_rate: number;
   transit_fee: number;
   source: 'lesson_instance' | 'lesson_master_expanded';
@@ -151,6 +153,8 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
       class_name: ins.class_name,
       duration_minutes: dm,
       studio_name: ins.studio_name,
+      studio_id: ins.studio_id ?? null,
+      lesson_master_id: ins.master_id ?? null,
       lesson_rate: rate,
       transit_fee: transit,
       source: 'lesson_instance',
@@ -188,6 +192,8 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
         class_name: master.class_name,
         duration_minutes: dm,
         studio_name: master.studio_name,
+        studio_id: master.default_studio_id ?? null,
+        lesson_master_id: master.id,
         lesson_rate: rate,
         transit_fee: transit,
         source: 'lesson_master_expanded',
@@ -263,9 +269,9 @@ export async function persistPayrollRun(yearMonth: string, result: PayrollResult
 
   for (const line of result.lines) {
     await execute(
-      `INSERT INTO payroll_lines (payroll_run_id, lesson_date, class_name, duration_minutes, studio_name, lesson_rate, transit_fee, source, source_ref_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [runId, line.lesson_date, line.class_name, line.duration_minutes, line.studio_name, line.lesson_rate, line.transit_fee, line.source, line.source_ref_id]
+      `INSERT INTO payroll_lines (payroll_run_id, lesson_date, class_name, duration_minutes, studio_name, studio_id, lesson_master_id, lesson_rate, transit_fee, source, source_ref_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [runId, line.lesson_date, line.class_name, line.duration_minutes, line.studio_name, line.studio_id, line.lesson_master_id, line.lesson_rate, line.transit_fee, line.source, line.source_ref_id]
     );
   }
 
