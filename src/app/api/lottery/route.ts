@@ -87,10 +87,9 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-// POST /api/lottery — submit an entry
+// POST /api/lottery — submit an entry (お客さんがスマホから応募)
 // body: { fingerprint, keyword }
 export async function POST(req: NextRequest) {
-  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const body = await req.json();
     const { fingerprint, keyword } = body;
