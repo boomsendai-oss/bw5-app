@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, use } from 'react';
+import { yen } from '@/lib/utils';
 
 type Run = {
   id: number; year_month: string; instructor_name: string;
@@ -19,8 +20,6 @@ const ADJ_LABELS: Record<string, string> = {
   event_bonus: 'イベント手当', substitute_fee: '代講料', special_lesson: '特別レッスン',
   deduction: '減算', other: 'その他',
 };
-
-function yen(n: number): string { return `¥${Number(n).toLocaleString('ja-JP')}`; }
 
 export default function PayrollPrintPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);

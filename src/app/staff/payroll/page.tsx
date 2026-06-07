@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { RefreshCw, Landmark, Upload, CheckCircle, Eye, Trash2, FolderOpen, Printer, Loader2, CalendarDays, ArrowUpFromLine } from 'lucide-react';
+import { yen } from '@/lib/utils';
 
 type PayrollRun = {
   id: number;
@@ -70,8 +71,6 @@ function prevYM(): string {
   d.setMonth(d.getMonth() - 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
-function yen(n: number): string { return `¥${Number(n).toLocaleString('ja-JP')}`; }
-
 function statusBadge(status: string, uploaded?: boolean) {
   return (
     <span className="inline-flex items-center gap-1">

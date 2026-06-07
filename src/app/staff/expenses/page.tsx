@@ -7,10 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Trash2, Plus, RefreshCw, Loader2, ClipboardList, Landmark, PinIcon, ReceiptText } from 'lucide-react';
+import { Trash2, Plus, RefreshCw, Loader2, ClipboardList, Landmark, PinIcon } from 'lucide-react';
+import { yen } from '@/lib/utils';
 
 type Expense = {
   id: number;
@@ -43,7 +44,6 @@ type Data = {
   categories: string[];
 };
 
-function yen(n: number): string { return `¥${Number(n).toLocaleString('ja-JP')}`; }
 function prevYM(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;

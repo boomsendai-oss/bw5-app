@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute, getAll } from '@/lib/db';
+import { getAll } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { sendVideoPreorderPaymentReminderEmail } from '@/lib/email';
 

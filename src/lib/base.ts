@@ -8,7 +8,7 @@
  *   - base_token_expires_at  (unix秒)
  */
 
-import { execute, getOne, getAll } from '@/lib/db';
+import { execute, getOne } from '@/lib/db';
 
 const BASE_API = 'https://api.thebase.in/1';
 const OAUTH_BASE = 'https://api.thebase.in/1/oauth';

@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { RefreshCw, Landmark, Trash2, Loader2 } from 'lucide-react';
+import { yen } from '@/lib/utils';
 
 type Run = {
   id: number;
@@ -49,7 +50,6 @@ const PAYMENT_TYPE_LABELS: Record<string, string> = {
   postpaid_public: '公共施設',
 };
 
-function yen(n: number): string { return `¥${Number(n).toLocaleString('ja-JP')}`; }
 function hrs(n: number | null | undefined): string {
   const v = Number(n);
   return `${(Number.isFinite(v) ? v : 0).toFixed(1)}h`;

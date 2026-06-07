@@ -35,6 +35,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { yen } from '@/lib/utils';
 
 type Snapshot = {
   id: number;
@@ -78,9 +79,7 @@ function formatNumber(n: number): string {
   return n.toLocaleString('ja-JP');
 }
 
-function formatYen(n: number): string {
-  return `¥${n.toLocaleString('ja-JP')}`;
-}
+const formatYen = yen;
 
 type CardProps = {
   label: string;

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { yen } from '@/lib/utils';
 
 type Run = {
   id: number; year_month: string;
@@ -15,7 +16,6 @@ type Line = { id: number; lesson_date: string; class_name: string | null; durati
 type Adj = { id: number; adjustment_type: string; amount: number; description: string };
 type Detail = { run: Run; lines: Line[]; adjustments: Adj[] };
 
-function yen(n: number): string { return `¥${Number(n).toLocaleString('ja-JP')}`; }
 const ADJ_LABELS: Record<string, string> = {
   event_bonus: 'イベント手当', substitute_fee: '代講料', special_lesson: '特別レッスン',
   deduction: '減算', other: 'その他',
