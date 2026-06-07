@@ -1,43 +1,21 @@
 import { execute, getAll, getOne } from './db';
 import { isMonthConfirmed } from './monthConfirm';
+import {
+  calcPaymentDate,
+  minutesBetween,
+  aggregateInstances,
+  expandMasters,
+  buildResultsMap,
+  applyMonthlyFixed,
+  sortLinesByDate,
+} from './payroll-calc';
 
-export type PayrollLine = {
-  lesson_date: string;
-  class_name: string | null;
-  duration_minutes: number | null;
-  studio_name: string | null;
-  studio_id: number | null;
-  lesson_master_id: number | null;
-  lesson_rate: number;
-  transit_fee: number;
-  source: 'lesson_instance' | 'lesson_master_expanded';
-  source_ref_id: number | null;
-};
-
-export type PayrollResult = {
-  instructor_id: number;
-  instructor_name: string;
-  salary_type: 'per_lesson' | 'monthly_fixed';
-  lines: PayrollLine[];
-  total_lesson_amount: number;
-  total_transit_amount: number;
-};
-
-// 振込予定日: 翌月15日。15日が土日なら翌営業日
-function calcPaymentDate(yearMonth: string): string {
-  const [y, m] = yearMonth.split('-').map(Number);
-  const next = new Date(y, m, 15);
-  while (next.getDay() === 0 || next.getDay() === 6) {
-    next.setDate(next.getDate() + 1);
-  }
-  const yy = next.getFullYear();
-  const mm = String(next.getMonth() + 1).padStart(2, '0');
-  const dd = String(next.getDate()).padStart(2, '0');
-  return `${yy}-${mm}-${dd}`;
-}
+// 型を payroll-calc.ts から re-export (既存の import 元を壊さない)
+export type { PayrollLine, PayrollResult } from './payroll-calc';
+import type { PayrollResult } from './payroll-calc';
 
 // 月内のレッスン実績(休講除く)を集計してインストラクター別給与を計算
-export async function calculatePayrollForMonth(yearMonth: string): Promise<{ payment_date: string; results: PayrollResult[] }> {
+export async function calculatePayrollForMonth(yearMonth: string): Promise<{ payment_date: string; results: import('./payroll-calc').PayrollResult[] }> {
   const [y, m] = yearMonth.split('-').map(Number);
   const monthStart = `${yearMonth}-01`;
   const lastDay = new Date(y, m, 0).getDate();
@@ -70,9 +48,6 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
     transit_fee_override: number | null;
   };
   // 休講(cancelled)も含めて全インスタンスを取得する。
-  // - 開催インスタンスは給与に計上 (下記 1))
-  // - 休講インスタンスは計上しないが、その master+日付を expandedKeys に登録して
-  //   master 週次展開での再計上(=休講なのに給与に乗る)を防ぐ (下記 2))
   const instances = (await getAll(
     `SELECT li.*, lm.class_name, s.name AS studio_name, lm.duration_minutes
      FROM lesson_instances li
@@ -98,137 +73,33 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
      WHERE lm.active = 1`
   )) as MasterRow[];
 
-  // master の override_rate (特別単価) マップ。
-  // instance 化されたレッスン (確定/凍結 materialize 含む) でも master の特別単価を反映するため、
-  // section 1 (instance) でも参照する。これが無いと materialize 後に override_rate が失われる
-  // (例: HOUSE エキスパート ¥8,000 が通常単価 ¥6,000 に落ちる)。
+  // master の override_rate (特別単価) マップ
   const masterOverrideMap = new Map<number, number | null>();
   for (const mm of masters) masterOverrideMap.set(mm.id, mm.override_rate);
 
-  const resultsMap = new Map<number, PayrollResult>();
-  for (const ins of instructors) {
-    resultsMap.set(ins.id, {
-      instructor_id: ins.id,
-      instructor_name: ins.name,
-      salary_type: (ins.salary_type as 'per_lesson' | 'monthly_fixed') ?? 'per_lesson',
-      lines: [],
-      total_lesson_amount: 0,
-      total_transit_amount: 0,
-    });
-  }
+  const resultsMap = buildResultsMap(instructors);
 
   // 1) lesson_instances から確定分を計上
   const expandedKeys = new Set<string>();
-  // 交通費は (インストラクター×スタジオ×日) ごとに1回だけ計上する。
-  // (1日に同じスタジオで複数レッスンを担当しても、移動は1往復なので交通費は1回)
   const transitCharged = new Set<string>();
-  for (const ins of instances) {
-    // master+日付を記録し、後段の master 週次展開での重複/再計上を防ぐ。
-    // (休講/削除インスタンスも記録する → その日の master 再展開を抑止)
-    if (ins.master_id != null) expandedKeys.add(`${ins.master_id}_${ins.date}`);
-    // 休講(cancelled)・削除(removed)は給与に計上しない
-    if (ins.status === 'cancelled' || ins.status === 'removed') continue;
-    if (!ins.instructor_id) continue;
-    const result = resultsMap.get(ins.instructor_id);
-    if (!result) continue;
-    if (result.salary_type === 'monthly_fixed') continue;
-    const dm = ins.duration_minutes ?? minutesBetween(ins.start_time, ins.end_time);
-    // master に override_rate (特別単価) があればそれを優先。なければ単価表 (instructor×分) を引く。
-    // (master 展開パス section 2 と同じ優先順位にして、materialize 前後で金額が変わらないようにする)
-    const overrideRate = ins.master_id != null ? masterOverrideMap.get(ins.master_id) : null;
-    const rate = overrideRate ?? rateMap.get(`${ins.instructor_id}_${dm}`) ?? 0;
-    // 交通費は per-lesson ではなく per-(スタジオ×日) で1回だけ計上
-    const transitCandidate = ins.transit_fee_override ?? (ins.studio_id ? (transitMap.get(`${ins.instructor_id}_${ins.studio_id}`) ?? 0) : 0);
-    let transit = 0;
-    if (transitCandidate > 0) {
-      if (ins.studio_id) {
-        const tkey = `${ins.instructor_id}_${ins.studio_id}_${ins.date}`;
-        if (!transitCharged.has(tkey)) { transit = transitCandidate; transitCharged.add(tkey); }
-      } else {
-        transit = transitCandidate; // スタジオ不明の上書きはそのまま計上
-      }
-    }
-    result.lines.push({
-      lesson_date: ins.date,
-      class_name: ins.class_name,
-      duration_minutes: dm,
-      studio_name: ins.studio_name,
-      studio_id: ins.studio_id ?? null,
-      lesson_master_id: ins.master_id ?? null,
-      lesson_rate: rate,
-      transit_fee: transit,
-      source: 'lesson_instance',
-      source_ref_id: ins.id,
-    });
-    result.total_lesson_amount += rate;
-    result.total_transit_amount += transit;
-  }
+  aggregateInstances(instances, resultsMap, masterOverrideMap, rateMap, transitMap, expandedKeys, transitCharged);
 
   // 2) lesson_master 週次展開 (instances にない日を埋める)
-  // 確定(凍結)済み月では master 展開しない (確定時に materialize 済み instance のみで計算)。
   const confirmed = await isMonthConfirmed(yearMonth);
-  for (let d = 1; !confirmed && d <= lastDay; d++) {
-    const dateObj = new Date(y, m - 1, d);
-    const dateStr = `${yearMonth}-${String(d).padStart(2, '0')}`;
-    const dow = dateObj.getDay();
-    for (const master of masters) {
-      if (master.default_day_of_week !== dow) continue;
-      if (!master.default_instructor_id) continue;
-      if (expandedKeys.has(`${master.id}_${dateStr}`)) continue;
-      const result = resultsMap.get(master.default_instructor_id);
-      if (!result) continue;
-      if (result.salary_type === 'monthly_fixed') continue;
-      const dm = master.duration_minutes ?? (master.default_start_time && master.default_end_time ? minutesBetween(master.default_start_time, master.default_end_time) : 0);
-      const rate = master.override_rate ?? rateMap.get(`${master.default_instructor_id}_${dm}`) ?? 0;
-      // 交通費は per-(スタジオ×日) で1回だけ計上 (instance分と共通Setで重複防止)
-      const transitCandidate = master.default_studio_id ? (transitMap.get(`${master.default_instructor_id}_${master.default_studio_id}`) ?? 0) : 0;
-      let transit = 0;
-      if (transitCandidate > 0 && master.default_studio_id) {
-        const tkey = `${master.default_instructor_id}_${master.default_studio_id}_${dateStr}`;
-        if (!transitCharged.has(tkey)) { transit = transitCandidate; transitCharged.add(tkey); }
-      }
-      result.lines.push({
-        lesson_date: dateStr,
-        class_name: master.class_name,
-        duration_minutes: dm,
-        studio_name: master.studio_name,
-        studio_id: master.default_studio_id ?? null,
-        lesson_master_id: master.id,
-        lesson_rate: rate,
-        transit_fee: transit,
-        source: 'lesson_master_expanded',
-        source_ref_id: master.id,
-      });
-      result.total_lesson_amount += rate;
-      result.total_transit_amount += transit;
-    }
+  if (!confirmed) {
+    expandMasters(yearMonth, masters, resultsMap, rateMap, transitMap, expandedKeys, transitCharged);
   }
 
   // 3) monthly_fixed の人は固定額をlesson_amountに
-  for (const ins of instructors) {
-    if (ins.salary_type === 'monthly_fixed') {
-      const result = resultsMap.get(ins.id);
-      if (!result) continue;
-      result.total_lesson_amount = ins.monthly_fixed_amount ?? 0;
-    }
-  }
+  applyMonthlyFixed(instructors, resultsMap);
 
   // 日付順ソート
-  for (const r of resultsMap.values()) {
-    r.lines.sort((a, b) => a.lesson_date.localeCompare(b.lesson_date));
-  }
+  sortLinesByDate(resultsMap);
 
   return {
     payment_date: calcPaymentDate(yearMonth),
     results: Array.from(resultsMap.values()),
   };
-}
-
-function minutesBetween(start: string, end: string): number {
-  if (!start || !end) return 0;
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  return (eh * 60 + em) - (sh * 60 + sm);
 }
 
 // 計算結果をpayroll_runs / payroll_linesにUPSERTで永続化
