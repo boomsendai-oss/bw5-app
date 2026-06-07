@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getOne, getAll } from '@/lib/db';
+import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { sendRestockOrderEmail, PAYMENT_DEADLINE_LABEL } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,7 @@ interface RestockBody {
 
 // POST /api/restock — 売り切れ商品の追加注文（後日発送）
 export async function POST(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const body = (await req.json()) as RestockBody;
 

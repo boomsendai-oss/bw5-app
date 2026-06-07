@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll, getOne, execute } from '@/lib/db';
+import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,7 @@ export async function GET(req: NextRequest) {
 
 // PATCH /api/lottery — set winner name on an existing entry
 export async function PATCH(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const body = await req.json();
     const { fingerprint, winner_name } = body;
@@ -88,6 +90,7 @@ export async function PATCH(req: NextRequest) {
 // POST /api/lottery — submit an entry
 // body: { fingerprint, keyword }
 export async function POST(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const body = await req.json();
     const { fingerprint, keyword } = body;
