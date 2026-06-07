@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
+import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export async function POST(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
@@ -10,9 +12,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Validate file type
     const ext = path.extname(file.name).toLowerCase();
-    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'];
+    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
     if (!allowed.includes(ext)) {
       return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
     }

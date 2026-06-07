@@ -1,25 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll, batch } from '@/lib/db';
+import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
-// Keys that must NEVER be exposed via the public GET.
-// The admin UI reads these through a separate authenticated endpoint.
-const PRIVATE_KEYS = new Set([
-  'admin_password',
-  'lottery_keyword',           // public could read & spoof entries
-  'square_app_id',
-  'square_location_id',
-]);
-
 export async function GET(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const rows = await getAll('SELECT key, value FROM settings');
     const settings: Record<string, string> = {};
-    // Allow admin area to get full set when it passes the password cookie/header.
-    const isAdmin = req.headers.get('x-admin-auth') === '1';
     for (const row of rows) {
-      if (!isAdmin && PRIVATE_KEYS.has(row.key)) continue;
       settings[row.key] = row.value;
     }
     return NextResponse.json(settings);
@@ -29,6 +19,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const body = await req.json() as Record<string, string>;
     await batch(
