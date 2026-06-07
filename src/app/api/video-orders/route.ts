@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getAll, getOne } from '@/lib/db';
+import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +37,7 @@ export async function GET() {
 // PATCH /api/video-orders — update status
 // body: { id: number, status: 'waiting' | 'paid' | 'delivered' | 'cancelled' }
 export async function PATCH(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const body = await req.json();
     const { id, status } = body;
@@ -60,6 +62,7 @@ export async function PATCH(req: NextRequest) {
 
 // DELETE /api/video-orders?id=X — soft delete (mark cancelled). Or hard delete if force=true.
 export async function DELETE(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const url = new URL(req.url);
     const id = Number(url.searchParams.get('id') || 0);

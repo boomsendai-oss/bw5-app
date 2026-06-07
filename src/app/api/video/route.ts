@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOne, execute } from '@/lib/db';
+import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const body = await req.json();
     const { buyer_name, email, payment_method } = body;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
 import { getAll, getOne, execute } from '@/lib/db';
+import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,7 @@ export async function GET() {
 
 // POST /api/backstage — upload new photo (token-protected)
 export async function POST(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const url = new URL(req.url);
     const token = url.searchParams.get('token') || '';
@@ -57,6 +59,7 @@ export async function POST(req: NextRequest) {
 
 // DELETE /api/backstage?id=N — soft-delete
 export async function DELETE(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const url = new URL(req.url);
     const token = url.searchParams.get('token') || '';

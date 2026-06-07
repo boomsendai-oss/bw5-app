@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOne, execute } from '@/lib/db';
+import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const { id } = await params;
     const body = await req.json();
@@ -15,6 +17,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await isAuthorized(_req))) return unauthorized();
   try {
     const { id } = await params;
     await execute('DELETE FROM sns_links WHERE id = ?', [id]);
