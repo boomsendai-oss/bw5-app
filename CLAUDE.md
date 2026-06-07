@@ -38,7 +38,17 @@ BOOMダンススクールの常設運営機能 + 各イベント機能を統合�
 - `scripts/migrations/YYYYMMDD_<name>.sql` を追加
 - 既存テーブルの破壊的変更は事前にTAROに確認
 
-### 6. 個人情報の取扱
+### 6. 新規ページは Server Actions 優先
+- 新しく作るページでは API route (`/api/...`) より Server Actions を優先する
+- 既存ページの API route は動いているのでわざわざ書き換えない
+- 参考: `node_modules/next/dist/docs/` の Server Actions ガイド
+
+### 7. KPI画面は `/staff/insights` に一本化
+- `/staff/dashboard` は `/staff/insights` へリダイレクト（旧URL互換）
+- KPIの表示は自動集計データをメインとし、手動入力は補助
+- 手動入力フォーム: `/staff/insights/input`
+
+### 8. 個人情報の取扱
 - HACOMONO/Lstep の生CSV は `data/raw/` に置く (gitignore済)
 - ログに電話番号・メアド・氏名を出力しない
 - 詳細: `BOOM_Master_template/05_運営/SOP/セキュリティ対策ガイド.md`
@@ -56,7 +66,7 @@ src/
       members/
       operations/
       schedule/
-      dashboard/
+      insights/        # KPI・分析 (旧 dashboard を統合)
       events/
   lib/
     eventAuth.ts      # 認証
