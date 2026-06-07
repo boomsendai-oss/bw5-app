@@ -2,6 +2,26 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import {
+  Database,
+  BarChart3,
+  Wallet,
+  Receipt,
+  Building2,
+  XCircle,
+  TrendingUp,
+  Users,
+  Calendar,
+  Radio,
+  RefreshCw,
+  Video,
+  ShoppingBag,
+  PartyPopper,
+  Palette,
+  FileText,
+  type LucideIcon,
+} from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
 type Stats = {
   members: { active: number; withdrew: number; unlinked: number };
@@ -14,54 +34,54 @@ type Stats = {
   generated_at: string;
 };
 
-type Card = {
+type CardDef = {
   href: string;
-  icon: string;
+  icon: LucideIcon;
   title: string;
   description: string;
   stat?: (s: Stats) => { label: string; value: string | number; alert?: boolean }[];
 };
 
-const CARDS: Card[] = [
+const CARDS: CardDef[] = [
   {
     href: '/staff/masters',
-    icon: '🗂️',
+    icon: Database,
     title: 'マスターデータ',
     description: 'スタジオ・インストラクター・レッスン定義',
   },
   {
     href: '/staff/insights',
-    icon: '📊',
+    icon: BarChart3,
     title: '経営インサイト',
     description: '売上・顧客動態・稼働率・収益性をリアルタイム自動集計',
   },
   {
     href: '/staff/payroll',
-    icon: '💰',
+    icon: Wallet,
     title: '月次給与計算',
     description: 'レッスン単位で給与計算→PDF明細→Drive自動アップ',
   },
   {
     href: '/staff/expenses',
-    icon: '💸',
+    icon: Receipt,
     title: '経費管理',
     description: '銀行明細→カテゴリ確定→月次集計 / 手動入力',
   },
   {
     href: '/staff/studio-billing',
-    icon: '🏠',
+    icon: Building2,
     title: '月次スタジオ料金',
     description: 'レッスン時間×単価で計算→キャンセル料調整→振込',
   },
   {
     href: '/staff/cancel-requests',
-    icon: '🚫',
+    icon: XCircle,
     title: '休講申請',
     description: 'インストラクターからの休講申請を承認/却下',
   },
   {
     href: '/staff/dashboard',
-    icon: '📈',
+    icon: TrendingUp,
     title: 'KPIスナップショット (旧)',
     description: '月次手動入力ダッシュボード',
     stat: s => [
@@ -70,7 +90,7 @@ const CARDS: Card[] = [
   },
   {
     href: '/staff/members',
-    icon: '👥',
+    icon: Users,
     title: '会員管理',
     description: 'HACOMONO会員の検索・プラン・Lstep紐付け',
     stat: s => [
@@ -80,7 +100,7 @@ const CARDS: Card[] = [
   },
   {
     href: '/staff/schedule/calendar',
-    icon: '📅',
+    icon: Calendar,
     title: 'レッスンカレンダー',
     description: '月別レッスン予定 (マスター展開+実開催)',
     stat: s => [
@@ -89,13 +109,13 @@ const CARDS: Card[] = [
   },
   {
     href: '/staff/schedule/sync',
-    icon: '📡',
+    icon: Radio,
     title: 'カレンダー連携',
     description: '3カレンダー(Google/HACOMONO/Lstep)へのスケジュール配信',
   },
   {
     href: '/staff/operations',
-    icon: '🔄',
+    icon: RefreshCw,
     title: '運営オペレーション',
     description: '月次CSV突合・紐付け推測・月次レポート生成',
     stat: s => [
@@ -104,7 +124,7 @@ const CARDS: Card[] = [
   },
   {
     href: '/staff/video-preorders',
-    icon: '📹',
+    icon: Video,
     title: '映像予約 管理',
     description: 'BW5映像データ予約・確認メール・支払いリンク管理',
     stat: s => [
@@ -114,7 +134,7 @@ const CARDS: Card[] = [
   },
   {
     href: '/staff/orders',
-    icon: '🛍️',
+    icon: ShoppingBag,
     title: '物販注文 管理',
     description: 'BW5物販・追加注文・支払い状況',
     stat: s => [
@@ -124,7 +144,7 @@ const CARDS: Card[] = [
   },
   {
     href: '/staff/events',
-    icon: '🎪',
+    icon: PartyPopper,
     title: 'イベント管理',
     description: 'BW5・発表会等のイベント設定・タスク',
     stat: s => [
@@ -133,13 +153,13 @@ const CARDS: Card[] = [
   },
   {
     href: '/staff/backstage',
-    icon: '🎨',
+    icon: Palette,
     title: 'バックステージ',
     description: '出演者情報・写真公開フェーズ',
   },
   {
     href: '/staff/blog',
-    icon: '📝',
+    icon: FileText,
     title: 'ブログ',
     description: 'BOOM公式HPのブログ記事を作成・編集・公開',
   },
@@ -166,85 +186,94 @@ export default function StaffHubPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <header className="bg-white border-b border-orange-100 px-4 py-3 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto flex items-baseline justify-between gap-3 flex-wrap">
-          <h1 className="text-lg sm:text-xl font-bold text-orange-600">🎯 BOOM スタッフ管理</h1>
-          <p className="text-xs text-neutral-500">
-            {stats?.generated_at
-              ? `最終更新: ${new Date(stats.generated_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}`
-              : '読込中...'}
-          </p>
-        </div>
-      </header>
-
-      <div className="max-w-6xl mx-auto p-4 sm:p-6">
-        {err && (
-          <div className="mb-4 p-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm">
-            読込エラー: {err}
-          </div>
-        )}
-
-        {/* アラートサマリ */}
-        {stats && (() => {
-          const alerts: string[] = [];
-          if (stats.videoPreorders.unsent > 0) alerts.push(`映像予約 未送信 ${stats.videoPreorders.unsent}件`);
-          if (stats.merch.pending > 0) alerts.push(`物販 未払い ${stats.merch.pending}件`);
-          if (stats.members.unlinked > 0) alerts.push(`会員 未紐付け ${stats.members.unlinked}件`);
-          if (alerts.length === 0) return null;
-          return (
-            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
-              <p className="text-xs sm:text-sm font-semibold text-amber-900 mb-1">⚠️ 要対応</p>
-              <div className="flex flex-wrap gap-2">
-                {alerts.map((a, i) => (
-                  <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-white border border-amber-300 text-amber-800">{a}</span>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* カードグリッド */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {CARDS.map(card => (
-            <Link
-              key={card.href}
-              href={card.href}
-              className="bg-white border border-neutral-200 hover:border-orange-300 hover:shadow-md transition-all rounded-xl p-4 flex flex-col gap-2 group"
-            >
-              <div className="flex items-start gap-2">
-                <div className="text-2xl">{card.icon}</div>
-                <div className="flex-1 min-w-0">
-                  <h2 className="font-bold text-orange-700 group-hover:text-orange-800">{card.title}</h2>
-                  <p className="text-xs text-neutral-500 mt-0.5 leading-relaxed">{card.description}</p>
-                </div>
-                <div className="text-orange-400 group-hover:text-orange-600">→</div>
-              </div>
-
-              {stats && card.stat && (
-                <div className="flex gap-3 pt-2 border-t border-neutral-100">
-                  {card.stat(stats).map((s, i) => (
-                    <div key={i} className="flex-1">
-                      <div className="text-[10px] text-neutral-500">{s.label}</div>
-                      <div className={`text-lg font-bold ${s.alert ? 'text-amber-700' : 'text-neutral-800'}`}>
-                        {s.value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {!stats && card.stat && loading && (
-                <div className="pt-2 border-t border-neutral-100 text-xs text-neutral-400">読込中...</div>
-              )}
-            </Link>
-          ))}
-        </div>
-
-        {/* フッター */}
-        <footer className="mt-8 text-center text-xs text-neutral-400">
-          BOOM Dance School / Staff Hub
-        </footer>
+    <div className="max-w-6xl mx-auto p-4 sm:p-6">
+      {/* ページタイトル + 最終更新 */}
+      <div className="flex items-baseline justify-between gap-3 flex-wrap mb-4">
+        <h1 className="text-lg sm:text-xl font-bold text-orange-600">BOOM スタッフ管理</h1>
+        <p className="text-xs text-neutral-500">
+          {stats?.generated_at
+            ? `最終更新: ${new Date(stats.generated_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}`
+            : '読込中...'}
+        </p>
       </div>
-    </main>
+
+      {err && (
+        <div className="mb-4 p-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm">
+          読込エラー: {err}
+        </div>
+      )}
+
+      {/* アラートサマリ */}
+      {stats && (() => {
+        const alerts: string[] = [];
+        if (stats.videoPreorders.unsent > 0) alerts.push(`映像予約 未送信 ${stats.videoPreorders.unsent}件`);
+        if (stats.merch.pending > 0) alerts.push(`物販 未払い ${stats.merch.pending}件`);
+        if (stats.members.unlinked > 0) alerts.push(`会員 未紐付け ${stats.members.unlinked}件`);
+        if (alerts.length === 0) return null;
+        return (
+          <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+            <p className="text-xs sm:text-sm font-semibold text-amber-900 mb-1">要対応</p>
+            <div className="flex flex-wrap gap-2">
+              {alerts.map((a, i) => (
+                <span key={i} className="text-xs px-2 py-0.5 rounded-full bg-white border border-amber-300 text-amber-800">{a}</span>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* カードグリッド */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+        {CARDS.map(card => {
+          const Icon = card.icon;
+          return (
+            <Link key={card.href} href={card.href} className="group">
+              <Card className="h-full hover:border-orange-300 hover:shadow-md transition-all">
+                <CardHeader>
+                  <div className="flex items-start gap-2">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-orange-50 text-orange-600 group-hover:bg-orange-100">
+                      <Icon className="size-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-orange-700 group-hover:text-orange-800 text-sm">
+                        {card.title}
+                      </CardTitle>
+                      <CardDescription className="text-xs mt-0.5 leading-relaxed">
+                        {card.description}
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+
+                {stats && card.stat && (
+                  <CardContent>
+                    <div className="flex gap-3 pt-2 border-t border-neutral-100">
+                      {card.stat(stats).map((s, i) => (
+                        <div key={i} className="flex-1">
+                          <div className="text-[10px] text-neutral-500">{s.label}</div>
+                          <div className={`text-lg font-bold ${s.alert ? 'text-amber-700' : 'text-neutral-800'}`}>
+                            {s.value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                )}
+                {!stats && card.stat && loading && (
+                  <CardContent>
+                    <div className="pt-2 border-t border-neutral-100 text-xs text-neutral-400">読込中...</div>
+                  </CardContent>
+                )}
+              </Card>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* フッター */}
+      <footer className="mt-8 text-center text-xs text-neutral-400">
+        BOOM Dance School / Staff Hub
+      </footer>
+    </div>
   );
 }

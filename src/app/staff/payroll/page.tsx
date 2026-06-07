@@ -1,7 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import StaffPageHeader from '@/components/StaffPageHeader';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { RefreshCw, Landmark, Upload, CheckCircle, Eye, Trash2, FolderOpen, Printer, Loader2, CalendarDays, ArrowUpFromLine } from 'lucide-react';
 
 type PayrollRun = {
   id: number;
@@ -63,6 +72,17 @@ function prevYM(): string {
 }
 function yen(n: number): string { return `¥${Number(n).toLocaleString('ja-JP')}`; }
 
+function statusBadge(status: string, uploaded?: boolean) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <Badge variant={status === 'paid' ? 'default' : status === 'confirmed' ? 'secondary' : 'outline'}>
+        {status === 'paid' ? '振込済' : status === 'confirmed' ? '確定' : '下書き'}
+      </Badge>
+      {uploaded && <Badge variant="default" className="bg-emerald-600">配布済</Badge>}
+    </span>
+  );
+}
+
 export default function PayrollPage() {
   const [ym, setYm] = useState(prevYM());
   const [runs, setRuns] = useState<PayrollRun[]>([]);
@@ -72,10 +92,16 @@ export default function PayrollPage() {
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [adjForm, setAdjForm] = useState<{ type: string; amount: string; description: string }>({ type: 'event_bonus', amount: '', description: '' });
 
+  // AlertDialog state
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; description: string; onConfirm: () => void }>({ open: false, title: '', description: '', onConfirm: () => {} });
+
+  const showConfirm = (title: string, description: string, onConfirm: () => void) => {
+    setConfirmDialog({ open: true, title, description, onConfirm });
+  };
+
   // プレビューURL: アップ済みならDriveの埋め込みプレビュー(高速・キャッシュ済)、未アップはサーバー生成
   const previewUrl = (r: PayrollRun): string => {
     if (r.drive_file_id) {
-      // Driveの直接プレビュー(Googleがキャッシュ配信するため即表示)
       return `https://drive.google.com/file/d/${r.drive_file_id}/view`;
     }
     return `/api/staff/payroll/${r.id}/pdf`;
@@ -100,24 +126,29 @@ export default function PayrollPage() {
   useEffect(() => { load(ym); }, [ym, load]);
 
   const calculate = async () => {
-    if (!confirm(`${ym} の給与を計算します。draft状態のデータは上書きされます。よろしいですか?`)) return;
-    setBusy(true);
-    setErr('');
-    try {
-      const res = await fetch(`/api/staff/payroll/calculate`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year_month: ym }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-      load(ym); // fire-and-forget
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-      load(ym);
-    } finally {
-      setBusy(false);
-    }
+    showConfirm(
+      '給与計算',
+      `${ym} の給与を計算します。draft状態のデータは上書きされます。よろしいですか?`,
+      async () => {
+        setBusy(true);
+        setErr('');
+        try {
+          const res = await fetch(`/api/staff/payroll/calculate`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ year_month: ym }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+          load(ym);
+        } catch (e) {
+          setErr(e instanceof Error ? e.message : String(e));
+          load(ym);
+        } finally {
+          setBusy(false);
+        }
+      }
+    );
   };
 
   const [rowBusy, setRowBusy] = useState<Record<number, string>>({});
@@ -137,73 +168,85 @@ export default function PayrollPage() {
   };
 
   const deleteOne = async (runId: number) => {
-    if (!confirm("Driveの明細PDFを削除しますか?")) return;
-    setRowBusy(s => ({ ...s, [runId]: "del" }));
-    // 楽観的: 配布済バッジを即消す
-    const prev = runs;
-    setRuns(rs => rs.map(r => r.id === runId ? { ...r, drive_file_id: null, payslip_uploaded_at: null } : r));
-    try {
-      const res = await fetch(`/api/staff/payroll/${runId}/payslip`, { method: "DELETE", credentials: "include" });
-      if (!res.ok) throw new Error(await res.text());
-      load(ym); // fire-and-forget
-    } catch (e) {
-      setRuns(prev); // ロールバック
-      setErr(`削除失敗: ${e instanceof Error ? e.message : String(e)}`);
-      load(ym);
-    } finally {
-      setRowBusy(s => { const n = { ...s }; delete n[runId]; return n; });
-    }
+    showConfirm(
+      'Drive明細削除',
+      'Driveの明細PDFを削除しますか?',
+      async () => {
+        setRowBusy(s => ({ ...s, [runId]: "del" }));
+        const prev = runs;
+        setRuns(rs => rs.map(r => r.id === runId ? { ...r, drive_file_id: null, payslip_uploaded_at: null } : r));
+        try {
+          const res = await fetch(`/api/staff/payroll/${runId}/payslip`, { method: "DELETE", credentials: "include" });
+          if (!res.ok) throw new Error(await res.text());
+          load(ym);
+        } catch (e) {
+          setRuns(prev);
+          setErr(`削除失敗: ${e instanceof Error ? e.message : String(e)}`);
+          load(ym);
+        } finally {
+          setRowBusy(s => { const n = { ...s }; delete n[runId]; return n; });
+        }
+      }
+    );
   };
 
   const uploadAll = async () => {
-    if (!confirm(`${runs.length}名分の明細をDriveへアップロードします。よろしいですか?`)) return;
-    setBusy(true);
-    let ok = 0, ng = 0;
-    for (const r of runs) {
-      const success = await uploadOne(r.id);
-      success ? ok++ : ng++;
-    }
-    setBusy(false);
-    await load(ym);
-    alert(`アップロード完了: 成功 ${ok} / 失敗 ${ng}`);
+    showConfirm(
+      '一括アップロード',
+      `${runs.length}名分の明細をDriveへアップロードします。よろしいですか?`,
+      async () => {
+        setBusy(true);
+        let ok = 0, ng = 0;
+        for (const r of runs) {
+          const success = await uploadOne(r.id);
+          success ? ok++ : ng++;
+        }
+        setBusy(false);
+        await load(ym);
+        alert(`アップロード完了: 成功 ${ok} / 失敗 ${ng}`);
+      }
+    );
   };
 
   const confirmAll = async () => {
     const drafts = runs.filter(r => r.status === 'draft');
     if (drafts.length === 0) { alert('確定対象(下書き)がありません'); return; }
-    if (!confirm(`下書きの${drafts.length}名を「確定」にします。よろしいですか?`)) return;
-    setBusy(true);
-    setErr('');
-    const draftIds = new Set(drafts.map(d => d.id));
-    const prev = runs;
-    // 楽観的: 下書き全員を即 confirmed に
-    setRuns(rs => rs.map(r => draftIds.has(r.id) ? { ...r, status: 'confirmed' } : r));
-    const failed: number[] = [];
-    for (const r of drafts) {
-      try {
-        const res = await fetch(`/api/staff/payroll/${r.id}`, {
-          method: 'PATCH',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'confirmed' }),
-        });
-        if (!res.ok) throw new Error(await res.text());
-      } catch {
-        failed.push(r.id);
+    showConfirm(
+      '全員確定',
+      `下書きの${drafts.length}名を「確定」にします。よろしいですか?`,
+      async () => {
+        setBusy(true);
+        setErr('');
+        const draftIds = new Set(drafts.map(d => d.id));
+        const prev = runs;
+        setRuns(rs => rs.map(r => draftIds.has(r.id) ? { ...r, status: 'confirmed' } : r));
+        const failed: number[] = [];
+        for (const r of drafts) {
+          try {
+            const res = await fetch(`/api/staff/payroll/${r.id}`, {
+              method: 'PATCH',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'confirmed' }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+          } catch {
+            failed.push(r.id);
+          }
+        }
+        if (failed.length > 0) {
+          const failedSet = new Set(failed);
+          setRuns(rs => rs.map(r => {
+            if (!failedSet.has(r.id)) return r;
+            const orig = prev.find(p => p.id === r.id);
+            return orig ? { ...r, status: orig.status } : r;
+          }));
+          setErr(`確定失敗: ${failed.length}名(他${drafts.length - failed.length}名は確定済)`);
+        }
+        setBusy(false);
+        alert(`${drafts.length - failed.length}名を確定しました${failed.length ? ` / 失敗 ${failed.length}名` : ''}`);
       }
-    }
-    if (failed.length > 0) {
-      // 失敗分だけ元の状態に戻す
-      const failedSet = new Set(failed);
-      setRuns(rs => rs.map(r => {
-        if (!failedSet.has(r.id)) return r;
-        const orig = prev.find(p => p.id === r.id);
-        return orig ? { ...r, status: orig.status } : r;
-      }));
-      setErr(`確定失敗: ${failed.length}名(他${drafts.length - failed.length}名は確定済)`);
-    }
-    setBusy(false);
-    alert(`${drafts.length - failed.length}名を確定しました${failed.length ? ` / 失敗 ${failed.length}名` : ''}`);
+    );
   };
 
   const openDetail = async (runId: number) => {
@@ -220,11 +263,9 @@ export default function PayrollPage() {
       alert('金額(数値)と説明を入力してください');
       return;
     }
-    // スナップショット
     const snapForm = { ...adjForm };
     const snapDetail = detail;
     const runId = detail.run.id;
-    // 楽観的: 仮IDで即追加 + 合計反映
     const tempId = -Date.now();
     const optimisticAdj: Adjustment = {
       id: tempId,
@@ -258,7 +299,7 @@ export default function PayrollPage() {
         }),
       });
       if (!res.ok) throw new Error(await res.text());
-      openDetail(runId); // fire-and-forget
+      openDetail(runId);
       load(ym);
     } catch (e) {
       setErr(`調整追加失敗: ${e instanceof Error ? e.message : String(e)}`);
@@ -268,38 +309,42 @@ export default function PayrollPage() {
   };
 
   const deleteAdjustment = async (adjId: number) => {
-    if (!detail || !confirm('この調整項目を削除しますか?')) return;
-    const snapDetail = detail;
-    const runId = detail.run.id;
-    const target = snapDetail.adjustments.find(a => a.id === adjId);
-    if (!target) return;
-    // 楽観的: 即削除 + 合計反映
-    setDetail({
-      ...snapDetail,
-      adjustments: snapDetail.adjustments.filter(a => a.id !== adjId),
-      run: {
-        ...snapDetail.run,
-        total_adjustment_amount: snapDetail.run.total_adjustment_amount - target.amount,
-        total_amount: snapDetail.run.total_amount - target.amount,
-      },
-    });
-    setRuns(rs => rs.map(r => r.id === runId
-      ? { ...r, total_adjustment_amount: r.total_adjustment_amount - target.amount, total_amount: r.total_amount - target.amount }
-      : r));
-    try {
-      const res = await fetch(`/api/staff/payroll/${runId}/adjustments?adj_id=${adjId}`, { method: 'DELETE', credentials: 'include' });
-      if (!res.ok) throw new Error(await res.text());
-      openDetail(runId); // fire-and-forget
-      load(ym);
-    } catch (e) {
-      setErr(`調整削除失敗: ${e instanceof Error ? e.message : String(e)}`);
-      openDetail(runId);
-      load(ym);
-    }
+    if (!detail) return;
+    showConfirm(
+      '調整項目削除',
+      'この調整項目を削除しますか?',
+      async () => {
+        const snapDetail = detail;
+        const runId = detail.run.id;
+        const target = snapDetail.adjustments.find(a => a.id === adjId);
+        if (!target) return;
+        setDetail({
+          ...snapDetail,
+          adjustments: snapDetail.adjustments.filter(a => a.id !== adjId),
+          run: {
+            ...snapDetail.run,
+            total_adjustment_amount: snapDetail.run.total_adjustment_amount - target.amount,
+            total_amount: snapDetail.run.total_amount - target.amount,
+          },
+        });
+        setRuns(rs => rs.map(r => r.id === runId
+          ? { ...r, total_adjustment_amount: r.total_adjustment_amount - target.amount, total_amount: r.total_amount - target.amount }
+          : r));
+        try {
+          const res = await fetch(`/api/staff/payroll/${runId}/adjustments?adj_id=${adjId}`, { method: 'DELETE', credentials: 'include' });
+          if (!res.ok) throw new Error(await res.text());
+          openDetail(runId);
+          load(ym);
+        } catch (e) {
+          setErr(`調整削除失敗: ${e instanceof Error ? e.message : String(e)}`);
+          openDetail(runId);
+          load(ym);
+        }
+      }
+    );
   };
 
   const updateStatus = async (runId: number, status: string) => {
-    // 楽観的: 即反映
     setRuns(rs => rs.map(r => r.id === runId ? { ...r, status } : r));
     if (detail?.run.id === runId) {
       setDetail(d => d ? { ...d, run: { ...d.run, status } } : d);
@@ -312,18 +357,17 @@ export default function PayrollPage() {
         body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error(await res.text());
-      load(ym); // fire-and-forget
+      load(ym);
     } catch (e) {
       setErr(`状態変更失敗: ${e instanceof Error ? e.message : String(e)}`);
       load(ym);
     }
   };
 
-  // 楽観的ステータス変更(カード用): 即画面反映 → 裏でPATCH → 失敗ならロールバック
   const changeStatus = async (runId: number, next: string) => {
     const prev = runs;
     setRowBusy(s => ({ ...s, [runId]: 'status' }));
-    setRuns(rs => rs.map(r => r.id === runId ? { ...r, status: next } : r)); // 楽観的
+    setRuns(rs => rs.map(r => r.id === runId ? { ...r, status: next } : r));
     try {
       const res = await fetch(`/api/staff/payroll/${runId}`, {
         method: 'PATCH',
@@ -333,7 +377,7 @@ export default function PayrollPage() {
       });
       if (!res.ok) throw new Error(await res.text());
     } catch (e) {
-      setRuns(prev); // ロールバック
+      setRuns(prev);
       setErr(`状態変更失敗: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setRowBusy(s => { const n = { ...s }; delete n[runId]; return n; });
@@ -343,50 +387,63 @@ export default function PayrollPage() {
   const grandTotal = runs.reduce((s, r) => s + r.total_amount, 0);
 
   return (
-    <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <StaffPageHeader
-        title="💰 月次給与計算"
-        description="レッスン実績から給与計算 → 調整項目追加 → 確定 → 振込"
-        rightExtra={
-          <input
-            type="month"
-            value={ym}
-            onChange={e => setYm(e.target.value)}
-            className="px-2 py-1 border border-slate-300 rounded text-sm"
-          />
-        }
-      />
+    <div className="text-neutral-900">
+      {/* AlertDialog for confirmations */}
+      <AlertDialog open={confirmDialog.open} onOpenChange={open => !open && setConfirmDialog(s => ({ ...s, open: false }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmDialog.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(s => ({ ...s, open: false })); }}>
+              実行
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="max-w-6xl mx-auto p-3 sm:p-4">
         {err && <div className="mb-3 p-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm">{err}</div>}
 
         <div className="bg-white rounded-lg border border-neutral-200 p-3 mb-3 flex items-center justify-between flex-wrap gap-2">
-          <div className="text-sm">
-            <span className="text-slate-500">対象月:</span> <span className="font-bold text-orange-700">{ym}</span>
-            <span className="ml-3 text-slate-500">対象者:</span> <span className="font-bold">{runs.length}人</span>
-            <span className="ml-3 text-slate-500">合計:</span> <span className="font-bold text-orange-700">{yen(grandTotal)}</span>
+          <div className="text-sm flex items-center gap-3 flex-wrap">
+            <div>
+              <span className="text-slate-500">対象月:</span>{' '}
+              <Input type="month" value={ym} onChange={e => setYm(e.target.value)} className="inline-block w-auto h-7 text-sm" />
+            </div>
+            <span><span className="text-slate-500">対象者:</span> <span className="font-bold">{runs.length}人</span></span>
+            <span><span className="text-slate-500">合計:</span> <span className="font-bold text-orange-700">{yen(grandTotal)}</span></span>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button onClick={calculate} disabled={busy}
-              className="px-3 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold disabled:opacity-50 active:scale-95 transition">
-              {busy ? '⏳ 処理中…' : '🔄 計算実行'}
-            </button>
-            <a href={`/api/staff/bank-transfer/payroll?year_month=${ym}`} download
-              className="px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold">
-              🏦 振込CSV
-            </a>
-            <button onClick={uploadAll} disabled={busy || runs.length === 0}
-              className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-50 active:scale-95 transition">
-              {busy ? '⏳ 処理中…' : '⬆ 全員アップ'}
-            </button>
-            <button onClick={confirmAll} disabled={busy || runs.length === 0}
-              className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50 active:scale-95 transition">
-              {busy ? '⏳ 処理中…' : '✓ 全員確定'}
-            </button>
+            <Button onClick={calculate} disabled={busy} size="sm">
+              {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+              {busy ? '処理中...' : '計算実行'}
+            </Button>
+            <Button variant="secondary" size="sm" asChild>
+              <a href={`/api/staff/bank-transfer/payroll?year_month=${ym}`} download>
+                <Landmark /> 振込CSV
+              </a>
+            </Button>
+            <Button onClick={uploadAll} disabled={busy || runs.length === 0} variant="outline" size="sm" className="text-emerald-700 border-emerald-300 hover:bg-emerald-50">
+              {busy ? <Loader2 className="animate-spin" /> : <Upload />}
+              {busy ? '処理中...' : '全員アップ'}
+            </Button>
+            <Button onClick={confirmAll} disabled={busy || runs.length === 0} variant="secondary" size="sm">
+              {busy ? <Loader2 className="animate-spin" /> : <CheckCircle />}
+              {busy ? '処理中...' : '全員確定'}
+            </Button>
           </div>
         </div>
 
-        {loading && <p className="text-slate-500 text-sm">読込中...</p>}
+        {loading && (
+          <div className="space-y-2">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        )}
 
         {!loading && runs.length === 0 && (
           <p className="text-slate-500 text-sm p-4 bg-white rounded border">この月の計算結果はまだありません。「計算実行」を押してください。</p>
@@ -400,22 +457,13 @@ export default function PayrollPage() {
                 {/* 名前 + バッジ */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-bold text-base">{r.instructor_name}{r.status === 'confirmed' && ' ✨'}</span>
+                    <span className="font-bold text-base">{r.instructor_name}</span>
                     {r.salary_type === 'monthly_fixed' && (
-                      <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">固定給</span>
+                      <Badge variant="secondary" className="text-[10px]">固定給</Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                      r.status === 'paid' ? 'bg-green-100 text-green-700' :
-                      r.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
-                      'bg-slate-100 text-slate-600'
-                    }`}>
-                      {r.status === 'paid' ? '振込済' : r.status === 'confirmed' ? '確定' : '下書き'}
-                    </span>
-                    {r.payslip_uploaded_at && (
-                      <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded">配布済</span>
-                    )}
+                    {statusBadge(r.status, !!r.payslip_uploaded_at)}
                   </div>
                 </div>
 
@@ -424,46 +472,48 @@ export default function PayrollPage() {
 
                 {/* 内訳 */}
                 <div className="text-xs text-slate-500 mt-0.5">
-                  レッスン{yen(r.total_lesson_amount)}・交通{yen(r.total_transit_amount)}・調整{r.total_adjustment_amount !== 0 ? yen(r.total_adjustment_amount) : '—'}
+                  レッスン{yen(r.total_lesson_amount)} / 交通{yen(r.total_transit_amount)} / 調整{r.total_adjustment_amount !== 0 ? yen(r.total_adjustment_amount) : '--'}
                 </div>
 
                 {/* ボタン */}
                 <div className="flex gap-2 mt-3">
-                  <a href={previewUrl(r)} target="_blank" rel="noopener noreferrer"
-                    className="flex-1 text-center border border-blue-200 text-blue-600 bg-blue-50 py-2.5 rounded-lg text-sm active:scale-95 transition">
-                    👁 プレビュー
-                  </a>
-                  <button onClick={() => uploadOne(r.id).then(() => load(ym))} disabled={!!rowBusy[r.id]}
-                    className="flex-1 bg-emerald-600 text-white py-2.5 rounded-lg text-sm font-bold disabled:opacity-50 active:scale-95 transition">
-                    {rowBusy[r.id] === 'up' ? '⏳ アップ中…' : r.drive_file_id ? '⬆ 再アップ' : '⬆ アップ'}
-                  </button>
+                  <Button variant="outline" size="sm" className="flex-1" asChild>
+                    <a href={previewUrl(r)} target="_blank" rel="noopener noreferrer">
+                      <Eye /> プレビュー
+                    </a>
+                  </Button>
+                  <Button onClick={() => uploadOne(r.id).then(() => load(ym))} disabled={!!rowBusy[r.id]}
+                    size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+                    {rowBusy[r.id] === 'up' ? <Loader2 className="animate-spin" /> : <ArrowUpFromLine />}
+                    {rowBusy[r.id] === 'up' ? 'アップ中...' : r.drive_file_id ? '再アップ' : 'アップ'}
+                  </Button>
                   {r.drive_file_id && (
-                    <button onClick={() => deleteOne(r.id)} disabled={!!rowBusy[r.id]}
-                      className="basis-12 shrink-0 border border-red-200 text-red-600 bg-red-50 py-2.5 rounded-lg disabled:opacity-50 active:scale-95 transition">
-                      {rowBusy[r.id] === 'del' ? '⏳' : '🗑'}
-                    </button>
+                    <Button onClick={() => deleteOne(r.id)} disabled={!!rowBusy[r.id]}
+                      variant="destructive" size="icon-xs">
+                      {rowBusy[r.id] === 'del' ? <Loader2 className="animate-spin" /> : <Trash2 />}
+                    </Button>
                   )}
                 </div>
 
                 {/* 状態変更 */}
                 {r.status === 'draft' && (
-                  <button onClick={() => changeStatus(r.id, 'confirmed')} disabled={!!rowBusy[r.id]}
-                    className="mt-2 w-full py-2 rounded-lg bg-blue-600 text-white text-sm font-bold disabled:opacity-50 active:scale-95 transition">
-                    ✓ 確定する
-                  </button>
+                  <Button onClick={() => changeStatus(r.id, 'confirmed')} disabled={!!rowBusy[r.id]}
+                    size="sm" className="mt-2 w-full">
+                    <CheckCircle /> 確定する
+                  </Button>
                 )}
                 {r.status === 'confirmed' && (
-                  <button onClick={() => changeStatus(r.id, 'draft')} disabled={!!rowBusy[r.id]}
-                    className="mt-2 w-full py-2 rounded-lg border border-slate-300 text-slate-600 text-xs disabled:opacity-50 active:scale-95 transition">
+                  <Button onClick={() => changeStatus(r.id, 'draft')} disabled={!!rowBusy[r.id]}
+                    variant="outline" size="sm" className="mt-2 w-full text-xs">
                     下書きに戻す
-                  </button>
+                  </Button>
                 )}
 
                 {/* 詳細リンク */}
                 <div className="text-right mt-1.5">
-                  <button onClick={() => openDetail(r.id)} className="text-xs text-slate-400 hover:text-slate-600">
-                    詳細を見る ›
-                  </button>
+                  <Button variant="link" size="xs" onClick={() => openDetail(r.id)} className="text-slate-400 hover:text-slate-600">
+                    詳細を見る &rsaquo;
+                  </Button>
                 </div>
               </div>
             ))}
@@ -478,91 +528,90 @@ export default function PayrollPage() {
           </div>
         )}
 
-        {/* PC: 既存テーブル (現状維持) */}
+        {/* PC: テーブル */}
         {runs.length > 0 && (
-          <div className="hidden sm:block bg-white rounded-lg border border-neutral-200 overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="bg-slate-50 border-b">
-                <tr>
-                  <th className="px-3 py-2 text-left whitespace-nowrap">インストラクター</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">レッスン</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">交通費</th>
-                  <th className="px-3 py-2 text-right whitespace-nowrap">調整</th>
-                  <th className="px-3 py-2 text-right font-bold whitespace-nowrap">合計</th>
-                  <th className="px-3 py-2 text-center whitespace-nowrap">状態</th>
-                  <th className="px-3 py-2 text-center whitespace-nowrap">操作</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className="hidden sm:block bg-white rounded-lg border border-neutral-200">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="whitespace-nowrap">インストラクター</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">レッスン</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">交通費</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">調整</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">合計</TableHead>
+                  <TableHead className="text-center whitespace-nowrap">状態</TableHead>
+                  <TableHead className="text-center whitespace-nowrap">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {runs.map(r => (
-                  <tr key={r.id} className="border-b hover:bg-orange-50/50 cursor-pointer" onClick={() => openDetail(r.id)}>
-                    <td className="px-3 py-2 font-semibold whitespace-nowrap">
+                  <TableRow key={r.id} className="hover:bg-orange-50/50 cursor-pointer" onClick={() => openDetail(r.id)}>
+                    <TableCell className="font-semibold whitespace-nowrap">
                       {r.instructor_name}
-                      {r.salary_type === 'monthly_fixed' && <span className="ml-1 text-[9px] px-1 bg-purple-100 text-purple-700 rounded">固定給</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{yen(r.total_lesson_amount)}</td>
-                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{yen(r.total_transit_amount)}</td>
-                    <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{r.total_adjustment_amount !== 0 ? yen(r.total_adjustment_amount) : '—'}</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-orange-700 whitespace-nowrap">{yen(r.total_amount)}</td>
-                    <td className="px-3 py-2 text-center">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                        r.status === 'paid' ? 'bg-green-100 text-green-700' :
-                        r.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
-                        'bg-slate-100 text-slate-600'
-                      }`}>
-                        {r.status === 'paid' ? '振込済' : r.status === 'confirmed' ? '確定' : '下書き'}
-                      </span>
-                      {r.payslip_uploaded_at && <span className="ml-1 text-[9px] px-1 bg-emerald-100 text-emerald-700 rounded">配布済</span>}
-                    </td>
-                    <td className="px-3 py-2 text-center text-xs whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                      <a href={previewUrl(r)} target="_blank" rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline mr-2" title="PDFプレビュー">👁</a>
-                      <button onClick={() => uploadOne(r.id).then(() => load(ym))} disabled={!!rowBusy[r.id]}
-                        className="text-emerald-700 hover:underline mr-2 disabled:opacity-40 active:scale-95 transition inline-block">
-                        {rowBusy[r.id] === "up" ? "アップ中…" : r.drive_file_id ? "再アップ" : "⬆アップ"}
-                      </button>
+                      {r.salary_type === 'monthly_fixed' && <Badge variant="secondary" className="ml-1 text-[9px]">固定給</Badge>}
+                    </TableCell>
+                    <TableCell className="text-right font-mono whitespace-nowrap">{yen(r.total_lesson_amount)}</TableCell>
+                    <TableCell className="text-right font-mono whitespace-nowrap">{yen(r.total_transit_amount)}</TableCell>
+                    <TableCell className="text-right font-mono whitespace-nowrap">{r.total_adjustment_amount !== 0 ? yen(r.total_adjustment_amount) : '--'}</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-orange-700 whitespace-nowrap">{yen(r.total_amount)}</TableCell>
+                    <TableCell className="text-center">
+                      {statusBadge(r.status, !!r.payslip_uploaded_at)}
+                    </TableCell>
+                    <TableCell className="text-center text-xs whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                      <Button variant="ghost" size="icon-xs" asChild>
+                        <a href={previewUrl(r)} target="_blank" rel="noopener noreferrer" title="PDFプレビュー"><Eye className="size-3.5" /></a>
+                      </Button>
+                      <Button variant="ghost" size="icon-xs" onClick={() => uploadOne(r.id).then(() => load(ym))} disabled={!!rowBusy[r.id]} title={r.drive_file_id ? '再アップ' : 'アップ'}>
+                        {rowBusy[r.id] === "up" ? <Loader2 className="size-3.5 animate-spin" /> : <ArrowUpFromLine className="size-3.5 text-emerald-700" />}
+                      </Button>
                       {r.drive_file_id && (
                         <>
-                          {r.pdf_url && <a href={r.pdf_url} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:underline mr-2" title="Driveで開く">📁</a>}
-                          <button onClick={() => deleteOne(r.id)} disabled={!!rowBusy[r.id]}
-                            className="text-red-600 hover:underline disabled:opacity-40 active:scale-95 transition inline-block" title="削除">{rowBusy[r.id] === "del" ? "削除中…" : "🗑"}</button>
+                          {r.pdf_url && (
+                            <Button variant="ghost" size="icon-xs" asChild>
+                              <a href={r.pdf_url} target="_blank" rel="noopener noreferrer" title="Driveで開く"><FolderOpen className="size-3.5" /></a>
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon-xs" onClick={() => deleteOne(r.id)} disabled={!!rowBusy[r.id]} title="削除">
+                            {rowBusy[r.id] === "del" ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5 text-red-600" />}
+                          </Button>
                         </>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-              <tfoot className="bg-slate-50 border-t font-bold">
-                <tr>
-                  <td className="px-3 py-2 whitespace-nowrap">合計</td>
-                  <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{yen(runs.reduce((s, r) => s + r.total_lesson_amount, 0))}</td>
-                  <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{yen(runs.reduce((s, r) => s + r.total_transit_amount, 0))}</td>
-                  <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{yen(runs.reduce((s, r) => s + r.total_adjustment_amount, 0))}</td>
-                  <td className="px-3 py-2 text-right font-mono text-orange-700 whitespace-nowrap">{yen(grandTotal)}</td>
-                  <td colSpan={2}></td>
-                </tr>
-              </tfoot>
-            </table>
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell className="whitespace-nowrap font-bold">合計</TableCell>
+                  <TableCell className="text-right font-mono whitespace-nowrap">{yen(runs.reduce((s, r) => s + r.total_lesson_amount, 0))}</TableCell>
+                  <TableCell className="text-right font-mono whitespace-nowrap">{yen(runs.reduce((s, r) => s + r.total_transit_amount, 0))}</TableCell>
+                  <TableCell className="text-right font-mono whitespace-nowrap">{yen(runs.reduce((s, r) => s + r.total_adjustment_amount, 0))}</TableCell>
+                  <TableCell className="text-right font-mono text-orange-700 whitespace-nowrap">{yen(grandTotal)}</TableCell>
+                  <TableCell colSpan={2}></TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
           </div>
         )}
 
         {runs[0]?.payment_date && (
-          <p className="text-xs text-slate-500 mt-2">📅 振込予定日: {runs[0].payment_date}</p>
+          <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
+            <CalendarDays className="size-3" /> 振込予定日: {runs[0].payment_date}
+          </p>
         )}
       </div>
 
-      {/* 詳細パネル */}
-      {detail && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3" onClick={() => setDetail(null)}>
-          <div className="bg-white w-full max-w-3xl rounded-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
-              <h3 className="font-bold">
-                {detail.run.instructor_name} <span className="text-slate-400 text-sm">/ {detail.run.year_month}</span>
-              </h3>
-              <button onClick={() => setDetail(null)} className="text-2xl text-slate-400 hover:text-slate-700 leading-none">✕</button>
-            </div>
+      {/* 詳細ダイアログ */}
+      <Dialog open={!!detail} onOpenChange={open => !open && setDetail(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {detail?.run.instructor_name} <span className="text-slate-400 text-sm font-normal">/ {detail?.run.year_month}</span>
+            </DialogTitle>
+          </DialogHeader>
 
-            <div className="p-4 space-y-4">
+          {detail && (
+            <div className="space-y-4">
               {/* サマリ */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
                 <div className="bg-slate-50 rounded p-2">
@@ -587,28 +636,28 @@ export default function PayrollPage() {
               <div>
                 <h4 className="font-bold text-sm mb-1">レッスン明細 ({detail.lines.length}件)</h4>
                 <div className="border rounded overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        <th className="px-2 py-1 text-left">日付</th>
-                        <th className="px-2 py-1 text-left">クラス</th>
-                        <th className="px-2 py-1 text-left">スタジオ</th>
-                        <th className="px-2 py-1 text-right">単価</th>
-                        <th className="px-2 py-1 text-right">交通費</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">日付</TableHead>
+                        <TableHead className="text-xs">クラス</TableHead>
+                        <TableHead className="text-xs">スタジオ</TableHead>
+                        <TableHead className="text-xs text-right">単価</TableHead>
+                        <TableHead className="text-xs text-right">交通費</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {detail.lines.map(l => (
-                        <tr key={l.id} className="border-t">
-                          <td className="px-2 py-1 font-mono">{l.lesson_date}</td>
-                          <td className="px-2 py-1">{l.class_name ?? '—'}</td>
-                          <td className="px-2 py-1 text-slate-500">{l.studio_name ?? '—'}</td>
-                          <td className="px-2 py-1 text-right font-mono">{yen(l.lesson_rate)}</td>
-                          <td className="px-2 py-1 text-right font-mono">{l.transit_fee ? yen(l.transit_fee) : '—'}</td>
-                        </tr>
+                        <TableRow key={l.id}>
+                          <TableCell className="text-xs font-mono">{l.lesson_date}</TableCell>
+                          <TableCell className="text-xs">{l.class_name ?? '--'}</TableCell>
+                          <TableCell className="text-xs text-slate-500">{l.studio_name ?? '--'}</TableCell>
+                          <TableCell className="text-xs text-right font-mono">{yen(l.lesson_rate)}</TableCell>
+                          <TableCell className="text-xs text-right font-mono">{l.transit_fee ? yen(l.transit_fee) : '--'}</TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
 
@@ -625,37 +674,52 @@ export default function PayrollPage() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`font-mono font-bold ${a.amount >= 0 ? 'text-green-700' : 'text-red-700'}`}>{yen(a.amount)}</span>
-                          <button onClick={() => deleteAdjustment(a.id)} className="text-slate-400 hover:text-red-600 text-xs">削除</button>
+                          <Button variant="ghost" size="xs" onClick={() => deleteAdjustment(a.id)} className="text-slate-400 hover:text-red-600">
+                            <Trash2 className="size-3" /> 削除
+                          </Button>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
                 <div className="bg-orange-50 border border-orange-200 rounded p-2 grid grid-cols-1 sm:grid-cols-4 gap-2">
-                  <select value={adjForm.type} onChange={e => setAdjForm({ ...adjForm, type: e.target.value })} className="px-2 py-1 border rounded text-xs">
-                    {ADJ_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                  <input type="number" placeholder="金額(±)" value={adjForm.amount} onChange={e => setAdjForm({ ...adjForm, amount: e.target.value })} className="px-2 py-1 border rounded text-xs" />
-                  <input placeholder="説明" value={adjForm.description} onChange={e => setAdjForm({ ...adjForm, description: e.target.value })} className="px-2 py-1 border rounded text-xs sm:col-span-1" />
-                  <button onClick={addAdjustment} className="px-2 py-1 bg-orange-500 hover:bg-orange-600 text-white text-xs rounded font-semibold">追加</button>
+                  <Select value={adjForm.type} onValueChange={v => setAdjForm({ ...adjForm, type: v })}>
+                    <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {ADJ_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Input type="number" placeholder="金額(+-)" value={adjForm.amount} onChange={e => setAdjForm({ ...adjForm, amount: e.target.value })} className="h-7 text-xs" />
+                  <Input placeholder="説明" value={adjForm.description} onChange={e => setAdjForm({ ...adjForm, description: e.target.value })} className="h-7 text-xs sm:col-span-1" />
+                  <Button onClick={addAdjustment} size="sm">追加</Button>
                 </div>
               </div>
 
               {/* ステータス操作 */}
-              <div className="flex gap-2 pt-2 border-t">
+              <div className="flex gap-2 pt-2 border-t flex-wrap">
                 <span className="text-xs text-slate-500 self-center">状態:</span>
-                <button onClick={() => updateStatus(detail.run.id, 'draft')} className={`px-2 py-1 rounded text-xs ${detail.run.status === 'draft' ? 'bg-slate-200 font-bold' : 'bg-slate-50 hover:bg-slate-100'}`}>下書き</button>
-                <button onClick={() => updateStatus(detail.run.id, 'confirmed')} className={`px-2 py-1 rounded text-xs ${detail.run.status === 'confirmed' ? 'bg-blue-200 font-bold' : 'bg-slate-50 hover:bg-blue-100'}`}>確定</button>
-                <button onClick={() => updateStatus(detail.run.id, 'paid')} className={`px-2 py-1 rounded text-xs ${detail.run.status === 'paid' ? 'bg-green-200 font-bold' : 'bg-slate-50 hover:bg-green-100'}`}>振込済</button>
-                <a href={`/staff/payroll/${detail.run.id}/print`} target="_blank" rel="noopener noreferrer" className="ml-auto px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs font-semibold">📄 明細書印刷</a>
-                {detail.run.payslip_folder_url && (
-                  <a href={detail.run.payslip_folder_url} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-xs">📁 Drive</a>
-                )}
+                <Button onClick={() => updateStatus(detail.run.id, 'draft')} variant={detail.run.status === 'draft' ? 'secondary' : 'ghost'} size="xs">下書き</Button>
+                <Button onClick={() => updateStatus(detail.run.id, 'confirmed')} variant={detail.run.status === 'confirmed' ? 'secondary' : 'ghost'} size="xs">確定</Button>
+                <Button onClick={() => updateStatus(detail.run.id, 'paid')} variant={detail.run.status === 'paid' ? 'secondary' : 'ghost'} size="xs">振込済</Button>
+                <div className="ml-auto flex gap-2">
+                  <Button variant="secondary" size="xs" asChild>
+                    <a href={`/staff/payroll/${detail.run.id}/print`} target="_blank" rel="noopener noreferrer">
+                      <Printer className="size-3" /> 明細書印刷
+                    </a>
+                  </Button>
+                  {detail.run.payslip_folder_url && (
+                    <Button variant="outline" size="xs" asChild>
+                      <a href={detail.run.payslip_folder_url} target="_blank" rel="noopener noreferrer">
+                        <FolderOpen className="size-3" /> Drive
+                      </a>
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-    </main>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

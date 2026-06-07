@@ -1,7 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import StaffPageHeader from '@/components/StaffPageHeader';
+import { CalendarDays, ChevronLeft, ChevronRight, Download, Lock, Plus, Pencil, X, Ban, Undo2, Trash2, Sparkles, ClipboardList, Copy, RefreshCw, AlertTriangle, Info } from 'lucide-react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 type Lesson = {
   source: 'instance' | 'master';
@@ -51,7 +60,7 @@ type EditTarget = {
 
 const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
-// HH:MM ⇔ 分 変換
+// HH:MM <-> 分 変換
 const toMinutes = (hhmm: string): number | null => {
   if (!hhmm) return null;
   const [h, m] = hhmm.split(':').map(Number);
@@ -59,12 +68,11 @@ const toMinutes = (hhmm: string): number | null => {
   return h * 60 + m;
 };
 const fromMinutes = (mins: number): string => {
-  const wrapped = ((mins % 1440) + 1440) % 1440; // 0-1439 にクランプ
+  const wrapped = ((mins % 1440) + 1440) % 1440;
   const h = Math.floor(wrapped / 60);
   const m = wrapped % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
-// 開始変更時: 旧所要時間を保って新終了を返す (算出不能なら現状維持)
 const shiftEnd = (prevStart: string, prevEnd: string, newStart: string): string => {
   const ps = toMinutes(prevStart);
   const pe = toMinutes(prevEnd);
@@ -78,7 +86,7 @@ const shiftEnd = (prevStart: string, prevEnd: string, newStart: string): string 
 export default function ScheduleCalendarPage() {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth() + 1); // 1-12
+  const [month, setMonth] = useState(today.getMonth() + 1);
   const [data, setData] = useState<CalendarData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<Day | null>(null);
@@ -89,6 +97,9 @@ export default function ScheduleCalendarPage() {
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [showExport, setShowExport] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
+
+  // AlertDialog states for confirm actions
+  const [confirmDialog, setConfirmDialog] = useState<{ type: string; message: string; onConfirm: () => void } | null>(null);
 
   const load = useCallback(async (y: number, m: number) => {
     setLoading(true);
@@ -111,53 +122,57 @@ export default function ScheduleCalendarPage() {
 
   useEffect(() => { load(year, month); }, [year, month, load]);
 
-  // マスター/スタジオ/インストラクターを一度だけ取得
   useEffect(() => {
     fetch('/api/staff/master/studios', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => { if (d?.studios) setStudios(d.studios); });
     fetch('/api/staff/master/instructors', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => { if (d?.instructors) setInstructorsOpt(d.instructors); });
     fetch('/api/staff/schedule/calendar?year=2026&month=1', { credentials: 'include' }).catch(() => {});
-    // lesson_master 一覧 (専用APIなければmaster別途取得用)
     fetch('/api/staff/master/lessons', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => { if (d?.lessons) setMasters(d.lessons); }).catch(() => {});
   }, []);
 
-  // 月の確定(凍結)/確定解除。
-  // 確定: その月の予定を instance としてスナップショット化し、master 変更の遡及反映を止める。
-  //   手動編集 (編集/休講/削除/移動/全休/追加) は確定後も可能。
-  // 確定解除: master と再同期 (master 週次展開が再開)。
   const toggleConfirm = async () => {
     if (!data) return;
     if (data.confirmed) {
-      if (!confirm(`${year}年${month}月の確定を解除しますか?\n\nマスターの変更がこの月に再び反映されるようになります(マスターと再同期)。`)) return;
-      setConfirmBusy(true);
-      try {
-        await fetch(`/api/staff/schedule/confirm?year=${year}&month=${month}`, { method: 'DELETE', credentials: 'include' });
-        await load(year, month);
-      } finally { setConfirmBusy(false); }
+      setConfirmDialog({
+        type: 'unconfirm',
+        message: `${year}年${month}月の確定を解除しますか？\n\nマスターの変更がこの月に再び反映されるようになります（マスターと再同期）。`,
+        onConfirm: async () => {
+          setConfirmDialog(null);
+          setConfirmBusy(true);
+          try {
+            await fetch(`/api/staff/schedule/confirm?year=${year}&month=${month}`, { method: 'DELETE', credentials: 'include' });
+            await load(year, month);
+          } finally { setConfirmBusy(false); }
+        },
+      });
     } else {
-      if (!confirm(`${year}年${month}月を確定(凍結)しますか?\n\n現在のカレンダー内容をスナップショットとして固定します。以降マスターを変更してもこの月には反映されません。\n(個別の編集・休講・削除・追加は確定後も可能です)`)) return;
-      setConfirmBusy(true);
-      try {
-        const res = await fetch('/api/staff/schedule/confirm', {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ year, month }),
-        });
-        const j = await res.json().catch(() => ({}));
-        await load(year, month);
-        if (j?.created != null) alert(`${year}年${month}月を確定しました。\n(${j.created}件のレッスンを実体化)`);
-      } finally { setConfirmBusy(false); }
+      setConfirmDialog({
+        type: 'confirm',
+        message: `${year}年${month}月を確定(凍結)しますか？\n\n現在のカレンダー内容をスナップショットとして固定します。以降マスターを変更してもこの月には反映されません。\n（個別の編集・休講・削除・追加は確定後も可能です）`,
+        onConfirm: async () => {
+          setConfirmDialog(null);
+          setConfirmBusy(true);
+          try {
+            const res = await fetch('/api/staff/schedule/confirm', {
+              method: 'POST', credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ year, month }),
+            });
+            const j = await res.json().catch(() => ({}));
+            await load(year, month);
+            if (j?.created != null) alert(`${year}年${month}月を確定しました。\n(${j.created}件のレッスンを実体化)`);
+          } finally { setConfirmBusy(false); }
+        },
+      });
     }
   };
 
   const reloadDay = async (date: string) => {
     await load(year, month);
-    // selectedDayを更新
     const fresh = await fetch(`/api/staff/schedule/calendar?year=${year}&month=${month}`, { credentials: 'include' }).then(r => r.json());
     const d = fresh.days?.find((x: Day) => x.date === date);
     if (d) setSelectedDay(d);
   };
 
-  // 指定インスタンスのステータスをローカルstateに楽観反映 (selectedDay + data 両方)
   const patchLessonStatusLocal = (instanceId: number, date: string, status: string) => {
     setSelectedDay((prev) => {
       if (!prev || prev.date !== date) return prev;
@@ -187,21 +202,28 @@ export default function ScheduleCalendarPage() {
   };
 
   const cancelInstance = async (instanceId: number, date: string) => {
-    if (!confirm('このレッスンを休講にしますか?')) return;
-    patchLessonStatusLocal(instanceId, date, 'cancelled');
-    try {
-      const res = await fetch(`/api/staff/schedule/instances/${instanceId}`, {
-        method: 'PATCH', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'cancelled' }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      load(year, month);
-    } catch (e) {
-      setErr(`休講失敗: ${e instanceof Error ? e.message : String(e)}`);
-      reloadDay(date);
-    }
+    setConfirmDialog({
+      type: 'cancel',
+      message: 'このレッスンを休講にしますか？',
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        patchLessonStatusLocal(instanceId, date, 'cancelled');
+        try {
+          const res = await fetch(`/api/staff/schedule/instances/${instanceId}`, {
+            method: 'PATCH', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'cancelled' }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          load(year, month);
+        } catch (e) {
+          setErr(`休講失敗: ${e instanceof Error ? e.message : String(e)}`);
+          reloadDay(date);
+        }
+      },
+    });
   };
+
   const restoreInstance = async (instanceId: number, date: string) => {
     patchLessonStatusLocal(instanceId, date, 'scheduled');
     try {
@@ -217,8 +239,7 @@ export default function ScheduleCalendarPage() {
       reloadDay(date);
     }
   };
-  // master展開レッスンを instance化 (実体を1件作成して返す)
-  // status: 'scheduled' (編集用) / 'cancelled' (休講・記録に残す) / 'removed' (なかったことに・非表示)
+
   const instantiateMaster = async (date: string, masterId: number, status: 'scheduled' | 'cancelled' | 'removed'): Promise<number | null> => {
     const master = masters.find(m => m.id === masterId);
     if (!master) return null;
@@ -240,7 +261,6 @@ export default function ScheduleCalendarPage() {
     return j?.id ?? null;
   };
 
-  // master展開レッスンを「この日だけ編集」: instance化して編集モーダルを開く
   const editMasterLesson = async (date: string, l: Lesson) => {
     if (!l.master_id) return;
     const master = masters.find(m => m.id === l.master_id);
@@ -261,56 +281,75 @@ export default function ScheduleCalendarPage() {
     });
   };
 
-  // master展開レッスンを「この日だけ休講」: instance化 + cancelled
   const cancelMasterLesson = async (date: string, l: Lesson) => {
     if (!l.master_id) return;
-    if (!confirm(`「${l.class_name}」をこの日だけ休講(記録に残す)にしますか?`)) return;
-    const newId = await instantiateMaster(date, l.master_id, 'cancelled');
-    if (!newId) { alert('処理に失敗しました'); return; }
-    await reloadDay(date);
-  };
-
-  // 既存instanceを「このレッスンを削除(なかったことに)」: status='removed' で非表示化
-  const removeInstance = async (instanceId: number, date: string, className: string) => {
-    if (!confirm(`「${className}」をこの日からなかったことにして削除しますか?\n(休講と違い、横線でも残りません)`)) return;
-    await fetch(`/api/staff/schedule/instances/${instanceId}`, {
-      method: 'PATCH', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'removed' }),
+    setConfirmDialog({
+      type: 'cancel-master',
+      message: `「${l.class_name}」をこの日だけ休講(記録に残す)にしますか？`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        const newId = await instantiateMaster(date, l.master_id!, 'cancelled');
+        if (!newId) { alert('処理に失敗しました'); return; }
+        await reloadDay(date);
+      },
     });
-    await reloadDay(date);
   };
 
-  // master展開レッスンを「このレッスンを削除(なかったことに)」: instance化 + removed
-  const removeMasterLesson = async (date: string, l: Lesson) => {
-    if (!l.master_id) return;
-    if (!confirm(`「${l.class_name}」をこの日からなかったことにして削除しますか?\n(休講と違い、横線でも残りません)`)) return;
-    const newId = await instantiateMaster(date, l.master_id, 'removed');
-    if (!newId) { alert('処理に失敗しました'); return; }
-    await reloadDay(date);
-  };
-
-  // スタジオ全休: その日の全レッスンを一括で削除(removed)にする
-  const removeAllForDay = async () => {
-    if (!selectedDay) return;
-    const targets = selectedDay.lessons;
-    if (targets.length === 0) return;
-    if (!confirm(`${selectedDay.date} の${targets.length}レッスンを全て削除（スタジオ全休）にしますか?\n(カレンダーから消えます。給与・スタジオ料金には元々計上されません)`)) return;
-    for (const l of targets) {
-      if (l.source === 'instance' && l.instance_id) {
-        await fetch(`/api/staff/schedule/instances/${l.instance_id}`, {
+  const removeInstance = async (instanceId: number, date: string, className: string) => {
+    setConfirmDialog({
+      type: 'remove',
+      message: `「${className}」をこの日からなかったことにして削除しますか？\n（休講と違い、横線でも残りません）`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        await fetch(`/api/staff/schedule/instances/${instanceId}`, {
           method: 'PATCH', credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'removed' }),
         });
-      } else if (l.master_id) {
-        await instantiateMaster(selectedDay.date, l.master_id, 'removed');
-      }
-    }
-    await reloadDay(selectedDay.date);
+        await reloadDay(date);
+      },
+    });
   };
 
-  // master選択 + スタジオ/インストラクター上書きで instance作成
+  const removeMasterLesson = async (date: string, l: Lesson) => {
+    if (!l.master_id) return;
+    setConfirmDialog({
+      type: 'remove-master',
+      message: `「${l.class_name}」をこの日からなかったことにして削除しますか？\n（休講と違い、横線でも残りません）`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        const newId = await instantiateMaster(date, l.master_id!, 'removed');
+        if (!newId) { alert('処理に失敗しました'); return; }
+        await reloadDay(date);
+      },
+    });
+  };
+
+  const removeAllForDay = async () => {
+    if (!selectedDay) return;
+    const targets = selectedDay.lessons;
+    if (targets.length === 0) return;
+    setConfirmDialog({
+      type: 'remove-all',
+      message: `${selectedDay.date} の${targets.length}レッスンを全て削除（スタジオ全休）にしますか？\n（カレンダーから消えます。給与・スタジオ料金には元々計上されません）`,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        for (const l of targets) {
+          if (l.source === 'instance' && l.instance_id) {
+            await fetch(`/api/staff/schedule/instances/${l.instance_id}`, {
+              method: 'PATCH', credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'removed' }),
+            });
+          } else if (l.master_id) {
+            await instantiateMaster(selectedDay!.date, l.master_id, 'removed');
+          }
+        }
+        await reloadDay(selectedDay!.date);
+      },
+    });
+  };
+
   const createInstanceFromMaster = async (date: string, masterId: number, studioId?: number, instructorId?: number) => {
     const master = masters.find(m => m.id === masterId);
     if (!master) return;
@@ -338,14 +377,12 @@ export default function ScheduleCalendarPage() {
     await reloadDay(date);
   };
 
-  // 既存instanceの編集を保存
   const saveInstanceEdit = async (target: EditTarget, payload: { date: string; start_time: string; end_time: string; studio_id: number | null; instructor_id: number | null; notes: string | null }) => {
     await fetch(`/api/staff/schedule/instances/${target.instance_id}`, {
       method: 'PATCH', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    // 日付を別日に変更した場合、元日付に master が週次再展開されないよう removed 番兵を残す
     if (payload.date !== target.date && target.master_id) {
       await instantiateMaster(target.date, target.master_id, 'removed');
     }
@@ -353,7 +390,6 @@ export default function ScheduleCalendarPage() {
     await reloadDay(target.date);
   };
 
-  // instance編集モーダルを開く (既存instance用)
   const openInstanceEdit = (date: string, l: Lesson) => {
     if (!l.instance_id) return;
     const studio = studios.find(s => s.name === l.studio_name);
@@ -371,23 +407,19 @@ export default function ScheduleCalendarPage() {
     });
   };
 
-  // カレンダーグリッド: 前月/翌月の日付も薄く表示
   const grid = useMemo<{ date: string; dateNum: number; dow: number; lessons: Lesson[]; otherMonth: boolean }[]>(() => {
     if (!data) return [];
     const firstDow = new Date(data.year, data.month - 1, 1).getDay();
     const cells: { date: string; dateNum: number; dow: number; lessons: Lesson[]; otherMonth: boolean }[] = [];
-    // 前月末日付を埋める
     for (let i = firstDow - 1; i >= 0; i--) {
       const prev = new Date(data.year, data.month - 1, -i);
       const y = prev.getFullYear(), m = prev.getMonth() + 1, d = prev.getDate();
       const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       cells.push({ date: dateStr, dateNum: d, dow: prev.getDay(), lessons: [], otherMonth: true });
     }
-    // 当月日付
     for (const d of data.days) {
       cells.push({ date: d.date, dateNum: parseInt(d.date.split('-')[2], 10), dow: d.day_of_week, lessons: d.lessons, otherMonth: false });
     }
-    // 翌月日付で埋める (7の倍数まで)
     let nextDay = 1;
     while (cells.length % 7 !== 0) {
       const next = new Date(data.year, data.month, nextDay);
@@ -419,56 +451,69 @@ export default function ScheduleCalendarPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <StaffPageHeader
-        title="📅 レッスンカレンダー"
-        description="月別のレッスン予定 (lesson_master + instances から自動展開)"
-        rightExtra={
-          <div className="flex gap-1.5">
-            <button onClick={() => setShowExport(true)} className="px-3 py-1 rounded text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold">📤 エクスポート</button>
-            <button onClick={goToday} className="px-3 py-1 rounded text-xs bg-slate-100 hover:bg-slate-200 border border-slate-300">今日</button>
-          </div>
-        }
-      />
-
+    <div className="text-neutral-900">
       <div className="max-w-6xl mx-auto p-3 sm:p-4">
+        {/* Header bar with export + today buttons */}
+        <div className="flex items-center justify-end gap-1.5 mb-3">
+          <Button size="sm" onClick={() => setShowExport(true)}>
+            <Download className="size-3.5" />
+            エクスポート
+          </Button>
+          <Button size="sm" variant="outline" onClick={goToday}>
+            今日
+          </Button>
+        </div>
+
         {/* 月切り替えバー */}
         <div className="bg-white rounded-lg border border-neutral-200 p-3 mb-3 flex items-center justify-between">
-          <button onClick={prevMonth} className="px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-sm font-semibold">◀</button>
+          <Button variant="secondary" size="sm" onClick={prevMonth}>
+            <ChevronLeft className="size-4" />
+          </Button>
           <h2 className="text-lg sm:text-xl font-bold text-orange-700 flex items-center gap-2">
             {year}年 {month}月
-            {data?.confirmed && <span className="text-[10px] px-1.5 py-0.5 bg-sky-100 text-sky-700 rounded font-bold align-middle">🔒 確定済</span>}
+            {data?.confirmed && (
+              <Badge variant="secondary" className="text-[10px]">
+                <Lock className="size-3 mr-0.5" />
+                確定済
+              </Badge>
+            )}
           </h2>
-          <button onClick={nextMonth} className="px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-sm font-semibold">▶</button>
+          <Button variant="secondary" size="sm" onClick={nextMonth}>
+            <ChevronRight className="size-4" />
+          </Button>
         </div>
 
         {/* 月の確定/確定解除バー */}
         {data && (
           <div className={`rounded-lg border p-3 mb-3 flex items-center justify-between gap-2 ${data.confirmed ? 'bg-sky-50 border-sky-200' : 'bg-amber-50 border-amber-200'}`}>
-            <p className="text-xs text-slate-600 leading-snug">
-              {data.confirmed
-                ? '🔒 この月は確定(凍結)済みです。マスターを変更してもこの月には反映されません。個別の編集・休講・削除・追加は可能です。'
-                : 'この月は未確定です。マスターの変更が自動反映されます。給与/スタジオ料金/明細を確定したら「この月を確定」してください。'}
+            <p className="text-xs text-slate-600 leading-snug flex items-start gap-1">
+              {data.confirmed ? <Lock className="size-3 mt-0.5 shrink-0" /> : <Info className="size-3 mt-0.5 shrink-0" />}
+              <span>
+                {data.confirmed
+                  ? 'この月は確定(凍結)済みです。マスターを変更してもこの月には反映されません。個別の編集・休講・削除・追加は可能です。'
+                  : 'この月は未確定です。マスターの変更が自動反映されます。給与/スタジオ料金/明細を確定したら「この月を確定」してください。'}
+              </span>
             </p>
-            <button
+            <Button
               onClick={toggleConfirm}
               disabled={confirmBusy}
-              className={`shrink-0 px-3 py-1.5 rounded text-xs font-semibold disabled:opacity-50 ${
-                data.confirmed
-                  ? 'bg-white border border-sky-300 text-sky-700 hover:bg-sky-100'
-                  : 'bg-orange-500 hover:bg-orange-600 text-white'
-              }`}
+              size="sm"
+              variant={data.confirmed ? 'outline' : 'default'}
+              className="shrink-0"
             >
-              {confirmBusy ? '処理中...' : data.confirmed ? '確定を解除' : '✓ この月を確定'}
-            </button>
+              {confirmBusy ? '処理中...' : data.confirmed ? '確定を解除' : 'この月を確定'}
+            </Button>
           </div>
         )}
 
         {err && (
-          <div className="mb-3 p-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm">読込エラー: {err}</div>
+          <div className="mb-3 p-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm flex items-center gap-1">
+            <AlertTriangle className="size-4 shrink-0" />
+            読込エラー: {err}
+          </div>
         )}
 
-        {loading && <p className="text-slate-500 text-sm">読込中...</p>}
+        {loading && <p className="text-muted-foreground text-sm">読込中...</p>}
 
         {/* カレンダー本体 */}
         {!loading && data && (
@@ -497,7 +542,6 @@ export default function ScheduleCalendarPage() {
                     key={cell.date}
                     onClick={() => {
                       if (otherMonth) {
-                        // 月外日付タップで該当月に切替
                         const [oy, om] = cell.date.split('-').map(Number);
                         setYear(oy); setMonth(om);
                       } else {
@@ -511,7 +555,7 @@ export default function ScheduleCalendarPage() {
                       isToday ? 'text-orange-600' : dow === 0 ? 'text-red-600' : dow === 6 ? 'text-blue-600' : 'text-slate-700'
                     }`}>
                       {cell.dateNum}
-                      {isToday && <span className="ml-1 text-[9px] px-1 bg-orange-500 text-white rounded">今日</span>}
+                      {isToday && <Badge variant="default" className="ml-1 text-[9px] px-1 py-0 h-auto">今日</Badge>}
                     </div>
                     {/* レッスン省略表示 (最大3件) */}
                     <div className="space-y-0.5">
@@ -530,7 +574,7 @@ export default function ScheduleCalendarPage() {
                         </div>
                       ))}
                       {lessonCount > 3 && (
-                        <div className="text-[9px] text-slate-500">+{lessonCount - 3}件</div>
+                        <div className="text-[9px] text-muted-foreground">+{lessonCount - 3}件</div>
                       )}
                     </div>
                   </button>
@@ -542,107 +586,151 @@ export default function ScheduleCalendarPage() {
 
         {/* メタ情報 */}
         {data && (
-          <p className="text-xs text-slate-500 mt-2">
+          <p className="text-xs text-muted-foreground mt-2">
             この月の実開催 {data.instances_count}件 / マスター{data.masters_count}件から展開
           </p>
         )}
       </div>
 
       {/* 日別詳細パネル */}
-      {selectedDay && (
-        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50" onClick={() => setSelectedDay(null)}>
-          <div
-            className="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl p-4 max-h-[80vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* 日付ヘッダー: スクロールしても上部に固定 (sticky) */}
-            <div className="sticky top-0 z-10 -mx-4 px-4 -mt-4 pt-4 bg-white flex items-center justify-between mb-3 pb-2 border-b">
-              <h3 className="font-bold text-lg">
-                {selectedDay.date} ({DOW_LABELS[selectedDay.day_of_week]})
-              </h3>
-              <button onClick={() => setSelectedDay(null)} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
-            </div>
-            {selectedDay.lessons.length > 0 && (
-              <button onClick={removeAllForDay} className="w-full mb-2 text-xs px-2 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded font-semibold">🚫 スタジオ全休（この日の{selectedDay.lessons.length}レッスンを全削除）</button>
-            )}
-            {selectedDay.lessons.length === 0 ? (
-              <p className="text-sm text-slate-500 py-4">この日はレッスン無し</p>
-            ) : (
-              <div className="space-y-1 mb-3">
-                {selectedDay.lessons.map((l, i) => {
-                  const btn = 'text-[11px] px-2 py-0.5 rounded';
-                  const isInst = l.source === 'instance';
-                  const cancelled = l.status === 'cancelled';
-                  return (
-                  <div
-                    key={i}
-                    className={`px-2 py-1.5 rounded border ${
-                      isInst
-                        ? cancelled ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'
-                        : 'bg-blue-50 border-blue-200'
-                    }`}
-                  >
-                    {/* 1行: 時間 スペース レッスン名 */}
-                    <div className={`flex items-center gap-2 ${cancelled ? 'text-red-400 line-through' : ''}`}>
-                      <span className="font-mono text-xs font-bold whitespace-nowrap">{l.start_time ? l.start_time.substring(0, 5) : '--:--'}</span>
-                      <span className="text-[11px] text-slate-500 whitespace-nowrap">{l.studio_name ?? '-'}</span>
-                      <span className="text-sm font-semibold truncate">{l.class_name}</span>
-                      {l.instructor_name && <span className="text-[11px] text-slate-500 whitespace-nowrap">👤{l.instructor_name}</span>}
+      <Dialog open={!!selectedDay} onOpenChange={(open) => { if (!open) setSelectedDay(null); }}>
+        <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
+          {selectedDay && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {selectedDay.date} ({DOW_LABELS[selectedDay.day_of_week]})
+                </DialogTitle>
+                <DialogDescription>この日のレッスン一覧</DialogDescription>
+              </DialogHeader>
+              {selectedDay.lessons.length > 0 && (
+                <Button variant="destructive" size="sm" onClick={removeAllForDay} className="w-full">
+                  <Ban className="size-3.5" />
+                  スタジオ全休（この日の{selectedDay.lessons.length}レッスンを全削除）
+                </Button>
+              )}
+              {selectedDay.lessons.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4">この日はレッスン無し</p>
+              ) : (
+                <div className="space-y-1 mb-3">
+                  {selectedDay.lessons.map((l, i) => {
+                    const isInst = l.source === 'instance';
+                    const cancelled = l.status === 'cancelled';
+                    return (
+                    <div
+                      key={i}
+                      className={`px-2 py-1.5 rounded border ${
+                        isInst
+                          ? cancelled ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'
+                          : 'bg-blue-50 border-blue-200'
+                      }`}
+                    >
+                      <div className={`flex items-center gap-2 ${cancelled ? 'text-red-400 line-through' : ''}`}>
+                        <span className="font-mono text-xs font-bold whitespace-nowrap">{l.start_time ? l.start_time.substring(0, 5) : '--:--'}</span>
+                        <span className="text-[11px] text-muted-foreground whitespace-nowrap">{l.studio_name ?? '-'}</span>
+                        <span className="text-sm font-semibold truncate">{l.class_name}</span>
+                        {l.instructor_name && <span className="text-[11px] text-muted-foreground whitespace-nowrap">{l.instructor_name}</span>}
+                      </div>
+                      {l.notes && <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{l.notes}</div>}
+                      <div className="mt-1 flex gap-1 flex-wrap">
+                        {isInst && l.instance_id && (
+                          <>
+                            <Button size="xs" variant="ghost" className="text-orange-700 bg-orange-100 hover:bg-orange-200" onClick={() => openInstanceEdit(selectedDay.date, l)}>
+                              <Pencil className="size-3" />
+                              編集
+                            </Button>
+                            {cancelled ? (
+                              <Button size="xs" variant="ghost" className="text-green-700 bg-green-100 hover:bg-green-200" onClick={() => restoreInstance(l.instance_id!, selectedDay.date)}>
+                                <Undo2 className="size-3" />
+                                復活
+                              </Button>
+                            ) : (
+                              <Button size="xs" variant="ghost" className="text-red-700 bg-red-100 hover:bg-red-200" onClick={() => cancelInstance(l.instance_id!, selectedDay.date)}>
+                                <Ban className="size-3" />
+                                休講
+                              </Button>
+                            )}
+                            <Button size="xs" variant="ghost" className="text-slate-700 bg-slate-200 hover:bg-slate-300" onClick={() => removeInstance(l.instance_id!, selectedDay.date, l.class_name)}>
+                              <Trash2 className="size-3" />
+                              削除
+                            </Button>
+                          </>
+                        )}
+                        {!isInst && (
+                          <>
+                            <Button size="xs" variant="ghost" className="text-orange-700 bg-orange-100 hover:bg-orange-200" onClick={() => editMasterLesson(selectedDay.date, l)}>
+                              <Pencil className="size-3" />
+                              編集
+                            </Button>
+                            <Button size="xs" variant="ghost" className="text-red-700 bg-red-100 hover:bg-red-200" onClick={() => cancelMasterLesson(selectedDay.date, l)}>
+                              <Ban className="size-3" />
+                              休講
+                            </Button>
+                            <Button size="xs" variant="ghost" className="text-slate-700 bg-slate-200 hover:bg-slate-300" onClick={() => removeMasterLesson(selectedDay.date, l)}>
+                              <Trash2 className="size-3" />
+                              削除
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    {l.notes && <div className="text-[11px] text-slate-500 mt-0.5 truncate">📝 {l.notes}</div>}
-                    {/* アクション */}
-                    <div className="mt-1 flex gap-1 flex-wrap">
-                      {isInst && l.instance_id && (
-                        <>
-                          <button onClick={() => openInstanceEdit(selectedDay.date, l)} className={`${btn} bg-orange-100 hover:bg-orange-200 text-orange-700`}>編集</button>
-                          {cancelled ? (
-                            <button onClick={() => restoreInstance(l.instance_id!, selectedDay.date)} className={`${btn} bg-green-100 hover:bg-green-200 text-green-700`}>復活</button>
-                          ) : (
-                            <button onClick={() => cancelInstance(l.instance_id!, selectedDay.date)} className={`${btn} bg-red-100 hover:bg-red-200 text-red-700`}>休講</button>
-                          )}
-                          <button onClick={() => removeInstance(l.instance_id!, selectedDay.date, l.class_name)} className={`${btn} bg-slate-200 hover:bg-slate-300 text-slate-700`}>削除</button>
-                        </>
-                      )}
-                      {!isInst && (
-                        <>
-                          <button onClick={() => editMasterLesson(selectedDay.date, l)} className={`${btn} bg-orange-100 hover:bg-orange-200 text-orange-700`}>編集</button>
-                          <button onClick={() => cancelMasterLesson(selectedDay.date, l)} className={`${btn} bg-red-100 hover:bg-red-200 text-red-700`}>休講</button>
-                          <button onClick={() => removeMasterLesson(selectedDay.date, l)} className={`${btn} bg-slate-200 hover:bg-slate-300 text-slate-700`}>削除</button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            )}
-            <AddLessonForm
-              date={selectedDay.date}
-              masters={masters}
-              studios={studios}
-              instructors={instructorsOpt}
-              onAddFromMaster={(masterId, studioId, instructorId) => createInstanceFromMaster(selectedDay.date, masterId, studioId, instructorId)}
-              onAddCustom={(payload) => createCustomInstance(selectedDay.date, payload)}
-            />
-          </div>
-        </div>
-      )}
+                    );
+                  })}
+                </div>
+              )}
+              <AddLessonForm
+                date={selectedDay.date}
+                masters={masters}
+                studios={studios}
+                instructors={instructorsOpt}
+                onAddFromMaster={(masterId, studioId, instructorId) => createInstanceFromMaster(selectedDay.date, masterId, studioId, instructorId)}
+                onAddCustom={(payload) => createCustomInstance(selectedDay.date, payload)}
+              />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
-      {/* エクスポート (ICS購読 / CSV) モーダル */}
-      {showExport && <ExportModal onClose={() => setShowExport(false)} />}
+      {/* エクスポートモーダル */}
+      <Dialog open={showExport} onOpenChange={setShowExport}>
+        <DialogContent className="sm:max-w-lg max-h-[88vh] overflow-y-auto">
+          <ExportModalContent onClose={() => setShowExport(false)} />
+        </DialogContent>
+      </Dialog>
 
       {/* 既存instance / master実体化後の編集モーダル */}
-      {editTarget && (
-        <EditLessonModal
-          target={editTarget}
-          studios={studios}
-          instructors={instructorsOpt}
-          onClose={() => setEditTarget(null)}
-          onSave={(payload) => saveInstanceEdit(editTarget, payload)}
-        />
-      )}
+      <Dialog open={!!editTarget} onOpenChange={(open) => { if (!open) setEditTarget(null); }}>
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+          {editTarget && (
+            <EditLessonContent
+              target={editTarget}
+              studios={studios}
+              instructors={instructorsOpt}
+              onClose={() => setEditTarget(null)}
+              onSave={(payload) => saveInstanceEdit(editTarget, payload)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
-    </main>
+      {/* Generic AlertDialog for confirmations */}
+      <AlertDialog open={!!confirmDialog} onOpenChange={(open) => { if (!open) setConfirmDialog(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>確認</AlertDialogTitle>
+            <AlertDialogDescription className="whitespace-pre-line">
+              {confirmDialog?.message}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={() => confirmDialog?.onConfirm()}>
+              実行する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }
 
@@ -654,21 +742,18 @@ function AddLessonForm({ date, masters, studios, instructors, onAddFromMaster, o
   onAddFromMaster: (masterId: number, studioId?: number, instructorId?: number) => Promise<void>;
   onAddCustom: (payload: { start_time: string; end_time: string; class_name_override: string; studio_id?: number; instructor_id?: number; notes?: string }) => Promise<void>;
 }) {
-  const [mode, setMode] = useState<'master' | 'custom'>('master');
-  const [selectedMaster, setSelectedMaster] = useState<number | null>(null);
-  // マスター選択時のスタジオ/インストラクター上書き ('' = マスター通り)
+  const [mode, setMode] = useState<string>('master');
+  const [selectedMaster, setSelectedMaster] = useState<string>('');
   const [masterStudio, setMasterStudio] = useState<string>('');
   const [masterInstructor, setMasterInstructor] = useState<string>('');
   const [custom, setCustom] = useState({ start_time: '', end_time: '', class_name_override: '', studio_id: '', instructor_id: '', notes: '' });
   const [busy, setBusy] = useState(false);
 
-  const selectedMasterObj = masters.find(m => m.id === selectedMaster);
+  const selectedMasterObj = masters.find(m => m.id === Number(selectedMaster));
 
-  // master選択を変えたらスタジオ/インストラクターをマスター既定にリセット
   const onSelectMaster = (val: string) => {
-    const id = val ? Number(val) : null;
-    setSelectedMaster(id);
-    const m = masters.find(x => x.id === id);
+    setSelectedMaster(val);
+    const m = masters.find(x => x.id === Number(val));
     setMasterStudio(m?.default_studio_id != null ? String(m.default_studio_id) : '');
     setMasterInstructor(m?.default_instructor_id != null ? String(m.default_instructor_id) : '');
   };
@@ -679,7 +764,7 @@ function AddLessonForm({ date, masters, studios, instructors, onAddFromMaster, o
       if (mode === 'master') {
         if (!selectedMaster) { alert('クラスを選択してください'); return; }
         await onAddFromMaster(
-          selectedMaster,
+          Number(selectedMaster),
           masterStudio ? Number(masterStudio) : undefined,
           masterInstructor ? Number(masterInstructor) : undefined,
         );
@@ -704,72 +789,107 @@ function AddLessonForm({ date, masters, studios, instructors, onAddFromMaster, o
 
   return (
     <div className="border-t pt-3">
-      <h4 className="text-sm font-bold mb-2">➕ {date} にレッスンを追加</h4>
-      <div className="flex gap-1 mb-2">
-        <button onClick={() => setMode('master')} className={`px-2 py-1 text-xs rounded ${mode === 'master' ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-600'}`}>📋 マスターから選ぶ</button>
-        <button onClick={() => setMode('custom')} className={`px-2 py-1 text-xs rounded ${mode === 'custom' ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-600'}`}>✨ 特別レッスン</button>
-      </div>
-      {mode === 'master' ? (
-        <div className="space-y-2">
-          <select value={selectedMaster ?? ''} onChange={e => onSelectMaster(e.target.value)} className="w-full px-2 py-1.5 border rounded text-sm bg-white">
-            <option value="">-- 通常クラスを選択 --</option>
-            {masters.map(m => (
-              <option key={m.id} value={m.id}>{m.class_name} ({m.default_start_time?.substring(0, 5)}-)</option>
-            ))}
-          </select>
-          {selectedMasterObj && (
-            <div className="grid grid-cols-1 gap-2">
-              <label className="text-[11px] text-slate-500">
-                スタジオ (マスター通りでよければそのまま)
-                <select value={masterStudio} onChange={e => setMasterStudio(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 border rounded text-sm bg-white">
-                  <option value="">スタジオ未設定</option>
-                  {studios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </label>
-              <label className="text-[11px] text-slate-500">
-                インストラクター (マスター通りでよければそのまま)
-                <select value={masterInstructor} onChange={e => setMasterInstructor(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 border rounded text-sm bg-white">
-                  <option value="">インストラクター未設定</option>
-                  {instructors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-                </select>
-              </label>
-            </div>
-          )}
-          <button onClick={submit} disabled={busy || !selectedMaster} className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold disabled:opacity-50">
-            {busy ? '追加中...' : 'この日に追加'}
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-2 text-sm">
-          <input placeholder="クラス名 (例: 特別ゲストレッスン)" value={custom.class_name_override} onChange={e => setCustom({ ...custom, class_name_override: e.target.value })} className="w-full px-2 py-1.5 border rounded" />
-          <div className="grid grid-cols-2 gap-2">
-            <input type="time" value={custom.start_time} onChange={e => {
-              const newStart = e.target.value;
-              // 旧所要時間を保って終了を自動追従
-              const nextEnd = (custom.start_time && custom.end_time && newStart) ? shiftEnd(custom.start_time, custom.end_time, newStart) : custom.end_time;
-              setCustom({ ...custom, start_time: newStart, end_time: nextEnd });
-            }} className="px-2 py-1.5 border rounded" />
-            <input type="time" value={custom.end_time} onChange={e => setCustom({ ...custom, end_time: e.target.value })} className="px-2 py-1.5 border rounded" />
+      <h4 className="text-sm font-bold mb-2 flex items-center gap-1">
+        <Plus className="size-4" />
+        {date} にレッスンを追加
+      </h4>
+      <Tabs value={mode} onValueChange={setMode}>
+        <TabsList className="mb-2">
+          <TabsTrigger value="master">
+            <ClipboardList className="size-3" />
+            マスターから選ぶ
+          </TabsTrigger>
+          <TabsTrigger value="custom">
+            <Sparkles className="size-3" />
+            特別レッスン
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="master">
+          <div className="space-y-2">
+            <Select value={selectedMaster} onValueChange={onSelectMaster}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="-- 通常クラスを選択 --" />
+              </SelectTrigger>
+              <SelectContent>
+                {masters.map(m => (
+                  <SelectItem key={m.id} value={String(m.id)}>{m.class_name} ({m.default_start_time?.substring(0, 5)}-)</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedMasterObj && (
+              <div className="grid grid-cols-1 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[11px] text-muted-foreground">スタジオ (マスター通りでよければそのまま)</Label>
+                  <Select value={masterStudio} onValueChange={setMasterStudio}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="スタジオ未設定" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">スタジオ未設定</SelectItem>
+                      {studios.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] text-muted-foreground">インストラクター (マスター通りでよければそのまま)</Label>
+                  <Select value={masterInstructor} onValueChange={setMasterInstructor}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="インストラクター未設定" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">インストラクター未設定</SelectItem>
+                      {instructors.map(i => <SelectItem key={i.id} value={String(i.id)}>{i.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+            <Button onClick={submit} disabled={busy || !selectedMaster} className="w-full">
+              {busy ? '追加中...' : 'この日に追加'}
+            </Button>
           </div>
-          <select value={custom.studio_id} onChange={e => setCustom({ ...custom, studio_id: e.target.value })} className="w-full px-2 py-1.5 border rounded bg-white">
-            <option value="">スタジオ (任意)</option>
-            {studios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          <select value={custom.instructor_id} onChange={e => setCustom({ ...custom, instructor_id: e.target.value })} className="w-full px-2 py-1.5 border rounded bg-white">
-            <option value="">インストラクター (任意)</option>
-            {instructors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
-          <input placeholder="メモ (任意)" value={custom.notes} onChange={e => setCustom({ ...custom, notes: e.target.value })} className="w-full px-2 py-1.5 border rounded" />
-          <button onClick={submit} disabled={busy} className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold disabled:opacity-50">
-            {busy ? '追加中...' : 'この日に追加'}
-          </button>
-        </div>
-      )}
+        </TabsContent>
+        <TabsContent value="custom">
+          <div className="space-y-2 text-sm">
+            <Input placeholder="クラス名 (例: 特別ゲストレッスン)" value={custom.class_name_override} onChange={e => setCustom({ ...custom, class_name_override: e.target.value })} />
+            <div className="grid grid-cols-2 gap-2">
+              <Input type="time" value={custom.start_time} onChange={e => {
+                const newStart = e.target.value;
+                const nextEnd = (custom.start_time && custom.end_time && newStart) ? shiftEnd(custom.start_time, custom.end_time, newStart) : custom.end_time;
+                setCustom({ ...custom, start_time: newStart, end_time: nextEnd });
+              }} />
+              <Input type="time" value={custom.end_time} onChange={e => setCustom({ ...custom, end_time: e.target.value })} />
+            </div>
+            <Select value={custom.studio_id || '__none__'} onValueChange={v => setCustom({ ...custom, studio_id: v === '__none__' ? '' : v })}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="スタジオ (任意)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">スタジオ (任意)</SelectItem>
+                {studios.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={custom.instructor_id || '__none__'} onValueChange={v => setCustom({ ...custom, instructor_id: v === '__none__' ? '' : v })}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="インストラクター (任意)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">インストラクター (任意)</SelectItem>
+                {instructors.map(i => <SelectItem key={i.id} value={String(i.id)}>{i.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Input placeholder="メモ (任意)" value={custom.notes} onChange={e => setCustom({ ...custom, notes: e.target.value })} />
+            <Button onClick={submit} disabled={busy} className="w-full">
+              {busy ? '追加中...' : 'この日に追加'}
+            </Button>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
 
-function EditLessonModal({ target, studios, instructors, onClose, onSave }: {
+function EditLessonContent({ target, studios, instructors, onClose, onSave }: {
   target: EditTarget;
   studios: StudioOption[];
   instructors: InstructorOption[];
@@ -802,70 +922,76 @@ function EditLessonModal({ target, studios, instructors, onClose, onSave }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[60]" onClick={onClose}>
-      <div className="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl p-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3 pb-2 border-b">
-          <h3 className="font-bold text-base">✏️ レッスン編集 ({target.date})</h3>
-          <button onClick={onClose} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-1">
+          <Pencil className="size-4" />
+          レッスン編集 ({target.date})
+        </DialogTitle>
+        <DialogDescription>{target.class_name}</DialogDescription>
+      </DialogHeader>
+      <div className="space-y-3 text-sm">
+        <div className="space-y-1">
+          <Label className="text-[11px] font-semibold">日付（変更すると別日へ移動）</Label>
+          <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} />
         </div>
-        <div className="text-sm font-bold mb-3">{target.class_name}</div>
-        <div className="space-y-3 text-sm">
-          <div>
-            <label className="text-[11px] text-slate-500 font-semibold">日付（変更すると別日へ移動）</label>
-            <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 border rounded bg-white" />
-          </div>
-          <div>
-            <label className="text-[11px] text-slate-500 font-semibold">時間</label>
-            <div className="grid grid-cols-2 gap-2 mt-0.5">
-              <input type="time" value={startTime} onChange={e => {
-                const newStart = e.target.value;
-                // 旧所要時間を保って終了を自動追従
-                if (startTime && endTime && newStart) setEndTime(shiftEnd(startTime, endTime, newStart));
-                setStartTime(newStart);
-              }} className="px-2 py-1.5 border rounded" />
-              <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="px-2 py-1.5 border rounded" />
-            </div>
-          </div>
-          <div>
-            <label className="text-[11px] text-slate-500 font-semibold">スタジオ</label>
-            <select value={studioId} onChange={e => setStudioId(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 border rounded bg-white">
-              <option value="">未設定</option>
-              {studios.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-[11px] text-slate-500 font-semibold">インストラクター</label>
-            <select value={instructorId} onChange={e => setInstructorId(e.target.value)} className="mt-0.5 w-full px-2 py-1.5 border rounded bg-white">
-              <option value="">未設定</option>
-              {instructors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-[11px] text-slate-500 font-semibold">メモ</label>
-            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="メモ (任意)" className="mt-0.5 w-full px-2 py-1.5 border rounded" />
-          </div>
-          <div className="flex gap-2 pt-1">
-            <button onClick={onClose} className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-sm font-semibold">キャンセル</button>
-            <button onClick={submit} disabled={busy} className="flex-1 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold disabled:opacity-50">
-              {busy ? '保存中...' : '保存'}
-            </button>
+        <div className="space-y-1">
+          <Label className="text-[11px] font-semibold">時間</Label>
+          <div className="grid grid-cols-2 gap-2">
+            <Input type="time" value={startTime} onChange={e => {
+              const newStart = e.target.value;
+              if (startTime && endTime && newStart) setEndTime(shiftEnd(startTime, endTime, newStart));
+              setStartTime(newStart);
+            }} />
+            <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
           </div>
         </div>
+        <div className="space-y-1">
+          <Label className="text-[11px] font-semibold">スタジオ</Label>
+          <Select value={studioId || '__none__'} onValueChange={v => setStudioId(v === '__none__' ? '' : v)}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="未設定" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">未設定</SelectItem>
+              {studios.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[11px] font-semibold">インストラクター</Label>
+          <Select value={instructorId || '__none__'} onValueChange={v => setInstructorId(v === '__none__' ? '' : v)}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="未設定" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">未設定</SelectItem>
+              {instructors.map(i => <SelectItem key={i.id} value={String(i.id)}>{i.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[11px] font-semibold">メモ</Label>
+          <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="メモ (任意)" />
+        </div>
+        <DialogFooter className="flex gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose} className="flex-1">キャンセル</Button>
+          <Button onClick={submit} disabled={busy} className="flex-1">
+            {busy ? '保存中...' : '保存'}
+          </Button>
+        </DialogFooter>
       </div>
-    </div>
+    </>
   );
 }
 
-// エクスポート (外部カレンダー連携) モーダル
-// - ICS購読URL (token付き) を表示・コピー → Googleカレンダーで購読すると自動同期
-// - 汎用CSVダウンロード (HACOMONO/Lstep変換の素材)
-function ExportModal({ onClose }: { onClose: () => void }) {
+// エクスポートモーダル内容
+function ExportModalContent({ onClose }: { onClose: () => void }) {
   const [token, setToken] = useState<string | null>(null);
   const [tokenErr, setTokenErr] = useState<string>('');
-  const [months, setMonths] = useState(3);
+  const [months, setMonths] = useState('3');
   const [copied, setCopied] = useState(false);
   const [blockCopied, setBlockCopied] = useState(false);
-  // HACOMONO変換のマッピング未解決チェック (期間変更のたびに再取得)
   type HacoCheck = {
     months: number;
     rowCount: number;
@@ -875,8 +1001,8 @@ function ExportModal({ onClose }: { onClose: () => void }) {
   };
   const [hacoCheck, setHacoCheck] = useState<HacoCheck | null>(null);
   const [hacoCheckErr, setHacoCheckErr] = useState('');
-  // 取得済みデータが現在の期間と一致するときのみ表示 (期間変更直後は「確認中」)
-  const hacoCheckFresh = hacoCheck && hacoCheck.months === months ? hacoCheck : null;
+  const monthsNum = Number(months);
+  const hacoCheckFresh = hacoCheck && hacoCheck.months === monthsNum ? hacoCheck : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -889,16 +1015,16 @@ function ExportModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/staff/schedule/export/hacomono?months=${months}&format=json`, { credentials: 'include' })
+    fetch(`/api/staff/schedule/export/hacomono?months=${monthsNum}&format=json`, { credentials: 'include' })
       .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then(d => { if (!cancelled) { setHacoCheckErr(''); setHacoCheck({ ...d, months }); } })
+      .then(d => { if (!cancelled) { setHacoCheckErr(''); setHacoCheck({ ...d, months: monthsNum }); } })
       .catch(e => { if (!cancelled) setHacoCheckErr(e instanceof Error ? e.message : String(e)); });
     return () => { cancelled = true; };
-  }, [months]);
+  }, [monthsNum]);
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const icsUrl = token ? `${origin}/api/staff/schedule/export/ics?token=${token}&months=${months}` : '';
-  const blockIcsUrl = token ? `${origin}/api/staff/schedule/export/ics?token=${token}&months=${months}&mode=block` : '';
+  const icsUrl = token ? `${origin}/api/staff/schedule/export/ics?token=${token}&months=${monthsNum}` : '';
+  const blockIcsUrl = token ? `${origin}/api/staff/schedule/export/ics?token=${token}&months=${monthsNum}&mode=block` : '';
 
   const copyIcs = async () => {
     if (!icsUrl) return;
@@ -923,160 +1049,184 @@ function ExportModal({ onClose }: { onClose: () => void }) {
   };
 
   const downloadCsv = () => {
-    window.open(`/api/staff/schedule/export/csv?months=${months}`, '_blank');
+    window.open(`/api/staff/schedule/export/csv?months=${monthsNum}`, '_blank');
   };
 
   const downloadHacomono = () => {
-    window.open(`/api/staff/schedule/export/hacomono?months=${months}`, '_blank');
+    window.open(`/api/staff/schedule/export/hacomono?months=${monthsNum}`, '_blank');
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[60]" onClick={onClose}>
-      <div className="bg-white w-full sm:max-w-lg sm:rounded-xl rounded-t-2xl p-4 max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3 pb-2 border-b">
-          <h3 className="font-bold text-base">📤 スケジュールをエクスポート</h3>
-          <button onClick={onClose} className="text-2xl leading-none text-slate-400 hover:text-slate-700">✕</button>
-        </div>
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-1">
+          <Download className="size-4" />
+          スケジュールをエクスポート
+        </DialogTitle>
+        <DialogDescription>外部カレンダーへの連携・CSV出力</DialogDescription>
+      </DialogHeader>
 
-        {/* 連携ハブ導線: 設定手順・接続状況をまとめて見たいときはこちら */}
-        <a
-          href="/staff/schedule/sync"
-          className="block mb-4 p-2.5 rounded-lg bg-orange-100 border border-orange-200 text-[11px] text-orange-800 hover:bg-orange-200 font-semibold"
-        >
-          📡 カレンダー連携ハブを開く（3カレンダーの設定手順・接続状況をまとめて確認）→
-        </a>
+      {/* 連携ハブ導線 */}
+      <Link
+        href="/staff/schedule/sync"
+        className="block p-2.5 rounded-lg bg-orange-100 border border-orange-200 text-[11px] text-orange-800 hover:bg-orange-200 font-semibold"
+      >
+        <RefreshCw className="inline size-3 mr-1" />
+        カレンダー連携ハブを開く（3カレンダーの設定手順・接続状況をまとめて確認）→
+      </Link>
 
-        {/* 期間選択 */}
-        <div className="mb-4">
-          <label className="text-[11px] text-slate-500 font-semibold">出力期間 (今月から)</label>
-          <select value={months} onChange={e => setMonths(Number(e.target.value))} className="mt-0.5 w-full px-2 py-1.5 border rounded text-sm bg-white">
-            <option value={1}>1ヶ月</option>
-            <option value={2}>2ヶ月</option>
-            <option value={3}>3ヶ月</option>
-            <option value={6}>6ヶ月</option>
-            <option value={12}>12ヶ月</option>
-          </select>
-        </div>
-
-        {/* ICS購読 */}
-        <div className="mb-4 p-3 rounded-lg bg-orange-50 border border-orange-200">
-          <h4 className="text-sm font-bold text-orange-800 mb-1">📅 Googleカレンダーに自動同期 (ICS購読)</h4>
-          <p className="text-[11px] text-slate-600 leading-snug mb-2">
-            下のURLをGoogleカレンダーに登録すると、BW5のレッスン予定が自動で反映されます。
-            休講にした回は「キャンセル済み」として表示されます。
-          </p>
-          {tokenErr ? (
-            <p className="text-xs text-red-600">トークン取得エラー: {tokenErr}</p>
-          ) : !token ? (
-            <p className="text-xs text-slate-500">トークン取得中...</p>
-          ) : (
-            <>
-              <div className="flex gap-1.5 items-stretch">
-                <input
-                  readOnly
-                  value={icsUrl}
-                  onFocus={e => e.currentTarget.select()}
-                  className="flex-1 px-2 py-1.5 border rounded text-[11px] font-mono bg-white text-slate-700"
-                />
-                <button onClick={copyIcs} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-semibold whitespace-nowrap">
-                  {copied ? '✓ コピー済' : 'コピー'}
-                </button>
-              </div>
-              <ol className="mt-2 text-[11px] text-slate-600 leading-relaxed list-decimal pl-4 space-y-0.5">
-                <li>上のURLをコピー</li>
-                <li>Googleカレンダー左の「他のカレンダー」➕ → 「URLで追加」</li>
-                <li>URLを貼り付けて「カレンダーを追加」</li>
-                <li className="text-slate-400">※ Google側の更新反映は数時間〜最大1日かかる場合があります</li>
-              </ol>
-            </>
-          )}
-        </div>
-
-        {/* Lstep体験ブロック用 ICS購読 (mode=block) */}
-        <div className="mb-4 p-3 rounded-lg bg-orange-50 border border-orange-200">
-          <h4 className="text-sm font-bold text-orange-800 mb-1">🚫 Lstep体験ブロック用 ICS購読</h4>
-          <p className="text-[11px] text-slate-600 leading-snug mb-2">
-            このURLを専用Googleカレンダーに購読させ、Lstepの「Gカレ→シフト連携」に紐付けると、
-            休講日の体験予約が自動で閉じます。
-            <br />
-            <span className="text-slate-400">
-              ※ 休講にした枠の時間だけが「予定あり」として出力されます (通常のレッスン同期URLとは別物)。
-            </span>
-          </p>
-          {tokenErr ? (
-            <p className="text-xs text-red-600">トークン取得エラー: {tokenErr}</p>
-          ) : !token ? (
-            <p className="text-xs text-slate-500">トークン取得中...</p>
-          ) : (
-            <div className="flex gap-1.5 items-stretch">
-              <input
-                readOnly
-                value={blockIcsUrl}
-                onFocus={e => e.currentTarget.select()}
-                className="flex-1 px-2 py-1.5 border rounded text-[11px] font-mono bg-white text-slate-700"
-              />
-              <button onClick={copyBlockIcs} className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-semibold whitespace-nowrap">
-                {blockCopied ? '✓ コピー済' : 'コピー'}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* CSV */}
-        <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-          <h4 className="text-sm font-bold text-slate-700 mb-1">📄 汎用CSVダウンロード</h4>
-          <p className="text-[11px] text-slate-600 leading-snug mb-2">
-            日付・時刻・クラス・インストラクター・スタジオ・ステータスの一覧 (UTF-8 BOM付き)。
-            HACOMONO/Lstep向け変換の素材に使えます。
-          </p>
-          <button onClick={downloadCsv} className="w-full py-2 bg-slate-700 hover:bg-slate-800 text-white rounded text-sm font-semibold">
-            CSVをダウンロード ({months}ヶ月分)
-          </button>
-        </div>
-
-        {/* HACOMONO形式CSV */}
-        <div className="mt-4 p-3 rounded-lg bg-orange-50 border border-orange-200">
-          <h4 className="text-sm font-bold text-orange-800 mb-1">🔄 HACOMONO形式CSV (スケジュールインポート用)</h4>
-          <p className="text-[11px] text-slate-600 leading-snug mb-2">
-            HACOMONOの「スケジュールインポート」にそのままアップロードできる形式 (UTF-8 BOM付き)。
-            開始日時がキーで、既存と一致すれば更新・無ければ新規。休講は「非公開レッスン」として出力します。
-          </p>
-
-          {!hacoCheckFresh && hacoCheckErr ? (
-            <p className="text-xs text-red-600 mb-2">マッピング確認エラー: {hacoCheckErr}</p>
-          ) : !hacoCheckFresh ? (
-            <p className="text-xs text-slate-500 mb-2">マッピング確認中...</p>
-          ) : (
-            <div className="mb-2 text-[11px]">
-              <p className="text-slate-700">
-                {months}ヶ月分 {hacoCheckFresh.rowCount}件中、
-                <span className="font-semibold text-green-700"> {hacoCheckFresh.matchedCount}件マッチ</span>
-                {hacoCheckFresh.unresolvedCount > 0 && (
-                  <span className="font-semibold text-red-600"> / {hacoCheckFresh.unresolvedCount}件 未解決</span>
-                )}
-              </p>
-              {hacoCheckFresh.unresolvedCount > 0 && (
-                <div className="mt-1 p-2 rounded bg-red-50 border border-red-200 text-red-700 leading-relaxed">
-                  <p className="font-semibold mb-0.5">⚠️ 以下はコードが空欄で出力されます (要マッピング追加):</p>
-                  {hacoCheckFresh.unresolvedDetail.programs.length > 0 && (
-                    <p>プログラム: {hacoCheckFresh.unresolvedDetail.programs.join('、')}</p>
-                  )}
-                  {hacoCheckFresh.unresolvedDetail.staff.length > 0 && (
-                    <p>スタッフ: {hacoCheckFresh.unresolvedDetail.staff.join('、')}</p>
-                  )}
-                  {hacoCheckFresh.unresolvedDetail.spaces.length > 0 && (
-                    <p>スペース: {hacoCheckFresh.unresolvedDetail.spaces.join('、')}</p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          <button onClick={downloadHacomono} className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-white rounded text-sm font-semibold">
-            HACOMONO形式CSVをダウンロード ({months}ヶ月分)
-          </button>
-        </div>
+      {/* 期間選択 */}
+      <div className="space-y-1">
+        <Label className="text-[11px] font-semibold">出力期間 (今月から)</Label>
+        <Select value={months} onValueChange={setMonths}>
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="1">1ヶ月</SelectItem>
+            <SelectItem value="2">2ヶ月</SelectItem>
+            <SelectItem value="3">3ヶ月</SelectItem>
+            <SelectItem value="6">6ヶ月</SelectItem>
+            <SelectItem value="12">12ヶ月</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
-    </div>
+
+      {/* ICS購読 */}
+      <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 space-y-2">
+        <h4 className="text-sm font-bold text-orange-800 flex items-center gap-1">
+          <CalendarDays className="size-4" />
+          Googleカレンダーに自動同期 (ICS購読)
+        </h4>
+        <p className="text-[11px] text-slate-600 leading-snug">
+          下のURLをGoogleカレンダーに登録すると、BW5のレッスン予定が自動で反映されます。
+          休講にした回は「キャンセル済み」として表示されます。
+        </p>
+        {tokenErr ? (
+          <p className="text-xs text-red-600">トークン取得エラー: {tokenErr}</p>
+        ) : !token ? (
+          <p className="text-xs text-muted-foreground">トークン取得中...</p>
+        ) : (
+          <>
+            <div className="flex gap-1.5 items-stretch">
+              <Input
+                readOnly
+                value={icsUrl}
+                onFocus={e => e.currentTarget.select()}
+                className="flex-1 text-[11px] font-mono"
+              />
+              <Button size="sm" onClick={copyIcs} className="whitespace-nowrap">
+                <Copy className="size-3" />
+                {copied ? 'コピー済' : 'コピー'}
+              </Button>
+            </div>
+            <ol className="text-[11px] text-slate-600 leading-relaxed list-decimal pl-4 space-y-0.5">
+              <li>上のURLをコピー</li>
+              <li>Googleカレンダー左の「他のカレンダー」+ → 「URLで追加」</li>
+              <li>URLを貼り付けて「カレンダーを追加」</li>
+              <li className="text-muted-foreground">※ Google側の更新反映は数時間〜最大1日かかる場合があります</li>
+            </ol>
+          </>
+        )}
+      </div>
+
+      {/* Lstep体験ブロック用 ICS購読 */}
+      <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 space-y-2">
+        <h4 className="text-sm font-bold text-orange-800 flex items-center gap-1">
+          <Ban className="size-4" />
+          Lstep体験ブロック用 ICS購読
+        </h4>
+        <p className="text-[11px] text-slate-600 leading-snug">
+          このURLを専用Googleカレンダーに購読させ、Lstepの「Gカレ→シフト連携」に紐付けると、
+          休講日の体験予約が自動で閉じます。
+          <br />
+          <span className="text-muted-foreground">
+            ※ 休講にした枠の時間だけが「予定あり」として出力されます (通常のレッスン同期URLとは別物)。
+          </span>
+        </p>
+        {tokenErr ? (
+          <p className="text-xs text-red-600">トークン取得エラー: {tokenErr}</p>
+        ) : !token ? (
+          <p className="text-xs text-muted-foreground">トークン取得中...</p>
+        ) : (
+          <div className="flex gap-1.5 items-stretch">
+            <Input
+              readOnly
+              value={blockIcsUrl}
+              onFocus={e => e.currentTarget.select()}
+              className="flex-1 text-[11px] font-mono"
+            />
+            <Button size="sm" onClick={copyBlockIcs} className="whitespace-nowrap">
+              <Copy className="size-3" />
+              {blockCopied ? 'コピー済' : 'コピー'}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* CSV */}
+      <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+        <h4 className="text-sm font-bold text-slate-700 flex items-center gap-1">
+          <Download className="size-4" />
+          汎用CSVダウンロード
+        </h4>
+        <p className="text-[11px] text-slate-600 leading-snug">
+          日付・時刻・クラス・インストラクター・スタジオ・ステータスの一覧 (UTF-8 BOM付き)。
+          HACOMONO/Lstep向け変換の素材に使えます。
+        </p>
+        <Button variant="secondary" onClick={downloadCsv} className="w-full">
+          CSVをダウンロード ({monthsNum}ヶ月分)
+        </Button>
+      </div>
+
+      {/* HACOMONO形式CSV */}
+      <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 space-y-2">
+        <h4 className="text-sm font-bold text-orange-800 flex items-center gap-1">
+          <RefreshCw className="size-4" />
+          HACOMONO形式CSV (スケジュールインポート用)
+        </h4>
+        <p className="text-[11px] text-slate-600 leading-snug">
+          HACOMONOの「スケジュールインポート」にそのままアップロードできる形式 (UTF-8 BOM付き)。
+          開始日時がキーで、既存と一致すれば更新・無ければ新規。休講は「非公開レッスン」として出力します。
+        </p>
+
+        {!hacoCheckFresh && hacoCheckErr ? (
+          <p className="text-xs text-red-600">マッピング確認エラー: {hacoCheckErr}</p>
+        ) : !hacoCheckFresh ? (
+          <p className="text-xs text-muted-foreground">マッピング確認中...</p>
+        ) : (
+          <div className="text-[11px]">
+            <p className="text-slate-700">
+              {monthsNum}ヶ月分 {hacoCheckFresh.rowCount}件中、
+              <span className="font-semibold text-green-700"> {hacoCheckFresh.matchedCount}件マッチ</span>
+              {hacoCheckFresh.unresolvedCount > 0 && (
+                <span className="font-semibold text-red-600"> / {hacoCheckFresh.unresolvedCount}件 未解決</span>
+              )}
+            </p>
+            {hacoCheckFresh.unresolvedCount > 0 && (
+              <div className="mt-1 p-2 rounded bg-red-50 border border-red-200 text-red-700 leading-relaxed">
+                <p className="font-semibold mb-0.5 flex items-center gap-1">
+                  <AlertTriangle className="size-3" />
+                  以下はコードが空欄で出力されます (要マッピング追加):
+                </p>
+                {hacoCheckFresh.unresolvedDetail.programs.length > 0 && (
+                  <p>プログラム: {hacoCheckFresh.unresolvedDetail.programs.join('、')}</p>
+                )}
+                {hacoCheckFresh.unresolvedDetail.staff.length > 0 && (
+                  <p>スタッフ: {hacoCheckFresh.unresolvedDetail.staff.join('、')}</p>
+                )}
+                {hacoCheckFresh.unresolvedDetail.spaces.length > 0 && (
+                  <p>スペース: {hacoCheckFresh.unresolvedDetail.spaces.join('、')}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <Button onClick={downloadHacomono} className="w-full">
+          HACOMONO形式CSVをダウンロード ({monthsNum}ヶ月分)
+        </Button>
+      </div>
+    </>
   );
 }

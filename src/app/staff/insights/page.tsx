@@ -1,8 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import StaffPageHeader from '@/components/StaffPageHeader';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { ChevronLeft, ChevronRight, Target, Upload, TrendingUp, TrendingDown, Users, Sprout, DollarSign, Crosshair, Gem, BarChart3 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
 
 type TrendData = {
   months: string[];
@@ -47,34 +53,36 @@ function TrendChart({ title, values, months, suffix, isPct, lowerIsBetter }: {
   const { latest, delta, positive } = deltaLabel(values, suffix, isPct);
   const good = lowerIsBetter ? !positive : positive;
   return (
-    <div className="bg-white border border-orange-200 rounded-xl p-3">
-      <div className="flex items-baseline justify-between mb-1">
-        <div className="text-[11px] text-neutral-500 font-medium">{title}</div>
-        <div className="text-[10px] font-mono text-neutral-400">{delta}</div>
-      </div>
-      <div className="flex items-baseline gap-2 mb-1">
-        <span className="text-lg font-bold text-orange-700">{latest}</span>
-        <span className={`text-[10px] font-semibold ${good ? 'text-green-600' : 'text-red-600'}`}>
-          {delta !== '—' ? (positive ? '↑' : '↓') : ''}
-        </span>
-      </div>
-      <div style={{ height: 160 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
-            <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="#94a3b8" />
-            <YAxis tick={{ fontSize: 10 }} stroke="#94a3b8" />
-            <Tooltip
-              contentStyle={{ fontSize: 11, padding: '4px 8px' }}
-              formatter={(v) => {
-                const num1 = typeof v === 'number' ? v : Number(v);
-                return isPct ? `${num1.toFixed(1)}${suffix}` : `${num(Math.round(num1))}${suffix}`;
-              }}
-            />
-            <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} dot={{ r: 3, fill: '#f97316' }} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
+    <Card>
+      <CardContent className="p-3">
+        <div className="flex items-baseline justify-between mb-1">
+          <div className="text-[11px] text-neutral-500 font-medium">{title}</div>
+          <div className="text-[10px] font-mono text-neutral-400">{delta}</div>
+        </div>
+        <div className="flex items-baseline gap-2 mb-1">
+          <span className="text-lg font-bold text-orange-700">{latest}</span>
+          <span className={`text-[10px] font-semibold ${good ? 'text-green-600' : 'text-red-600'}`}>
+            {delta !== '—' ? (positive ? <TrendingUp className="inline h-3 w-3" /> : <TrendingDown className="inline h-3 w-3" />) : ''}
+          </span>
+        </div>
+        <div style={{ height: 160 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
+              <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="#94a3b8" />
+              <YAxis tick={{ fontSize: 10 }} stroke="#94a3b8" />
+              <Tooltip
+                contentStyle={{ fontSize: 11, padding: '4px 8px' }}
+                formatter={(v) => {
+                  const num1 = typeof v === 'number' ? v : Number(v);
+                  return isPct ? `${num1.toFixed(1)}${suffix}` : `${num(Math.round(num1))}${suffix}`;
+                }}
+              />
+              <Line type="monotone" dataKey="value" stroke="#f97316" strokeWidth={2} dot={{ r: 3, fill: '#f97316' }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -127,7 +135,7 @@ function currentYM(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-// "2026-05" → "2026年5月"
+// "2026-05" -> "2026年5月"
 function ymJp(ym: string): string {
   const [y, m] = ym.split('-').map(Number);
   if (!y || !m) return ym;
@@ -153,38 +161,42 @@ type KpiCardProps = {
 
 function KpiCard({ label, value, sub, target, current, unit, accent = 'orange', warn }: KpiCardProps) {
   const palette: Record<string, string> = {
-    orange: 'text-orange-700 border-orange-200',
-    blue: 'text-blue-700 border-blue-200',
-    green: 'text-green-700 border-green-200',
-    red: 'text-red-700 border-red-200',
-    purple: 'text-purple-700 border-purple-200',
+    orange: 'text-orange-700',
+    blue: 'text-blue-700',
+    green: 'text-green-700',
+    red: 'text-red-700',
+    purple: 'text-purple-700',
   };
   const progress = target && current !== undefined ? Math.min(100, (current / target) * 100) : null;
   return (
-    <div className={`bg-white border ${warn ? 'border-red-300' : palette[accent].split(' ')[1]} rounded-xl p-3`}>
-      <div className="text-[11px] text-neutral-500 font-medium">{label}</div>
-      <div className={`text-2xl font-bold mt-1 ${warn ? 'text-red-700' : palette[accent].split(' ')[0]}`}>{value}</div>
-      {sub && <div className="text-[11px] text-neutral-500 mt-1">{sub}</div>}
-      {progress !== null && target && (
-        <div className="mt-2">
-          <div className="flex justify-between text-[10px] text-neutral-500 mb-0.5">
-            <span>目標: {num(target)}{unit ?? ''}</span>
-            <span>{pct(progress, 0)}</span>
+    <Card className={warn ? 'border-red-300' : ''}>
+      <CardContent className="p-3">
+        <div className="text-[11px] text-neutral-500 font-medium">{label}</div>
+        <div className={`text-2xl font-bold mt-1 ${warn ? 'text-red-700' : palette[accent]}`}>{value}</div>
+        {sub && <div className="text-[11px] text-neutral-500 mt-1">{sub}</div>}
+        {progress !== null && target && (
+          <div className="mt-2">
+            <div className="flex justify-between text-[10px] text-neutral-500 mb-0.5">
+              <span>目標: {num(target)}{unit ?? ''}</span>
+              <span>{pct(progress, 0)}</span>
+            </div>
+            <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+              <div className={`h-full ${progress >= 100 ? 'bg-green-500' : progress >= 70 ? 'bg-orange-500' : 'bg-amber-500'}`} style={{ width: `${progress}%` }} />
+            </div>
           </div>
-          <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
-            <div className={`h-full ${progress >= 100 ? 'bg-green-500' : progress >= 70 ? 'bg-orange-500' : 'bg-amber-500'}`} style={{ width: `${progress}%` }} />
-          </div>
-        </div>
-      )}
-    </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Section({ title, icon, hint, children }: { title: string; icon?: React.ReactNode; hint?: string; children: React.ReactNode }) {
   return (
     <section className="mb-6">
       <div className="flex items-baseline justify-between mb-2">
-        <h2 className="text-base sm:text-lg font-bold text-neutral-800">{title}</h2>
+        <h2 className="text-base sm:text-lg font-bold text-neutral-800 flex items-center gap-1.5">
+          {icon}{title}
+        </h2>
         {hint && <span className="text-[10px] text-neutral-400">{hint}</span>}
       </div>
       {children}
@@ -305,44 +317,61 @@ export default function InsightsPage() {
   }, [data]);
 
   return (
-    <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <StaffPageHeader
-        title="📊 経営インサイト"
-        description="月次KPI自動集計ダッシュボード"
-        rightExtra={
-          <div className="flex items-center gap-1 flex-wrap">
-            <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'}`} title="HACOMONO RS002「固定枠：レッスン別予約集計」CSV">
-              {uploading ? '取込中...' : '📥 稼働率CSV'}
-              <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
-                const f = e.target.files?.[0];
-                if (f) uploadCsv('/api/staff/kpi/import-rs002', '稼働率', f);
-                e.target.value = '';
-              }} />
-            </label>
-            <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-green-50 hover:bg-green-100 border-green-200 text-green-700'}`} title="HACOMONO 課金明細 CSV (プラン/単発/入会金)">
-              📥 課金明細
-              <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
-                const f = e.target.files?.[0];
-                if (f) uploadCsv('/api/staff/kpi/import-hacomono-billing', 'HACOMONO課金明細', f);
-                e.target.value = '';
-              }} />
-            </label>
-            <label className={`px-2 py-1 rounded text-xs cursor-pointer border ${uploading ? 'bg-slate-200 text-slate-400' : 'bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700'}`} title="GMO青空ネット銀行 取引CSV">
-              📥 銀行CSV
-              <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
-                const f = e.target.files?.[0];
-                if (f) uploadCsv('/api/staff/kpi/import-bank', '銀行明細', f);
-                e.target.value = '';
-              }} />
-            </label>
-            <button onClick={() => setYm(shiftYM(ym, -1))} className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-xs font-semibold">◀</button>
-            <span className="text-sm font-bold text-orange-700 px-2">{ym}</span>
-            <button onClick={() => setYm(shiftYM(ym, 1))} className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-xs font-semibold">▶</button>
-            <button onClick={() => setYm(currentYM())} className="ml-1 px-2 py-1 rounded text-xs bg-slate-100 hover:bg-slate-200 border border-slate-300">今月</button>
-            <button onClick={openTargets} className="ml-1 px-2 py-1 rounded text-xs bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-700">🎯 目標</button>
+    <main className="text-neutral-900">
+      <div className="border-b bg-white px-4 py-3">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h1 className="text-lg font-bold text-neutral-800 flex items-center gap-1.5">
+              <BarChart3 className="h-5 w-5 text-orange-500" />
+              経営インサイト
+            </h1>
+            <p className="text-xs text-neutral-500">月次KPI自動集計ダッシュボード</p>
           </div>
-        }
-      />
+          <div className="flex items-center gap-1 flex-wrap">
+            <Button variant="outline" size="sm" className="text-xs relative" disabled={uploading} asChild>
+              <label className="cursor-pointer" title="HACOMONO RS002 固定枠：レッスン別予約集計 CSV">
+                <Upload className="h-3 w-3 mr-1" />
+                {uploading ? '取込中...' : '稼働率CSV'}
+                <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadCsv('/api/staff/kpi/import-rs002', '稼働率', f);
+                  e.target.value = '';
+                }} />
+              </label>
+            </Button>
+            <Button variant="outline" size="sm" className="text-xs relative" disabled={uploading} asChild>
+              <label className="cursor-pointer" title="HACOMONO 課金明細 CSV">
+                <Upload className="h-3 w-3 mr-1" />
+                課金明細
+                <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadCsv('/api/staff/kpi/import-hacomono-billing', 'HACOMONO課金明細', f);
+                  e.target.value = '';
+                }} />
+              </label>
+            </Button>
+            <Button variant="outline" size="sm" className="text-xs relative" disabled={uploading} asChild>
+              <label className="cursor-pointer" title="GMO青空ネット銀行 取引CSV">
+                <Upload className="h-3 w-3 mr-1" />
+                銀行CSV
+                <input type="file" accept=".csv" className="hidden" disabled={uploading} onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadCsv('/api/staff/kpi/import-bank', '銀行明細', f);
+                  e.target.value = '';
+                }} />
+              </label>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setYm(shiftYM(ym, -1))}><ChevronLeft className="h-4 w-4" /></Button>
+            <span className="text-sm font-bold text-orange-700 px-2">{ym}</span>
+            <Button variant="ghost" size="sm" onClick={() => setYm(shiftYM(ym, 1))}><ChevronRight className="h-4 w-4" /></Button>
+            <Button variant="outline" size="sm" className="text-xs" onClick={() => setYm(currentYM())}>今月</Button>
+            <Button variant="outline" size="sm" className="text-xs" onClick={openTargets}>
+              <Target className="h-3 w-3 mr-1" />
+              目標
+            </Button>
+          </div>
+        </div>
+      </div>
 
       <div className="max-w-6xl mx-auto p-3 sm:p-4">
         {err && <div className="mb-3 p-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm">読込エラー: {err}</div>}
@@ -351,12 +380,12 @@ export default function InsightsPage() {
         {data && (
           <>
             {/* ===== B: 顧客動態 ===== */}
-            <Section title="👥 顧客動態" hint="在籍はHACOMONO会員 / LINEはLstep友だち">
+            <Section title="顧客動態" icon={<Users className="h-4 w-4 text-orange-500" />} hint="在籍はHACOMONO会員 / LINEはLstep友だち">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
                 <KpiCard
                   label="在籍数(月末)"
                   value={num(data.members.end_active)}
-                  sub={`有効会員 (boom_members) ・ 月初 ${num(data.members.start_active)}人`}
+                  sub={`有効会員 (boom_members) / 月初 ${num(data.members.start_active)}人`}
                   target={target.members_active}
                   current={data.members.end_active}
                   unit="人"
@@ -371,14 +400,14 @@ export default function InsightsPage() {
                 <KpiCard
                   label="退会率(Churn)"
                   value={pct(data.members.churn_rate)}
-                  sub="退会数 ÷ 月初在籍 (業界目安 3-5%)"
+                  sub="退会数 / 月初在籍 (業界目安 3-5%)"
                   accent={data.members.churn_rate > 5 ? 'red' : data.members.churn_rate > 3 ? 'orange' : 'green'}
                   warn={data.members.churn_rate > 5}
                 />
                 <KpiCard
                   label="LINE友だち数"
                   value={num(data.line.friends_now)}
-                  sub="Lstep友だち (ブロック除く・在籍数とは別)"
+                  sub="Lstep友だち (ブロック除く / 在籍数とは別)"
                   target={target.line_friends}
                   current={data.line.friends_now}
                   unit="人"
@@ -395,7 +424,7 @@ export default function InsightsPage() {
             </Section>
 
             {/* ===== E: 先行指標 ===== */}
-            <Section title="🌱 先行指標" hint="来月以降の入会を予兆">
+            <Section title="先行指標" icon={<Sprout className="h-4 w-4 text-purple-500" />} hint="来月以降の入会を予兆">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                 <KpiCard
                   label="体験申込数"
@@ -425,7 +454,7 @@ export default function InsightsPage() {
             </Section>
 
             {/* ===== A: 売上系 ===== */}
-            <Section title="💰 売上" hint="スクール本業 (プラン + 単発 + 入会金)">
+            <Section title="売上" icon={<DollarSign className="h-4 w-4 text-orange-500" />} hint="スクール本業 (プラン + 単発 + 入会金)">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                 <KpiCard
                   label="本業売上 (税込)"
@@ -459,28 +488,30 @@ export default function InsightsPage() {
                 <KpiCard
                   label="ARPU (客単価)"
                   value={data.revenue.data_available ? yen(data.revenue.arpu) : '—'}
-                  sub="プラン売上 ÷ 在籍数"
+                  sub="プラン売上 / 在籍数"
                   accent="blue"
                 />
               </div>
               {/* 補助売上 */}
-              <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                <div className="text-[11px] font-semibold text-slate-600 mb-2">補助売上 (参考)</div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                  <div><span className="text-slate-500 text-xs">物販: </span><span className="font-bold">{yen(data.aux_revenue.merch_orders)}</span></div>
-                  <div><span className="text-slate-500 text-xs">映像予約 ({data.aux_revenue.video_preorder_count}件): </span><span className="font-bold">{yen(data.aux_revenue.video_preorders_estimate)}</span></div>
-                </div>
-              </div>
+              <Card className="mt-3">
+                <CardContent className="p-3">
+                  <div className="text-[11px] font-semibold text-slate-600 mb-2">補助売上 (参考)</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                    <div><span className="text-slate-500 text-xs">物販: </span><span className="font-bold">{yen(data.aux_revenue.merch_orders)}</span></div>
+                    <div><span className="text-slate-500 text-xs">映像予約 ({data.aux_revenue.video_preorder_count}件): </span><span className="font-bold">{yen(data.aux_revenue.video_preorders_estimate)}</span></div>
+                  </div>
+                </CardContent>
+              </Card>
             </Section>
 
             {/* ===== C: オペレーション ===== */}
-            <Section title={`🎯 ${ymJp(ym)}の稼働率`} hint="予約数÷定員 (HACOMONO RS002)">
+            <Section title={`${ymJp(ym)}の稼働率`} icon={<Crosshair className="h-4 w-4 text-orange-500" />} hint="予約数/定員 (HACOMONO RS002)">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-3">
                 <KpiCard
                   label={`平均稼働率 (${ymJp(ym)})`}
                   value={data.utilization.data_available ? pct(data.utilization.average * 100) : '—'}
                   sub={data.utilization.data_available
-                    ? `通常クラスのみ ・ ${data.utilization.lesson_count}レッスン${(data.utilization.excluded_classes?.length ?? 0) > 0 ? ` ・ 除外${data.utilization.excluded_classes!.length}件` : ''}`
+                    ? `通常クラスのみ / ${data.utilization.lesson_count}レッスン${(data.utilization.excluded_classes?.length ?? 0) > 0 ? ` / 除外${data.utilization.excluded_classes!.length}件` : ''}`
                     : 'RS002 未取込'}
                   target={target.utilization}
                   current={data.utilization.average * 100}
@@ -497,79 +528,91 @@ export default function InsightsPage() {
               {data.utilization.data_available && (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="bg-white border border-green-200 rounded-lg p-3">
-                      <div className="text-xs font-bold text-green-700 mb-2">🔥 稼働率TOP <span className="font-normal text-slate-400">(通常クラス)</span></div>
-                      <ul className="space-y-1 text-xs">
-                        {data.utilization.top_classes.map((c, i) => (
-                          <li key={i} className="flex justify-between gap-2">
-                            <span className="truncate">{c.program_name} <span className="text-slate-400">/ {c.staff_name}</span></span>
-                            <span className="font-mono font-bold text-green-700">{pct(c.avg_rate * 100, 0)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="bg-white border border-red-200 rounded-lg p-3">
-                      <div className="text-xs font-bold text-red-700 mb-2">⚠️ 稼働率BOTTOM <span className="font-normal text-slate-400">(通常クラス)</span></div>
-                      <ul className="space-y-1 text-xs">
-                        {data.utilization.bottom_classes.map((c, i) => (
-                          <li key={i} className="flex justify-between gap-2">
-                            <span className="truncate">{c.program_name} <span className="text-slate-400">/ {c.staff_name}</span></span>
-                            <span className="font-mono font-bold text-red-700">{pct(c.avg_rate * 100, 0)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                    <Card className="border-green-200">
+                      <CardContent className="p-3">
+                        <div className="text-xs font-bold text-green-700 mb-2 flex items-center gap-1">
+                          <TrendingUp className="h-3.5 w-3.5" /> 稼働率TOP <span className="font-normal text-slate-400">(通常クラス)</span>
+                        </div>
+                        <ul className="space-y-1 text-xs">
+                          {data.utilization.top_classes.map((c, i) => (
+                            <li key={i} className="flex justify-between gap-2">
+                              <span className="truncate">{c.program_name} <span className="text-slate-400">/ {c.staff_name}</span></span>
+                              <Badge variant="outline" className="text-green-700 font-mono">{pct(c.avg_rate * 100, 0)}</Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-red-200">
+                      <CardContent className="p-3">
+                        <div className="text-xs font-bold text-red-700 mb-2 flex items-center gap-1">
+                          <TrendingDown className="h-3.5 w-3.5" /> 稼働率BOTTOM <span className="font-normal text-slate-400">(通常クラス)</span>
+                        </div>
+                        <ul className="space-y-1 text-xs">
+                          {data.utilization.bottom_classes.map((c, i) => (
+                            <li key={i} className="flex justify-between gap-2">
+                              <span className="truncate">{c.program_name} <span className="text-slate-400">/ {c.staff_name}</span></span>
+                              <Badge variant="outline" className="text-red-700 font-mono">{pct(c.avg_rate * 100, 0)}</Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
                   </div>
 
                   {/* 別枠: 立ち上げ期 / 要対策 */}
                   <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                      <div className="text-xs font-bold text-orange-700 mb-2">
-                        🌱 立ち上げ期クラス
-                        <span className="font-normal text-orange-400"> (直近{data.utilization.grace_months ?? 6}ヶ月)</span>
-                      </div>
-                      {(data.utilization.new_classes?.length ?? 0) === 0 ? (
-                        <div className="text-[11px] text-slate-400">該当なし</div>
-                      ) : (
-                        <ul className="space-y-1 text-xs">
-                          {data.utilization.new_classes!.map((c, i) => (
-                            <li key={i} className="flex justify-between gap-2">
-                              <span className="truncate">
-                                {c.program_name} <span className="text-slate-400">/ {c.staff_name}</span>
-                                {c.launched_at && <span className="text-orange-400"> ・{c.launched_at}〜</span>}
-                              </span>
-                              <span className="font-mono font-bold text-orange-700">{pct(c.avg_rate * 100, 0)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                    <div className="bg-amber-50 border border-amber-300 rounded-lg p-3">
-                      <div className="text-xs font-bold text-amber-700 mb-2">
-                        ⚠️ 要対策クラス
-                        <span className="font-normal text-amber-500"> (稼働率{Math.round((data.utilization.low_threshold ?? 0.2) * 100)}%未満)</span>
-                      </div>
-                      {(data.utilization.watch_classes?.length ?? 0) === 0 ? (
-                        <div className="text-[11px] text-slate-400">該当なし</div>
-                      ) : (
-                        <ul className="space-y-1 text-xs">
-                          {data.utilization.watch_classes!.map((c, i) => (
-                            <li key={i} className="flex justify-between gap-2">
-                              <span className="truncate">
-                                {c.program_name} <span className="text-slate-400">/ {c.staff_name} ・{c.cnt}回</span>
-                              </span>
-                              <span className="font-mono font-bold text-amber-700">{pct(c.avg_rate * 100, 0)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
+                    <Card className="bg-orange-50 border-orange-200">
+                      <CardContent className="p-3">
+                        <div className="text-xs font-bold text-orange-700 mb-2 flex items-center gap-1">
+                          <Sprout className="h-3.5 w-3.5" /> 立ち上げ期クラス
+                          <span className="font-normal text-orange-400"> (直近{data.utilization.grace_months ?? 6}ヶ月)</span>
+                        </div>
+                        {(data.utilization.new_classes?.length ?? 0) === 0 ? (
+                          <div className="text-[11px] text-slate-400">該当なし</div>
+                        ) : (
+                          <ul className="space-y-1 text-xs">
+                            {data.utilization.new_classes!.map((c, i) => (
+                              <li key={i} className="flex justify-between gap-2">
+                                <span className="truncate">
+                                  {c.program_name} <span className="text-slate-400">/ {c.staff_name}</span>
+                                  {c.launched_at && <span className="text-orange-400"> /{c.launched_at}~</span>}
+                                </span>
+                                <Badge variant="outline" className="text-orange-700 font-mono">{pct(c.avg_rate * 100, 0)}</Badge>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </CardContent>
+                    </Card>
+                    <Card className="bg-amber-50 border-amber-300">
+                      <CardContent className="p-3">
+                        <div className="text-xs font-bold text-amber-700 mb-2 flex items-center gap-1">
+                          <TrendingDown className="h-3.5 w-3.5" /> 要対策クラス
+                          <span className="font-normal text-amber-500"> (稼働率{Math.round((data.utilization.low_threshold ?? 0.2) * 100)}%未満)</span>
+                        </div>
+                        {(data.utilization.watch_classes?.length ?? 0) === 0 ? (
+                          <div className="text-[11px] text-slate-400">該当なし</div>
+                        ) : (
+                          <ul className="space-y-1 text-xs">
+                            {data.utilization.watch_classes!.map((c, i) => (
+                              <li key={i} className="flex justify-between gap-2">
+                                <span className="truncate">
+                                  {c.program_name} <span className="text-slate-400">/ {c.staff_name} / {c.cnt}回</span>
+                                </span>
+                                <Badge variant="outline" className="text-amber-700 font-mono">{pct(c.avg_rate * 100, 0)}</Badge>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </CardContent>
+                    </Card>
                   </div>
 
                   {(data.utilization.excluded_classes?.length ?? 0) > 0 && (
                     <div className="mt-2 text-[10px] text-slate-400">
                       除外: イベント等 {data.utilization.excluded_classes!.length}件
-                      （{data.utilization.excluded_classes!.map(c => c.program_name).join('・')}）
+                      ({data.utilization.excluded_classes!.map(c => c.program_name).join(' / ')})
                     </div>
                   )}
                 </>
@@ -577,7 +620,7 @@ export default function InsightsPage() {
             </Section>
 
             {/* ===== D: 収益性 ===== */}
-            <Section title="💎 収益性" hint="営業利益 = 本業売上 − 給与 − スタジオ料 − 経費">
+            <Section title="収益性" icon={<Gem className="h-4 w-4 text-orange-500" />} hint="営業利益 = 本業売上 - 給与 - スタジオ料 - 経費">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3">
                 <KpiCard
                   label="営業利益"
@@ -604,21 +647,23 @@ export default function InsightsPage() {
                   accent="red"
                 />
               </div>
-              <div className="bg-white border border-neutral-200 rounded-lg p-3">
-                <div className="text-xs font-bold text-neutral-600 mb-2">経費内訳</div>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                  {Object.entries(data.profitability.expense_breakdown).map(([k, v]) => (
-                    <div key={k} className="border-l-2 border-orange-200 pl-2">
-                      <div className="text-neutral-500 text-[10px]">{k}</div>
-                      <div className="font-bold">{yen(v)}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <Card>
+                <CardContent className="p-3">
+                  <div className="text-xs font-bold text-neutral-600 mb-2">経費内訳</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                    {Object.entries(data.profitability.expense_breakdown).map(([k, v]) => (
+                      <div key={k} className="border-l-2 border-orange-200 pl-2">
+                        <div className="text-neutral-500 text-[10px]">{k}</div>
+                        <div className="font-bold">{yen(v)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             </Section>
 
             {trends && trends.months.length > 0 && (
-              <Section title="📈 トレンド (過去6ヶ月)" hint="月次推移">
+              <Section title="トレンド (過去6ヶ月)" icon={<BarChart3 className="h-4 w-4 text-orange-500" />} hint="月次推移">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <TrendChart
                     title="本業売上 (円)"
@@ -667,37 +712,35 @@ export default function InsightsPage() {
         )}
       </div>
 
-      {showTargets && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3" onClick={() => setShowTargets(false)}>
-          <div className="bg-white w-full max-w-md rounded-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
-              <h3 className="font-bold">🎯 {ym} の目標値</h3>
-              <button onClick={() => setShowTargets(false)} className="text-2xl text-slate-400 leading-none">✕</button>
-            </div>
-            <div className="p-4 space-y-3">
-              {Object.entries(TARGET_LABELS).map(([k, info]) => (
-                <div key={k}>
-                  <label className="text-xs font-semibold text-slate-600">{info.label}</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={targetForm[k] ?? ''}
-                      onChange={e => setTargetForm({ ...targetForm, [k]: e.target.value })}
-                      placeholder={info.placeholder}
-                      className="flex-1 px-3 py-2 border rounded text-sm"
-                    />
-                    <span className="text-xs text-slate-500">{info.unit}</span>
-                  </div>
+      <Dialog open={showTargets} onOpenChange={setShowTargets}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-1.5">
+              <Target className="h-4 w-4" /> {ym} の目標値
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {Object.entries(TARGET_LABELS).map(([k, info]) => (
+              <div key={k}>
+                <Label className="text-xs font-semibold text-slate-600">{info.label}</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={targetForm[k] ?? ''}
+                    onChange={e => setTargetForm({ ...targetForm, [k]: e.target.value })}
+                    placeholder={info.placeholder}
+                  />
+                  <span className="text-xs text-slate-500">{info.unit}</span>
                 </div>
-              ))}
-              <button onClick={saveTargets} className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-white rounded font-semibold">
-                保存
-              </button>
-              <p className="text-[10px] text-slate-400">空欄にすると目標値が削除されない点に注意。値を0にして無効化してください</p>
-            </div>
+              </div>
+            ))}
+            <Button onClick={saveTargets} className="w-full bg-orange-500 hover:bg-orange-600">
+              保存
+            </Button>
+            <p className="text-[10px] text-slate-400">空欄にすると目標値が削除されない点に注意。値を0にして無効化してください</p>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

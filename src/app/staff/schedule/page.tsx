@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import StaffPageHeader from '@/components/StaffPageHeader';
+import { CalendarDays, Plus, Upload } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type Schedule = {
   id: number;
@@ -46,7 +55,7 @@ export default function SchedulePage() {
   const [regular, setRegular] = useState<Schedule[]>([]);
   const [exceptions, setExceptions] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'regular' | 'exception'>('regular');
+  const [tab, setTab] = useState<string>('regular');
   const [dayFilter, setDayFilter] = useState<number | null>(null);
   const [editing, setEditing] = useState<EditForm | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -55,6 +64,9 @@ export default function SchedulePage() {
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvMessage, setCsvMessage] = useState<string>('');
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // AlertDialog state for delete confirmation
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,22 +125,18 @@ export default function SchedulePage() {
       alert('クラス名を入力してください');
       return;
     }
-    // 1. ローカルフォーム値をスナップショット (state clear 前にキャプチャ)
     const snapshot = editing;
     const snapshotId = editingId;
     const method = snapshotId ? 'PATCH' : 'POST';
     const url = snapshotId ? `/api/staff/schedule/${snapshotId}` : '/api/staff/schedule';
-    // 2. モーダル即閉じる
     setEditing(null);
     setEditingId(null);
-    // 3. ローカルstateを楽観的に更新 (既存編集の場合のみ)
     if (snapshotId) {
       const updater = (list: Schedule[]) =>
         list.map((x) => (x.id === snapshotId ? { ...x, ...snapshot, id: snapshotId } as Schedule : x));
       setRegular((prev) => updater(prev));
       setExceptions((prev) => updater(prev));
     }
-    // 4. API送信 (バックグラウンド)
     try {
       const res = await fetch(url, {
         method,
@@ -137,18 +145,17 @@ export default function SchedulePage() {
         body: JSON.stringify(snapshot),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      load(); // fire-and-forget で整合性チェック
+      load();
     } catch (e) {
       alert(`保存失敗: ${e instanceof Error ? e.message : String(e)}`);
-      load(); // エラー時は強制再同期
+      load();
     }
   };
 
   const removeOne = async (id: number) => {
-    if (!confirm('このスケジュールを廃止しますか？')) return;
-    // モーダル即閉じる + 楽観的にローカルから除去
     setEditing(null);
     setEditingId(null);
+    setDeleteConfirmId(null);
     setRegular((prev) => prev.filter((x) => x.id !== id));
     setExceptions((prev) => prev.filter((x) => x.id !== id));
     try {
@@ -166,7 +173,6 @@ export default function SchedulePage() {
 
   const submitCancel = async () => {
     if (!cancelTarget || !cancelDate) return;
-    // スナップショット
     const target = cancelTarget;
     const date = cancelDate;
     const body = {
@@ -182,10 +188,9 @@ export default function SchedulePage() {
       exception_type: '休講',
       base_schedule_id: target.id,
     };
-    // モーダル即閉じる + 楽観的に例外リストへ追加
     setCancelTarget(null);
     setCancelDate('');
-    const optimisticId = -Date.now(); // 一時IDを負値で。再ロードで本物に置換される。
+    const optimisticId = -Date.now();
     const optimisticEntry: Schedule = {
       id: optimisticId,
       day_of_week: target.day_of_week,
@@ -252,410 +257,375 @@ export default function SchedulePage() {
   };
 
   return (
-    <main className="min-h-screen bg-neutral-50 pb-20">
-      <StaffPageHeader
-        title="📅 レッスンスケジュール"
-        description="月別レッスン予定 (通常パターン+例外)"
-        rightExtra={
-          <Link href="/staff/members" className="text-xs text-orange-600 underline">
-            ← 会員管理
-          </Link>
-        }
-      />
-
-      <div className="bg-white border-b border-orange-100 px-4 py-3">
-        <div className="flex gap-1 text-xs">
-          <button
-            onClick={() => setTab('regular')}
-            className={`px-3 py-1 rounded-full border ${
-              tab === 'regular'
-                ? 'bg-orange-500 text-white border-orange-500'
-                : 'bg-white text-neutral-600 border-neutral-300'
-            }`}
-          >
-            通常パターン
-          </button>
-          <button
-            onClick={() => setTab('exception')}
-            className={`px-3 py-1 rounded-full border ${
-              tab === 'exception'
-                ? 'bg-orange-500 text-white border-orange-500'
-                : 'bg-white text-neutral-600 border-neutral-300'
-            }`}
-          >
-            例外 ({exceptions.length})
-          </button>
-          <div className="ml-auto flex gap-2">
-            <button
-              onClick={openNew}
-              className="text-xs bg-orange-500 text-white rounded-full px-3 py-1"
-            >
-              + 新規追加
-            </button>
-            <button
-              onClick={() => fileRef.current?.click()}
-              disabled={csvBusy}
-              className="text-xs bg-white border border-orange-300 text-orange-700 rounded-full px-3 py-1 disabled:opacity-50"
-            >
-              📥 CSV一括投入
-            </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) uploadCsv(f);
-              }}
-            />
+    <div className="pb-20">
+      <Tabs value={tab} onValueChange={setTab}>
+        <div className="bg-white border-b px-4 py-3">
+          <div className="flex items-center gap-2">
+            <TabsList>
+              <TabsTrigger value="regular">通常パターン</TabsTrigger>
+              <TabsTrigger value="exception">例外 ({exceptions.length})</TabsTrigger>
+            </TabsList>
+            <div className="ml-auto flex gap-2">
+              <Button size="sm" onClick={openNew}>
+                <Plus className="size-3.5" />
+                新規追加
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => fileRef.current?.click()}
+                disabled={csvBusy}
+              >
+                <Upload className="size-3.5" />
+                CSV一括投入
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadCsv(f);
+                }}
+              />
+            </div>
           </div>
+
+          {tab === 'regular' && (
+            <div className="flex gap-1 mt-2 overflow-x-auto">
+              <Button
+                size="xs"
+                variant={dayFilter === null ? 'default' : 'outline'}
+                onClick={() => setDayFilter(null)}
+              >
+                全部
+              </Button>
+              {DOW_LABELS.map((label, idx) => (
+                <Button
+                  key={idx}
+                  size="xs"
+                  variant={dayFilter === idx ? 'default' : 'outline'}
+                  onClick={() => setDayFilter(idx)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          )}
+
+          {csvMessage && (
+            <p className="text-xs mt-2 text-orange-700">{csvMessage}</p>
+          )}
         </div>
 
-        {tab === 'regular' && (
-          <div className="flex gap-1 mt-2 overflow-x-auto">
-            <button
-              onClick={() => setDayFilter(null)}
-              className={`text-xs whitespace-nowrap rounded-full px-3 py-1 border ${
-                dayFilter === null
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'bg-white text-neutral-600 border-neutral-300'
-              }`}
-            >
-              全部
-            </button>
-            {DOW_LABELS.map((label, idx) => (
-              <button
-                key={idx}
-                onClick={() => setDayFilter(idx)}
-                className={`text-xs whitespace-nowrap rounded-full px-3 py-1 border ${
-                  dayFilter === idx
-                    ? 'bg-orange-500 text-white border-orange-500'
-                    : 'bg-white text-neutral-600 border-neutral-300'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="px-3 py-3 max-w-2xl mx-auto">
+          {loading && <p className="text-sm text-muted-foreground text-center py-6">読み込み中...</p>}
 
-        {csvMessage && (
-          <p className="text-xs mt-2 text-orange-700">{csvMessage}</p>
-        )}
-      </div>
-
-      <div className="px-3 py-3 max-w-2xl mx-auto">
-        {loading && <p className="text-sm text-neutral-500 text-center py-6">読み込み中…</p>}
-
-        {!loading && tab === 'regular' && (
-          <div className="space-y-4">
-            {Array.from(grouped.keys())
-              .sort((a, b) => a - b)
-              .map((dow) => (
-                <section key={dow}>
-                  <h2 className="text-sm font-bold text-neutral-700 mb-1">
-                    {dow >= 0 ? `${DOW_LABELS[dow]}曜日` : '曜日未設定'}
-                  </h2>
-                  <div className="space-y-2">
-                    {grouped.get(dow)!.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => openEdit(s)}
-                        className="w-full text-left bg-white border border-neutral-200 rounded-xl p-3 active:bg-orange-50"
-                      >
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span className="font-semibold text-neutral-800 truncate">
-                            {s.start_time || '--:--'}–{s.end_time || '--:--'} {s.class_name}
-                          </span>
-                          {s.status !== 'active' && (
-                            <span className="text-[10px] bg-neutral-200 text-neutral-700 rounded px-1.5 py-0.5">
-                              {s.status}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-neutral-500 mt-0.5">
-                          {[s.location, s.instructor, s.target].filter(Boolean).join(' / ') || '—'}
-                        </div>
-                        <div className="flex gap-2 mt-2">
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openEdit(s);
-                            }}
-                            className="text-[11px] bg-orange-50 text-orange-700 rounded-full px-2 py-0.5"
+          <TabsContent value="regular">
+            {!loading && (
+              <div className="space-y-4">
+                {Array.from(grouped.keys())
+                  .sort((a, b) => a - b)
+                  .map((dow) => (
+                    <section key={dow}>
+                      <h2 className="text-sm font-bold text-neutral-700 mb-1">
+                        {dow >= 0 ? `${DOW_LABELS[dow]}曜日` : '曜日未設定'}
+                      </h2>
+                      <div className="space-y-2">
+                        {grouped.get(dow)!.map((s) => (
+                          <button
+                            key={s.id}
+                            onClick={() => openEdit(s)}
+                            className="w-full text-left bg-white border border-neutral-200 rounded-xl p-3 active:bg-orange-50"
                           >
-                            編集
-                          </span>
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCancelTarget(s);
-                              setCancelDate('');
-                            }}
-                            className="text-[11px] bg-red-50 text-red-700 rounded-full px-2 py-0.5"
-                          >
-                            休講登録
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            {grouped.size === 0 && (
-              <p className="text-sm text-neutral-500 text-center py-6">スケジュールがありません</p>
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="font-semibold text-neutral-800 truncate">
+                                {s.start_time || '--:--'}&ndash;{s.end_time || '--:--'} {s.class_name}
+                              </span>
+                              {s.status !== 'active' && (
+                                <Badge variant="secondary">{s.status}</Badge>
+                              )}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5">
+                              {[s.location, s.instructor, s.target].filter(Boolean).join(' / ') || '—'}
+                            </div>
+                            <div className="flex gap-2 mt-2">
+                              <span
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEdit(s);
+                                }}
+                                className="text-[11px] bg-orange-50 text-orange-700 rounded-full px-2 py-0.5"
+                              >
+                                編集
+                              </span>
+                              <span
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCancelTarget(s);
+                                  setCancelDate('');
+                                }}
+                                className="text-[11px] bg-red-50 text-red-700 rounded-full px-2 py-0.5"
+                              >
+                                休講登録
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                {grouped.size === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-6">スケジュールがありません</p>
+                )}
+              </div>
             )}
-          </div>
-        )}
+          </TabsContent>
 
-        {!loading && tab === 'exception' && (
-          <div className="space-y-2">
-            {exceptions.length === 0 && (
-              <p className="text-sm text-neutral-500 text-center py-6">
-                今後1ヶ月の例外はありません
-              </p>
-            )}
-            {exceptions.map((e) => (
-              <button
-                key={e.id}
-                onClick={() => openEdit(e)}
-                className="w-full text-left bg-white border border-neutral-200 rounded-xl p-3 active:bg-orange-50"
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-semibold text-neutral-800 truncate">
-                    {e.exception_date} {e.class_name}
-                  </span>
-                  <span className="text-[10px] bg-red-100 text-red-700 rounded px-1.5 py-0.5">
-                    {e.exception_type || '例外'}
-                  </span>
-                </div>
-                <div className="text-xs text-neutral-500 mt-0.5">
-                  {[
-                    e.override_start_time || e.start_time,
-                    e.override_location || e.location,
-                    e.override_instructor || e.instructor,
-                  ]
-                    .filter(Boolean)
-                    .join(' / ') || '—'}
-                </div>
-              </button>
-            ))}
-            <button
-              onClick={() => {
-                setEditingId(null);
-                setEditing({
-                  ...EMPTY_FORM,
-                  exception_date: new Date().toISOString().slice(0, 10),
-                  exception_type: '振替',
-                });
-              }}
-              className="w-full text-sm bg-white border border-dashed border-orange-300 text-orange-700 rounded-xl py-3"
-            >
-              + 振替レッスン追加
-            </button>
-          </div>
-        )}
-      </div>
-
-      {editing && (
-        <Modal onClose={() => setEditing(null)}>
-          <div className="sticky top-0 bg-white border-b border-neutral-100 px-4 py-3 flex items-center justify-between">
-            <h2 className="font-bold text-neutral-800">
-              {editingId ? 'スケジュール編集' : '新規追加'}
-            </h2>
-            <button
-              onClick={() => setEditing(null)}
-              className="text-neutral-500 text-xl leading-none px-2"
-            >
-              ×
-            </button>
-          </div>
-          <div className="p-4 space-y-3 text-sm">
-            <Field label="曜日">
-              <select
-                value={editing.day_of_week ?? ''}
-                onChange={(e) =>
-                  setEditing({
-                    ...editing,
-                    day_of_week: e.target.value === '' ? null : Number(e.target.value),
-                  })
-                }
-                className="w-full border border-neutral-300 rounded-lg px-2 py-1.5 bg-white"
-              >
-                <option value="">未設定</option>
-                {DOW_LABELS.map((l, i) => (
-                  <option key={i} value={i}>
-                    {l}
-                  </option>
+          <TabsContent value="exception">
+            {!loading && (
+              <div className="space-y-2">
+                {exceptions.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-6">
+                    今後1ヶ月の例外はありません
+                  </p>
+                )}
+                {exceptions.map((e) => (
+                  <button
+                    key={e.id}
+                    onClick={() => openEdit(e)}
+                    className="w-full text-left bg-white border border-neutral-200 rounded-xl p-3 active:bg-orange-50"
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="font-semibold text-neutral-800 truncate">
+                        {e.exception_date} {e.class_name}
+                      </span>
+                      <Badge variant="destructive">
+                        {e.exception_type || '例外'}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {[
+                        e.override_start_time || e.start_time,
+                        e.override_location || e.location,
+                        e.override_instructor || e.instructor,
+                      ]
+                        .filter(Boolean)
+                        .join(' / ') || '—'}
+                    </div>
+                  </button>
                 ))}
-              </select>
-            </Field>
-            <div className="grid grid-cols-2 gap-2">
-              <Field label="開始">
-                <input
-                  type="time"
-                  value={editing.start_time ?? ''}
-                  onChange={(e) => setEditing({ ...editing, start_time: e.target.value })}
-                  className="w-full border border-neutral-300 rounded-lg px-2 py-1.5 bg-white"
-                />
-              </Field>
-              <Field label="終了">
-                <input
-                  type="time"
-                  value={editing.end_time ?? ''}
-                  onChange={(e) => setEditing({ ...editing, end_time: e.target.value })}
-                  className="w-full border border-neutral-300 rounded-lg px-2 py-1.5 bg-white"
-                />
-              </Field>
-            </div>
-            <Field label="クラス名 *">
-              <input
-                type="text"
-                value={editing.class_name ?? ''}
-                onChange={(e) => setEditing({ ...editing, class_name: e.target.value })}
-                className="w-full border border-neutral-300 rounded-lg px-2 py-1.5 bg-white"
-              />
-            </Field>
-            <Field label="対象">
-              <input
-                type="text"
-                value={editing.target ?? ''}
-                onChange={(e) => setEditing({ ...editing, target: e.target.value })}
-                placeholder="キッズ / 一般 / ガールズ"
-                className="w-full border border-neutral-300 rounded-lg px-2 py-1.5 bg-white"
-              />
-            </Field>
-            <Field label="場所">
-              <input
-                type="text"
-                value={editing.location ?? ''}
-                onChange={(e) => setEditing({ ...editing, location: e.target.value })}
-                placeholder="多賀城 / 長町 / 七ヶ浜"
-                className="w-full border border-neutral-300 rounded-lg px-2 py-1.5 bg-white"
-              />
-            </Field>
-            <Field label="インストラクター">
-              <input
-                type="text"
-                value={editing.instructor ?? ''}
-                onChange={(e) => setEditing({ ...editing, instructor: e.target.value })}
-                placeholder="TARO"
-                className="w-full border border-neutral-300 rounded-lg px-2 py-1.5 bg-white"
-              />
-            </Field>
-            <Field label="状態">
-              <select
-                value={editing.status ?? 'active'}
-                onChange={(e) => setEditing({ ...editing, status: e.target.value })}
-                className="w-full border border-neutral-300 rounded-lg px-2 py-1.5 bg-white"
-              >
-                <option value="active">active</option>
-                <option value="休講">休講</option>
-                <option value="廃止">廃止</option>
-              </select>
-            </Field>
-            {(editing.exception_date || editingId === null) && (
-              <Field label="例外日 (空なら通常パターン)">
-                <input
-                  type="date"
-                  value={editing.exception_date ?? ''}
-                  onChange={(e) =>
-                    setEditing({ ...editing, exception_date: e.target.value || null })
-                  }
-                  className="w-full border border-neutral-300 rounded-lg px-2 py-1.5 bg-white"
-                />
-              </Field>
-            )}
-            <Field label="備考">
-              <textarea
-                value={editing.notes ?? ''}
-                onChange={(e) => setEditing({ ...editing, notes: e.target.value })}
-                rows={2}
-                className="w-full border border-neutral-300 rounded-lg px-2 py-1.5 bg-white"
-              />
-            </Field>
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={save}
-                className="flex-1 bg-orange-500 text-white rounded-lg py-2 font-semibold"
-              >
-                保存
-              </button>
-              {editingId !== null && (
-                <button
-                  onClick={() => removeOne(editingId)}
-                  className="bg-white border border-red-300 text-red-700 rounded-lg px-4 py-2"
+                <Button
+                  variant="outline"
+                  className="w-full border-dashed border-orange-300 text-orange-700"
+                  onClick={() => {
+                    setEditingId(null);
+                    setEditing({
+                      ...EMPTY_FORM,
+                      exception_date: new Date().toISOString().slice(0, 10),
+                      exception_type: '振替',
+                    });
+                  }}
                 >
-                  廃止
-                </button>
+                  <Plus className="size-3.5" />
+                  振替レッスン追加
+                </Button>
+              </div>
+            )}
+          </TabsContent>
+        </div>
+      </Tabs>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editing} onOpenChange={(open) => { if (!open) setEditing(null); }}>
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingId ? 'スケジュール編集' : '新規追加'}</DialogTitle>
+            <DialogDescription>レッスンスケジュールの詳細を入力してください</DialogDescription>
+          </DialogHeader>
+          {editing && (
+            <div className="space-y-3 text-sm">
+              <div className="space-y-1">
+                <Label>曜日</Label>
+                <Select
+                  value={editing.day_of_week != null ? String(editing.day_of_week) : '__none__'}
+                  onValueChange={(v) =>
+                    setEditing({
+                      ...editing,
+                      day_of_week: v === '__none__' ? null : Number(v),
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="未設定" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">未設定</SelectItem>
+                    {DOW_LABELS.map((l, i) => (
+                      <SelectItem key={i} value={String(i)}>
+                        {l}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label>開始</Label>
+                  <Input
+                    type="time"
+                    value={editing.start_time ?? ''}
+                    onChange={(e) => setEditing({ ...editing, start_time: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>終了</Label>
+                  <Input
+                    type="time"
+                    value={editing.end_time ?? ''}
+                    onChange={(e) => setEditing({ ...editing, end_time: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label>クラス名 *</Label>
+                <Input
+                  value={editing.class_name ?? ''}
+                  onChange={(e) => setEditing({ ...editing, class_name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>対象</Label>
+                <Input
+                  value={editing.target ?? ''}
+                  onChange={(e) => setEditing({ ...editing, target: e.target.value })}
+                  placeholder="キッズ / 一般 / ガールズ"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>場所</Label>
+                <Input
+                  value={editing.location ?? ''}
+                  onChange={(e) => setEditing({ ...editing, location: e.target.value })}
+                  placeholder="多賀城 / 長町 / 七ヶ浜"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>インストラクター</Label>
+                <Input
+                  value={editing.instructor ?? ''}
+                  onChange={(e) => setEditing({ ...editing, instructor: e.target.value })}
+                  placeholder="TARO"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>状態</Label>
+                <Select
+                  value={editing.status ?? 'active'}
+                  onValueChange={(v) => setEditing({ ...editing, status: v })}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">active</SelectItem>
+                    <SelectItem value="休講">休講</SelectItem>
+                    <SelectItem value="廃止">廃止</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {(editing.exception_date || editingId === null) && (
+                <div className="space-y-1">
+                  <Label>例外日 (空なら通常パターン)</Label>
+                  <Input
+                    type="date"
+                    value={editing.exception_date ?? ''}
+                    onChange={(e) =>
+                      setEditing({ ...editing, exception_date: e.target.value || null })
+                    }
+                  />
+                </div>
               )}
+              <div className="space-y-1">
+                <Label>備考</Label>
+                <Textarea
+                  value={editing.notes ?? ''}
+                  onChange={(e) => setEditing({ ...editing, notes: e.target.value })}
+                  rows={2}
+                />
+              </div>
+              <DialogFooter className="flex gap-2 pt-2">
+                {editingId !== null && (
+                  <Button
+                    variant="destructive"
+                    onClick={() => setDeleteConfirmId(editingId)}
+                  >
+                    廃止
+                  </Button>
+                )}
+                <Button onClick={save} className="flex-1">
+                  保存
+                </Button>
+              </DialogFooter>
             </div>
-          </div>
-        </Modal>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
 
-      {cancelTarget && (
-        <Modal onClose={() => setCancelTarget(null)}>
-          <div className="sticky top-0 bg-white border-b border-neutral-100 px-4 py-3 flex items-center justify-between">
-            <h2 className="font-bold text-neutral-800">休講登録</h2>
-            <button
-              onClick={() => setCancelTarget(null)}
-              className="text-neutral-500 text-xl leading-none px-2"
-            >
-              ×
-            </button>
-          </div>
-          <div className="p-4 space-y-3 text-sm">
-            <p className="text-neutral-700">
-              <span className="font-semibold">{cancelTarget.class_name}</span>
-              <span className="text-xs text-neutral-500 ml-2">
-                {cancelTarget.start_time}–{cancelTarget.end_time}
-              </span>
-            </p>
-            <Field label="休講にする日付">
-              <input
-                type="date"
-                value={cancelDate}
-                onChange={(e) => setCancelDate(e.target.value)}
-                className="w-full border border-neutral-300 rounded-lg px-2 py-1.5 bg-white"
-              />
-            </Field>
-            <button
-              onClick={submitCancel}
-              disabled={!cancelDate}
-              className="w-full bg-red-500 text-white rounded-lg py-2 font-semibold disabled:opacity-50"
-            >
-              この日を休講にする
-            </button>
-          </div>
-        </Modal>
-      )}
-    </main>
-  );
-}
+      {/* Delete confirmation AlertDialog */}
+      <AlertDialog open={deleteConfirmId !== null} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>スケジュールを廃止しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              このスケジュールを廃止すると、関連する予定が削除されます。この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteConfirmId !== null && removeOne(deleteConfirmId)}>
+              廃止する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div
-      className="fixed inset-0 bg-black/40 z-20 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
+      {/* Cancel lesson Dialog */}
+      <Dialog open={!!cancelTarget} onOpenChange={(open) => { if (!open) setCancelTarget(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>休講登録</DialogTitle>
+            <DialogDescription>レッスンを休講にする日付を選択してください</DialogDescription>
+          </DialogHeader>
+          {cancelTarget && (
+            <div className="space-y-3 text-sm">
+              <p className="text-neutral-700">
+                <span className="font-semibold">{cancelTarget.class_name}</span>
+                <span className="text-xs text-muted-foreground ml-2">
+                  {cancelTarget.start_time}&ndash;{cancelTarget.end_time}
+                </span>
+              </p>
+              <div className="space-y-1">
+                <Label>休講にする日付</Label>
+                <Input
+                  type="date"
+                  value={cancelDate}
+                  onChange={(e) => setCancelDate(e.target.value)}
+                />
+              </div>
+              <Button
+                variant="destructive"
+                onClick={submitCancel}
+                disabled={!cancelDate}
+                className="w-full"
+              >
+                この日を休講にする
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="text-xs text-neutral-500 block mb-0.5">{label}</span>
-      {children}
-    </label>
   );
 }

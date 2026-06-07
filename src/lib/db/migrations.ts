@@ -1,0 +1,50 @@
+import type { Client } from '@libsql/client';
+
+/**
+ * Idempotent column migrations — adds columns to existing tables if missing.
+ * Called once from initDb() in db.ts after schema creation.
+ */
+export async function runMigrations(c: Client): Promise<void> {
+  // ============================================
+  // 既存テーブルの列追加 (冪等)
+  // ============================================
+  await addColumnIfMissing(c, 'instructors', 'salary_type', "TEXT DEFAULT 'per_lesson'");
+  await addColumnIfMissing(c, 'instructors', 'monthly_fixed_amount', 'INTEGER DEFAULT 0');
+  await addColumnIfMissing(c, 'instructors', 'birth_date', 'TEXT');
+  await addColumnIfMissing(c, 'instructors', 'pin_hash', 'TEXT');
+  await addColumnIfMissing(c, 'instructors', 'pin_set_at', 'TEXT');
+  await addColumnIfMissing(c, 'instructors', 'payslip_folder_url', 'TEXT');
+  await addColumnIfMissing(c, 'instructors', 'bank_code', 'TEXT');
+  await addColumnIfMissing(c, 'recurring_expenses', 'match_pattern', 'TEXT');
+  await addColumnIfMissing(c, 'recurring_expenses', 'budget_amount', 'INTEGER DEFAULT 0');
+  await addColumnIfMissing(c, 'instructors', 'bank_branch_code', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'payment_type', "TEXT DEFAULT 'postpaid_bank'");
+  await addColumnIfMissing(c, 'studios', 'bank_code', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'bank_branch_code', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'bank_name', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'bank_branch', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'bank_account_type', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'bank_account_number', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'bank_account_holder', 'TEXT');
+  // 月の確定(凍結)時に master から自動実体化した instance かどうか (1=自動)。
+  await addColumnIfMissing(c, 'lesson_instances', 'auto_materialized', 'INTEGER DEFAULT 0');
+  // HACOMONO スケジュールマッピング: program行に持たせる実物準拠の既定属性
+  await addColumnIfMissing(c, 'hacomono_schedule_map', 'default_staff_code', 'TEXT');
+  await addColumnIfMissing(c, 'hacomono_schedule_map', 'default_space_code', 'TEXT');
+  await addColumnIfMissing(c, 'hacomono_schedule_map', 'trial_capacity', 'INTEGER');
+  await addColumnIfMissing(c, 'hacomono_schedule_map', 'space_selectable', 'INTEGER');
+  await addColumnIfMissing(c, 'hacomono_schedule_map', 'space_movable', 'INTEGER');
+  await addColumnIfMissing(c, 'hacomono_schedule_map', 'publish_fixed', 'INTEGER');
+}
+
+async function addColumnIfMissing(c: Client, table: string, column: string, columnDef: string): Promise<void> {
+  try {
+    const result = await c.execute(`PRAGMA table_info(${table})`);
+    const exists = result.rows.some(row => (row as Record<string, unknown>).name === column);
+    if (!exists) {
+      await c.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${columnDef}`);
+    }
+  } catch {
+    // テーブルが未作成の場合や、競合した場合は無視
+  }
+}

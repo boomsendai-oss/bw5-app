@@ -1,7 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import StaffPageHeader from '@/components/StaffPageHeader';
+import { Search, Users, X, Calendar, ExternalLink } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
+import { Card, CardContent } from '@/components/ui/card';
 
 type LstepLink = {
   member_id: number;
@@ -71,45 +76,55 @@ export default function MembersPage() {
   }, [q, planFilter, load]);
 
   return (
-    <main className="min-h-screen bg-neutral-50">
-      <StaffPageHeader
-        title="👥 会員管理"
-        description="HACOMONO会員の検索・プラン・Lstep紐付け"
-        rightExtra={
-          <>
-            <a href="/staff/schedule" className="text-xs text-orange-600 underline">スケジュール →</a>
-            <a href="/staff/operations" className="text-xs text-orange-600 underline">運営オペレーション →</a>
-          </>
-        }
-      />
+    <main className="text-neutral-900">
+      <div className="border-b bg-white px-4 py-3">
+        <div className="max-w-2xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h1 className="text-lg font-bold text-neutral-800 flex items-center gap-1.5">
+              <Users className="h-5 w-5 text-orange-500" />
+              会員管理
+            </h1>
+            <p className="text-xs text-neutral-500">HACOMONO会員の検索 / プラン / Lstep紐付け</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="link" size="sm" className="text-xs text-orange-600" asChild>
+              <a href="/staff/schedule"><Calendar className="h-3 w-3 mr-1" />スケジュール</a>
+            </Button>
+            <Button variant="link" size="sm" className="text-xs text-orange-600" asChild>
+              <a href="/staff/operations"><ExternalLink className="h-3 w-3 mr-1" />運営オペレーション</a>
+            </Button>
+          </div>
+        </div>
+      </div>
 
-      <div className="bg-white border-b border-orange-100 px-4 py-3">
+      <div className="bg-white border-b px-4 py-3">
         <div className="max-w-2xl mx-auto">
-          <input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="氏名・カナ・ひらがな・会員番号で検索"
-            className="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm text-neutral-900 bg-white placeholder:text-neutral-400"
-          />
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+            <Input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="氏名 / カナ / ひらがな / 会員番号で検索"
+              className="pl-9"
+            />
+          </div>
           <div className="flex gap-2 mt-2 overflow-x-auto">
             {[
               { value: '', label: '全部' },
-              { value: 'ticket', label: '🎟️ チケット' },
-              { value: 'monthly', label: '📅 マンスリー' },
-              { value: 'kyukai', label: '💤 休会' },
+              { value: 'ticket', label: 'チケット' },
+              { value: 'monthly', label: 'マンスリー' },
+              { value: 'kyukai', label: '休会' },
             ].map((opt) => (
-              <button
+              <Button
                 key={opt.value}
+                variant={planFilter === opt.value ? 'default' : 'outline'}
+                size="sm"
+                className={`text-xs rounded-full ${planFilter === opt.value ? 'bg-orange-500 hover:bg-orange-600' : ''}`}
                 onClick={() => setPlanFilter(opt.value as '' | 'ticket' | 'monthly' | 'kyukai')}
-                className={`text-xs whitespace-nowrap rounded-full px-3 py-1 border ${
-                  planFilter === opt.value
-                    ? 'bg-orange-500 text-white border-orange-500'
-                    : 'bg-white text-neutral-600 border-neutral-300'
-                }`}
               >
                 {opt.label}
-              </button>
+              </Button>
             ))}
             <span className="text-xs text-neutral-500 self-center ml-auto">{members.length}件</span>
           </div>
@@ -117,7 +132,7 @@ export default function MembersPage() {
       </div>
 
       <div className="px-3 py-3 space-y-2 max-w-2xl mx-auto">
-        {loading && <p className="text-sm text-neutral-500 text-center py-6">読み込み中…</p>}
+        {loading && <p className="text-sm text-neutral-500 text-center py-6">読み込み中...</p>}
         {!loading && members.length === 0 && (
           <p className="text-sm text-neutral-500 text-center py-6">該当する会員がいません</p>
         )}
@@ -127,64 +142,53 @@ export default function MembersPage() {
             <button
               key={m.id}
               onClick={() => setSelected(m)}
-              className="w-full text-left bg-white border border-neutral-200 rounded-xl p-3 active:bg-orange-50"
+              className="w-full text-left"
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-semibold text-neutral-800 truncate">{m.full_name}</span>
-                    {m.status === 'withdrew' && (
-                      <span className="text-[10px] bg-neutral-200 text-neutral-700 rounded px-1.5 py-0.5">退会</span>
-                    )}
-                  </div>
-                  <div className="text-xs text-neutral-500 truncate">{m.full_name_kana}</div>
-                  <div className="text-xs text-neutral-500 mt-1">
-                    会員No: {m.hacomono_kaiin_no || '—'} / 入会: {m.enrolled_at?.slice(0, 10) || '—'}
-                  </div>
-                  {m.plan_name && (
-                    <div className="text-[11px] mt-1 text-neutral-700 truncate">
-                      <span className="bg-orange-50 text-orange-700 rounded px-1.5 py-0.5">{m.plan_name}</span>
+              <Card className="hover:border-orange-200 active:bg-orange-50 transition-colors">
+                <CardContent className="p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-semibold text-neutral-800 truncate">{m.full_name}</span>
+                        {m.status === 'withdrew' && (
+                          <Badge variant="secondary" className="text-[10px]">退会</Badge>
+                        )}
+                      </div>
+                      <div className="text-xs text-neutral-500 truncate">{m.full_name_kana}</div>
+                      <div className="text-xs text-neutral-500 mt-1">
+                        会員No: {m.hacomono_kaiin_no || '—'} / 入会: {m.enrolled_at?.slice(0, 10) || '—'}
+                      </div>
+                      {m.plan_name && (
+                        <div className="text-[11px] mt-1">
+                          <Badge variant="outline" className="text-orange-700 bg-orange-50">{m.plan_name}</Badge>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <div className="shrink-0">
-                  {hasLink ? (
-                    <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5">
-                      LINE {m.lstep_links.length}
-                    </span>
-                  ) : (
-                    <span className="text-xs bg-neutral-100 text-neutral-500 rounded-full px-2 py-0.5">
-                      未紐付け
-                    </span>
-                  )}
-                </div>
-              </div>
+                    <div className="shrink-0">
+                      {hasLink ? (
+                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                          LINE {m.lstep_links.length}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">未紐付け</Badge>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </button>
           );
         })}
       </div>
 
-      {selected && (
-        <div
-          className="fixed inset-0 bg-black/40 z-20 flex items-end sm:items-center justify-center p-0 sm:p-4"
-          onClick={() => setSelected(null)}
-        >
-          <div
-            className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[85vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="sticky top-0 bg-white border-b border-neutral-100 px-4 py-3 flex items-center justify-between">
-              <h2 className="font-bold text-neutral-800 truncate">{selected.full_name}</h2>
-              <button
-                onClick={() => setSelected(null)}
-                className="text-neutral-500 text-xl leading-none px-2"
-                aria-label="閉じる"
-              >
-                ×
-              </button>
-            </div>
+      <Dialog open={!!selected} onOpenChange={(open) => { if (!open) setSelected(null); }}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selected?.full_name}</DialogTitle>
+          </DialogHeader>
 
-            <div className="p-4 space-y-4 text-sm">
+          {selected && (
+            <div className="space-y-4 text-sm">
               <section>
                 <h3 className="text-xs font-semibold text-neutral-500 mb-1">基本情報</h3>
                 <dl className="grid grid-cols-3 gap-y-1 text-xs">
@@ -232,30 +236,34 @@ export default function MembersPage() {
                 ) : (
                   <ul className="space-y-2">
                     {selected.lstep_links.map((l) => (
-                      <li key={l.lstep_id} className="border border-neutral-200 rounded-lg p-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium text-neutral-800 truncate">
-                            {(l.system_display_name || l.display_name || l.line_register_name || l.lstep_id)
-                              .replace(/^【[^】]+】\s*/, '')}
-                          </span>
-                          <span className="text-[10px] bg-orange-100 text-orange-700 rounded px-1.5 py-0.5">
-                            {l.relation}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-neutral-500 mt-0.5">
-                          {l.confidence && <span className="mr-2">確度: {l.confidence}</span>}
-                          {l.blocked === 1 && <span className="text-red-500">ブロック中</span>}
-                        </div>
-                        <div className="text-[10px] text-neutral-400 mt-0.5">ID: {l.lstep_id}</div>
+                      <li key={l.lstep_id}>
+                        <Card>
+                          <CardContent className="p-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-neutral-800 truncate text-xs">
+                                {(l.system_display_name || l.display_name || l.line_register_name || l.lstep_id)
+                                  .replace(/^【[^】]+】\s*/, '')}
+                              </span>
+                              <Badge variant="outline" className="text-orange-700 bg-orange-50 text-[10px]">
+                                {l.relation}
+                              </Badge>
+                            </div>
+                            <div className="text-[11px] text-neutral-500 mt-0.5">
+                              {l.confidence && <span className="mr-2">確度: {l.confidence}</span>}
+                              {l.blocked === 1 && <Badge variant="destructive" className="text-[10px]">ブロック中</Badge>}
+                            </div>
+                            <div className="text-[10px] text-neutral-400 mt-0.5">ID: {l.lstep_id}</div>
+                          </CardContent>
+                        </Card>
                       </li>
                     ))}
                   </ul>
                 )}
               </section>
             </div>
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

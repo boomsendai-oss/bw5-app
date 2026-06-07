@@ -2,7 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import StaffPageHeader from '@/components/StaffPageHeader';
+import { Building2, ClipboardCopy, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 type DeleteItem = {
   date: string;
@@ -117,7 +121,6 @@ export default function HacomonoTasksPage() {
 
   // 削除済み(または取消)を記録
   const markDone = async (items: DeleteItem[], done: boolean) => {
-    // スナップショット & 楽観的にローカル更新
     const keys = new Set(items.map((i) => `${i.date}|${i.start_time}|${i.class_name}`));
     setData((prev) => {
       if (!prev) return prev;
@@ -164,17 +167,7 @@ export default function HacomonoTasksPage() {
   };
 
   return (
-    <main className="min-h-screen bg-neutral-50 pb-20">
-      <StaffPageHeader
-        title="🏢 HACOMONO 調整リスト"
-        description="毎週自動生成されるHACOMONOの枠から、今月「消すべき枠」を自動抽出"
-        rightExtra={
-          <Link href="/staff/schedule/sync" className="text-xs text-orange-600 underline">
-            ← 連携ハブ
-          </Link>
-        }
-      />
-
+    <div className="pb-20">
       <div className="max-w-3xl mx-auto px-3 py-4 space-y-4">
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-[11px] text-amber-800 leading-relaxed">
           HACOMONOは毎週レッスン枠を自動で作ります。下の「削除する枠」は、アプリの実予定では
@@ -183,40 +176,40 @@ export default function HacomonoTasksPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold text-neutral-600">対象月</label>
-          <select
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="px-2 py-1.5 border rounded text-sm bg-white"
-          >
-            {opts.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={() => load(month)}
-            className="px-3 py-1.5 bg-neutral-200 hover:bg-neutral-300 rounded text-xs font-semibold"
-          >
+          <Label className="text-xs font-semibold text-neutral-600">対象月</Label>
+          <Select value={month} onValueChange={setMonth}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {opts.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="secondary" size="sm" onClick={() => load(month)}>
+            <RefreshCw className="size-3.5" />
             再読込
-          </button>
+          </Button>
           {data && (
-            <button
-              onClick={copyText}
-              className="ml-auto px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-semibold"
-            >
-              {copied ? '✓ コピー済' : '📋 リストをコピー'}
-            </button>
+            <Button size="sm" onClick={copyText} className="ml-auto">
+              <ClipboardCopy className="size-3.5" />
+              {copied ? 'コピー済' : 'リストをコピー'}
+            </Button>
           )}
         </div>
 
         {err && <div className="p-3 rounded bg-red-50 border border-red-200 text-red-800 text-xs">{err}</div>}
-        {loading && <div className="text-sm text-neutral-500 py-8 text-center">読込中…</div>}
+        {loading && <div className="text-sm text-muted-foreground py-8 text-center">読込中...</div>}
 
         {data && !loading && data.phantom_classes.length > 0 && (
           <section className="bg-red-50 border-2 border-red-300 rounded-xl p-4">
-            <h2 className="text-sm font-bold text-red-700 mb-1">⚠️ HACOMONOで「終了設定」が必要なクラス</h2>
+            <h2 className="text-sm font-bold text-red-700 mb-1 flex items-center gap-1.5">
+              <AlertTriangle className="size-4" />
+              HACOMONOで「終了設定」が必要なクラス
+            </h2>
             <p className="text-[11px] text-red-700/80 leading-relaxed mb-2">
               アプリでは終了/無効なのに、HACOMONO側の終了月が未設定の可能性があります。このままだとHACOMONOが枠を作り続け、
               <b>お客さんが誤って予約できてしまいます</b>。HACOMONOのクラス設定で「適用終了年月」を入れ、期間外の枠を削除してください。
@@ -225,8 +218,8 @@ export default function HacomonoTasksPage() {
               {data.phantom_classes.map((p, i) => (
                 <li key={i} className="text-xs text-neutral-800 bg-white/70 rounded px-2 py-1.5 flex items-center gap-2">
                   <span className="font-semibold">{p.class_name}</span>
-                  {p.day_of_week && <span className="text-[10px] text-neutral-500">{p.day_of_week}曜</span>}
-                  {p.pg_code && <span className="font-mono text-[10px] bg-neutral-100 rounded px-1">{p.pg_code}</span>}
+                  {p.day_of_week && <span className="text-[10px] text-muted-foreground">{p.day_of_week}曜</span>}
+                  {p.pg_code && <Badge variant="secondary" className="text-[10px] font-mono">{p.pg_code}</Badge>}
                   <span className="ml-auto text-[10px] text-red-600">{p.reason}</span>
                 </li>
               ))}
@@ -238,15 +231,18 @@ export default function HacomonoTasksPage() {
           <>
             <section className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
               <div className="px-4 py-2.5 border-b border-neutral-100 flex items-center justify-between">
-                <h2 className="text-sm font-bold text-rose-700">🗑 削除する枠（クラス別）</h2>
-                <span className="text-xs font-semibold text-neutral-500">残 {data.remaining_count} / 全 {data.delete_count}件</span>
+                <h2 className="text-sm font-bold text-rose-700 flex items-center gap-1.5">
+                  <Building2 className="size-4" />
+                  削除する枠（クラス別）
+                </h2>
+                <span className="text-xs font-semibold text-muted-foreground">残 {data.remaining_count} / 全 {data.delete_count}件</span>
               </div>
               {data.deletes.length === 0 ? (
-                <p className="p-4 text-xs text-neutral-500">この月は削除対象なし（HACOMONOの自動枠そのままでOK）。</p>
+                <p className="p-4 text-xs text-muted-foreground">この月は削除対象なし（HACOMONOの自動枠そのままでOK）。</p>
               ) : (
                 <>
-                  <p className="px-4 pt-2 text-[10px] text-neutral-400">
-                    各枠をタップで「削除済み」⇄「未処理」を切替。HACOMONOで消したら印を付けると、来月以降の重複処理を防げます（🟥未処理・🟧休講・✅済）。
+                  <p className="px-4 pt-2 text-[10px] text-muted-foreground">
+                    各枠をタップで「削除済み」&#x21C4;「未処理」を切替。HACOMONOで消したら印を付けると、来月以降の重複処理を防げます。
                   </p>
                   <div className="divide-y divide-neutral-100">
                     {groupByClass(data.deletes).map((g) => {
@@ -256,20 +252,21 @@ export default function HacomonoTasksPage() {
                         <div key={g.class_name} className="p-3">
                           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                             <span className="text-xs font-bold text-neutral-800">{g.class_name}</span>
-                            <span className="text-[10px] text-neutral-500">{g.items[0].day_of_week}曜</span>
+                            <span className="text-[10px] text-muted-foreground">{g.items[0].day_of_week}曜</span>
                             {g.pg_code ? (
-                              <span className="font-mono text-[10px] bg-neutral-100 rounded px-1">{g.pg_code}</span>
+                              <Badge variant="secondary" className="font-mono text-[10px]">{g.pg_code}</Badge>
                             ) : (
-                              <span className="text-amber-600 text-[10px]">マップ無</span>
+                              <Badge variant="outline" className="text-amber-600 text-[10px]">マップ無</Badge>
                             )}
-                            <span className="ml-auto text-[10px] text-neutral-400">{doneN}/{g.items.length} 済</span>
+                            <span className="ml-auto text-[10px] text-muted-foreground">{doneN}/{g.items.length} 済</span>
                             {remaining.length > 0 && (
-                              <button
+                              <Button
+                                size="xs"
                                 onClick={() => markDone(remaining, true)}
-                                className="text-[10px] px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded font-semibold whitespace-nowrap"
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white"
                               >
                                 残{remaining.length}件 削除済みに
-                              </button>
+                              </Button>
                             )}
                           </div>
                           <div className="flex flex-wrap gap-1.5">
@@ -301,7 +298,10 @@ export default function HacomonoTasksPage() {
 
             {data.unmapped_scheduled.length > 0 && (
               <section className="bg-white border border-amber-200 rounded-xl p-4">
-                <h2 className="text-sm font-bold text-amber-700 mb-1">➕ HACOMONO未登録クラス（要確認）</h2>
+                <h2 className="text-sm font-bold text-amber-700 mb-1 flex items-center gap-1.5">
+                  <AlertTriangle className="size-4" />
+                  HACOMONO未登録クラス（要確認）
+                </h2>
                 <p className="text-[11px] text-neutral-600 mb-2">
                   アプリで開催予定だが、HACOMONO対応表に無いクラスです。HACOMONOが自動生成していなければ手動追加が要るかも。
                 </p>
@@ -315,6 +315,6 @@ export default function HacomonoTasksPage() {
           </>
         )}
       </div>
-    </main>
+    </div>
   );
 }

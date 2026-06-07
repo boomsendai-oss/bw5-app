@@ -1,7 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import StaffPageHeader from '@/components/StaffPageHeader';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { RefreshCw, Landmark, Trash2, Loader2 } from 'lucide-react';
 
 type Run = {
   id: number;
@@ -42,7 +50,6 @@ const PAYMENT_TYPE_LABELS: Record<string, string> = {
 };
 
 function yen(n: number): string { return `¥${Number(n).toLocaleString('ja-JP')}`; }
-// 時間表示: null/undefined/NaN を 0.0 にフォールバック (白画面クラッシュ防止)
 function hrs(n: number | null | undefined): string {
   const v = Number(n);
   return `${(Number.isFinite(v) ? v : 0).toFixed(1)}h`;
@@ -54,6 +61,14 @@ function prevYM(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function statusBadge(status: string) {
+  return (
+    <Badge variant={status === 'paid' ? 'default' : status === 'confirmed' ? 'secondary' : 'outline'}>
+      {status === 'paid' ? '振込済' : status === 'confirmed' ? '確定' : '下書き'}
+    </Badge>
+  );
+}
+
 export default function StudioBillingPage() {
   const [ym, setYm] = useState(prevYM());
   const [runs, setRuns] = useState<Run[]>([]);
@@ -62,6 +77,13 @@ export default function StudioBillingPage() {
   const [err, setErr] = useState('');
   const [detail, setDetail] = useState<Detail | null>(null);
   const [adjForm, setAdjForm] = useState({ type: 'cancellation_fee', amount: '', description: '' });
+
+  // AlertDialog state
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; description: string; onConfirm: () => void }>({ open: false, title: '', description: '', onConfirm: () => {} });
+
+  const showConfirm = (title: string, description: string, onConfirm: () => void) => {
+    setConfirmDialog({ open: true, title, description, onConfirm });
+  };
 
   const load = useCallback(async (target: string) => {
     setLoading(true); setErr('');
@@ -78,21 +100,26 @@ export default function StudioBillingPage() {
   useEffect(() => { load(ym); }, [ym, load]);
 
   const calculate = async () => {
-    if (!confirm(`${ym} のスタジオ料を計算します。draft状態は上書きされます。`)) return;
-    setBusy(true); setErr('');
-    try {
-      const res = await fetch('/api/staff/studio-billing/calculate', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year_month: ym }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      load(ym); // fire-and-forget
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-      load(ym);
-    }
-    finally { setBusy(false); }
+    showConfirm(
+      'スタジオ料計算',
+      `${ym} のスタジオ料を計算します。draft状態は上書きされます。`,
+      async () => {
+        setBusy(true); setErr('');
+        try {
+          const res = await fetch('/api/staff/studio-billing/calculate', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ year_month: ym }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          load(ym);
+        } catch (e) {
+          setErr(e instanceof Error ? e.message : String(e));
+          load(ym);
+        }
+        finally { setBusy(false); }
+      }
+    );
   };
 
   const openDetail = async (runId: number) => {
@@ -104,7 +131,6 @@ export default function StudioBillingPage() {
     if (!detail) return;
     const amount = parseInt(adjForm.amount, 10);
     if (isNaN(amount) || !adjForm.description.trim()) { alert('金額(数値)と説明を入力'); return; }
-    // スナップショット
     const snapForm = { ...adjForm };
     const snapDetail = detail;
     const runId = detail.run.id;
@@ -115,7 +141,6 @@ export default function StudioBillingPage() {
       amount,
       description: snapForm.description.trim(),
     };
-    // 楽観的: 即追加 + 合計反映
     setDetail({
       ...snapDetail,
       adjustments: [...snapDetail.adjustments, optimisticAdj],
@@ -136,7 +161,7 @@ export default function StudioBillingPage() {
         body: JSON.stringify({ adjustment_type: snapForm.type, amount, description: snapForm.description.trim() }),
       });
       if (!res.ok) throw new Error(await res.text());
-      openDetail(runId); // fire-and-forget
+      openDetail(runId);
       load(ym);
     } catch (e) {
       setErr(`調整追加失敗: ${e instanceof Error ? e.message : String(e)}`);
@@ -144,38 +169,44 @@ export default function StudioBillingPage() {
       load(ym);
     }
   };
+
   const delAdj = async (adjId: number) => {
-    if (!detail || !confirm('削除しますか?')) return;
-    const snapDetail = detail;
-    const runId = detail.run.id;
-    const target = snapDetail.adjustments.find(a => a.id === adjId);
-    if (!target) return;
-    // 楽観的: 即削除 + 合計反映
-    setDetail({
-      ...snapDetail,
-      adjustments: snapDetail.adjustments.filter(a => a.id !== adjId),
-      run: {
-        ...snapDetail.run,
-        total_adjustment_amount: snapDetail.run.total_adjustment_amount - target.amount,
-        total_amount: snapDetail.run.total_amount - target.amount,
-      },
-    });
-    setRuns(rs => rs.map(r => r.id === runId
-      ? { ...r, total_adjustment_amount: r.total_adjustment_amount - target.amount, total_amount: r.total_amount - target.amount }
-      : r));
-    try {
-      const res = await fetch(`/api/staff/studio-billing/${runId}/adjustments?adj_id=${adjId}`, { method: 'DELETE', credentials: 'include' });
-      if (!res.ok) throw new Error(await res.text());
-      openDetail(runId); // fire-and-forget
-      load(ym);
-    } catch (e) {
-      setErr(`調整削除失敗: ${e instanceof Error ? e.message : String(e)}`);
-      openDetail(runId);
-      load(ym);
-    }
+    if (!detail) return;
+    showConfirm(
+      '調整項目削除',
+      '削除しますか?',
+      async () => {
+        const snapDetail = detail;
+        const runId = detail.run.id;
+        const target = snapDetail.adjustments.find(a => a.id === adjId);
+        if (!target) return;
+        setDetail({
+          ...snapDetail,
+          adjustments: snapDetail.adjustments.filter(a => a.id !== adjId),
+          run: {
+            ...snapDetail.run,
+            total_adjustment_amount: snapDetail.run.total_adjustment_amount - target.amount,
+            total_amount: snapDetail.run.total_amount - target.amount,
+          },
+        });
+        setRuns(rs => rs.map(r => r.id === runId
+          ? { ...r, total_adjustment_amount: r.total_adjustment_amount - target.amount, total_amount: r.total_amount - target.amount }
+          : r));
+        try {
+          const res = await fetch(`/api/staff/studio-billing/${runId}/adjustments?adj_id=${adjId}`, { method: 'DELETE', credentials: 'include' });
+          if (!res.ok) throw new Error(await res.text());
+          openDetail(runId);
+          load(ym);
+        } catch (e) {
+          setErr(`調整削除失敗: ${e instanceof Error ? e.message : String(e)}`);
+          openDetail(runId);
+          load(ym);
+        }
+      }
+    );
   };
+
   const updateStatus = async (runId: number, status: string) => {
-    // 楽観的: 即反映
     setRuns(rs => rs.map(r => r.id === runId ? { ...r, status } : r));
     if (detail?.run.id === runId) {
       setDetail(d => d ? { ...d, run: { ...d.run, status } } : d);
@@ -187,7 +218,7 @@ export default function StudioBillingPage() {
         body: JSON.stringify({ status }),
       });
       if (!res.ok) throw new Error(await res.text());
-      load(ym); // fire-and-forget
+      load(ym);
     } catch (e) {
       setErr(`状態変更失敗: ${e instanceof Error ? e.message : String(e)}`);
       load(ym);
@@ -197,122 +228,148 @@ export default function StudioBillingPage() {
   const grandTotal = runs.reduce((s, r) => s + r.total_amount, 0);
 
   return (
-    <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <StaffPageHeader
-        title="🏠 月次スタジオ料金"
-        description="レッスン時間×スタジオ料金 → 確定 → 振込"
-        rightExtra={<input type="month" value={ym} onChange={e => setYm(e.target.value)} className="px-2 py-1 border border-slate-300 rounded text-sm" />}
-      />
+    <div className="text-neutral-900">
+      {/* AlertDialog for confirmations */}
+      <AlertDialog open={confirmDialog.open} onOpenChange={open => !open && setConfirmDialog(s => ({ ...s, open: false }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmDialog.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(s => ({ ...s, open: false })); }}>
+              実行
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="max-w-6xl mx-auto p-3 sm:p-4">
         {err && <div className="mb-3 p-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm">{err}</div>}
         <div className="bg-white rounded-lg border border-neutral-200 p-3 mb-3 flex items-center justify-between flex-wrap gap-2">
-          <div className="text-sm">
-            <span className="text-slate-500">対象月:</span> <span className="font-bold text-orange-700">{ym}</span>
-            <span className="ml-3 text-slate-500">対象スタジオ:</span> <span className="font-bold">{runs.length}</span>
-            <span className="ml-3 text-slate-500">合計:</span> <span className="font-bold text-orange-700">{yen(grandTotal)}</span>
+          <div className="text-sm flex items-center gap-3 flex-wrap">
+            <div>
+              <span className="text-slate-500">対象月:</span>{' '}
+              <Input type="month" value={ym} onChange={e => setYm(e.target.value)} className="inline-block w-auto h-7 text-sm" />
+            </div>
+            <span><span className="text-slate-500">対象スタジオ:</span> <span className="font-bold">{runs.length}</span></span>
+            <span><span className="text-slate-500">合計:</span> <span className="font-bold text-orange-700">{yen(grandTotal)}</span></span>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button onClick={calculate} disabled={busy} className="px-3 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold disabled:opacity-50">
-              {busy ? '計算中...' : '🔄 計算実行'}
-            </button>
-            <a href={`/api/staff/bank-transfer/studio?year_month=${ym}`} download
-              className="px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold">
-              🏦 振込CSV (SJIS)
-            </a>
+            <Button onClick={calculate} disabled={busy} size="sm">
+              {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+              {busy ? '計算中...' : '計算実行'}
+            </Button>
+            <Button variant="secondary" size="sm" asChild>
+              <a href={`/api/staff/bank-transfer/studio?year_month=${ym}`} download>
+                <Landmark /> 振込CSV (SJIS)
+              </a>
+            </Button>
           </div>
         </div>
-        {loading && <p className="text-slate-500 text-sm">読込中...</p>}
+
+        {loading && (
+          <div className="space-y-2">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        )}
+
         {!loading && runs.length === 0 && <p className="text-slate-500 text-sm p-4 bg-white rounded border">未計算。「計算実行」を押してください。</p>}
+
         {runs.length > 0 && (
-          <div className="bg-white rounded-lg border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b">
-                <tr>
-                  <th className="px-3 py-2 text-left">スタジオ</th>
-                  <th className="px-3 py-2 text-center">支払</th>
-                  <th className="px-3 py-2 text-right">使用時間</th>
-                  <th className="px-3 py-2 text-right">レンタル料</th>
-                  <th className="px-3 py-2 text-right">調整</th>
-                  <th className="px-3 py-2 text-right font-bold">合計</th>
-                  <th className="px-3 py-2 text-center">振込予定</th>
-                  <th className="px-3 py-2 text-center">状態</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className="bg-white rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>スタジオ</TableHead>
+                  <TableHead className="text-center">支払</TableHead>
+                  <TableHead className="text-right">使用時間</TableHead>
+                  <TableHead className="text-right">レンタル料</TableHead>
+                  <TableHead className="text-right">調整</TableHead>
+                  <TableHead className="text-right font-bold">合計</TableHead>
+                  <TableHead className="text-center">振込予定</TableHead>
+                  <TableHead className="text-center">状態</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {runs.map(r => (
-                  <tr key={r.id} onClick={() => openDetail(r.id)} className="border-b hover:bg-orange-50/50 cursor-pointer">
-                    <td className="px-3 py-2 font-semibold">{r.studio_name}</td>
-                    <td className="px-3 py-2 text-center text-[10px]"><span className="px-1.5 py-0.5 bg-slate-100 rounded">{PAYMENT_TYPE_LABELS[r.payment_type] ?? r.payment_type}</span></td>
-                    <td className="px-3 py-2 text-right font-mono">{hrs(r.total_hours)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{yen(r.total_lesson_amount)}</td>
-                    <td className="px-3 py-2 text-right font-mono">{r.total_adjustment_amount !== 0 ? yen(r.total_adjustment_amount) : '—'}</td>
-                    <td className="px-3 py-2 text-right font-mono font-bold text-orange-700">{yen(r.total_amount)}</td>
-                    <td className="px-3 py-2 text-center text-xs font-mono text-slate-500">{r.payment_date ?? '—'}</td>
-                    <td className="px-3 py-2 text-center">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${r.status === 'paid' ? 'bg-green-100 text-green-700' : r.status === 'confirmed' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100'}`}>
-                        {r.status === 'paid' ? '振込済' : r.status === 'confirmed' ? '確定' : '下書き'}
-                      </span>
-                    </td>
-                  </tr>
+                  <TableRow key={r.id} onClick={() => openDetail(r.id)} className="hover:bg-orange-50/50 cursor-pointer">
+                    <TableCell className="font-semibold">{r.studio_name}</TableCell>
+                    <TableCell className="text-center"><Badge variant="outline" className="text-[10px]">{PAYMENT_TYPE_LABELS[r.payment_type] ?? r.payment_type}</Badge></TableCell>
+                    <TableCell className="text-right font-mono">{hrs(r.total_hours)}</TableCell>
+                    <TableCell className="text-right font-mono">{yen(r.total_lesson_amount)}</TableCell>
+                    <TableCell className="text-right font-mono">{r.total_adjustment_amount !== 0 ? yen(r.total_adjustment_amount) : '--'}</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-orange-700">{yen(r.total_amount)}</TableCell>
+                    <TableCell className="text-center text-xs font-mono text-slate-500">{r.payment_date ?? '--'}</TableCell>
+                    <TableCell className="text-center">{statusBadge(r.status)}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-              <tfoot className="bg-slate-50 border-t font-bold">
-                <tr>
-                  <td className="px-3 py-2">合計</td>
-                  <td></td>
-                  <td className="px-3 py-2 text-right font-mono">{hrs(runs.reduce((s, r) => s + Number(r.total_hours ?? 0), 0))}</td>
-                  <td className="px-3 py-2 text-right font-mono">{yen(runs.reduce((s, r) => s + r.total_lesson_amount, 0))}</td>
-                  <td className="px-3 py-2 text-right font-mono">{yen(runs.reduce((s, r) => s + r.total_adjustment_amount, 0))}</td>
-                  <td className="px-3 py-2 text-right font-mono text-orange-700">{yen(grandTotal)}</td>
-                  <td colSpan={2}></td>
-                </tr>
-              </tfoot>
-            </table>
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell className="font-bold">合計</TableCell>
+                  <TableCell></TableCell>
+                  <TableCell className="text-right font-mono">{hrs(runs.reduce((s, r) => s + Number(r.total_hours ?? 0), 0))}</TableCell>
+                  <TableCell className="text-right font-mono">{yen(runs.reduce((s, r) => s + r.total_lesson_amount, 0))}</TableCell>
+                  <TableCell className="text-right font-mono">{yen(runs.reduce((s, r) => s + r.total_adjustment_amount, 0))}</TableCell>
+                  <TableCell className="text-right font-mono text-orange-700">{yen(grandTotal)}</TableCell>
+                  <TableCell colSpan={2}></TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
           </div>
         )}
       </div>
 
-      {detail && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3" onClick={() => setDetail(null)}>
-          <div className="bg-white w-full max-w-3xl rounded-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
-              <h3 className="font-bold">{detail.run.studio_name} <span className="text-slate-400 text-sm">/ {detail.run.year_month}</span></h3>
-              <button onClick={() => setDetail(null)} className="text-2xl text-slate-400 hover:text-slate-700 leading-none">✕</button>
-            </div>
-            <div className="p-4 space-y-4">
+      {/* 詳細ダイアログ */}
+      <Dialog open={!!detail} onOpenChange={open => !open && setDetail(null)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {detail?.run.studio_name} <span className="text-slate-400 text-sm font-normal">/ {detail?.run.year_month}</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          {detail && (
+            <div className="space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
                 <div className="bg-slate-50 rounded p-2"><div className="text-[10px] text-slate-500">使用時間</div><div className="font-bold">{hrs(detail.run.total_hours)}</div></div>
                 <div className="bg-slate-50 rounded p-2"><div className="text-[10px] text-slate-500">レンタル料</div><div className="font-bold">{yen(detail.run.total_lesson_amount)}</div></div>
                 <div className="bg-slate-50 rounded p-2"><div className="text-[10px] text-slate-500">調整</div><div className="font-bold">{yen(detail.run.total_adjustment_amount)}</div></div>
                 <div className="bg-orange-50 rounded p-2"><div className="text-[10px] text-orange-600">合計</div><div className="font-bold text-orange-700">{yen(detail.run.total_amount)}</div></div>
               </div>
+
               <div>
                 <h4 className="font-bold text-sm mb-1">レッスン明細 ({detail.lines.length}件)</h4>
                 <div className="border rounded overflow-hidden max-h-64 overflow-y-auto">
-                  <table className="w-full text-xs">
-                    <thead className="bg-slate-50 sticky top-0">
-                      <tr>
-                        <th className="px-2 py-1 text-left">日付</th>
-                        <th className="px-2 py-1 text-left">クラス</th>
-                        <th className="px-2 py-1 text-right">時間</th>
-                        <th className="px-2 py-1 text-right">単価</th>
-                        <th className="px-2 py-1 text-right">金額</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs sticky top-0 bg-slate-50">日付</TableHead>
+                        <TableHead className="text-xs sticky top-0 bg-slate-50">クラス</TableHead>
+                        <TableHead className="text-xs text-right sticky top-0 bg-slate-50">時間</TableHead>
+                        <TableHead className="text-xs text-right sticky top-0 bg-slate-50">単価</TableHead>
+                        <TableHead className="text-xs text-right sticky top-0 bg-slate-50">金額</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {detail.lines.map(l => (
-                        <tr key={l.id} className="border-t">
-                          <td className="px-2 py-1 font-mono">{l.lesson_date}</td>
-                          <td className="px-2 py-1">{l.class_name ?? '—'}</td>
-                          <td className="px-2 py-1 text-right font-mono">{hrs(l.hours)}</td>
-                          <td className="px-2 py-1 text-right font-mono">{yen(l.hourly_rate)}</td>
-                          <td className="px-2 py-1 text-right font-mono">{yen(l.amount)}</td>
-                        </tr>
+                        <TableRow key={l.id}>
+                          <TableCell className="text-xs font-mono">{l.lesson_date}</TableCell>
+                          <TableCell className="text-xs">{l.class_name ?? '--'}</TableCell>
+                          <TableCell className="text-xs text-right font-mono">{hrs(l.hours)}</TableCell>
+                          <TableCell className="text-xs text-right font-mono">{yen(l.hourly_rate)}</TableCell>
+                          <TableCell className="text-xs text-right font-mono">{yen(l.amount)}</TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
+
               <div>
                 <h4 className="font-bold text-sm mb-1">調整項目</h4>
                 {detail.adjustments.length > 0 && (
@@ -322,31 +379,37 @@ export default function StudioBillingPage() {
                         <div><span className="font-semibold">{ADJ_TYPES.find(t => t.value === a.adjustment_type)?.label}</span><span className="ml-2 text-slate-600">{a.description}</span></div>
                         <div className="flex items-center gap-2">
                           <span className={`font-mono font-bold ${a.amount >= 0 ? 'text-red-700' : 'text-green-700'}`}>{yen(a.amount)}</span>
-                          <button onClick={() => delAdj(a.id)} className="text-slate-400 hover:text-red-600">削除</button>
+                          <Button variant="ghost" size="xs" onClick={() => delAdj(a.id)} className="text-slate-400 hover:text-red-600">
+                            <Trash2 className="size-3" /> 削除
+                          </Button>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
                 <div className="bg-orange-50 border border-orange-200 rounded p-2 grid grid-cols-1 sm:grid-cols-4 gap-2">
-                  <select value={adjForm.type} onChange={e => setAdjForm({ ...adjForm, type: e.target.value })} className="px-2 py-1 border rounded text-xs">
-                    {ADJ_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                  <input type="number" placeholder="金額(±)" value={adjForm.amount} onChange={e => setAdjForm({ ...adjForm, amount: e.target.value })} className="px-2 py-1 border rounded text-xs" />
-                  <input placeholder="説明" value={adjForm.description} onChange={e => setAdjForm({ ...adjForm, description: e.target.value })} className="px-2 py-1 border rounded text-xs" />
-                  <button onClick={addAdj} className="px-2 py-1 bg-orange-500 hover:bg-orange-600 text-white text-xs rounded font-semibold">追加</button>
+                  <Select value={adjForm.type} onValueChange={v => setAdjForm({ ...adjForm, type: v })}>
+                    <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {ADJ_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Input type="number" placeholder="金額(+-)" value={adjForm.amount} onChange={e => setAdjForm({ ...adjForm, amount: e.target.value })} className="h-7 text-xs" />
+                  <Input placeholder="説明" value={adjForm.description} onChange={e => setAdjForm({ ...adjForm, description: e.target.value })} className="h-7 text-xs" />
+                  <Button onClick={addAdj} size="sm">追加</Button>
                 </div>
               </div>
+
               <div className="flex gap-2 pt-2 border-t">
                 <span className="text-xs text-slate-500 self-center">状態:</span>
-                <button onClick={() => updateStatus(detail.run.id, 'draft')} className={`px-2 py-1 rounded text-xs ${detail.run.status === 'draft' ? 'bg-slate-200 font-bold' : 'bg-slate-50 hover:bg-slate-100'}`}>下書き</button>
-                <button onClick={() => updateStatus(detail.run.id, 'confirmed')} className={`px-2 py-1 rounded text-xs ${detail.run.status === 'confirmed' ? 'bg-blue-200 font-bold' : 'bg-slate-50 hover:bg-blue-100'}`}>確定</button>
-                <button onClick={() => updateStatus(detail.run.id, 'paid')} className={`px-2 py-1 rounded text-xs ${detail.run.status === 'paid' ? 'bg-green-200 font-bold' : 'bg-slate-50 hover:bg-green-100'}`}>振込済</button>
+                <Button onClick={() => updateStatus(detail.run.id, 'draft')} variant={detail.run.status === 'draft' ? 'secondary' : 'ghost'} size="xs">下書き</Button>
+                <Button onClick={() => updateStatus(detail.run.id, 'confirmed')} variant={detail.run.status === 'confirmed' ? 'secondary' : 'ghost'} size="xs">確定</Button>
+                <Button onClick={() => updateStatus(detail.run.id, 'paid')} variant={detail.run.status === 'paid' ? 'secondary' : 'ghost'} size="xs">振込済</Button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-    </main>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

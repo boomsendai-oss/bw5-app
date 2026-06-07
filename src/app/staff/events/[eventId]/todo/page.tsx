@@ -2,6 +2,24 @@
 
 import { useCallback, useEffect, useState, use as usePromise } from 'react';
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toast } from 'sonner';
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 
 type Todo = {
   id: number;
@@ -36,6 +54,7 @@ export default function TodoPage({ params }: { params: Promise<{ eventId: string
     priority: '',
     due_period: '',
   });
+  const [deleteTarget, setDeleteTarget] = useState<Todo | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/staff/events/${eventId}/todos`, { credentials: 'include' });
@@ -63,6 +82,7 @@ export default function TodoPage({ params }: { params: Promise<{ eventId: string
     });
     if (res.ok) {
       setForm({ category: '', fact: '', cause: '', action: '', assignee: '', priority: '', due_period: '' });
+      toast.success('ToDo を追加しました');
       load();
     }
   }
@@ -77,137 +97,171 @@ export default function TodoPage({ params }: { params: Promise<{ eventId: string
     load();
   }
 
-  async function remove(todo: Todo) {
-    if (!confirm('削除しますか？')) return;
+  async function executeDelete() {
+    if (!deleteTarget) return;
+    const todo = deleteTarget;
+    setDeleteTarget(null);
     await fetch(`/api/staff/events/${eventId}/todos/${todo.id}`, {
       method: 'DELETE',
       credentials: 'include',
     });
+    toast.success('削除しました');
     load();
   }
 
   const filtered = filter === 'all' ? todos : todos.filter((t) => t.status === filter);
 
   return (
-    <main className="min-h-screen bg-neutral-50">
-      <header className="bg-white border-b border-orange-100 px-6 py-4">
+    <div>
+      <header className="bg-card border-b px-6 py-4">
         <div className="max-w-4xl mx-auto">
-          <Link href={`/staff/events/${eventId}`} className="text-xs text-orange-600 hover:underline">
-            ← ダッシュボード
+          <Link href={`/staff/events/${eventId}`} className="text-xs text-orange-600 hover:underline inline-flex items-center gap-1">
+            <ArrowLeft className="size-3" />ダッシュボード
           </Link>
           <h1 className="text-xl font-bold text-orange-600 mt-1">ToDo リスト</h1>
         </div>
       </header>
 
       <div className="max-w-4xl mx-auto p-6 space-y-4">
-        {/* 追加フォーム */}
-        <form onSubmit={addTodo} className="bg-white rounded-2xl border border-orange-100 p-5 space-y-3 shadow-sm">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <Field label="カテゴリ">
-              <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full border border-neutral-300 rounded px-2 py-1.5" placeholder="体制/演出/当日オペ" />
-            </Field>
-            <Field label="担当">
-              <select value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })} className="w-full border border-neutral-300 rounded px-2 py-1.5">
-                <option value="">未定</option>
-                {ASSIGNEES.map((a) => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </Field>
-            <Field label="優先度">
-              <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })} className="w-full border border-neutral-300 rounded px-2 py-1.5">
-                <option value="">未設定</option>
-                {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </Field>
-            <Field label="期限">
-              <select value={form.due_period} onChange={(e) => setForm({ ...form, due_period: e.target.value })} className="w-full border border-neutral-300 rounded px-2 py-1.5">
-                <option value="">未設定</option>
-                {DUE_PERIODS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </Field>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Field label="事実 (何が)">
-              <input value={form.fact} onChange={(e) => setForm({ ...form, fact: e.target.value })} className="w-full border border-neutral-300 rounded px-2 py-1.5" />
-            </Field>
-            <Field label="原因 (なぜ)">
-              <input value={form.cause} onChange={(e) => setForm({ ...form, cause: e.target.value })} className="w-full border border-neutral-300 rounded px-2 py-1.5" />
-            </Field>
-            <Field label="アクション ※必須">
-              <input required value={form.action} onChange={(e) => setForm({ ...form, action: e.target.value })} className="w-full border border-neutral-300 rounded px-2 py-1.5" />
-            </Field>
-          </div>
-          <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-lg px-4 py-2">
-            ＋ 追加
-          </button>
-        </form>
+        {/* Add form */}
+        <Card>
+          <CardContent className="pt-4">
+            <form onSubmit={addTodo} className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">カテゴリ</Label>
+                  <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="体制/演出/当日オペ" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">担当</Label>
+                  <Select value={form.assignee} onValueChange={(v) => setForm({ ...form, assignee: v })}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="未定" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">未定</SelectItem>
+                      {ASSIGNEES.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">優先度</Label>
+                  <Select value={form.priority} onValueChange={(v) => setForm({ ...form, priority: v })}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="未設定" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">未設定</SelectItem>
+                      {PRIORITIES.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">期限</Label>
+                  <Select value={form.due_period} onValueChange={(v) => setForm({ ...form, due_period: v })}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="未設定" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">未設定</SelectItem>
+                      {DUE_PERIODS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">事実 (何が)</Label>
+                  <Input value={form.fact} onChange={(e) => setForm({ ...form, fact: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">原因 (なぜ)</Label>
+                  <Input value={form.cause} onChange={(e) => setForm({ ...form, cause: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">アクション *必須</Label>
+                  <Input required value={form.action} onChange={(e) => setForm({ ...form, action: e.target.value })} />
+                </div>
+              </div>
+              <Button type="submit"><Plus className="size-3.5 mr-1" />追加</Button>
+            </form>
+          </CardContent>
+        </Card>
 
-        {/* フィルタ */}
+        {/* Filter */}
         <div className="flex gap-2 text-sm">
           {(['all', ...STATUSES] as const).map((s) => (
-            <button
+            <Button
               key={s}
+              variant={filter === s ? 'default' : 'outline'}
+              size="sm"
               onClick={() => setFilter(s)}
-              className={`px-3 py-1 rounded-full border ${
-                filter === s
-                  ? 'bg-orange-500 text-white border-orange-500'
-                  : 'bg-white text-neutral-700 border-neutral-300'
-              }`}
+              className={filter === s ? '' : ''}
             >
               {s === 'all' ? 'すべて' : s}
-            </button>
+            </Button>
           ))}
         </div>
 
-        {/* リスト */}
+        {/* List */}
         {loading ? (
-          <div className="text-neutral-500">読み込み中…</div>
+          <div className="text-muted-foreground">読み込み中...</div>
         ) : filtered.length === 0 ? (
-          <div className="text-neutral-500 bg-white rounded-2xl border border-orange-100 p-8 text-center">
-            ToDo がありません。
-          </div>
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              ToDo がありません。
+            </CardContent>
+          </Card>
         ) : (
           <ul className="space-y-2">
             {filtered.map((t) => (
-              <li key={t.id} className="bg-white rounded-2xl border border-orange-100 p-4">
-                <div className="flex items-start gap-3">
-                  <select
-                    value={t.status}
-                    onChange={(e) => patch(t, { status: e.target.value })}
-                    className="text-xs border border-neutral-300 rounded px-1.5 py-1"
-                  >
-                    {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold">{t.action}</div>
-                    {(t.fact || t.cause) && (
-                      <div className="text-xs text-neutral-500 mt-1">
-                        {t.fact && <>事実: {t.fact}　</>}
-                        {t.cause && <>原因: {t.cause}</>}
+              <li key={t.id}>
+                <Card>
+                  <CardContent className="py-3">
+                    <div className="flex items-start gap-3">
+                      <Select value={t.status} onValueChange={(v) => patch(t, { status: v })}>
+                        <SelectTrigger className="w-[120px]" size="sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold">{t.action}</div>
+                        {(t.fact || t.cause) && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {t.fact && <>事実: {t.fact}  </>}
+                            {t.cause && <>原因: {t.cause}</>}
+                          </div>
+                        )}
+                        <div className="text-xs mt-1 flex flex-wrap gap-1.5">
+                          {t.category && <Badge variant="secondary" className="bg-orange-50 text-orange-700">{t.category}</Badge>}
+                          {t.assignee && <Badge variant="outline">{t.assignee}</Badge>}
+                          {t.priority && <Badge variant="destructive">優先度:{t.priority}</Badge>}
+                          {t.due_period && <Badge variant="secondary" className="bg-blue-50 text-blue-700">{t.due_period}</Badge>}
+                        </div>
                       </div>
-                    )}
-                    <div className="text-xs text-neutral-600 mt-1 flex flex-wrap gap-2">
-                      {t.category && <span className="bg-orange-50 text-orange-700 px-2 py-0.5 rounded">{t.category}</span>}
-                      {t.assignee && <span className="bg-neutral-100 px-2 py-0.5 rounded">{t.assignee}</span>}
-                      {t.priority && <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded">優先度:{t.priority}</span>}
-                      {t.due_period && <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{t.due_period}</span>}
+                      <Button variant="ghost" size="icon-xs" onClick={() => setDeleteTarget(t)}>
+                        <Trash2 className="size-3.5 text-destructive" />
+                      </Button>
                     </div>
-                  </div>
-                  <button onClick={() => remove(t)} className="text-xs text-red-600 hover:underline">削除</button>
-                </div>
+                  </CardContent>
+                </Card>
               </li>
             ))}
           </ul>
         )}
       </div>
-    </main>
-  );
-}
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="text-xs text-neutral-600">{label}</span>
-      {children}
-    </label>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>削除確認</AlertDialogTitle>
+            <AlertDialogDescription>
+              このToDoを削除しますか?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={executeDelete} variant="destructive">削除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }

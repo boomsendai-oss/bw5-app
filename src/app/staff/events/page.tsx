@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import StaffPageHeader from '@/components/StaffPageHeader';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from 'sonner';
+import { CalendarDays, Plus, ChevronRight, X } from 'lucide-react';
 
 type EventRow = {
   id: number;
@@ -60,109 +67,116 @@ export default function EventsListPage() {
     }
     setForm({ code: '', name: '', event_date: '', status: 'planning' });
     setShowForm(false);
+    toast.success('イベントを作成しました');
     load();
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50">
-      <StaffPageHeader
-        title="🎪 イベント管理"
-        description="BW5・発表会等のイベント設定・タスク"
-        rightExtra={
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            className="bg-orange-500 hover:bg-orange-600 text-white text-xs sm:text-sm font-semibold rounded-lg px-3 py-1.5"
-          >
-            {showForm ? 'キャンセル' : '＋ 新規イベント'}
-          </button>
-        }
-      />
-
+    <div>
       <div className="max-w-3xl mx-auto p-6 space-y-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="size-5 text-orange-600" />
+            <h1 className="text-lg font-bold text-orange-600">イベント管理</h1>
+            <span className="text-xs text-muted-foreground hidden sm:inline">BW5・発表会等のイベント設定・タスク</span>
+          </div>
+          <Button
+            onClick={() => setShowForm((v) => !v)}
+            variant={showForm ? 'outline' : 'default'}
+            size="sm"
+          >
+            {showForm ? <><X className="size-3.5 mr-1" />キャンセル</> : <><Plus className="size-3.5 mr-1" />新規イベント</>}
+          </Button>
+        </div>
+
         {showForm && (
-          <form onSubmit={create} className="bg-white rounded-2xl border border-orange-100 p-5 space-y-3 shadow-sm">
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-xs text-neutral-600">コード (例: BW6)</span>
-                <input
-                  required
-                  value={form.code}
-                  onChange={(e) => setForm({ ...form, code: e.target.value })}
-                  className="w-full border border-neutral-300 rounded px-2 py-1.5"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs text-neutral-600">名称</span>
-                <input
-                  required
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full border border-neutral-300 rounded px-2 py-1.5"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs text-neutral-600">開催日</span>
-                <input
-                  type="date"
-                  value={form.event_date}
-                  onChange={(e) => setForm({ ...form, event_date: e.target.value })}
-                  className="w-full border border-neutral-300 rounded px-2 py-1.5"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs text-neutral-600">ステータス</span>
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm({ ...form, status: e.target.value })}
-                  className="w-full border border-neutral-300 rounded px-2 py-1.5"
-                >
-                  <option value="planning">planning</option>
-                  <option value="preparing">preparing</option>
-                  <option value="live">live</option>
-                  <option value="closed">closed</option>
-                </select>
-              </label>
-            </div>
-            {error && <div className="text-sm text-red-600">{error}</div>}
-            <button
-              type="submit"
-              className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-lg px-4 py-2"
-            >
-              作成
-            </button>
-          </form>
+          <Card>
+            <CardContent className="pt-4">
+              <form onSubmit={create} className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">コード (例: BW6)</Label>
+                    <Input
+                      required
+                      value={form.code}
+                      onChange={(e) => setForm({ ...form, code: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">名称</Label>
+                    <Input
+                      required
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">開催日</Label>
+                    <Input
+                      type="date"
+                      value={form.event_date}
+                      onChange={(e) => setForm({ ...form, event_date: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">ステータス</Label>
+                    <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="planning">planning</SelectItem>
+                        <SelectItem value="preparing">preparing</SelectItem>
+                        <SelectItem value="live">live</SelectItem>
+                        <SelectItem value="closed">closed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {error && <div className="text-sm text-destructive">{error}</div>}
+                <Button type="submit">作成</Button>
+              </form>
+            </CardContent>
+          </Card>
         )}
 
         {loading ? (
-          <div className="text-neutral-500">読み込み中…</div>
+          <div className="text-muted-foreground">読み込み中...</div>
         ) : events.length === 0 ? (
-          <div className="text-neutral-500 bg-white rounded-2xl border border-orange-100 p-8 text-center">
-            まだイベントがありません。「＋ 新規イベント」から作成してください。
-          </div>
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground">
+              まだイベントがありません。「新規イベント」から作成してください。
+            </CardContent>
+          </Card>
         ) : (
           <ul className="space-y-2">
             {events.map((ev) => (
               <li key={ev.id}>
                 <Link
                   href={`/staff/events/${ev.id}`}
-                  className="block bg-white rounded-2xl border border-orange-100 p-4 hover:shadow-md transition"
+                  className="block"
                 >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs text-orange-600 font-mono">{ev.code}</div>
-                      <div className="font-semibold">{ev.name}</div>
-                      <div className="text-xs text-neutral-500">
-                        {ev.event_date ?? '日付未定'} ・ {ev.status}
+                  <Card className="hover:shadow-md transition cursor-pointer">
+                    <CardContent className="py-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-xs text-orange-600 font-mono">{ev.code}</div>
+                          <div className="font-semibold">{ev.name}</div>
+                          <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                            <span>{ev.event_date ?? '日付未定'}</span>
+                            <Badge variant="secondary" className="text-[10px]">{ev.status}</Badge>
+                          </div>
+                        </div>
+                        <ChevronRight className="size-4 text-orange-500" />
                       </div>
-                    </div>
-                    <div className="text-orange-500">→</div>
-                  </div>
+                    </CardContent>
+                  </Card>
                 </Link>
               </li>
             ))}
           </ul>
         )}
       </div>
-    </main>
+    </div>
   );
 }

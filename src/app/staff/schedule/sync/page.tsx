@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import StaffPageHeader from '@/components/StaffPageHeader';
+import { CalendarDays, Building2, MessageSquare, RefreshCw, Copy, ExternalLink, AlertTriangle, Info } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 // ============================================================
 // カレンダー連携ハブ
@@ -24,7 +30,6 @@ import StaffPageHeader from '@/components/StaffPageHeader';
 export default function ScheduleSyncPage() {
   const [token, setToken] = useState<string | null>(null);
   const [tokenErr, setTokenErr] = useState<string>('');
-  // origin はクライアントでのみ確定。lazy initializer で同期setStateを避ける。
   const [origin] = useState<string>(() =>
     typeof window !== 'undefined' ? window.location.origin : '',
   );
@@ -91,11 +96,11 @@ export default function ScheduleSyncPage() {
       });
       const d = await res.json();
       if (!res.ok) {
-        setLcMsg(`❌ ${d.error ?? res.status}`);
+        setLcMsg(`${d.error ?? res.status}`);
         return;
       }
       setLcEmbedUrl(d.embedUrl ?? null);
-      setLcMsg(`✅ 同期完了：全${d.total}件（新規 ${d.created} / 更新 ${d.updated} / 維持 ${d.kept} / 削除 ${d.deleted}）`);
+      setLcMsg(`同期完了：全${d.total}件（新規 ${d.created} / 更新 ${d.updated} / 維持 ${d.kept} / 削除 ${d.deleted}）`);
     } catch (e) {
       setLcMsg(e instanceof Error ? e.message : '通信エラー');
     } finally {
@@ -129,11 +134,11 @@ export default function ScheduleSyncPage() {
       });
       const d = await res.json();
       if (!res.ok) {
-        setGcalMsg(`❌ ${d.error ?? res.status}`);
+        setGcalMsg(`${d.error ?? res.status}`);
         return;
       }
       setGcalId(d.calendarId ?? null);
-      setGcalMsg(`✅ 同期完了：休講 ${d.total_cancelled}件（新規 ${d.created} / 維持 ${d.kept} / 削除 ${d.deleted}）`);
+      setGcalMsg(`同期完了：休講 ${d.total_cancelled}件（新規 ${d.created} / 維持 ${d.kept} / 削除 ${d.deleted}）`);
     } catch (e) {
       setGcalMsg(e instanceof Error ? e.message : '通信エラー');
     } finally {
@@ -142,17 +147,7 @@ export default function ScheduleSyncPage() {
   };
 
   return (
-    <main className="min-h-screen bg-neutral-50 pb-20">
-      <StaffPageHeader
-        title="📡 カレンダー連携ハブ"
-        description="BW5マスタースケジュールを Google / HACOMONO / Lstep へ配信"
-        rightExtra={
-          <Link href="/staff/schedule/calendar" className="text-xs text-orange-600 underline">
-            マスターを編集 →
-          </Link>
-        }
-      />
-
+    <div className="pb-20">
       <div className="max-w-3xl mx-auto px-3 py-4 space-y-4">
         {tokenErr && (
           <div className="p-3 rounded bg-red-50 border border-red-200 text-red-800 text-xs">
@@ -161,62 +156,58 @@ export default function ScheduleSyncPage() {
         )}
 
         {/* ===== 連携状況サマリ ===== */}
-        <section className="bg-white border border-orange-200 rounded-xl p-4">
-          <h2 className="text-sm font-bold text-orange-800 mb-1">🎯 マスター = BW5レッスンカレンダー</h2>
-          <p className="text-[11px] text-neutral-600 leading-relaxed mb-3">
-            すべての配信元は{' '}
-            <Link href="/staff/schedule/calendar" className="text-orange-600 underline font-semibold">
-              レッスンカレンダー
-            </Link>{' '}
-            です。ここを編集すれば、下の3カレンダーへ反映できます（自動／手動は方式により異なる）。
-          </p>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-[11px] border-collapse">
-              <thead>
-                <tr className="text-left text-neutral-500 border-b border-neutral-200">
-                  <th className="py-1.5 pr-2 font-semibold">カレンダー</th>
-                  <th className="py-1.5 pr-2 font-semibold">用途</th>
-                  <th className="py-1.5 pr-2 font-semibold">連携方式</th>
-                  <th className="py-1.5 font-semibold">反映</th>
-                </tr>
-              </thead>
-              <tbody className="text-neutral-700">
-                <tr className="border-b border-neutral-100">
-                  <td className="py-1.5 pr-2 font-semibold">📅 Google</td>
-                  <td className="py-1.5 pr-2">関係者の予定共有</td>
-                  <td className="py-1.5 pr-2">
-                    <Badge tone="green">自動</Badge> ICS購読
-                  </td>
-                  <td className="py-1.5">編集すれば自動反映</td>
-                </tr>
-                <tr className="border-b border-neutral-100">
-                  <td className="py-1.5 pr-2 font-semibold">🏢 HACOMONO</td>
-                  <td className="py-1.5 pr-2">会員予約カレンダー</td>
-                  <td className="py-1.5 pr-2">
-                    <Badge tone="amber">半自動</Badge> CSV
-                  </td>
-                  <td className="py-1.5">CSV出力→インポート</td>
-                </tr>
-                <tr>
-                  <td className="py-1.5 pr-2 font-semibold">💬 Lstep</td>
-                  <td className="py-1.5 pr-2">体験予約カレンダー</td>
-                  <td className="py-1.5 pr-2">
-                    <Badge tone="green">層2自動</Badge> + <Badge tone="slate">層1手動</Badge>
-                  </td>
-                  <td className="py-1.5">休講=自動 / 枠構造=手動</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm text-orange-800">マスター = BW5レッスンカレンダー</CardTitle>
+            <CardDescription className="text-[11px]">
+              すべての配信元は{' '}
+              <Link href="/staff/schedule/calendar" className="text-orange-600 underline font-semibold">
+                レッスンカレンダー
+              </Link>{' '}
+              です。ここを編集すれば、下の3カレンダーへ反映できます（自動/手動は方式により異なる）。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-[11px]">カレンダー</TableHead>
+                  <TableHead className="text-[11px]">用途</TableHead>
+                  <TableHead className="text-[11px]">連携方式</TableHead>
+                  <TableHead className="text-[11px]">反映</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell className="text-[11px] font-semibold"><CalendarDays className="inline size-3.5 mr-1" />Google</TableCell>
+                  <TableCell className="text-[11px]">関係者の予定共有</TableCell>
+                  <TableCell className="text-[11px]"><Badge variant="default" className="bg-green-600 text-[10px]">自動</Badge> ICS購読</TableCell>
+                  <TableCell className="text-[11px]">編集すれば自動反映</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="text-[11px] font-semibold"><Building2 className="inline size-3.5 mr-1" />HACOMONO</TableCell>
+                  <TableCell className="text-[11px]">会員予約カレンダー</TableCell>
+                  <TableCell className="text-[11px]"><Badge variant="outline" className="text-amber-700 border-amber-300 text-[10px]">半自動</Badge> CSV</TableCell>
+                  <TableCell className="text-[11px]">CSV出力→インポート</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="text-[11px] font-semibold"><MessageSquare className="inline size-3.5 mr-1" />Lstep</TableCell>
+                  <TableCell className="text-[11px]">体験予約カレンダー</TableCell>
+                  <TableCell className="text-[11px]"><Badge variant="default" className="bg-green-600 text-[10px]">層2自動</Badge> + <Badge variant="secondary" className="text-[10px]">層1手動</Badge></TableCell>
+                  <TableCell className="text-[11px]">休講=自動 / 枠構造=手動</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
         {/* ===== カード0: 公開Googleレッスンカレンダー (差分同期・本命) ===== */}
-        <Card
-          icon="📅"
+        <SyncCard
+          icon={<CalendarDays className="size-5 text-orange-600" />}
           title="公開Googleレッスンカレンダー"
           subtitle="生徒・スタッフ・関係者みんなで共有"
-          status={{ tone: 'green', label: '✅ 1時間ごと自動 + 手動' }}
+          statusLabel="1時間ごと自動 + 手動"
+          statusVariant="default"
         >
           <p className="text-[11px] text-neutral-600 leading-relaxed">
             BOOMが所有する<b>公開Googleカレンダー</b>に、アプリのレッスン予定を反映します。
@@ -224,76 +215,68 @@ export default function ScheduleSyncPage() {
           </p>
 
           {lcConnected === false && (
-            <Note tone="amber">
-              Googleカレンダー未連携です。下の「Lstep」カードの「🔗 Googleカレンダーを連携する」から連携してください（同じ連携を共用します）。
-            </Note>
+            <NoteBox tone="amber">
+              Googleカレンダー未連携です。下の「Lstep」カードの「Googleカレンダーを連携する」から連携してください（同じ連携を共用します）。
+            </NoteBox>
           )}
 
           {lcEmbedUrl && (
             <div>
-              <p className="text-[10px] text-neutral-500 font-semibold mb-0.5">📣 生徒に渡す公開リンク（このまま共有OK）</p>
-              <div className="flex gap-1.5 items-stretch">
-                <input
-                  readOnly
-                  value={lcEmbedUrl}
-                  onFocus={e => e.currentTarget.select()}
-                  className="flex-1 px-2 py-1.5 border rounded text-[11px] font-mono bg-white text-neutral-700 min-w-0"
-                />
-                <button
-                  onClick={() => { navigator.clipboard?.writeText(lcEmbedUrl); setLcMsg('📋 公開リンクをコピーしました'); }}
-                  className="px-3 py-1.5 bg-neutral-200 hover:bg-neutral-300 rounded text-xs font-semibold whitespace-nowrap"
-                >コピー</button>
-              </div>
+              <p className="text-[10px] text-muted-foreground font-semibold mb-0.5">生徒に渡す公開リンク（このまま共有OK）</p>
+              <CopyUrlBox url={lcEmbedUrl} onCopied={() => setLcMsg('公開リンクをコピーしました')} />
             </div>
           )}
 
-          <button
+          <Button
             onClick={runLessonSync}
             disabled={lcSyncing}
-            className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-neutral-300 text-white text-sm font-bold rounded-lg py-2.5"
+            className="w-full"
           >
-            {lcSyncing ? '同期中…' : '🔄 今すぐGoogleカレンダーへ同期する'}
-          </button>
+            <RefreshCw className={`size-4 ${lcSyncing ? 'animate-spin' : ''}`} />
+            {lcSyncing ? '同期中...' : '今すぐGoogleカレンダーへ同期する'}
+          </Button>
           {lcMsg && <p className="text-[11px] text-neutral-700">{lcMsg}</p>}
 
-          <Note tone="neutral">
+          <NoteBox tone="neutral">
             押し忘れても1時間以内に自動で反映されます。急ぎのときだけボタンを押せばOKです。
-          </Note>
-        </Card>
+          </NoteBox>
+        </SyncCard>
 
         {/* ===== カード1: Google ===== */}
-        <Card
-          icon="📅"
+        <SyncCard
+          icon={<CalendarDays className="size-5 text-orange-600" />}
           title="Googleカレンダー"
           subtitle="関係者の予定共有"
-          status={{ tone: 'green', label: '✅ 自動同期' }}
+          statusLabel="自動同期"
+          statusVariant="default"
         >
           <p className="text-[11px] text-neutral-600 leading-relaxed">
             下のICS購読URLをGoogleカレンダーに登録すると、BW5レッスンが自動反映されます。休講にした回は「キャンセル済み」で表示されます。
           </p>
 
-          <CopyUrlBox label="ICS購読URL (3ヶ月分)" url={icsUrl} token={token} tokenErr={tokenErr} />
+          <TokenUrlBox label="ICS購読URL (3ヶ月分)" url={icsUrl} token={token} tokenErr={tokenErr} />
 
-          <Steps
+          <StepsList
             title="設定手順"
             items={[
               '上のURLをコピー',
-              'Googleカレンダー左の「他のカレンダー」➕ → 「URLで追加」',
+              'Googleカレンダー左の「他のカレンダー」+ → 「URLで追加」',
               'URLを貼り付けて「カレンダーを追加」',
             ]}
           />
-          <Note tone="neutral">
+          <NoteBox tone="neutral">
             一般公開は不要です。反映はGoogle側の都合で数時間〜最大1日かかる場合があります。
-          </Note>
-          <Status>BW5レッスンが自動反映されます。</Status>
-        </Card>
+          </NoteBox>
+          <p className="text-[11px] text-green-700 font-semibold flex items-center gap-1"><Info className="size-3" /> BW5レッスンが自動反映されます。</p>
+        </SyncCard>
 
         {/* ===== カード2: HACOMONO ===== */}
-        <Card
-          icon="🏢"
+        <SyncCard
+          icon={<Building2 className="size-5 text-orange-600" />}
           title="HACOMONO 会員予約カレンダー"
           subtitle="会員の予約枠"
-          status={{ tone: 'amber', label: '半自動 (CSV)' }}
+          statusLabel="半自動 (CSV)"
+          statusVariant="outline"
         >
           <p className="text-[11px] text-neutral-600 leading-relaxed">
             HACOMONOは毎週レッスン枠を自動生成します。アプリの実予定とズレる「消すべき枠」（5週目・全休・休講・月1/2回クラスの非開催週）を、月ごとに自動リスト化します。
@@ -301,22 +284,25 @@ export default function ScheduleSyncPage() {
 
           <Link
             href="/staff/schedule/hacomono-tasks"
-            className="block text-center bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg py-2.5"
+            className="block"
           >
-            🗑 今月のHACOMONO調整リストを見る
+            <Button className="w-full">
+              <Building2 className="size-4" />
+              今月のHACOMONO調整リストを見る
+            </Button>
           </Link>
 
           <details className="text-[11px]">
-            <summary className="cursor-pointer text-neutral-500">CSV取込（全件インポート用・上級者向け）</summary>
+            <summary className="cursor-pointer text-muted-foreground">CSV取込（全件インポート用・上級者向け）</summary>
             <div className="pt-2">
-              <p className="text-[11px] text-neutral-500 leading-relaxed mb-1.5">
-                ⚠️ HACOMONOは枠を自動生成済みのため、全件インポートすると枠が二重になります。通常は上の「調整リスト」を使ってください。
+              <p className="text-[11px] text-muted-foreground leading-relaxed mb-1.5">
+                <AlertTriangle className="inline size-3 mr-0.5" /> HACOMONOは枠を自動生成済みのため、全件インポートすると枠が二重になります。通常は上の「調整リスト」を使ってください。
               </p>
               <HacomonoDownload />
             </div>
           </details>
 
-          <Steps
+          <StepsList
             title="設定手順"
             items={[
               'HACOMONO → 予約スケジュール → インポート',
@@ -325,23 +311,24 @@ export default function ScheduleSyncPage() {
               '内容を検証 → 問題なければインポート実行',
             ]}
           />
-          <Note tone="amber">
+          <NoteBox tone="amber">
             初回は少数（1ヶ月）でテスト推奨。クラス自動生成枠との優先順に注意。休講は「非公開フラグ=1」で反映されます。
-          </Note>
-          <Status>マッピング未解決の確認・件数表示は📤エクスポートモーダルで行えます。</Status>
-        </Card>
+          </NoteBox>
+          <p className="text-[11px] text-green-700 font-semibold flex items-center gap-1"><Info className="size-3" /> マッピング未解決の確認・件数表示はエクスポートモーダルで行えます。</p>
+        </SyncCard>
 
         {/* ===== カード3: Lstep ===== */}
-        <Card
-          icon="💬"
+        <SyncCard
+          icon={<MessageSquare className="size-5 text-orange-600" />}
           title="Lstep 体験予約カレンダー"
           subtitle="体験予約の開閉"
-          status={{ tone: 'green', label: '層2自動 + 層1手動' }}
+          statusLabel="層2自動 + 層1手動"
+          statusVariant="default"
         >
-          {/* 層2: Google所有カレンダー方式 (ICS購読はLstep非対応のため廃止) */}
+          {/* 層2: Google所有カレンダー方式 */}
           <div className="rounded-lg bg-orange-50 border border-orange-200 p-3 space-y-2">
-            <h4 className="text-xs font-bold text-orange-800">
-              <Badge tone="green">層2</Badge> 休講の開閉（自動）
+            <h4 className="text-xs font-bold text-orange-800 flex items-center gap-1">
+              <Badge variant="default" className="bg-green-600 text-[10px]">層2</Badge> 休講の開閉（自動）
             </h4>
             <p className="text-[11px] text-neutral-600 leading-relaxed">
               休講にした枠を、BOOMが<b>所有するGoogleカレンダー</b>に自動で書き込みます。Lstepはこの所有カレンダーを「シフトに連携」することで、休講日の体験予約が自動で閉じます。
@@ -352,44 +339,50 @@ export default function ScheduleSyncPage() {
             {gcalConnected === false && (
               <a
                 href="/api/staff/google/calendar-connect"
-                className="block text-center bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg py-2.5"
+                className="block"
               >
-                🔗 Googleカレンダーを連携する（初回のみ）
+                <Button className="w-full">
+                  <ExternalLink className="size-4" />
+                  Googleカレンダーを連携する（初回のみ）
+                </Button>
               </a>
             )}
 
             {gcalConnected && (
               <div className="space-y-2">
-                <div className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1.5">
-                  ✅ Google連携済み
-                </div>
+                <Badge variant="default" className="bg-green-600">Google連携済み</Badge>
                 {gcalId && (
                   <div>
-                    <div className="text-[10px] text-neutral-500 mb-0.5">所有カレンダーID（Lstep連携設定に貼り付け）</div>
+                    <div className="text-[10px] text-muted-foreground mb-0.5">所有カレンダーID（Lstep連携設定に貼り付け）</div>
                     <div className="flex items-center gap-1.5">
                       <code className="flex-1 text-[10px] bg-neutral-100 border border-neutral-200 rounded px-2 py-1.5 break-all">{gcalId}</code>
-                      <button
-                        onClick={() => { navigator.clipboard?.writeText(gcalId); setGcalMsg('📋 カレンダーIDをコピーしました'); }}
-                        className="text-[10px] px-2 py-1.5 rounded bg-neutral-200 hover:bg-neutral-300 whitespace-nowrap"
-                      >コピー</button>
+                      <Button
+                        size="xs"
+                        variant="secondary"
+                        onClick={() => { navigator.clipboard?.writeText(gcalId); setGcalMsg('カレンダーIDをコピーしました'); }}
+                      >
+                        <Copy className="size-3" />
+                        コピー
+                      </Button>
                     </div>
                   </div>
                 )}
-                <button
+                <Button
                   onClick={runGcalSync}
                   disabled={gcalSyncing}
-                  className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-neutral-300 text-white text-xs font-bold rounded-lg py-2.5"
+                  className="w-full"
                 >
-                  {gcalSyncing ? '同期中…' : '🔄 休講をカレンダーへ同期する'}
-                </button>
-                <a href="/api/staff/google/calendar-connect" className="block text-center text-[10px] text-neutral-400 underline">
+                  <RefreshCw className={`size-4 ${gcalSyncing ? 'animate-spin' : ''}`} />
+                  {gcalSyncing ? '同期中...' : '休講をカレンダーへ同期する'}
+                </Button>
+                <a href="/api/staff/google/calendar-connect" className="block text-center text-[10px] text-muted-foreground underline">
                   別のGoogleアカウントで連携し直す
                 </a>
               </div>
             )}
             {gcalMsg && <p className="text-[11px] text-neutral-700">{gcalMsg}</p>}
 
-            <Steps
+            <StepsList
               title="Lstep側の設定手順（連携後）"
               items={[
                 '上の「Googleカレンダーを連携」→ boom.sendai で認証',
@@ -403,27 +396,27 @@ export default function ScheduleSyncPage() {
 
           {/* 層1 */}
           <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 space-y-1">
-            <h4 className="text-xs font-bold text-slate-700">
-              <Badge tone="slate">層1</Badge> 枠の構造（手動）
+            <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1">
+              <Badge variant="secondary" className="text-[10px]">層1</Badge> 枠の構造（手動）
             </h4>
             <p className="text-[11px] text-neutral-600 leading-relaxed">
               新クラス追加や恒久的な時間変更のときは、Lstep側で手動設定します（複製機能あり）。枠の構造自体はICSでは変わりません。
             </p>
           </div>
 
-          <Note tone="amber">
+          <NoteBox tone="amber">
             Gカレ連携は手動シフトを上書きします。まず1枠でテストしてから22枠へ展開推奨（通常日に過剰開放しないか確認）。
-          </Note>
-          <Note tone="neutral">
+          </NoteBox>
+          <NoteBox tone="neutral">
             変動枠（日曜のちゃんなつ / SAYUKI / おっちゃん）は手動微調整が必要です。
-          </Note>
-        </Card>
+          </NoteBox>
+        </SyncCard>
 
-        <footer className="pt-2 text-center text-[10px] text-neutral-400">
+        <footer className="pt-2 text-center text-[10px] text-muted-foreground">
           BOOM Dance School / カレンダー連携ハブ
         </footer>
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -431,51 +424,67 @@ export default function ScheduleSyncPage() {
 // 小コンポーネント
 // ============================================================
 
-function Card({
+function SyncCard({
   icon,
   title,
   subtitle,
-  status,
+  statusLabel,
+  statusVariant,
   children,
 }: {
-  icon: string;
+  icon: React.ReactNode;
   title: string;
   subtitle: string;
-  status: { tone: BadgeTone; label: string };
+  statusLabel: string;
+  statusVariant: 'default' | 'outline' | 'secondary';
   children: React.ReactNode;
 }) {
   return (
-    <section className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
-      <div className="flex items-start gap-2 p-4 pb-2 border-b border-neutral-100">
-        <div className="text-2xl">{icon}</div>
+    <Card>
+      <CardHeader className="flex-row items-start gap-2">
+        <div className="mt-0.5">{icon}</div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-orange-700">{title}</h3>
-          <p className="text-[10px] text-neutral-500">{subtitle}</p>
+          <CardTitle className="text-base text-orange-700">{title}</CardTitle>
+          <CardDescription className="text-[10px]">{subtitle}</CardDescription>
         </div>
-        <Badge tone={status.tone}>{status.label}</Badge>
-      </div>
-      <div className="p-4 pt-3 space-y-3">{children}</div>
-    </section>
+        <Badge variant={statusVariant} className="text-[10px] shrink-0">{statusLabel}</Badge>
+      </CardHeader>
+      <CardContent className="space-y-3">{children}</CardContent>
+    </Card>
   );
 }
 
-type BadgeTone = 'green' | 'amber' | 'slate';
+function CopyUrlBox({ url, onCopied }: { url: string; onCopied?: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      onCopied?.();
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert('コピーに失敗しました。手動で選択してください。');
+    }
+  };
 
-function Badge({ tone, children }: { tone: BadgeTone; children: React.ReactNode }) {
-  const cls =
-    tone === 'green'
-      ? 'bg-green-50 text-green-700 border-green-200'
-      : tone === 'amber'
-        ? 'bg-amber-50 text-amber-800 border-amber-200'
-        : 'bg-slate-100 text-slate-600 border-slate-300';
   return (
-    <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded-full border whitespace-nowrap ${cls}`}>
-      {children}
-    </span>
+    <div className="flex gap-1.5 items-stretch">
+      <Input
+        readOnly
+        value={url}
+        onFocus={e => e.currentTarget.select()}
+        className="flex-1 text-[11px] font-mono min-w-0"
+      />
+      <Button size="sm" onClick={copy} className="whitespace-nowrap">
+        <Copy className="size-3" />
+        {copied ? 'コピー済' : 'コピー'}
+      </Button>
+    </div>
   );
 }
 
-function CopyUrlBox({
+function TokenUrlBox({
   label,
   url,
   token,
@@ -501,25 +510,23 @@ function CopyUrlBox({
 
   return (
     <div>
-      <p className="text-[10px] text-neutral-500 font-semibold mb-0.5">{label}</p>
+      <p className="text-[10px] text-muted-foreground font-semibold mb-0.5">{label}</p>
       {tokenErr ? (
         <p className="text-xs text-red-600">トークン取得エラー: {tokenErr}</p>
       ) : !token ? (
-        <p className="text-xs text-neutral-500">トークン取得中...</p>
+        <p className="text-xs text-muted-foreground">トークン取得中...</p>
       ) : (
         <div className="flex gap-1.5 items-stretch">
-          <input
+          <Input
             readOnly
             value={url}
             onFocus={e => e.currentTarget.select()}
-            className="flex-1 px-2 py-1.5 border rounded text-[11px] font-mono bg-white text-neutral-700 min-w-0"
+            className="flex-1 text-[11px] font-mono min-w-0"
           />
-          <button
-            onClick={copy}
-            className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-semibold whitespace-nowrap"
-          >
-            {copied ? '✓ コピー済' : 'コピー'}
-          </button>
+          <Button size="sm" onClick={copy} className="whitespace-nowrap">
+            <Copy className="size-3" />
+            {copied ? 'コピー済' : 'コピー'}
+          </Button>
         </div>
       )}
     </div>
@@ -527,7 +534,7 @@ function CopyUrlBox({
 }
 
 function HacomonoDownload() {
-  const [months, setMonths] = useState(1);
+  const [months, setMonths] = useState('1');
 
   const download = () => {
     window.open(`/api/staff/schedule/export/hacomono?months=${months}`, '_blank');
@@ -535,29 +542,27 @@ function HacomonoDownload() {
 
   return (
     <div className="flex gap-1.5 items-stretch">
-      <select
-        value={months}
-        onChange={e => setMonths(Number(e.target.value))}
-        className="px-2 py-1.5 border rounded text-xs bg-white"
-      >
-        <option value={1}>1ヶ月</option>
-        <option value={2}>2ヶ月</option>
-        <option value={3}>3ヶ月</option>
-      </select>
-      <button
-        onClick={download}
-        className="flex-1 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-semibold whitespace-nowrap"
-      >
+      <Select value={months} onValueChange={setMonths}>
+        <SelectTrigger className="w-[100px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="1">1ヶ月</SelectItem>
+          <SelectItem value="2">2ヶ月</SelectItem>
+          <SelectItem value="3">3ヶ月</SelectItem>
+        </SelectContent>
+      </Select>
+      <Button size="sm" onClick={download} className="flex-1 whitespace-nowrap">
         HACOMONO形式CSVをダウンロード ({months}ヶ月分)
-      </button>
+      </Button>
     </div>
   );
 }
 
-function Steps({ title, items }: { title: string; items: string[] }) {
+function StepsList({ title, items }: { title: string; items: string[] }) {
   return (
     <div>
-      <p className="text-[10px] text-neutral-500 font-semibold mb-0.5">{title}</p>
+      <p className="text-[10px] text-muted-foreground font-semibold mb-0.5">{title}</p>
       <ol className="text-[11px] text-neutral-600 leading-relaxed list-decimal pl-4 space-y-0.5">
         {items.map((it, i) => (
           <li key={i}>{it}</li>
@@ -567,19 +572,15 @@ function Steps({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function Note({ tone, children }: { tone: 'amber' | 'neutral'; children: React.ReactNode }) {
+function NoteBox({ tone, children }: { tone: 'amber' | 'neutral'; children: React.ReactNode }) {
   const cls =
     tone === 'amber'
       ? 'bg-amber-50 border-amber-200 text-amber-800'
       : 'bg-neutral-50 border-neutral-200 text-neutral-600';
   return (
-    <p className={`text-[11px] leading-relaxed rounded-lg border px-2.5 py-1.5 ${cls}`}>
-      {tone === 'amber' ? '⚠️ ' : 'ℹ️ '}
-      {children}
+    <p className={`text-[11px] leading-relaxed rounded-lg border px-2.5 py-1.5 flex items-start gap-1 ${cls}`}>
+      {tone === 'amber' ? <AlertTriangle className="size-3 mt-0.5 shrink-0" /> : <Info className="size-3 mt-0.5 shrink-0" />}
+      <span>{children}</span>
     </p>
   );
-}
-
-function Status({ children }: { children: React.ReactNode }) {
-  return <p className="text-[11px] text-green-700 font-semibold">● {children}</p>;
 }

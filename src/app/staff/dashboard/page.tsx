@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import StaffPageHeader from '@/components/StaffPageHeader';
 import {
   LineChart,
   Line,
@@ -13,6 +12,29 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import { BarChart3, FileText, Plus, RefreshCw, Pencil, Trash2, Copy } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 type Snapshot = {
   id: number;
@@ -38,7 +60,7 @@ const GREEN = '#16a34a';
 const PURPLE = '#9333ea';
 
 // CVR(体験→入会)の唯一の定義:
-// 「当月体験者のうち14日以内に入会した実数(retention_count) ÷ 体験数(trial_count)」。
+// 「当月体験者のうち14日以内に入会した実数(retention_count) / 体験数(trial_count)」。
 // カードもグラフもこの関数を使い、二重定義を排除する。
 // new_signup_count(当月入会総数)は体験者本人かに関わらず数えるため CVR には使わない。
 function computeCvr(s: { trial_count: number; retention_count: number } | undefined | null): number | null {
@@ -69,13 +91,15 @@ type CardProps = {
 
 function SummaryCard({ label, value, sub, accent = ORANGE }: CardProps) {
   return (
-    <div className="bg-white rounded-2xl border border-orange-100 p-4 shadow-sm">
-      <div className="text-xs text-neutral-500">{label}</div>
-      <div className="mt-1 text-2xl font-bold" style={{ color: accent }}>
-        {value}
-      </div>
-      {sub && <div className="mt-1 text-xs text-neutral-500">{sub}</div>}
-    </div>
+    <Card>
+      <CardContent className="p-4">
+        <div className="text-xs text-neutral-500">{label}</div>
+        <div className="mt-1 text-2xl font-bold" style={{ color: accent }}>
+          {value}
+        </div>
+        {sub && <div className="mt-1 text-xs text-neutral-500">{sub}</div>}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -167,7 +191,7 @@ export default function DashboardPage() {
       if (!res.ok) {
         setAutoMessage(`失敗: ${data?.error ?? res.statusText}`);
       } else {
-        setAutoMessage(`✅ ${data.snapshot_date} の KPI を自動集計しました`);
+        setAutoMessage(`${data.snapshot_date} の KPI を自動集計しました`);
         await load();
       }
     } catch (e) {
@@ -196,7 +220,7 @@ export default function DashboardPage() {
         setAutoMessage(`レポート生成失敗: ${data?.error ?? res.statusText}`);
       } else {
         setReportMarkdown(data.report_markdown ?? '');
-        setAutoMessage(`✅ ${data.year_month} の月次レポートを生成しました`);
+        setAutoMessage(`${data.year_month} の月次レポートを生成しました`);
       }
     } catch (e) {
       setAutoMessage(`失敗: ${e instanceof Error ? e.message : String(e)}`);
@@ -206,7 +230,6 @@ export default function DashboardPage() {
   }
 
   async function remove(id: number) {
-    if (!confirm('この月次データを削除しますか?')) return;
     setDeletingId(id);
     try {
       const res = await fetch(`/api/staff/kpi/snapshots/${id}`, {
@@ -225,7 +248,7 @@ export default function DashboardPage() {
   const latest = snapshots[0];
   const prev = snapshots[1];
 
-  // CVR (体験→入会) — カード・グラフ共通の computeCvr を使う(14日以内入会の実数 ÷ 体験数)
+  // CVR (体験→入会) -- カード・グラフ共通の computeCvr を使う(14日以内入会の実数 / 体験数)
   const cvr = useMemo(() => computeCvr(latest), [latest]);
   const prevCvr = useMemo(() => computeCvr(prev), [prev]);
 
@@ -265,43 +288,51 @@ export default function DashboardPage() {
   function deltaLabel(curr: number, p: number | undefined): string {
     if (p === undefined || p === null || p === 0) return '前月比 -';
     const diff = curr - p;
-    const pct = (diff / p) * 100;
+    const pctVal = (diff / p) * 100;
     const sign = diff >= 0 ? '↑' : '↓';
-    return `前月比 ${sign}${Math.abs(pct).toFixed(1)}%`;
+    return `前月比 ${sign}${Math.abs(pctVal).toFixed(1)}%`;
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50">
-      <StaffPageHeader
-        title="📈 KPIダッシュボード"
-        description="Phase 1 MVP (手動入力)"
-        rightExtra={
-          <>
-            <button
-              type="button"
+    <main className="text-neutral-900">
+      <div className="border-b bg-white px-4 py-3">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h1 className="text-lg font-bold text-neutral-800 flex items-center gap-1.5">
+              <BarChart3 className="h-5 w-5 text-orange-500" />
+              KPIダッシュボード
+            </h1>
+            <p className="text-xs text-neutral-500">Phase 1 MVP (手動入力)</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
               onClick={runAutoSnapshot}
               disabled={autoBusy}
-              className="bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-xs sm:text-sm font-semibold rounded-lg px-3 py-1.5"
+              size="sm"
+              className="bg-blue-500 hover:bg-blue-600"
             >
-              {autoBusy ? '集計中…' : '📊 最新KPI自動集計'}
-            </button>
-            <button
-              type="button"
+              <RefreshCw className={`h-3.5 w-3.5 mr-1 ${autoBusy ? 'animate-spin' : ''}`} />
+              {autoBusy ? '集計中...' : '最新KPI自動集計'}
+            </Button>
+            <Button
               onClick={generateMonthlyReport}
               disabled={reportBusy}
-              className="bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white text-xs sm:text-sm font-semibold rounded-lg px-3 py-1.5"
+              size="sm"
+              className="bg-purple-500 hover:bg-purple-600"
             >
-              {reportBusy ? '生成中…' : '📝 月次レポート生成'}
-            </button>
-            <Link
-              href="/staff/dashboard/input"
-              className="bg-orange-500 hover:bg-orange-600 text-white text-xs sm:text-sm font-semibold rounded-lg px-3 py-1.5"
-            >
-              ＋ 月次データを追加
-            </Link>
-          </>
-        }
-      />
+              <FileText className={`h-3.5 w-3.5 mr-1`} />
+              {reportBusy ? '生成中...' : '月次レポート生成'}
+            </Button>
+            <Button size="sm" className="bg-orange-500 hover:bg-orange-600" asChild>
+              <Link href="/staff/dashboard/input">
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                月次データを追加
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {autoMessage && (
         <div className="bg-blue-50 border-b border-blue-200 px-6 py-2 text-sm text-blue-800">
           {autoMessage}
@@ -310,11 +341,13 @@ export default function DashboardPage() {
 
       <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-6">
         {loading ? (
-          <div className="text-neutral-500">読み込み中…</div>
+          <div className="text-neutral-500">読み込み中...</div>
         ) : !latest ? (
-          <div className="bg-white rounded-2xl border border-orange-100 p-8 text-center text-neutral-500">
-            まだ月次データがありません。「＋ 月次データを追加」から入力してください。
-          </div>
+          <Card className="text-center">
+            <CardContent className="p-8 text-neutral-500">
+              まだ月次データがありません。「+ 月次データを追加」から入力してください。
+            </CardContent>
+          </Card>
         ) : (
           <>
             {/* サマリーカード */}
@@ -355,190 +388,236 @@ export default function DashboardPage() {
             </section>
 
             {/* 推移グラフ */}
-            <section className="bg-white rounded-2xl border border-orange-100 p-4 shadow-sm">
-              <h2 className="text-sm font-bold text-neutral-700 mb-3">
-                過去6ヶ月 推移 — 会員系
-              </h2>
-              <div style={{ width: '100%', height: 280 }}>
-                <ResponsiveContainer>
-                  <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line
-                      type="monotone"
-                      dataKey="LINE友達"
-                      stroke={ORANGE}
-                      strokeWidth={2}
-                      dot={{ r: 4 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="会員数"
-                      stroke={BLUE}
-                      strokeWidth={2}
-                      dot={{ r: 4 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </section>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">過去6ヶ月 推移 -- 会員系</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div style={{ width: '100%', height: 280 }}>
+                  <ResponsiveContainer>
+                    <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                      <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} />
+                      <Tooltip />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Line
+                        type="monotone"
+                        dataKey="LINE友達"
+                        stroke={ORANGE}
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="会員数"
+                        stroke={BLUE}
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
 
-            <section className="bg-white rounded-2xl border border-orange-100 p-4 shadow-sm">
-              <h2 className="text-sm font-bold text-neutral-700 mb-3">
-                過去6ヶ月 推移 — 金額系
-              </h2>
-              <div style={{ width: '100%', height: 280 }}>
-                <ResponsiveContainer>
-                  <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `¥${(v / 1000).toFixed(0)}k`} />
-                    <Tooltip formatter={(v) => formatYen(Number(v) || 0)} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line
-                      type="monotone"
-                      dataKey="売上"
-                      stroke={GREEN}
-                      strokeWidth={2}
-                      dot={{ r: 4 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="利益"
-                      stroke={PURPLE}
-                      strokeWidth={2}
-                      dot={{ r: 4 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </section>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">過去6ヶ月 推移 -- 金額系</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div style={{ width: '100%', height: 280 }}>
+                  <ResponsiveContainer>
+                    <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                      <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `¥${(v / 1000).toFixed(0)}k`} />
+                      <Tooltip formatter={(v) => formatYen(Number(v) || 0)} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Line
+                        type="monotone"
+                        dataKey="売上"
+                        stroke={GREEN}
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="利益"
+                        stroke={PURPLE}
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* 自動集計内訳 (最新月) */}
             {(() => {
               const d = parseAutoDetail(latest.notes);
               if (!d) return null;
               return (
-                <section className="bg-white rounded-2xl border border-blue-100 p-4 shadow-sm">
-                  <h2 className="text-sm font-bold text-neutral-700 mb-3">
-                    📊 自動集計内訳 — {d.year_month}
-                  </h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <SummaryCard label="チケット会員" value={formatNumber(d.members.ticket)} accent={ORANGE} />
-                    <SummaryCard label="マンスリー会員" value={formatNumber(d.members.monthly)} accent={BLUE} />
-                    <SummaryCard label="休会" value={formatNumber(d.members.rest)} accent={'#a3a3a3'} />
-                    <SummaryCard label="その他" value={formatNumber(d.members.other)} accent={'#737373'} />
-                    <SummaryCard label="LINE 4-A 本人" value={formatNumber(d.lstep.phase_4a_member)} accent={GREEN} />
-                    <SummaryCard label="LINE 4-B 保護者" value={formatNumber(d.lstep.phase_4b_parent)} accent={PURPLE} />
-                    <SummaryCard label="体験予約済" value={formatNumber(d.lstep.phase_trial_reserved)} accent={ORANGE} />
-                    <SummaryCard label="体験受講済" value={formatNumber(d.lstep.phase_trial_done)} accent={BLUE} />
-                    <SummaryCard label="LINE登録のみ" value={formatNumber(d.lstep.phase_line_only)} accent={'#a3a3a3'} />
-                    <SummaryCard label="ブロック" value={formatNumber(d.lstep.blocked)} accent={'#dc2626'} />
-                    <SummaryCard label="紐付け済会員" value={formatNumber(d.links.linked_members)} accent={GREEN} />
-                    <SummaryCard label="未紐付け会員" value={formatNumber(d.links.unlinked_members)} accent={'#dc2626'} />
-                    <SummaryCard label="体験予約 (当月)" value={formatNumber(d.trial.month_reserved)} accent={BLUE} />
-                    <SummaryCard label="体験受講 (当月)" value={formatNumber(d.trial.month_attended)} accent={GREEN} />
-                    <SummaryCard label="体験キャンセル" value={formatNumber(d.trial.month_canceled)} accent={'#dc2626'} />
-                    <SummaryCard label="体験→入会CVR" value={d.trial.cvr_pct === null ? '-' : `${d.trial.cvr_pct.toFixed(1)}%`} accent={PURPLE} />
-                  </div>
-                </section>
+                <Card className="border-blue-100">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-1.5">
+                      <BarChart3 className="h-4 w-4 text-blue-500" />
+                      自動集計内訳 -- {d.year_month}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <SummaryCard label="チケット会員" value={formatNumber(d.members.ticket)} accent={ORANGE} />
+                      <SummaryCard label="マンスリー会員" value={formatNumber(d.members.monthly)} accent={BLUE} />
+                      <SummaryCard label="休会" value={formatNumber(d.members.rest)} accent={'#a3a3a3'} />
+                      <SummaryCard label="その他" value={formatNumber(d.members.other)} accent={'#737373'} />
+                      <SummaryCard label="LINE 4-A 本人" value={formatNumber(d.lstep.phase_4a_member)} accent={GREEN} />
+                      <SummaryCard label="LINE 4-B 保護者" value={formatNumber(d.lstep.phase_4b_parent)} accent={PURPLE} />
+                      <SummaryCard label="体験予約済" value={formatNumber(d.lstep.phase_trial_reserved)} accent={ORANGE} />
+                      <SummaryCard label="体験受講済" value={formatNumber(d.lstep.phase_trial_done)} accent={BLUE} />
+                      <SummaryCard label="LINE登録のみ" value={formatNumber(d.lstep.phase_line_only)} accent={'#a3a3a3'} />
+                      <SummaryCard label="ブロック" value={formatNumber(d.lstep.blocked)} accent={'#dc2626'} />
+                      <SummaryCard label="紐付け済会員" value={formatNumber(d.links.linked_members)} accent={GREEN} />
+                      <SummaryCard label="未紐付け会員" value={formatNumber(d.links.unlinked_members)} accent={'#dc2626'} />
+                      <SummaryCard label="体験予約 (当月)" value={formatNumber(d.trial.month_reserved)} accent={BLUE} />
+                      <SummaryCard label="体験受講 (当月)" value={formatNumber(d.trial.month_attended)} accent={GREEN} />
+                      <SummaryCard label="体験キャンセル" value={formatNumber(d.trial.month_canceled)} accent={'#dc2626'} />
+                      <SummaryCard label="体験→入会CVR" value={d.trial.cvr_pct === null ? '-' : `${d.trial.cvr_pct.toFixed(1)}%`} accent={PURPLE} />
+                    </div>
+                  </CardContent>
+                </Card>
               );
             })()}
 
-            {/* 月次推移グラフ — 体験/入会/退会 */}
-            <section className="bg-white rounded-2xl border border-orange-100 p-4 shadow-sm">
-              <h2 className="text-sm font-bold text-neutral-700 mb-3">
-                過去6ヶ月 推移 — 体験 / 新規入会 / 退会
-              </h2>
-              <div style={{ width: '100%', height: 280 }}>
-                <ResponsiveContainer>
-                  <LineChart data={chartFlowData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line type="monotone" dataKey="体験" stroke={BLUE} strokeWidth={2} dot={{ r: 4 }} />
-                    <Line type="monotone" dataKey="新規入会" stroke={GREEN} strokeWidth={2} dot={{ r: 4 }} />
-                    <Line type="monotone" dataKey="退会" stroke={'#dc2626'} strokeWidth={2} dot={{ r: 4 }} />
-                    <Line type="monotone" dataKey="CVR(%)" stroke={PURPLE} strokeWidth={2} dot={{ r: 4 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </section>
+            {/* 月次推移グラフ -- 体験/入会/退会 */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">過去6ヶ月 推移 -- 体験 / 新規入会 / 退会</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div style={{ width: '100%', height: 280 }}>
+                  <ResponsiveContainer>
+                    <LineChart data={chartFlowData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                      <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} />
+                      <Tooltip />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Line type="monotone" dataKey="体験" stroke={BLUE} strokeWidth={2} dot={{ r: 4 }} />
+                      <Line type="monotone" dataKey="新規入会" stroke={GREEN} strokeWidth={2} dot={{ r: 4 }} />
+                      <Line type="monotone" dataKey="退会" stroke={'#dc2626'} strokeWidth={2} dot={{ r: 4 }} />
+                      <Line type="monotone" dataKey="CVR(%)" stroke={PURPLE} strokeWidth={2} dot={{ r: 4 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* 月次レポート Markdown */}
             {reportMarkdown && (
-              <section className="bg-white rounded-2xl border border-purple-100 p-4 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-bold text-neutral-700">📝 月次レポート (Markdown)</h2>
-                  <button
-                    type="button"
-                    onClick={() => navigator.clipboard?.writeText(reportMarkdown)}
-                    className="text-xs bg-neutral-100 hover:bg-neutral-200 rounded px-3 py-1"
-                  >
-                    コピー
-                  </button>
-                </div>
-                <pre className="text-xs whitespace-pre-wrap bg-neutral-50 rounded p-3 max-h-96 overflow-auto">
-                  {reportMarkdown}
-                </pre>
-              </section>
+              <Card className="border-purple-100">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm flex items-center gap-1.5">
+                      <FileText className="h-4 w-4 text-purple-500" />
+                      月次レポート (Markdown)
+                    </CardTitle>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigator.clipboard?.writeText(reportMarkdown)}
+                    >
+                      <Copy className="h-3 w-3 mr-1" />
+                      コピー
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <pre className="text-xs whitespace-pre-wrap bg-neutral-50 rounded p-3 max-h-96 overflow-auto">
+                    {reportMarkdown}
+                  </pre>
+                </CardContent>
+              </Card>
             )}
 
             {/* 月次データ一覧 */}
-            <section className="bg-white rounded-2xl border border-orange-100 p-4 shadow-sm">
-              <h2 className="text-sm font-bold text-neutral-700 mb-3">月次データ一覧</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-left text-neutral-500 border-b border-neutral-200">
-                      <th className="py-2 px-2">月</th>
-                      <th className="py-2 px-2 text-right">LINE</th>
-                      <th className="py-2 px-2 text-right">会員</th>
-                      <th className="py-2 px-2 text-right">体験</th>
-                      <th className="py-2 px-2 text-right">入会</th>
-                      <th className="py-2 px-2 text-right">退会</th>
-                      <th className="py-2 px-2 text-right">売上</th>
-                      <th className="py-2 px-2 text-right">利益</th>
-                      <th className="py-2 px-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {snapshots.map((s) => (
-                      <tr key={s.id} className="border-b border-neutral-100">
-                        <td className="py-2 px-2 font-mono">{formatYM(s.snapshot_date)}</td>
-                        <td className="py-2 px-2 text-right">{formatNumber(s.line_friends)}</td>
-                        <td className="py-2 px-2 text-right">{formatNumber(s.hacomono_members_active)}</td>
-                        <td className="py-2 px-2 text-right">{formatNumber(s.trial_count)}</td>
-                        <td className="py-2 px-2 text-right">{formatNumber(s.new_signup_count)}</td>
-                        <td className="py-2 px-2 text-right">{formatNumber(s.churn_count)}</td>
-                        <td className="py-2 px-2 text-right">{formatYen(s.monthly_revenue)}</td>
-                        <td className="py-2 px-2 text-right">{formatYen(s.monthly_profit)}</td>
-                        <td className="py-2 px-2 text-right">
-                          <Link
-                            href={`/staff/dashboard/input?id=${s.id}`}
-                            className="text-orange-600 hover:underline mr-2"
-                          >
-                            編集
-                          </Link>
-                          <button
-                            onClick={() => remove(s.id)}
-                            disabled={deletingId === s.id}
-                            className="text-red-500 hover:underline disabled:opacity-50"
-                          >
-                            削除
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">月次データ一覧</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">月</TableHead>
+                        <TableHead className="text-xs text-right">LINE</TableHead>
+                        <TableHead className="text-xs text-right">会員</TableHead>
+                        <TableHead className="text-xs text-right">体験</TableHead>
+                        <TableHead className="text-xs text-right">入会</TableHead>
+                        <TableHead className="text-xs text-right">退会</TableHead>
+                        <TableHead className="text-xs text-right">売上</TableHead>
+                        <TableHead className="text-xs text-right">利益</TableHead>
+                        <TableHead className="text-xs"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {snapshots.map((s) => (
+                        <TableRow key={s.id}>
+                          <TableCell className="text-xs font-mono">{formatYM(s.snapshot_date)}</TableCell>
+                          <TableCell className="text-xs text-right">{formatNumber(s.line_friends)}</TableCell>
+                          <TableCell className="text-xs text-right">{formatNumber(s.hacomono_members_active)}</TableCell>
+                          <TableCell className="text-xs text-right">{formatNumber(s.trial_count)}</TableCell>
+                          <TableCell className="text-xs text-right">{formatNumber(s.new_signup_count)}</TableCell>
+                          <TableCell className="text-xs text-right">{formatNumber(s.churn_count)}</TableCell>
+                          <TableCell className="text-xs text-right">{formatYen(s.monthly_revenue)}</TableCell>
+                          <TableCell className="text-xs text-right">{formatYen(s.monthly_profit)}</TableCell>
+                          <TableCell className="text-xs text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="sm" className="h-7 px-2 text-orange-600" asChild>
+                                <Link href={`/staff/dashboard/input?id=${s.id}`}>
+                                  <Pencil className="h-3 w-3" />
+                                </Link>
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-red-500"
+                                    disabled={deletingId === s.id}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>月次データの削除</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      この月次データを削除しますか? この操作は元に戻せません。
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => remove(s.id)}
+                                      className="bg-red-500 hover:bg-red-600"
+                                    >
+                                      削除
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
           </>
         )}
       </div>

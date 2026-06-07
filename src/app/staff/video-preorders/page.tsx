@@ -1,7 +1,30 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import StaffPageHeader from '@/components/StaffPageHeader';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toast } from 'sonner';
+import { Video, Mail, CreditCard, Clock, CheckCircle2, Copy, RotateCcw, Search } from 'lucide-react';
 
 type Preorder = {
   id: number;
@@ -19,6 +42,12 @@ type Preorder = {
   price: number | null;
 };
 
+type ConfirmAction = {
+  type: 'confirmation' | 'payment_link' | 'payment_reminder';
+  ids: number[];
+  label: string;
+} | null;
+
 export default function VideoPreordersPage() {
   const [preorders, setPreorders] = useState<Preorder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +55,7 @@ export default function VideoPreordersPage() {
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string>('');
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,7 +69,7 @@ export default function VideoPreordersPage() {
       const data = await res.json();
       setPreorders(data.preorders || []);
     } catch (e) {
-      setMessage(`読み込み失敗: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(`読み込み失敗: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoading(false);
     }
@@ -51,12 +80,10 @@ export default function VideoPreordersPage() {
   const filtered = useMemo(() => {
     const qLower = q.trim().toLowerCase();
     return preorders.filter(p => {
-      // フィルタ
       if (filter === 'active' && p.status === 'duplicate') return false;
       if (filter === 'duplicate' && p.status !== 'duplicate') return false;
       if (filter === 'unsent' && (p.confirmation_email_sent_at || p.status === 'duplicate')) return false;
       if (filter === 'sent' && !p.confirmation_email_sent_at) return false;
-      // 検索
       if (qLower) {
         const hay = `${p.buyer_name} ${p.email ?? ''} ${p.phone ?? ''}`.toLowerCase();
         if (!hay.includes(qLower)) return false;
@@ -74,7 +101,6 @@ export default function VideoPreordersPage() {
   const selectAllVisible = () => {
     const s = new Set(selected);
     for (const p of filtered) {
-      // duplicate/送信済はチェック対象外
       if (p.status === 'duplicate') continue;
       if (p.confirmation_email_sent_at) continue;
       if (!p.email) continue;
@@ -85,12 +111,9 @@ export default function VideoPreordersPage() {
 
   const clearSelection = () => setSelected(new Set());
 
-  const sendConfirmation = async (ids: number[]) => {
-    if (ids.length === 0) return;
-    if (!window.confirm(`${ids.length}件に確認メールを送信します。よろしいですか?`)) return;
+  const executeSendConfirmation = async (ids: number[]) => {
     setBusy(true);
-    setMessage(`${ids.length}件 送信中...`);
-    // 楽観的更新: 対象行の confirmation_email_sent_at を即座に埋める
+    toast.info(`${ids.length}件 送信中...`);
     const idSet = new Set(ids);
     const nowIso = new Date().toISOString();
     setPreorders(prev => prev.map(p => idSet.has(p.id) && !p.confirmation_email_sent_at
@@ -106,26 +129,24 @@ export default function VideoPreordersPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      setMessage(`✅ 送信完了: 成功 ${data.sent} / スキップ ${data.skipped} / 失敗 ${data.failed}`);
+      toast.success(`送信完了: 成功 ${data.sent} / スキップ ${data.skipped} / 失敗 ${data.failed}`);
       load();
     } catch (e) {
-      setMessage(`❌ 送信失敗: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(`送信失敗: ${e instanceof Error ? e.message : String(e)}`);
       load();
     } finally {
       setBusy(false);
     }
   };
 
-  const sendPaymentReminder = async () => {
-    if (!window.confirm('未払いの方全員にリマインダーを送信します（手動モード）。よろしいですか?')) return;
+  const executeSendPaymentReminder = async () => {
     setBusy(true);
-    setMessage('リマインダー送信中...');
-    // 未払い・リンク送信済 を抽出
+    toast.info('リマインダー送信中...');
     const targetIds = preorders
       .filter(p => p.payment_link_sent_at && !p.payment_paid_at && p.status !== 'duplicate' && p.status !== 'cancelled' && p.email)
       .map(p => p.id);
     if (targetIds.length === 0) {
-      setMessage('対象なし (未払い・リンク送信済 が0件)');
+      toast.info('対象なし (未払い・リンク送信済 が0件)');
       setBusy(false);
       return;
     }
@@ -138,22 +159,19 @@ export default function VideoPreordersPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      setMessage(`✅ リマインダー送信完了: 成功 ${data.sent} / 失敗 ${data.failed} (期限まで${data.daysRemaining}日)`);
+      toast.success(`リマインダー送信完了: 成功 ${data.sent} / 失敗 ${data.failed} (期限まで${data.daysRemaining}日)`);
       load();
     } catch (e) {
-      setMessage(`❌ 送信失敗: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(`送信失敗: ${e instanceof Error ? e.message : String(e)}`);
       load();
     } finally {
       setBusy(false);
     }
   };
 
-  const sendPaymentLink = async (ids: number[]) => {
-    if (ids.length === 0) return;
-    if (!window.confirm(`${ids.length}件に決済リンクを送信します。よろしいですか?`)) return;
+  const executeSendPaymentLink = async (ids: number[]) => {
     setBusy(true);
-    setMessage(`${ids.length}件 決済リンク送信中...`);
-    // 楽観的更新: 対象行の payment_link_sent_at を即座に埋める
+    toast.info(`${ids.length}件 決済リンク送信中...`);
     const idSet = new Set(ids);
     const nowIso = new Date().toISOString();
     setPreorders(prev => prev.map(p => idSet.has(p.id)
@@ -169,10 +187,10 @@ export default function VideoPreordersPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      setMessage(`✅ 決済リンク送信完了: 成功 ${data.sent} / スキップ ${data.skipped} / 失敗 ${data.failed}`);
+      toast.success(`決済リンク送信完了: 成功 ${data.sent} / スキップ ${data.skipped} / 失敗 ${data.failed}`);
       load();
     } catch (e) {
-      setMessage(`❌ 送信失敗: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(`送信失敗: ${e instanceof Error ? e.message : String(e)}`);
       load();
     } finally {
       setBusy(false);
@@ -181,7 +199,6 @@ export default function VideoPreordersPage() {
 
   const markStatus = async (id: number, status: 'active' | 'duplicate' | 'cancelled') => {
     setBusy(true);
-    // 楽観的更新: status を即座に変更
     setPreorders(prev => prev.map(p => p.id === id ? { ...p, status } : p));
     try {
       const res = await fetch(`/api/staff/video-preorders/${id}`, {
@@ -194,10 +211,10 @@ export default function VideoPreordersPage() {
         const data = await res.json();
         throw new Error(data.error || `HTTP ${res.status}`);
       }
-      setMessage(`✅ #${id} を ${status} に変更`);
+      toast.success(`#${id} を ${status} に変更`);
       load();
     } catch (e) {
-      setMessage(`❌ 更新失敗: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(`更新失敗: ${e instanceof Error ? e.message : String(e)}`);
       load();
     } finally {
       setBusy(false);
@@ -222,197 +239,223 @@ export default function VideoPreordersPage() {
     unsent: preorders.filter(p => !p.confirmation_email_sent_at && p.status !== 'duplicate').length,
   }), [preorders]);
 
+  const handleConfirmAction = () => {
+    if (!confirmAction) return;
+    const { type, ids } = confirmAction;
+    setConfirmAction(null);
+    if (type === 'confirmation') executeSendConfirmation(ids);
+    else if (type === 'payment_link') executeSendPaymentLink(ids);
+    else if (type === 'payment_reminder') executeSendPaymentReminder();
+  };
+
   return (
-    <main className="min-h-screen bg-neutral-50 text-neutral-900">
-    <StaffPageHeader title="📹 映像予約 管理" description="BW5映像データ予約・確認メール・支払いリンク管理" />
-    <div className="max-w-7xl mx-auto p-4 sm:p-6">
-
-      {/* サマリ */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
-        {[
-          { k: 'total', label: '全体', v: counts.total, color: 'bg-slate-100 text-slate-700' },
-          { k: 'active', label: '有効', v: counts.active, color: 'bg-emerald-100 text-emerald-800' },
-          { k: 'duplicate', label: '重複', v: counts.duplicate, color: 'bg-red-100 text-red-800' },
-          { k: 'sent', label: '確認メール送信済', v: counts.sent, color: 'bg-blue-100 text-blue-800' },
-          { k: 'unsent', label: '未送信', v: counts.unsent, color: 'bg-amber-100 text-amber-800' },
-        ].map(s => (
-          <div key={s.k} className={`${s.color} rounded-lg px-3 py-2`}>
-            <div className="text-[10px] sm:text-xs">{s.label}</div>
-            <div className="text-lg sm:text-xl font-bold">{s.v}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* フィルタ + 検索 */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        {([
-          ['all', '全て'],
-          ['active', '有効のみ'],
-          ['unsent', '未送信のみ'],
-          ['sent', '送信済のみ'],
-          ['duplicate', '重複のみ'],
-        ] as const).map(([k, label]) => (
-          <button
-            key={k}
-            onClick={() => setFilter(k)}
-            className={`px-3 py-1 rounded-full text-xs sm:text-sm ${filter === k ? 'bg-orange-500 text-white' : 'bg-white border border-slate-300 text-slate-700'}`}
-          >
-            {label}
-          </button>
-        ))}
-        <input
-          type="text"
-          placeholder="名前/メアド/電話で検索"
-          value={q}
-          onChange={e => setQ(e.target.value)}
-          className="px-3 py-1 rounded border border-slate-300 text-sm flex-1 min-w-[180px] bg-white text-neutral-900 placeholder:text-neutral-400"
-        />
-      </div>
-
-      {/* 一括操作 */}
-      <div className="mb-3 flex flex-wrap gap-2 items-center">
-        <button
-          onClick={selectAllVisible}
-          disabled={busy}
-          className="px-3 py-1.5 rounded bg-slate-200 hover:bg-slate-300 text-xs sm:text-sm"
-        >
-          表示中の未送信を全選択
-        </button>
-        <button
-          onClick={clearSelection}
-          disabled={busy || selected.size === 0}
-          className="px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-xs sm:text-sm disabled:opacity-50"
-        >
-          選択解除
-        </button>
-        <span className="text-xs sm:text-sm text-slate-600">選択中: {selected.size}件</span>
-        <button
-          onClick={() => sendConfirmation(Array.from(selected))}
-          disabled={busy || selected.size === 0}
-          className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold disabled:opacity-50"
-        >
-          ✉️ 選択中{selected.size}件に確認メール送信
-        </button>
-        <button
-          onClick={() => sendPaymentLink(Array.from(selected))}
-          disabled={busy || selected.size === 0}
-          className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold disabled:opacity-50"
-        >
-          💳 選択中{selected.size}件に決済リンク送信
-        </button>
-        <button
-          onClick={sendPaymentReminder}
-          disabled={busy}
-          className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-semibold disabled:opacity-50"
-          title="未払い者全員に督促メール送信"
-        >
-          ⏰ 未払い者にリマインダー送信
-        </button>
-      </div>
-
-      {message && (
-        <div className="mb-3 p-3 rounded bg-amber-50 border border-amber-200 text-amber-900 text-sm">{message}</div>
-      )}
-
-      {/* リスト */}
-      {loading ? (
-        <p className="text-slate-500">読み込み中...</p>
-      ) : (
-        <div className="overflow-x-auto bg-white rounded-lg border border-slate-200">
-          <table className="w-full text-xs sm:text-sm text-neutral-800">
-            <thead className="bg-slate-50 text-slate-700">
-              <tr>
-                <th className="px-2 py-2 text-left">選</th>
-                <th className="px-2 py-2 text-left">#</th>
-                <th className="px-2 py-2 text-left">状態</th>
-                <th className="px-2 py-2 text-left">お名前</th>
-                <th className="px-2 py-2 text-left">メール</th>
-                <th className="px-2 py-2 text-left">電話</th>
-                <th className="px-2 py-2 text-left">予約日</th>
-                <th className="px-2 py-2 text-left">確認メール</th>
-                <th className="px-2 py-2 text-left">決済リンク</th>
-                <th className="px-2 py-2 text-left">支払い</th>
-                <th className="px-2 py-2 text-left">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(p => {
-                const isDup = p.status === 'duplicate';
-                const isSent = !!p.confirmation_email_sent_at;
-                const canSelect = !isDup && !isSent && !!p.email;
-                return (
-                  <tr key={p.id} className={`border-t border-slate-100 ${isDup ? 'opacity-50' : ''}`}>
-                    <td className="px-2 py-2">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(p.id)}
-                        onChange={() => toggleSelect(p.id)}
-                        disabled={!canSelect}
-                      />
-                    </td>
-                    <td className="px-2 py-2">{p.id}</td>
-                    <td className="px-2 py-2">
-                      {isDup
-                        ? <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px]">重複</span>
-                        : p.status === 'cancelled'
-                        ? <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px]">取消</span>
-                        : <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[10px]">有効</span>}
-                    </td>
-                    <td className="px-2 py-2 font-medium">{p.buyer_name}</td>
-                    <td className="px-2 py-2">
-                      {p.email || <span className="text-slate-400">-</span>}
-                    </td>
-                    <td className="px-2 py-2">{p.phone || '-'}</td>
-                    <td className="px-2 py-2">{fmtDateTime(p.created_at)}</td>
-                    <td className="px-2 py-2">
-                      {isSent
-                        ? <span className="text-blue-700 text-[11px]">📧 {fmtDateTime(p.confirmation_email_sent_at)}</span>
-                        : <span className="text-amber-700 text-[11px]">未送信</span>}
-                    </td>
-                    <td className="px-2 py-2">
-                      {p.payment_link_sent_at
-                        ? <span className="text-emerald-700 text-[11px]">💳 {fmtDateTime(p.payment_link_sent_at)}</span>
-                        : <span className="text-slate-400 text-[11px]">未送信</span>}
-                    </td>
-                    <td className="px-2 py-2">
-                      {p.payment_paid_at
-                        ? <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-semibold">✓ 支払済</span>
-                        : <span className="text-slate-400 text-[11px]">-</span>}
-                    </td>
-                    <td className="px-2 py-2 whitespace-nowrap">
-                      {isDup
-                        ? <button onClick={() => markStatus(p.id, 'active')} disabled={busy} className="px-2 py-0.5 text-[10px] rounded bg-slate-200 hover:bg-slate-300">有効に戻す</button>
-                        : <button onClick={() => markStatus(p.id, 'duplicate')} disabled={busy} className="px-2 py-0.5 text-[10px] rounded bg-red-100 hover:bg-red-200 text-red-700">重複マーク</button>}
-                      {p.email && (
-                        <>
-                          <button
-                            onClick={() => sendConfirmation([p.id])}
-                            disabled={busy || isDup}
-                            className="ml-1 px-2 py-0.5 text-[10px] rounded bg-blue-100 hover:bg-blue-200 text-blue-700 disabled:opacity-50"
-                          >
-                            {isSent ? '再送' : '確認'}
-                          </button>
-                          <button
-                            onClick={() => sendPaymentLink([p.id])}
-                            disabled={busy || isDup || !!p.payment_paid_at}
-                            className="ml-1 px-2 py-0.5 text-[10px] rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-700 disabled:opacity-50"
-                          >
-                            {p.payment_link_sent_at ? '💳再送' : '💳送信'}
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-              {filtered.length === 0 && (
-                <tr><td colSpan={11} className="px-4 py-8 text-center text-slate-400">該当なし</td></tr>
-              )}
-            </tbody>
-          </table>
+    <div>
+      <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Video className="size-5 text-orange-600" />
+          <h1 className="text-lg font-bold text-orange-600">映像予約 管理</h1>
+          <span className="text-xs text-muted-foreground hidden sm:inline">BW5映像データ予約・確認メール・支払いリンク管理</span>
         </div>
-      )}
+
+        {/* Summary */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {[
+            { label: '全体', v: counts.total, variant: 'secondary' as const },
+            { label: '有効', v: counts.active, className: 'bg-emerald-100 text-emerald-800' },
+            { label: '重複', v: counts.duplicate, className: 'bg-red-100 text-red-800' },
+            { label: '確認メール送信済', v: counts.sent, className: 'bg-blue-100 text-blue-800' },
+            { label: '未送信', v: counts.unsent, className: 'bg-amber-100 text-amber-800' },
+          ].map(s => (
+            <Card key={s.label}>
+              <CardContent className={`py-2 px-3 ${s.className ?? ''}`}>
+                <div className="text-[10px] sm:text-xs">{s.label}</div>
+                <div className="text-lg sm:text-xl font-bold">{s.v}</div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Filter + search */}
+        <div className="flex flex-wrap gap-2">
+          {([
+            ['all', '全て'],
+            ['active', '有効のみ'],
+            ['unsent', '未送信のみ'],
+            ['sent', '送信済のみ'],
+            ['duplicate', '重複のみ'],
+          ] as const).map(([k, label]) => (
+            <Button
+              key={k}
+              variant={filter === k ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setFilter(k)}
+            >
+              {label}
+            </Button>
+          ))}
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="名前/メアド/電話で検索"
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+        </div>
+
+        {/* Bulk actions */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <Button variant="secondary" size="sm" onClick={selectAllVisible} disabled={busy}>
+            表示中の未送信を全選択
+          </Button>
+          <Button variant="ghost" size="sm" onClick={clearSelection} disabled={busy || selected.size === 0}>
+            選択解除
+          </Button>
+          <span className="text-xs text-muted-foreground">選択中: {selected.size}件</span>
+          <Button
+            size="sm"
+            onClick={() => setConfirmAction({ type: 'confirmation', ids: Array.from(selected), label: `${selected.size}件に確認メールを送信します。よろしいですか?` })}
+            disabled={busy || selected.size === 0}
+          >
+            <Mail className="size-3.5 mr-1" />選択中{selected.size}件に確認メール送信
+          </Button>
+          <Button
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            onClick={() => setConfirmAction({ type: 'payment_link', ids: Array.from(selected), label: `${selected.size}件に決済リンクを送信します。よろしいですか?` })}
+            disabled={busy || selected.size === 0}
+          >
+            <CreditCard className="size-3.5 mr-1" />選択中{selected.size}件に決済リンク送信
+          </Button>
+          <Button
+            size="sm"
+            className="bg-amber-500 hover:bg-amber-600 text-white"
+            onClick={() => setConfirmAction({ type: 'payment_reminder', ids: [], label: '未払いの方全員にリマインダーを送信します。よろしいですか?' })}
+            disabled={busy}
+          >
+            <Clock className="size-3.5 mr-1" />未払い者にリマインダー送信
+          </Button>
+        </div>
+
+        {/* Table */}
+        {loading ? (
+          <p className="text-muted-foreground">読み込み中...</p>
+        ) : (
+          <div className="rounded-xl border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8">選</TableHead>
+                  <TableHead className="w-10">#</TableHead>
+                  <TableHead>状態</TableHead>
+                  <TableHead>お名前</TableHead>
+                  <TableHead>メール</TableHead>
+                  <TableHead>電話</TableHead>
+                  <TableHead>予約日</TableHead>
+                  <TableHead>確認メール</TableHead>
+                  <TableHead>決済リンク</TableHead>
+                  <TableHead>支払い</TableHead>
+                  <TableHead>操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map(p => {
+                  const isDup = p.status === 'duplicate';
+                  const isSent = !!p.confirmation_email_sent_at;
+                  const canSelect = !isDup && !isSent && !!p.email;
+                  return (
+                    <TableRow key={p.id} className={isDup ? 'opacity-50' : ''}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(p.id)}
+                          onChange={() => toggleSelect(p.id)}
+                          disabled={!canSelect}
+                        />
+                      </TableCell>
+                      <TableCell>{p.id}</TableCell>
+                      <TableCell>
+                        {isDup
+                          ? <Badge variant="destructive" className="text-[10px]"><Copy className="size-2.5 mr-0.5" />重複</Badge>
+                          : p.status === 'cancelled'
+                          ? <Badge variant="secondary" className="text-[10px]">取消</Badge>
+                          : <Badge className="bg-emerald-100 text-emerald-700 text-[10px]" variant="outline"><CheckCircle2 className="size-2.5 mr-0.5" />有効</Badge>}
+                      </TableCell>
+                      <TableCell className="font-medium">{p.buyer_name}</TableCell>
+                      <TableCell>{p.email || <span className="text-muted-foreground">-</span>}</TableCell>
+                      <TableCell>{p.phone || '-'}</TableCell>
+                      <TableCell className="text-xs">{fmtDateTime(p.created_at)}</TableCell>
+                      <TableCell>
+                        {isSent
+                          ? <span className="text-blue-700 text-[11px] flex items-center gap-0.5"><Mail className="size-3" />{fmtDateTime(p.confirmation_email_sent_at)}</span>
+                          : <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-[10px]">未送信</Badge>}
+                      </TableCell>
+                      <TableCell>
+                        {p.payment_link_sent_at
+                          ? <span className="text-emerald-700 text-[11px] flex items-center gap-0.5"><CreditCard className="size-3" />{fmtDateTime(p.payment_link_sent_at)}</span>
+                          : <span className="text-muted-foreground text-[11px]">未送信</span>}
+                      </TableCell>
+                      <TableCell>
+                        {p.payment_paid_at
+                          ? <Badge className="bg-emerald-100 text-emerald-800 text-[10px]" variant="outline"><CheckCircle2 className="size-2.5 mr-0.5" />支払済</Badge>
+                          : <span className="text-muted-foreground text-[11px]">-</span>}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {isDup
+                          ? <Button variant="secondary" size="xs" onClick={() => markStatus(p.id, 'active')} disabled={busy}><RotateCcw className="size-2.5 mr-0.5" />有効に戻す</Button>
+                          : <Button variant="destructive" size="xs" onClick={() => markStatus(p.id, 'duplicate')} disabled={busy}><Copy className="size-2.5 mr-0.5" />重複マーク</Button>}
+                        {p.email && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              onClick={() => setConfirmAction({ type: 'confirmation', ids: [p.id], label: `#${p.id} に確認メールを送信します。よろしいですか?` })}
+                              disabled={busy || isDup}
+                              className="ml-1 border-blue-200 text-blue-700"
+                            >
+                              {isSent ? '再送' : '確認'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="xs"
+                              onClick={() => setConfirmAction({ type: 'payment_link', ids: [p.id], label: `#${p.id} に決済リンクを送信します。よろしいですか?` })}
+                              disabled={busy || isDup || !!p.payment_paid_at}
+                              className="ml-1 border-emerald-200 text-emerald-700"
+                            >
+                              <CreditCard className="size-2.5 mr-0.5" />{p.payment_link_sent_at ? '再送' : '送信'}
+                            </Button>
+                          </>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {filtered.length === 0 && (
+                  <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">該当なし</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      {/* Confirm dialog for send actions */}
+      <AlertDialog open={!!confirmAction} onOpenChange={(open) => { if (!open) setConfirmAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>送信確認</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction?.label}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmAction}>送信する</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
-    </main>
   );
 }
