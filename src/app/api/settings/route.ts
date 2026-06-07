@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 import { getAll, batch } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
@@ -22,6 +23,9 @@ export async function PUT(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
   try {
     const body = await req.json() as Record<string, string>;
+    if (body.admin_password) {
+      body.admin_password = await bcrypt.hash(body.admin_password, 10);
+    }
     await batch(
       Object.entries(body).map(([key, value]) => ({
         sql: 'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',

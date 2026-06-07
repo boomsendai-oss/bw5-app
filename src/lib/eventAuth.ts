@@ -1,18 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getOne } from './db';
-
-/**
- * イベント運営アプリ用の軽量認証。
- * 既存 ADMIN_PASSWORD (Vercel env) を使う。フォールバックで settings.admin_password も参照。
- *
- * クライアントは以下のいずれかで認証情報を渡す:
- *  - Header: x-admin-password
- *  - Cookie: staff_events_auth (middleware が同様に検証)
- */
+import bcrypt from 'bcryptjs';
+import { getOne, execute } from './db';
 
 export const EVENTS_AUTH_COOKIE = 'staff_events_auth';
+const SESSION_MAX_AGE_DAYS = 30;
 
-export async function resolveAdminPassword(): Promise<string> {
+export async function resolveAdminPasswordHash(): Promise<string> {
   let pw = process.env.ADMIN_PASSWORD ?? '';
   if (!pw) {
     const row = await getOne("SELECT value FROM settings WHERE key = 'admin_password'");
@@ -21,15 +14,50 @@ export async function resolveAdminPassword(): Promise<string> {
   return pw;
 }
 
+async function verifyPassword(plain: string): Promise<boolean> {
+  const stored = await resolveAdminPasswordHash();
+  if (!stored) return false;
+  if (stored.startsWith('$2')) {
+    return bcrypt.compare(plain, stored);
+  }
+  return plain === stored;
+}
+
+async function verifySessionToken(token: string): Promise<boolean> {
+  const row = await getOne(
+    "SELECT id FROM admin_sessions WHERE token = ? AND expires_at > datetime('now')",
+    [token]
+  );
+  return !!row;
+}
+
+export async function createSession(): Promise<string> {
+  const token = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  await execute(
+    'INSERT INTO admin_sessions (token, expires_at) VALUES (?, ?)',
+    [token, expiresAt]
+  );
+  return token;
+}
+
+export async function deleteSession(token: string): Promise<void> {
+  await execute('DELETE FROM admin_sessions WHERE token = ?', [token]);
+}
+
 export async function isAuthorized(req: NextRequest): Promise<boolean> {
-  const expected = await resolveAdminPassword();
-  if (!expected) return false;
-  const header = req.headers.get('x-admin-password');
-  if (header && header === expected) return true;
   const cookie = req.cookies.get(EVENTS_AUTH_COOKIE)?.value;
-  if (cookie && cookie === expected) return true;
+  if (cookie) {
+    if (await verifySessionToken(cookie)) return true;
+  }
+  const header = req.headers.get('x-admin-password');
+  if (header) {
+    if (await verifyPassword(header)) return true;
+  }
   return false;
 }
+
+export { verifyPassword };
 
 export function unauthorized(): NextResponse {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

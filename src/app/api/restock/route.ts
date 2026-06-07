@@ -119,13 +119,10 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET /api/restock?token=XXX — 管理画面用の一覧
+// GET /api/restock — 管理画面用の一覧 (cookie/header認証)
 export async function GET(req: NextRequest) {
   try {
-    const url = new URL(req.url);
-    const token = url.searchParams.get('token') || '';
-    const expected = await getOne("SELECT value FROM settings WHERE key = 'admin_password'");
-    if (!expected?.value || token !== expected.value) {
+    if (!(await isAuthorized(req))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const orders = await getAll(`

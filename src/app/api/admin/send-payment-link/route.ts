@@ -1,12 +1,11 @@
 // POST /api/admin/send-payment-link
 // BW5 動画パック (Square決済リンク) 案内メールを送るための管理エンドポイント
 //
-// 認証: Header `x-admin-password` = process.env.ADMIN_PASSWORD
+// 認証: Header `x-admin-password` (bcrypt比較)
 // Body: { to: string, buyerName: string, mode?: "test" | "live" }
-//
-// テスト用途: クロード/TARO から curl で叩いて TAROのメアドに送信
 
 import { Resend } from "resend";
+import { verifyPassword } from "@/lib/eventAuth";
 
 // Square 決済リンク (住所入力不要のカテゴリで作成された新URL)
 const PAYMENT_URL = "https://square.link/u/QgqAM1c2";
@@ -15,7 +14,7 @@ const PRODUCT_NAME = "BW5 演目映像データ (全パック)";
 
 export async function POST(req: Request) {
   const pw = req.headers.get("x-admin-password");
-  if (!pw || pw !== process.env.ADMIN_PASSWORD) {
+  if (!pw || !(await verifyPassword(pw))) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },

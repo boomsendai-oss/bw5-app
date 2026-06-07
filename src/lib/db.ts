@@ -638,6 +638,14 @@ export async function initDb(): Promise<void> {
     )`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_instr_sess_token ON instructor_sessions(session_token)`, args: [] },
 
+    { sql: `CREATE TABLE IF NOT EXISTS admin_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token TEXT NOT NULL UNIQUE,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      expires_at TEXT NOT NULL
+    )`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_admin_sess_token ON admin_sessions(token)`, args: [] },
+
     { sql: `CREATE TABLE IF NOT EXISTS instructor_pin_resets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       instructor_id INTEGER NOT NULL,
@@ -841,7 +849,7 @@ export async function initDb(): Promise<void> {
   if (Number(settingsCount.rows[0].count) === 0) {
     await c.batch([
       { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['video_price', '2500'] },
-      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['admin_password', 'boom2026'] },
+      { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['admin_password', '$2b$10$zcwCpFeEfSBxTb9.DlMYJORgxBccPe6CEu0gUAUyPj9oE0WqN0AUe'] },
       { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['event_date', '2026-05-05'] },
       { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['event_name', 'BOOM WOP vol.5'] },
       { sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', args: ['venue', '太白区文化センター 楽楽楽ホール'] },
