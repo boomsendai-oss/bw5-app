@@ -287,6 +287,7 @@ export async function initDb(): Promise<void> {
       enrolled_at TEXT,
       withdrew_at TEXT,
       status TEXT NOT NULL DEFAULT 'active',
+      member_type TEXT DEFAULT 'regular',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`,

@@ -110,13 +110,25 @@ export async function POST(req: NextRequest) {
         category = partial ?? guessProductCategory(productName);
       }
 
-      // boom_member_id を hacomono_member_id 経由で解決
+      // boom_member_id を hacomono_member_id 経由で解決（未登録ならvisitorとして自動追加）
       let boomMemberId: number | null = null;
       if (memberId) {
         const bm = (await getAll(
           `SELECT id FROM boom_members WHERE hacomono_member_id = ?`, [memberId]
         )) as { id: number }[];
-        if (bm.length > 0) boomMemberId = bm[0].id;
+        if (bm.length > 0) {
+          boomMemberId = bm[0].id;
+        } else {
+          await execute(
+            `INSERT OR IGNORE INTO boom_members (hacomono_member_id, hacomono_kaiin_no, full_name, full_name_kana, status, member_type)
+             VALUES (?, ?, ?, '', 'active', 'visitor')`,
+            [memberId, kaiinNo || null, kaiinNo ? `（会員番号${kaiinNo}・氏名未確認）` : `（HACOMONO ID ${memberId}）`]
+          );
+          const inserted = (await getAll(
+            `SELECT id FROM boom_members WHERE hacomono_member_id = ?`, [memberId]
+          )) as { id: number }[];
+          if (inserted.length > 0) boomMemberId = inserted[0].id;
+        }
       }
 
       await execute(
