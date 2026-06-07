@@ -1,14 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { ChevronLeft, ChevronRight, Target, Upload, TrendingUp, TrendingDown, Users, Sprout, DollarSign, Crosshair, Gem, BarChart3 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Target, Upload, TrendingUp, TrendingDown, Users, Sprout, DollarSign, Crosshair, Gem, BarChart3, Plus, RefreshCw, FileText } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { yen } from '@/lib/utils';
 
 type TrendData = {
   months: string[];
@@ -124,9 +126,6 @@ type DashboardData = {
   generated_at: string;
 };
 
-function yen(n: number): string {
-  return `¥${Math.round(n).toLocaleString('ja-JP')}`;
-}
 function num(n: number): string { return n.toLocaleString('ja-JP'); }
 function pct(n: number, decimals = 1): string { return `${n.toFixed(decimals)}%`; }
 
@@ -224,6 +223,62 @@ export default function InsightsPage() {
   const [uploading, setUploading] = useState(false);
   const [showTargets, setShowTargets] = useState(false);
   const [targetForm, setTargetForm] = useState<Record<string, string>>({});
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [actionMessage, setActionMessage] = useState('');
+
+  const runAutoSnapshot = async () => {
+    setAutoBusy(true);
+    setActionMessage('');
+    try {
+      const res = await fetch('/api/staff/operations/snapshot-kpi', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (res.status === 401) {
+        window.location.href = '/staff/events/login?next=/staff/insights';
+        return;
+      }
+      const d = await res.json();
+      if (!res.ok) {
+        setActionMessage(`失敗: ${d?.error ?? res.statusText}`);
+      } else {
+        setActionMessage(`${d.snapshot_date} の KPI を自動集計しました`);
+        load(ym);
+      }
+    } catch (e) {
+      setActionMessage(`失敗: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setAutoBusy(false);
+    }
+  };
+
+  const generateMonthlyReport = async () => {
+    setReportBusy(true);
+    setActionMessage('');
+    try {
+      const res = await fetch('/api/staff/operations/monthly-report', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (res.status === 401) {
+        window.location.href = '/staff/events/login?next=/staff/insights';
+        return;
+      }
+      const d = await res.json();
+      if (!res.ok) {
+        setActionMessage(`レポート生成失敗: ${d?.error ?? res.statusText}`);
+      } else {
+        setActionMessage(`${d.year_month} の月次レポートを生成しました`);
+      }
+    } catch (e) {
+      setActionMessage(`失敗: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setReportBusy(false);
+    }
+  };
 
   const openTargets = async () => {
     const res = await fetch(`/api/staff/kpi/targets?year_month=${ym}`, { credentials: 'include' });
@@ -361,6 +416,30 @@ export default function InsightsPage() {
                 }} />
               </label>
             </Button>
+            <Button
+              onClick={runAutoSnapshot}
+              disabled={autoBusy}
+              size="sm"
+              className="bg-blue-500 hover:bg-blue-600 text-white"
+            >
+              <RefreshCw className={`h-3 w-3 mr-1 ${autoBusy ? 'animate-spin' : ''}`} />
+              {autoBusy ? '集計中...' : '最新KPI自動集計'}
+            </Button>
+            <Button
+              onClick={generateMonthlyReport}
+              disabled={reportBusy}
+              size="sm"
+              className="bg-purple-500 hover:bg-purple-600 text-white"
+            >
+              <FileText className="h-3 w-3 mr-1" />
+              {reportBusy ? '生成中...' : '月次レポート生成'}
+            </Button>
+            <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white" asChild>
+              <Link href="/staff/insights/input">
+                <Plus className="h-3 w-3 mr-1" />
+                月次データを追加
+              </Link>
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => setYm(shiftYM(ym, -1))}><ChevronLeft className="h-4 w-4" /></Button>
             <span className="text-sm font-bold text-orange-700 px-2">{ym}</span>
             <Button variant="ghost" size="sm" onClick={() => setYm(shiftYM(ym, 1))}><ChevronRight className="h-4 w-4" /></Button>
@@ -372,6 +451,12 @@ export default function InsightsPage() {
           </div>
         </div>
       </div>
+
+      {actionMessage && (
+        <div className="bg-blue-50 border-b border-blue-200 px-6 py-2 text-sm text-blue-800">
+          {actionMessage}
+        </div>
+      )}
 
       <div className="max-w-6xl mx-auto p-3 sm:p-4">
         {err && <div className="mb-3 p-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm">読込エラー: {err}</div>}
