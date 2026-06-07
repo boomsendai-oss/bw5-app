@@ -1,6 +1,11 @@
 import { randomBytes } from 'crypto';
 import { getAll, getOne, execute } from './db';
 import { getConfirmedMonthsSet } from './monthConfirm';
+import {
+  buildExpandedKeys,
+  expandMasterSlotsRange,
+  isMasterOutOfRange,
+} from './lessonResolver';
 
 // ============================================
 // マスタースケジュール エクスポート共通ロジック
@@ -115,83 +120,60 @@ export async function buildLessonsForMonths(months: number, startYm?: string): P
     `SELECT id, start_date, end_date FROM lesson_master WHERE start_date IS NOT NULL OR end_date IS NOT NULL`
   )) as { id: number; start_date: string | null; end_date: string | null }[];
   const masterDateRange = new Map(dateRangeRows.map(r => [r.id, r]));
-  // 該当日がそのmasterの開始日〜終了日の範囲外なら true (= 生成・表示しない)
   const outOfRange = (masterId: number | null, ds: string): boolean => {
     if (masterId == null) return false;
     const r = masterDateRange.get(masterId);
     if (!r) return false;
-    if (r.start_date && ds < r.start_date) return true;
-    if (r.end_date && ds > r.end_date) return true;
-    return false;
+    return isMasterOutOfRange(r, ds);
   };
 
-  // 確定(凍結)済み月では master 週次展開をスキップ (instance スナップショットのみ)
   const confirmedMonths = await getConfirmedMonthsSet();
+  const expandedKeys = buildExpandedKeys(instances);
 
-  // 期間内の各日を走査
-  const cursor = new Date(baseYear, baseMonth - 1, 1);
-  const last = new Date(endDateObj.getFullYear(), endDateObj.getMonth(), endDateObj.getDate());
-  while (cursor <= last) {
-    const y = cursor.getFullYear();
-    const m = cursor.getMonth() + 1;
-    const d = cursor.getDate();
-    const ds = dateStr(y, m, d);
-    const dow = cursor.getDay();
+  // a) インスタンス (実開催/休講)
+  for (const ins of instances) {
+    if (ins.status === 'removed') continue;
+    if (outOfRange(ins.master_id, ins.date)) continue;
+    const dow = new Date(ins.date + 'T00:00:00').getDay();
+    lessons.push({
+      date: ins.date,
+      day_of_week: dow,
+      start_time: ins.start_time,
+      end_time: ins.end_time,
+      class_name: ins.master_class_name ?? '不明',
+      instructor_name: ins.instructor_name,
+      studio_name: ins.studio_name,
+      status: ins.status === 'cancelled' ? 'cancelled' : 'scheduled',
+      source: 'instance',
+      master_id: ins.master_id,
+      instance_id: ins.id,
+      duration_minutes: durationFromTimes(ins.start_time, ins.end_time),
+      frequency_type: null,
+      notes: ins.notes,
+    });
+  }
 
-    // a) インスタンス (実開催/休講)
-    const dayInstances = instances.filter(i => i.date.startsWith(ds));
-    for (const ins of dayInstances) {
-      // status='removed' は「そもそも無かった」扱い → エクスポート(ICS/CSV/HACOMONO)に出さない。
-      // (alreadyExpanded 判定は dayInstances 全件を使うので master 週次再展開は抑止される)
-      if (ins.status === 'removed') continue;
-      // 終了したレッスン(master終了日超過)は休講インスタンスが残っていても出さない
-      if (outOfRange(ins.master_id, ds)) continue;
-      lessons.push({
-        date: ds,
-        day_of_week: dow,
-        start_time: ins.start_time,
-        end_time: ins.end_time,
-        class_name: ins.master_class_name ?? '不明',
-        instructor_name: ins.instructor_name,
-        studio_name: ins.studio_name,
-        status: ins.status === 'cancelled' ? 'cancelled' : 'scheduled',
-        source: 'instance',
-        master_id: ins.master_id,
-        instance_id: ins.id,
-        duration_minutes: durationFromTimes(ins.start_time, ins.end_time),
-        frequency_type: null,
-        notes: ins.notes,
-      });
-    }
-
-    // b) master展開 (該当日に同masterのinstanceが無い場合のみ)
-    // 確定(凍結)済み月は master 展開しない
-    const ymOfDay = ds.slice(0, 7); // 'YYYY-MM'
-    for (const mas of confirmedMonths.has(ymOfDay) ? [] : masters) {
-      if (mas.day_of_week !== dow) continue;
-      // 開始日/終了日の範囲外は生成しない (終了したレッスンを二度と出さない)
-      if (outOfRange(mas.id, ds)) continue;
-      const alreadyExpanded = dayInstances.some(i => i.master_id === mas.id);
-      if (alreadyExpanded) continue;
-      lessons.push({
-        date: ds,
-        day_of_week: dow,
-        start_time: mas.start_time,
-        end_time: mas.end_time,
-        class_name: mas.class_name,
-        instructor_name: mas.instructor_name,
-        studio_name: mas.studio_name,
-        status: 'scheduled',
-        source: 'master',
-        master_id: mas.id,
-        instance_id: null,
-        duration_minutes: mas.duration_minutes ?? durationFromTimes(mas.start_time, mas.end_time),
-        frequency_type: mas.frequency_type,
-        notes: null,
-      });
-    }
-
-    cursor.setDate(cursor.getDate() + 1);
+  // b) master展開 (expandedKeys にない日のみ、確定月はスキップ)
+  // day_of_week を default_day_of_week にマッピング (expandMasterSlotsRange が参照)
+  const mastersWithDow = masters.map(m => ({ ...m, default_day_of_week: m.day_of_week }));
+  for (const { master: mas, dateStr: ds, dow } of expandMasterSlotsRange(startStr, endStr, mastersWithDow, expandedKeys, confirmedMonths)) {
+    if (isMasterOutOfRange(mas, ds)) continue;
+    lessons.push({
+      date: ds,
+      day_of_week: dow,
+      start_time: mas.start_time,
+      end_time: mas.end_time,
+      class_name: mas.class_name,
+      instructor_name: mas.instructor_name,
+      studio_name: mas.studio_name,
+      status: 'scheduled',
+      source: 'master',
+      master_id: mas.id,
+      instance_id: null,
+      duration_minutes: mas.duration_minutes ?? durationFromTimes(mas.start_time, mas.end_time),
+      frequency_type: mas.frequency_type,
+      notes: null,
+    });
   }
 
   lessons.sort((a, b) =>

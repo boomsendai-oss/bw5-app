@@ -1,5 +1,10 @@
 import { execute, getAll, getOne } from './db';
 import { isMonthConfirmed } from './monthConfirm';
+import {
+  minutesBetween as minutesBetweenShared,
+  buildExpandedKeys,
+  expandMasterSlots,
+} from './lessonResolver';
 
 export type BillingLine = {
   lesson_date: string;
@@ -22,12 +27,7 @@ export type StudioBillingResult = {
   total_lesson_amount: number;
 };
 
-function minutesBetween(start: string, end: string): number {
-  if (!start || !end) return 0;
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  return (eh * 60 + em) - (sh * 60 + sm);
-}
+const minutesBetween = minutesBetweenShared;
 
 function toMinutes(t: string): number {
   if (!t) return 0;
@@ -145,15 +145,11 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
   }
 
   // 1) lesson_instances 集計
-  const expandedKeys = new Set<string>();
+  const expandedKeys = buildExpandedKeys(instances);
   // 時間貸しスタジオで「その日にレッスンがある (スタジオ,日付)」を記録。
   // 日次バッファ(daily_buffer_minutes)は後段でこのキーごとに1回だけ加算する。
   const hourlyDayKeys = new Set<string>();
   for (const ins of instances) {
-    // master+日付を記録し、後段の master 週次展開での重複/再計上を防ぐ
-    // (休講/削除インスタンスも記録する → その日の master 再展開を抑止)
-    if (ins.master_id != null) expandedKeys.add(`${ins.master_id}_${ins.date}`);
-    // 休講(cancelled)・削除(removed)は使用料に計上しない
     if (ins.status === 'cancelled' || ins.status === 'removed') continue;
     if (!ins.studio_id) continue;
     const result = resultsMap.get(ins.studio_id);
@@ -186,18 +182,12 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
   // 2) lesson_master 週次展開
   // 確定(凍結)済み月では master 展開しない (確定時に materialize 済み instance のみで計算)。
   const confirmed = await isMonthConfirmed(yearMonth);
-  for (let d = 1; !confirmed && d <= lastDay; d++) {
-    const dateObj = new Date(y, m - 1, d);
-    const dateStr = `${yearMonth}-${String(d).padStart(2, '0')}`;
-    const dow = dateObj.getDay();
-    for (const master of masters) {
-      if (master.default_day_of_week !== dow) continue;
+  if (!confirmed) {
+    for (const { master, dateStr } of expandMasterSlots(yearMonth, masters, expandedKeys)) {
       if (!master.default_studio_id) continue;
-      if (expandedKeys.has(`${master.id}_${dateStr}`)) continue;
       const result = resultsMap.get(master.default_studio_id);
       const studio = studioMap.get(master.default_studio_id);
       if (!result || !studio) continue;
-      // 区分制スタジオは時間貸し計上をスキップし、日付ごとに時間帯を収集して後段で区分料金を計上する
       if (studio.pricing_model === 'block') {
         const end = master.default_end_time
           || (master.default_start_time && master.duration_minutes
@@ -207,7 +197,6 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
         continue;
       }
       if (studio.pricing_model === 'hourly') hourlyDayKeys.add(`${studio.id}_${dateStr}`);
-      // バッファは加算しない (後段で日次に1回だけ加算)
       const dm = (master.duration_minutes ?? (master.default_start_time && master.default_end_time ? minutesBetween(master.default_start_time, master.default_end_time) : 0));
       const hours = dm / 60;
       const amount = studio.pricing_model === 'hourly' ? Math.ceil(hours * studio.hourly_rate) : 0;

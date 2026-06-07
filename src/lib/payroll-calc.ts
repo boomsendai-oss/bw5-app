@@ -1,6 +1,11 @@
 // 給与計算の純粋関数（DB非依存）
 // payroll.ts から抽出。テスト可能にするため分離。
 
+import {
+  minutesBetween,
+  expandMasterSlots,
+} from './lessonResolver';
+
 export type PayrollLine = {
   lesson_date: string;
   class_name: string | null;
@@ -38,15 +43,8 @@ export function calcPaymentDate(yearMonth: string): string {
   return `${yy}-${mm}-${dd}`;
 }
 
-/**
- * "HH:MM" 形式の開始・終了時間から分数を計算
- */
-export function minutesBetween(start: string, end: string): number {
-  if (!start || !end) return 0;
-  const [sh, sm] = start.split(':').map(Number);
-  const [eh, em] = end.split(':').map(Number);
-  return (eh * 60 + em) - (sh * 60 + sm);
-}
+// minutesBetween is re-exported from lessonResolver for backward compatibility
+export { minutesBetween } from './lessonResolver';
 
 /**
  * レッスン単価を決定する。
@@ -191,38 +189,29 @@ export function expandMasters(
   expandedKeys: Set<string>,
   transitCharged: Set<string>,
 ): void {
-  const [y, m] = yearMonth.split('-').map(Number);
-  const lastDay = new Date(y, m, 0).getDate();
-  for (let d = 1; d <= lastDay; d++) {
-    const dateObj = new Date(y, m - 1, d);
-    const dateStr = `${yearMonth}-${String(d).padStart(2, '0')}`;
-    const dow = dateObj.getDay();
-    for (const master of masters) {
-      if (master.default_day_of_week !== dow) continue;
-      if (!master.default_instructor_id) continue;
-      if (expandedKeys.has(`${master.id}_${dateStr}`)) continue;
-      const result = resultsMap.get(master.default_instructor_id);
-      if (!result) continue;
-      if (result.salary_type === 'monthly_fixed') continue;
-      const dm = master.duration_minutes ?? (master.default_start_time && master.default_end_time ? minutesBetween(master.default_start_time, master.default_end_time) : 0);
-      const rate = resolveRate(master.override_rate, rateMap, master.default_instructor_id, dm);
-      const transitCandidate = master.default_studio_id ? (transitMap.get(`${master.default_instructor_id}_${master.default_studio_id}`) ?? 0) : 0;
-      const transit = deduplicateTransit(transitCandidate, master.default_instructor_id, master.default_studio_id, dateStr, transitCharged);
-      result.lines.push({
-        lesson_date: dateStr,
-        class_name: master.class_name,
-        duration_minutes: dm,
-        studio_name: master.studio_name,
-        studio_id: master.default_studio_id ?? null,
-        lesson_master_id: master.id,
-        lesson_rate: rate,
-        transit_fee: transit,
-        source: 'lesson_master_expanded',
-        source_ref_id: master.id,
-      });
-      result.total_lesson_amount += rate;
-      result.total_transit_amount += transit;
-    }
+  for (const { master, dateStr } of expandMasterSlots(yearMonth, masters, expandedKeys)) {
+    if (!master.default_instructor_id) continue;
+    const result = resultsMap.get(master.default_instructor_id);
+    if (!result) continue;
+    if (result.salary_type === 'monthly_fixed') continue;
+    const dm = master.duration_minutes ?? (master.default_start_time && master.default_end_time ? minutesBetween(master.default_start_time, master.default_end_time) : 0);
+    const rate = resolveRate(master.override_rate, rateMap, master.default_instructor_id, dm);
+    const transitCandidate = master.default_studio_id ? (transitMap.get(`${master.default_instructor_id}_${master.default_studio_id}`) ?? 0) : 0;
+    const transit = deduplicateTransit(transitCandidate, master.default_instructor_id, master.default_studio_id, dateStr, transitCharged);
+    result.lines.push({
+      lesson_date: dateStr,
+      class_name: master.class_name,
+      duration_minutes: dm,
+      studio_name: master.studio_name,
+      studio_id: master.default_studio_id ?? null,
+      lesson_master_id: master.id,
+      lesson_rate: rate,
+      transit_fee: transit,
+      source: 'lesson_master_expanded',
+      source_ref_id: master.id,
+    });
+    result.total_lesson_amount += rate;
+    result.total_transit_amount += transit;
   }
 }
 
