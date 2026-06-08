@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute, getAll, batch } from '@/lib/db';
+import { type InStatement } from '@libsql/client';
+import { execute, getAll, getOne, batch } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { parseCSV, rowsToDicts, parseDate, parseDateTime } from '@/lib/csvUtil';
-import { buildLinkSuggestions, type Member as SuggestMember } from '@/lib/linkSuggest';
+import { buildLinkSuggestions, type Member as SuggestMember, type LinkSuggestion } from '@/lib/linkSuggest';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -304,6 +305,11 @@ async function handleSync(req: NextRequest) {
     linkSuggestions = await buildLinkSuggestions(rows);
   }
 
+  // --- スタッフ通知の生成 (重複防止付き) ---
+  await generateStaffNotifications(
+    newMembers, planChanges, withdrewDetected, linkSuggestions
+  );
+
   return NextResponse.json({
     ok: true,
     summary: {
@@ -338,4 +344,159 @@ async function handleSync(req: NextRequest) {
     },
     link_suggestions: linkSuggestions,
   });
+}
+
+// --- 通知生成 (sync 完了後に呼ばれる) ---
+async function generateStaffNotifications(
+  newMembers: { hacomono_member_id: string; full_name: string; full_name_kana: string; plan_name: string | null; enrolled_at: string | null }[],
+  planChanges: { member: { hacomono_member_id: string; full_name: string }; from: { code: string | null; name: string | null }; to: { code: string | null; name: string | null } }[],
+  withdrewDetected: { hacomono_member_id: string; full_name: string }[],
+  linkSuggestions: LinkSuggestion[]
+) {
+  // 重複防止 INSERT: 同じ type + related_member_id が直近24時間以内に存在しなければ挿入
+  const DEDUP_INSERT = `
+    INSERT INTO staff_notifications (type, title, detail, severity, related_member_id, related_lstep_id)
+    SELECT ?, ?, ?, ?, ?, ?
+    WHERE NOT EXISTS (
+      SELECT 1 FROM staff_notifications
+      WHERE type = ? AND related_member_id = ? AND created_at > datetime('now', '-1 day')
+    )
+  `;
+
+  const stmts: InStatement[] = [];
+
+  // linkSuggestions を member_id でインデックス化
+  const suggestionByMemberId = new Map<number, LinkSuggestion>();
+  for (const s of linkSuggestions) {
+    suggestionByMemberId.set(s.member_id, s);
+  }
+
+  // (a) 新規入会
+  for (const m of newMembers) {
+    // UPSERT 後の boom_members から id を取得
+    const row = await getOne(
+      `SELECT id FROM boom_members WHERE hacomono_member_id = ?`,
+      [m.hacomono_member_id]
+    );
+    const memberId = row?.id as number | null;
+
+    // (a) new_member 通知
+    stmts.push({
+      sql: DEDUP_INSERT,
+      args: [
+        'new_member',
+        `新規入会: ${m.full_name}`,
+        JSON.stringify({
+          hacomono_member_id: m.hacomono_member_id,
+          plan_name: m.plan_name,
+          enrolled_at: m.enrolled_at,
+          full_name_kana: m.full_name_kana,
+        }),
+        'info',
+        memberId,
+        null,
+        // WHERE params
+        'new_member',
+        memberId,
+      ],
+    });
+
+    // (b)(c) LINE 紐付け候補の有無
+    if (memberId != null) {
+      const suggestion = suggestionByMemberId.get(memberId);
+      if (suggestion && suggestion.candidates.length > 0) {
+        const topCandidate = suggestion.candidates[0];
+        stmts.push({
+          sql: DEDUP_INSERT,
+          args: [
+            'lstep_linked',
+            `LINE紐付け候補あり: ${m.full_name} → ${topCandidate.system_display_name}`,
+            JSON.stringify({
+              candidates: suggestion.candidates.slice(0, 3),
+              confidence: topCandidate.confidence,
+            }),
+            'info',
+            memberId,
+            topCandidate.lstep_id,
+            // WHERE params
+            'lstep_linked',
+            memberId,
+          ],
+        });
+      } else {
+        stmts.push({
+          sql: DEDUP_INSERT,
+          args: [
+            'lstep_unlinked',
+            `LINE紐付け候補なし: ${m.full_name}`,
+            JSON.stringify({
+              hacomono_member_id: m.hacomono_member_id,
+              full_name_kana: m.full_name_kana,
+            }),
+            'warning',
+            memberId,
+            null,
+            // WHERE params
+            'lstep_unlinked',
+            memberId,
+          ],
+        });
+      }
+    }
+  }
+
+  // (d) プラン変更
+  for (const p of planChanges) {
+    const row = await getOne(
+      `SELECT id FROM boom_members WHERE hacomono_member_id = ?`,
+      [p.member.hacomono_member_id]
+    );
+    const memberId = row?.id as number | null;
+
+    stmts.push({
+      sql: DEDUP_INSERT,
+      args: [
+        'plan_change',
+        `プラン変更: ${p.member.full_name} (${p.from.name ?? '不明'} → ${p.to.name ?? '不明'})`,
+        JSON.stringify({ from: p.from, to: p.to }),
+        'info',
+        memberId,
+        null,
+        // WHERE params
+        'plan_change',
+        memberId,
+      ],
+    });
+  }
+
+  // (e) 退会
+  for (const m of withdrewDetected) {
+    const row = await getOne(
+      `SELECT id FROM boom_members WHERE hacomono_member_id = ?`,
+      [m.hacomono_member_id]
+    );
+    const memberId = row?.id as number | null;
+
+    stmts.push({
+      sql: DEDUP_INSERT,
+      args: [
+        'member_withdrew',
+        `退会: ${m.full_name}`,
+        JSON.stringify({ hacomono_member_id: m.hacomono_member_id }),
+        'warning',
+        memberId,
+        null,
+        // WHERE params
+        'member_withdrew',
+        memberId,
+      ],
+    });
+  }
+
+  // バッチ実行 (50件ずつ)
+  if (stmts.length > 0) {
+    for (let i = 0; i < stmts.length; i += 50) {
+      await batch(stmts.slice(i, i + 50));
+    }
+  }
 }

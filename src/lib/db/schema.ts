@@ -719,5 +719,24 @@ export function getSchemaStatements(): InStatement[] {
     )`,
       args: [],
     },
+    {
+      // === スタッフ通知 ===
+      sql: `CREATE TABLE IF NOT EXISTS staff_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      detail TEXT,
+      severity TEXT DEFAULT 'info',
+      related_member_id INTEGER,
+      related_lstep_id TEXT,
+      acknowledged_at TEXT,
+      acknowledged_by TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+      args: [],
+    },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_staff_notif_ack ON staff_notifications(acknowledged_at)`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_staff_notif_type ON staff_notifications(type)`, args: [] },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_staff_notif_created ON staff_notifications(created_at)`, args: [] },
   ];
 }
