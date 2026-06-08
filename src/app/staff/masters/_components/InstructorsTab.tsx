@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { User, Pencil, Plus, Trash2, Camera, FolderOpen, Image, Globe, X, Lock, Unlock } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { User, Pencil, Plus, Trash2, Camera, FolderOpen, Image, Globe, X, Lock, Unlock, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,15 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove, SortableContext, sortableKeyboardCoordinates,
+  useSortable, verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { Instructor, Rate, TransitFee, PhotoCount, Studio } from './types';
 
 type Props = {
@@ -42,6 +51,72 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
   );
 }
 
+function SortableRow({
+  instructor,
+  myRates,
+  onClickRow,
+}: {
+  instructor: Instructor;
+  myRates: Rate[];
+  onClickRow: (i: Instructor) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: instructor.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : undefined,
+    position: isDragging ? 'relative' as const : undefined,
+  };
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={style}
+      className={`cursor-pointer ${isDragging ? 'bg-orange-50 shadow-md' : ''}`}
+      onClick={() => onClickRow(instructor)}
+    >
+      <TableCell className="w-8 px-1" onClick={e => e.stopPropagation()}>
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 text-muted-foreground hover:text-foreground touch-none"
+        >
+          <GripVertical className="size-4" />
+        </button>
+      </TableCell>
+      <TableCell className="font-medium">
+        <span className="text-xs text-muted-foreground mr-1.5">{instructor.public_display_order ?? '—'}</span>
+        {instructor.name}
+      </TableCell>
+      <TableCell className="text-xs">
+        {myRates.map(r => <span key={r.id} className="mr-2">{r.duration_minutes}分 ¥{r.rate.toLocaleString()}</span>)}
+        {myRates.length === 0 && <span className="text-muted-foreground">-</span>}
+      </TableCell>
+      <TableCell className="text-center" onClick={e => e.stopPropagation()}>
+        {instructor.instagram_handle
+          ? <a href={`https://www.instagram.com/${instructor.instagram_handle}/`} target="_blank" rel="noreferrer">
+              <Badge className="bg-pink-100 text-pink-700 hover:bg-pink-200 border-transparent">
+                <Camera className="size-3" />
+                開く
+              </Badge>
+            </a>
+          : <span className="text-muted-foreground text-xs">-</span>}
+      </TableCell>
+      <TableCell className="text-right">
+        <Badge variant="outline">詳細</Badge>
+      </TableCell>
+    </TableRow>
+  );
+}
+
 export default function InstructorsTab({
   instructors, setInstructors, rates, fees, photoCounts, studios, reload, setMsg,
 }: Props) {
@@ -53,6 +128,64 @@ export default function InstructorsTab({
   const [slugLocked, setSlugLocked] = useState(true);
   const [originalSlug, setOriginalSlug] = useState<string | null>(null);
   const [slugConfirmOpen, setSlugConfirmOpen] = useState(false);
+
+  // Drag & drop
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  // Split active (draggable) vs inactive (static bottom)
+  const activeInstructors = useMemo(
+    () => [...instructors]
+      .filter(i => i.active === 1)
+      .sort((a, b) => (a.public_display_order ?? 999) - (b.public_display_order ?? 999)),
+    [instructors],
+  );
+  const inactiveInstructors = useMemo(
+    () => instructors.filter(i => i.active !== 1),
+    [instructors],
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = activeInstructors.findIndex(i => i.id === active.id);
+    const newIndex = activeInstructors.findIndex(i => i.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(activeInstructors, oldIndex, newIndex);
+
+    // Build new order with positions 1, 2, 3, ...
+    const orderPayload = reordered.map((inst, idx) => ({
+      id: inst.id,
+      position: idx + 1,
+    }));
+
+    // Optimistic update
+    setInstructors(prev => {
+      const updated = [...prev];
+      for (const { id, position } of orderPayload) {
+        const found = updated.find(i => i.id === id);
+        if (found) found.public_display_order = position;
+      }
+      return updated;
+    });
+
+    // Persist
+    try {
+      await fetch('/api/staff/master/instructors/reorder', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: orderPayload }),
+      });
+    } catch (e) {
+      setMsg(`並べ替え失敗: ${e instanceof Error ? e.message : String(e)}`);
+      reload();
+    }
+  };
 
   const startEdit = (i: Partial<Instructor>) => {
     setEditing(i);
@@ -141,44 +274,69 @@ export default function InstructorsTab({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8"></TableHead>
               <TableHead>名前</TableHead>
               <TableHead>単価</TableHead>
               <TableHead className="text-center">IG</TableHead>
               <TableHead className="text-right"></TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {[...instructors].sort((a, b) => b.active - a.active).map(i => {
-              const myRates = rates.filter(r => r.instructor_id === i.id);
-              return (
-                <TableRow key={i.id} className="cursor-pointer" onClick={() => setDetail(i)}>
-                  <TableCell className="font-medium">{i.name}</TableCell>
-                  <TableCell className="text-xs">
-                    {myRates.map(r => <span key={r.id} className="mr-2">{r.duration_minutes}分 ¥{r.rate.toLocaleString()}</span>)}
-                    {myRates.length === 0 && <span className="text-muted-foreground">-</span>}
-                  </TableCell>
-                  <TableCell className="text-center" onClick={e => e.stopPropagation()}>
-                    {i.instagram_handle
-                      ? <a href={`https://www.instagram.com/${i.instagram_handle}/`} target="_blank" rel="noreferrer">
-                          <Badge className="bg-pink-100 text-pink-700 hover:bg-pink-200 border-transparent">
-                            <Camera className="size-3" />
-                            開く
-                          </Badge>
-                        </a>
-                      : <span className="text-muted-foreground text-xs">-</span>}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Badge variant="outline">詳細</Badge>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-            {instructors.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground py-6">登録なし</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={activeInstructors.map(i => i.id)} strategy={verticalListSortingStrategy}>
+              <TableBody>
+                {activeInstructors.map(i => (
+                  <SortableRow
+                    key={i.id}
+                    instructor={i}
+                    myRates={rates.filter(r => r.instructor_id === i.id)}
+                    onClickRow={setDetail}
+                  />
+                ))}
+
+                {/* Inactive instructors - non-draggable, visually muted */}
+                {inactiveInstructors.map(i => {
+                  const myRates = rates.filter(r => r.instructor_id === i.id);
+                  return (
+                    <TableRow key={i.id} className="cursor-pointer opacity-40" onClick={() => setDetail(i)}>
+                      <TableCell className="w-8 px-1">
+                        <span className="p-1 text-muted-foreground/30">
+                          <GripVertical className="size-4" />
+                        </span>
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        <span className="text-xs text-muted-foreground mr-1.5">{i.public_display_order ?? '—'}</span>
+                        {i.name}
+                        <Badge variant="outline" className="ml-2 text-[10px]">非アクティブ</Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {myRates.map(r => <span key={r.id} className="mr-2">{r.duration_minutes}分 ¥{r.rate.toLocaleString()}</span>)}
+                        {myRates.length === 0 && <span className="text-muted-foreground">-</span>}
+                      </TableCell>
+                      <TableCell className="text-center" onClick={e => e.stopPropagation()}>
+                        {i.instagram_handle
+                          ? <a href={`https://www.instagram.com/${i.instagram_handle}/`} target="_blank" rel="noreferrer">
+                              <Badge className="bg-pink-100 text-pink-700 hover:bg-pink-200 border-transparent">
+                                <Camera className="size-3" />
+                                開く
+                              </Badge>
+                            </a>
+                          : <span className="text-muted-foreground text-xs">-</span>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant="outline">詳細</Badge>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+
+                {instructors.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-6">登録なし</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </SortableContext>
+          </DndContext>
         </Table>
       </div>
 

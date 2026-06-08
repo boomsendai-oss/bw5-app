@@ -21,7 +21,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import type { Lesson, Studio, Instructor } from './types';
-import { DAY_NAMES, dayLabel } from './types';
+import { DAY_NAMES, dayLabel, TARGET_OPTIONS, LEVEL_OPTIONS, targetLabels, levelLabel } from './types';
 
 type Props = {
   lessons: Lesson[];
@@ -215,8 +215,8 @@ export default function LessonsTab({
               <DetailRow label="所要分">{detail.duration_minutes != null ? `${detail.duration_minutes}分` : '—'}</DetailRow>
               <DetailRow label="スタジオ">{detail.studio_name ?? '—'}</DetailRow>
               <DetailRow label="インストラクター">{detail.instructor_name ?? '—'}</DetailRow>
-              <DetailRow label="対象">{detail.target || '—'}</DetailRow>
-              <DetailRow label="レベル">{detail.level || '—'}</DetailRow>
+              <DetailRow label="対象">{targetLabels(detail.target)}</DetailRow>
+              <DetailRow label="レベル">{levelLabel(detail.level)}</DetailRow>
               <DetailRow label="頻度">{detail.frequency_type || '—'}</DetailRow>
               <DetailRow label="開始日">{detail.start_date || '—'}</DetailRow>
               <DetailRow label="終了日">{detail.end_date ? `${detail.end_date} (この日がラスト)` : '—'}</DetailRow>
@@ -359,12 +359,48 @@ export default function LessonsTab({
                     <span className="text-sm">HPに表示</span>
                   </label>
                   <div>
-                    <Label className="text-xs">対象 (例: 4歳〜12歳 / 中学生〜大人)</Label>
-                    <Input value={editing.target ?? ''} onChange={e => updateField({ target: e.target.value })} />
+                    <Label className="text-xs">対象</Label>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {TARGET_OPTIONS.map(opt => {
+                        const selected = (editing.target ?? '').split(',').filter(Boolean);
+                        const checked = selected.includes(opt.value);
+                        return (
+                          <label key={opt.value} className="flex items-center gap-1.5 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={e => {
+                                let next: string[];
+                                if (e.target.checked) {
+                                  next = [...selected, opt.value];
+                                } else {
+                                  next = selected.filter(v => v !== opt.value);
+                                }
+                                updateField({ target: next.length > 0 ? next.join(',') : null });
+                              }}
+                            />
+                            {opt.label}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div>
-                    <Label className="text-xs">レベル (例: 初心者 / 初級〜中級)</Label>
-                    <Input value={editing.level ?? ''} onChange={e => updateField({ level: e.target.value })} />
+                    <Label className="text-xs">レベル</Label>
+                    <Select
+                      value={editing.level ?? '_none'}
+                      onValueChange={v => updateField({ level: v === '_none' ? null : v })}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_none">(未設定)</SelectItem>
+                        {LEVEL_OPTIONS.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">クラス説明 (HPの体験予約導線。改行OK)</Label>

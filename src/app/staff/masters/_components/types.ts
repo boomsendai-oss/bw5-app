@@ -76,6 +76,32 @@ export type Lesson = {
 // スタジオの区分料金1行
 export type PriceBlock = { label: string; start: string; end: string; price: number };
 
+export const TARGET_OPTIONS = [
+  { value: 'chibikko', label: 'ちびっこ（年中・年長）' },
+  { value: 'kids', label: 'キッズ（小学生）' },
+  { value: 'junior', label: 'ジュニア（中高生）' },
+  { value: 'adult', label: '大人（18歳〜）' },
+  { value: 'all', label: '全年齢' },
+] as const;
+
+export const LEVEL_OPTIONS = [
+  { value: 'beginner', label: '入門（未経験OK）' },
+  { value: 'elementary', label: '初級' },
+  { value: 'intermediate', label: '中級' },
+  { value: 'advanced', label: '上級' },
+  { value: 'all', label: 'オールレベル' },
+] as const;
+
+export function targetLabels(csv: string | null): string {
+  if (!csv) return '—';
+  return csv.split(',').map(v => TARGET_OPTIONS.find(o => o.value === v)?.label ?? v).join('、');
+}
+
+export function levelLabel(val: string | null): string {
+  if (!val) return '—';
+  return LEVEL_OPTIONS.find(o => o.value === val)?.label ?? val;
+}
+
 export const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
 
 export const dayLabel = (d: number | null | undefined) =>
