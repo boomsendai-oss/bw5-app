@@ -66,10 +66,21 @@ function buildMemberLabel(members: { kana: string }[]): string {
   const firstSurname = parts[0][0] ?? '';
   const sameSurname = parts.every((p) => (p[0] ?? '') === firstSurname);
   if (sameSurname) {
-    const givens = parts.map((p) => p.slice(1).join(' ')).filter(Boolean);
+    // 並び順を固定(カナ昇順)。並び替えだけの差分ノイズを防ぐ
+    const givens = parts.map((p) => p.slice(1).join(' ')).filter(Boolean).sort();
     return `${firstSurname} ${givens.join('・')}`;
   }
-  return members.map((m) => m.kana).join('・');
+  return members.map((m) => m.kana).sort().join('・');
+}
+
+// 表示名を「意味的に同じか」判定するための正規化。
+// スペース・「・」・並び順を無視した「文字の多重集合」で比較する。
+// → スペースの有無や子どもの並び順だけの違いは同一とみなし(=承認待ちに出さない)、
+//    子(兄弟)の増減や名前そのものの変化だけを「意味ある変更」として検出する。
+// (現在の表示名に姓+名のスペースが無いケースでも誤検知しない頑健な方式)
+function canonicalDisplay(s: string): string {
+  if (!s) return '';
+  return [...s.replace(/[\s　・,，]/g, '')].sort().join('');
 }
 
 // lstep_id → 紐付けmember集約 を DB から構築
@@ -226,7 +237,8 @@ export async function transformLstepGrid(
       if (newDisplay.includes('/ 子:') && phase4BCol !== undefined) row[phase4BCol] = '1';
     }
 
-    const changed = !!newDisplay && newDisplay !== currentDisplay;
+    // スペース有無・並び順だけの差はノイズなので「変更なし」とみなす
+    const changed = !!newDisplay && canonicalDisplay(newDisplay) !== canonicalDisplay(currentDisplay);
     if (changed) updatedRows++;
     if (newDisplay) {
       changes.push({
