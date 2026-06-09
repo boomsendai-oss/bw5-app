@@ -277,6 +277,7 @@ export default function OperationsPage() {
             <Button variant="link" size="xs" asChild><Link href="/staff/schedule"><Calendar className="size-3 mr-0.5" />スケジュール</Link></Button>
             <Button variant="link" size="xs" asChild><Link href="/staff/members"><Users className="size-3 mr-0.5" />会員管理</Link></Button>
             <Button variant="link" size="xs" asChild><Link href="/staff/video-preorders"><Video className="size-3 mr-0.5" />映像予約</Link></Button>
+            <Button variant="link" size="xs" asChild><Link href="/staff/operations/lstep-update"><Link2 className="size-3 mr-0.5" />LSTEP表示名更新</Link></Button>
           </div>
         </div>
         <p className="text-xs text-muted-foreground -mt-2">月次CSV突合・紐付け推測・月次レポート生成</p>
