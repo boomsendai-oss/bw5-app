@@ -173,20 +173,26 @@ export async function transformLstepGrid(grid: string[][]): Promise<TransformRes
 
     const memberLabel = buildMemberLabel(agg.members);
 
+    // 変換対象CSV(=最新のLstepエクスポート)の現在のシステム表示名。
+    // 保護者名・講師名は「いま実際にLINEに付いている表示名」から引き継ぐのが正しいので、
+    // 行の現在値を最優先で参照し、DB(lstep_friends.system_display_name)はフォールバックにする。
+    // (daily_syncの軽量CSVだとDB側が空になるため、行を優先しないと親名が???になる)
+    const currentDisplay = sysNameCol !== undefined ? (row[sysNameCol] ?? '').trim() : '';
+
     // システム表示名生成
     let newDisplay = '';
     if (agg.role === '本人') {
       newDisplay = memberLabel ? `【本人】${memberLabel}` : '';
     } else if (agg.role === '保護者') {
-      const parent = extractParentName(agg.system_display_name) || '???';
+      const parent =
+        extractParentName(currentDisplay) || extractParentName(agg.system_display_name) || '???';
       newDisplay = memberLabel ? `【保護者】${parent} / 子:${memberLabel}` : '';
     } else if (agg.role === '講師') {
-      const existing = agg.system_display_name ?? '';
-      const m = existing.match(/^【講師】\s*(.+)$/);
-      newDisplay = m ? `【講師】${m[1].trim()}` : memberLabel ? `【講師】${memberLabel}` : '';
+      const mCur = currentDisplay.match(/^【講師】\s*(.+)$/);
+      const mDb = (agg.system_display_name ?? '').match(/^【講師】\s*(.+)$/);
+      const teacher = mCur ? mCur[1].trim() : mDb ? mDb[1].trim() : '';
+      newDisplay = teacher ? `【講師】${teacher}` : memberLabel ? `【講師】${memberLabel}` : '';
     }
-
-    const currentDisplay = sysNameCol !== undefined ? (row[sysNameCol] ?? '').trim() : '';
 
     if (newDisplay && sysNameCol !== undefined) {
       row[sysNameCol] = newDisplay;
