@@ -7,19 +7,24 @@ HACOMONO会員とLINE(LSTEP)友だちを紐付けたあと、LSTEP側の「シ�
 そのCSVの中身（表示名の再生成）はアプリが自動生成し、エクスポート/インポートのブラウザ操作は
 Claudeが代行する。TAROは変更プレビューを見てGOを出すだけ。
 
-## 全体フロー
+## 全体フロー（承認キュー方式 / 2026-06-09〜）
+
+TAROの操作は「アプリで見て承認ボタンを押す」だけ。エクスポート/突合/アップロードは全部Claude。
 
 ```
-① Claude: LSTEP管理画面「友だちリスト → CSV操作 → CSVエクスポート」でフルCSV取得
-② Claude: そのCSVを /api/staff/operations/lstep-transform?mode=preview にPOST → 変更プレビュー
-③ TARO : プレビュー(誰が・現在名→新名・件数)を確認して GO
-④ Claude: 同CSVを mode=csv にPOST → インポート用CSV(cp932)を取得
-⑤ Claude: LSTEP管理画面「CSVインポート(/line/importer)」でファイル選択 → CSVアップロード
-⑥ 反映完了を確認 → lstep_update_log に upload_confirmed を記録
+① Claude: LSTEP「友だちリスト → CSV操作 → CSVエクスポート」でフルCSV取得（自動DL）
+② Claude: そのCSVを POST /api/staff/operations/lstep-batch にPOST
+          → 変更点を計算して「承認待ちバッチ」をDBに作成（lstep_pending_changes）
+③ TARO  : アプリ /staff/operations/lstep-update で「誰が→どう変わる」を見て、
+          チェック→「承認」ボタン（却下も可）
+④ Claude: GET /api/staff/operations/lstep-batch?mode=pending_upload で承認済みを検知
+⑤ Claude: GET ...?mode=import_csv&batch_id=X → 承認分だけのインポートCSV(cp932)を取得
+⑥ Claude: LSTEP「CSVインポート(/line/importer)」でアップロード → 反映完了を確認
+⑦ Claude: POST ...?mode=confirm&batch_id=X → 承認分をuploadedにマーク＋ログ記録
 ```
 
-①②は読み取りのみで安全。④⑤⑥は実際にお客さんのLINE表示名が変わる **後戻りしづらい操作**
-なので、必ず③のTARO GOを挟む。
+①②は読み取りのみで安全。⑤⑥は実際にLINE表示名が変わる **後戻りしづらい操作**なので、
+必ず③のTARO承認を経た「approved」の行だけを反映する（import_csvはapprovedのみ出力）。
 
 ## 詳細手順
 
@@ -27,16 +32,30 @@ Claudeが代行する。TAROは変更プレビューを見てGOを出すだけ�
 - Chrome拡張(Claude in Chrome)が接続済み
 - LSTEP管理画面 (https://manager.linestep.net/) にログイン済み
 - BOOMアプリにログイン済み(Cookieセッション)
-- **認証の注意**: アプリAPIへの `x-admin-password` ヘッダ認証は proxy.ts の仕様で
-  現状サーバ側に正しく到達しない(404になる)。**ブラウザのCookieセッション経由で叩くこと**。
-  → 実運用は画面 `/staff/operations/lstep-update` を使うのが確実(ブラウザfetch=Cookie認証)。
-  raw curl + ヘッダでの自動化は不可。
+- Chromeの「ダウンロード前に保存場所を確認」は **オフ**（エクスポートが自動で~/Downloadsに落ちる）
+- **認証の注意**: アプリAPIの `x-admin-password` ヘッダ認証は proxy.ts の仕様で404になる。
+  **Cookie認証（ログイン済みブラウザの fetch / curl -b cookie）で叩くこと**。
+  ログインは POST /api/staff/events/login {"password":"boom2026"} でCookie取得可。
 
-### 推奨: 画面経由(Cookie認証)
-1. `/staff/operations/lstep-update` を開く
-2. LSTEPフルエクスポートCSVをアップロード → 変更プレビュー
-3. TARO確認後「インポート用CSVを生成」→ LSTEPの「CSVインポート」へ
-APIを直接叩く場合も、ログイン済みブラウザの fetch(credentials:'include') で行う。
+### Claudeの実作業（API）
+```
+# 承認待ちバッチ作成 (エクスポートCSVを渡す)
+POST /api/staff/operations/lstep-batch   (multipart `lstep` = フルCSV)
+  → { batch_id, summary }
+
+# 承認済み件数の確認
+GET  /api/staff/operations/lstep-batch?mode=pending_upload
+  → { pending_upload_total, batches:[{batch_id, approved_count}] }
+
+# 承認分だけのインポートCSV生成 (cp932)
+GET  /api/staff/operations/lstep-batch?mode=import_csv&batch_id=X
+  → lstep_import_approved_X.csv
+
+# LSTEPアップロード後、反映済みマーク
+POST /api/staff/operations/lstep-batch?mode=confirm&batch_id=X
+  → { uploaded }
+```
+※ 承認/却下はTAROが画面で行う（API: POST /api/staff/operations/lstep-approve も有）。
 
 ### ① フルCSVエクスポート
 1. `https://manager.linestep.net/line/show`（友だちリスト）を開く
