@@ -113,7 +113,13 @@ async function buildAggByLstepId(): Promise<Map<string, Agg>> {
 }
 
 // メインの変換: grid (parseCSV済み) を受け取り、差分更新後の grid と変更一覧を返す
-export async function transformLstepGrid(grid: string[][]): Promise<TransformResult> {
+//   opts.restrictTo: 指定すると、そのlstep_idの行だけセルを更新する
+//     (承認済み分だけのインポートCSVを生成する用途。未承認の行は元のまま出力)
+export async function transformLstepGrid(
+  grid: string[][],
+  opts?: { restrictTo?: Set<string> }
+): Promise<TransformResult> {
+  const restrictTo = opts?.restrictTo;
   const warnings: string[] = [];
 
   if (grid.length < 3) {
@@ -170,6 +176,9 @@ export async function transformLstepGrid(grid: string[][]): Promise<TransformRes
     const agg = byLid.get(lid);
     if (!agg || !agg.role) continue;
     targetRows++;
+
+    // restrictTo指定時: 対象外の行はセルを変更せず元のまま残す(承認分だけ反映)
+    if (restrictTo && !restrictTo.has(lid)) continue;
 
     const memberLabel = buildMemberLabel(agg.members);
 

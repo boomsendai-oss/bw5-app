@@ -1,304 +1,306 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Upload, Download, ArrowLeft, AlertTriangle, History } from 'lucide-react';
+import { ArrowLeft, Check, X, CloudUpload, History, RefreshCw, ChevronDown } from 'lucide-react';
 
 type Change = {
+  id: number;
   lstep_id: string;
   role: string;
   member_label: string;
   current_display: string;
   new_display: string;
-  changed: boolean;
+  status: 'pending' | 'approved' | 'rejected' | 'uploaded';
 };
 
-type PreviewResponse = {
-  ok: boolean;
-  summary: {
-    total_rows: number;
-    target_rows: number;
-    updated_rows: number;
-    unchanged_rows: number;
-  };
-  warnings: string[];
-  changes: Change[];
+type Batch = {
+  id: number;
+  total_rows: number;
+  target_rows: number;
+  changed_rows: number;
+  status: string;
+  created_at: string;
 };
+
+type Counts = { pending: number; approved: number; rejected: number; uploaded: number };
 
 type LogRow = {
   id: number;
   action: string;
   target_rows: number;
   updated_rows: number;
-  total_rows: number;
   created_at: string;
 };
 
-const TRANSFORM_URL = '/api/staff/operations/lstep-transform';
+const BATCH_URL = '/api/staff/operations/lstep-batch';
+const APPROVE_URL = '/api/staff/operations/lstep-approve';
+const LOG_URL = '/api/staff/operations/lstep-transform';
 
 export default function LstepUpdatePage() {
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<PreviewResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [batch, setBatch] = useState<Batch | null>(null);
+  const [changes, setChanges] = useState<Change[]>([]);
+  const [counts, setCounts] = useState<Counts | null>(null);
+  const [pendingUploadTotal, setPendingUploadTotal] = useState(0);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [working, setWorking] = useState(false);
   const [log, setLog] = useState<LogRow[]>([]);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [showManual, setShowManual] = useState(false);
 
-  const loadLog = async () => {
-    try {
-      const res = await fetch(TRANSFORM_URL);
-      if (res.ok) {
-        const data = await res.json();
-        setLog(data.log ?? []);
-      }
-    } catch {
-      /* noop */
-    }
-  };
-
-  useEffect(() => {
-    loadLog();
-  }, []);
-
-  const runPreview = async () => {
-    if (!file) {
-      toast.error('LstepのフルエクスポートCSVを選択してください');
-      return;
-    }
+  const load = useCallback(async () => {
     setLoading(true);
-    setPreview(null);
     try {
-      const fd = new FormData();
-      fd.append('lstep', file);
-      const res = await fetch(`${TRANSFORM_URL}?mode=preview`, { method: 'POST', body: fd });
+      const res = await fetch(BATCH_URL);
       const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error ?? 'プレビュー生成に失敗しました');
-        if (data.warnings) setPreview({ ok: false, summary: { total_rows: 0, target_rows: 0, updated_rows: 0, unchanged_rows: 0 }, warnings: data.warnings, changes: [] });
-        return;
-      }
-      setPreview(data);
-      toast.success(`${data.summary.updated_rows}件の表示名が更新されます`);
+      setBatch(data.batch ?? null);
+      const ch: Change[] = data.changes ?? [];
+      setChanges(ch);
+      setCounts(data.counts ?? null);
+      setPendingUploadTotal(data.pending_upload_total ?? data.counts?.approved ?? 0);
+      // 未判断(pending)を既定で全選択
+      setSelected(new Set(ch.filter((c) => c.status === 'pending').map((c) => c.id)));
     } catch (e) {
-      toast.error(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+      toast.error(`読み込み失敗: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const loadLog = useCallback(async () => {
+    try {
+      const res = await fetch(LOG_URL);
+      if (res.ok) setLog((await res.json()).log ?? []);
+    } catch { /* noop */ }
+  }, []);
+
+  useEffect(() => {
+    load();
+    loadLog();
+  }, [load, loadLog]);
+
+  const toggle = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
-  const generateCsv = async () => {
-    if (!file) return;
-    setGenerating(true);
+  const pendingChanges = changes.filter((c) => c.status === 'pending');
+  const allPendingSelected = pendingChanges.length > 0 && pendingChanges.every((c) => selected.has(c.id));
+
+  const toggleAll = () => {
+    if (allPendingSelected) setSelected(new Set());
+    else setSelected(new Set(pendingChanges.map((c) => c.id)));
+  };
+
+  const decide = async (action: 'approve' | 'reject') => {
+    const ids = [...selected];
+    if (ids.length === 0) {
+      toast.error('対象を選択してください');
+      return;
+    }
+    setWorking(true);
     try {
-      const fd = new FormData();
-      fd.append('lstep', file);
-      const res = await fetch(`${TRANSFORM_URL}?mode=csv`, { method: 'POST', body: fd });
+      const res = await fetch(APPROVE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ids }),
+      });
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        toast.error(data.error ?? 'CSV生成に失敗しました');
+        toast.error(data.error ?? '更新に失敗しました');
         return;
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'lstep_import_ready.csv';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      toast.success('インポート用CSVをダウンロードしました');
-      loadLog();
+      toast.success(action === 'approve' ? `${data.updated}件を承認しました` : `${data.updated}件を却下しました`);
+      await load();
     } catch (e) {
       toast.error(`エラー: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
-      setGenerating(false);
+      setWorking(false);
     }
   };
 
   const roleBadge = (role: string) => {
-    const color =
+    const cls =
       role === '本人' ? 'bg-blue-100 text-blue-700' : role === '保護者' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700';
-    return <span className={`inline-block rounded px-1.5 py-0.5 text-xs ${color}`}>{role}</span>;
+    return <span className={`inline-block shrink-0 rounded px-1.5 py-0.5 text-xs ${cls}`}>{role}</span>;
+  };
+
+  const onManualUpload = async (file: File) => {
+    setWorking(true);
+    try {
+      const fd = new FormData();
+      fd.append('lstep', file);
+      const res = await fetch(`${BATCH_URL}`, { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? 'バッチ作成に失敗しました');
+        return;
+      }
+      if (!data.batch_id) toast.info(data.message ?? '変更はありませんでした');
+      else toast.success(`承認待ちバッチを作成 (${data.summary.changed}件)`);
+      await load();
+    } catch (e) {
+      toast.error(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setWorking(false);
+    }
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
-      <div className="flex items-center gap-3">
+    <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
+      <div className="flex items-center gap-2">
         <Link href="/staff/operations">
           <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            運用
+            <ArrowLeft className="mr-1 h-4 w-4" />運用
           </Button>
         </Link>
-        <h1 className="text-xl font-bold sm:text-2xl">LSTEP表示名 一括更新</h1>
+        <h1 className="text-xl font-bold">LSTEP表示名 更新</h1>
+        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => { load(); loadLog(); }}>
+          <RefreshCw className="h-4 w-4" />
+        </Button>
       </div>
 
-      <Card className="border-orange-200 bg-orange-50/50">
-        <CardContent className="pt-6 text-sm text-gray-700">
-          <p className="mb-2 font-semibold text-orange-700">この画面の使い方</p>
-          <ol className="list-decimal space-y-1 pl-5">
-            <li>Lstep管理画面「友だちリスト → CSV操作 → <b>CSVエクスポート</b>」でフルCSVを取得</li>
-            <li>そのCSVをここにアップロードして <b>変更プレビュー</b> を確認</li>
-            <li>内容が正しければ「インポート用CSVを生成」→ Lstepの「<b>CSVインポート</b>」に流す</li>
-          </ol>
-          <p className="mt-2 text-xs text-gray-500">
-            ※ 紐付け(member_lstep_links)を元にシステム表示名【本人】/【保護者】/【講師】を自動生成します。
-            元CSVの列構成・タグID行・左1列・上2行は変更しません(Lstep制約準拠)。
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Step 1: アップロード */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">1. LstepフルエクスポートCSVをアップロード</CardTitle>
-          <CardDescription>cp932(Shift-JIS)・2行ヘッダー・56列のフルCSV</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv"
-            onChange={(e) => {
-              setFile(e.target.files?.[0] ?? null);
-              setPreview(null);
-            }}
-            className="block w-full text-sm file:mr-3 file:rounded file:border-0 file:bg-orange-500 file:px-3 file:py-1.5 file:text-white hover:file:bg-orange-600"
-          />
-          <Button onClick={runPreview} disabled={!file || loading} className="bg-orange-500 hover:bg-orange-600">
-            <Upload className="mr-1 h-4 w-4" />
-            {loading ? 'プレビュー生成中...' : '変更プレビューを表示'}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* warnings */}
-      {preview && preview.warnings.length > 0 && (
-        <Card className="border-amber-300 bg-amber-50">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-2 text-sm text-amber-800">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <ul className="space-y-1">
-                {preview.warnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
+      {/* アップロード待ち通知 */}
+      {pendingUploadTotal > 0 && (
+        <Card className="border-orange-300 bg-orange-50">
+          <CardContent className="flex items-center gap-3 py-4 text-sm">
+            <CloudUpload className="h-5 w-5 shrink-0 text-orange-600" />
+            <div>
+              <b className="text-orange-700">承認済み {pendingUploadTotal}件</b> がアップロード待ちです。
+              <span className="text-gray-600">次回Claudeがまとめて LSTEP に反映します（TAROさんの操作は不要）。</span>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Step 2: プレビュー */}
-      {preview && preview.ok && (
+      {loading ? (
+        <p className="py-10 text-center text-gray-400">読み込み中...</p>
+      ) : !batch ? (
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">2. 変更プレビュー</CardTitle>
+          <CardContent className="py-10 text-center text-sm text-gray-500">
+            承認待ちの変更はありません。<br />
+            新しい紐付けがあると、Claudeがここに「承認待ち」を用意します。
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              承認待ちの変更
+              {counts && <Badge className="bg-orange-100 text-orange-700">{counts.pending}件</Badge>}
+            </CardTitle>
+            <p className="text-xs text-gray-500">
+              バッチ#{batch.id}・{batch.created_at}（対象{batch.target_rows}件中 変更{batch.changed_rows}件）。
+              内容を確認して、問題なければ承認してください。
+            </p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Stat label="データ行" value={preview.summary.total_rows} />
-              <Stat label="紐付けあり" value={preview.summary.target_rows} />
-              <Stat label="表示名が変わる" value={preview.summary.updated_rows} highlight />
-              <Stat label="変更なし" value={preview.summary.unchanged_rows} />
-            </div>
-
-            {preview.changes.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-gray-500">
-                      <th className="py-2 pr-2">役割</th>
-                      <th className="py-2 pr-2">現在の表示名</th>
-                      <th className="py-2 pr-2">→ 新しい表示名</th>
-                      <th className="py-2 pr-2">状態</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.changes.map((c) => (
-                      <tr key={c.lstep_id} className={`border-b ${c.changed ? '' : 'text-gray-400'}`}>
-                        <td className="py-1.5 pr-2">{roleBadge(c.role)}</td>
-                        <td className="py-1.5 pr-2 text-gray-500">{c.current_display || '(空)'}</td>
-                        <td className="py-1.5 pr-2 font-medium">{c.new_display}</td>
-                        <td className="py-1.5 pr-2">
-                          {c.changed ? (
-                            <Badge className="bg-orange-100 text-orange-700">変更</Badge>
-                          ) : (
-                            <span className="text-xs text-gray-400">同じ</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500">変更対象の友だちがありません。</p>
+          <CardContent className="space-y-3">
+            {pendingChanges.length > 0 && (
+              <label className="flex cursor-pointer items-center gap-2 border-b pb-2 text-sm font-medium">
+                <input type="checkbox" checked={allPendingSelected} onChange={toggleAll} className="h-4 w-4 accent-orange-500" />
+                すべて選択（{selected.size}/{pendingChanges.length}）
+              </label>
             )}
 
-            <div className="flex items-center gap-2 border-t pt-4">
-              <Button onClick={generateCsv} disabled={generating} className="bg-orange-500 hover:bg-orange-600">
-                <Download className="mr-1 h-4 w-4" />
-                {generating ? '生成中...' : 'インポート用CSVを生成'}
-              </Button>
-              <span className="text-xs text-gray-500">→ Lstep「CSVインポート」にアップロードして反映</span>
+            <div className="space-y-1.5">
+              {changes.map((c) => {
+                const decided = c.status !== 'pending';
+                return (
+                  <div
+                    key={c.id}
+                    className={`flex items-start gap-2 rounded-md border p-2 text-sm ${
+                      c.status === 'approved' ? 'border-green-200 bg-green-50' : c.status === 'rejected' ? 'border-gray-200 bg-gray-50 opacity-60' : c.status === 'uploaded' ? 'border-blue-200 bg-blue-50' : ''
+                    }`}
+                  >
+                    {!decided && (
+                      <input
+                        type="checkbox"
+                        checked={selected.has(c.id)}
+                        onChange={() => toggle(c.id)}
+                        className="mt-1 h-4 w-4 shrink-0 accent-orange-500"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-0.5 flex items-center gap-1.5">
+                        {roleBadge(c.role)}
+                        {c.status === 'approved' && <Badge className="bg-green-100 text-green-700">承認済</Badge>}
+                        {c.status === 'rejected' && <Badge className="bg-gray-200 text-gray-600">却下</Badge>}
+                        {c.status === 'uploaded' && <Badge className="bg-blue-100 text-blue-700">反映済</Badge>}
+                      </div>
+                      <div className="text-gray-400 line-through">{c.current_display || '(空)'}</div>
+                      <div className="font-medium text-gray-900">{c.new_display}</div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
+
+            {pendingChanges.length > 0 && (
+              <div className="flex flex-wrap gap-2 border-t pt-3">
+                <Button onClick={() => decide('approve')} disabled={working || selected.size === 0} className="bg-orange-500 hover:bg-orange-600">
+                  <Check className="mr-1 h-4 w-4" />
+                  選択した{selected.size}件を承認
+                </Button>
+                <Button onClick={() => decide('reject')} disabled={working || selected.size === 0} variant="outline">
+                  <X className="mr-1 h-4 w-4" />却下
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
+
+      {/* 手動でエクスポートから作成（フォールバック/テスト用） */}
+      <div>
+        <button onClick={() => setShowManual((v) => !v)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
+          <ChevronDown className={`h-3 w-3 transition-transform ${showManual ? 'rotate-180' : ''}`} />
+          手動でエクスポートCSVから承認待ちを作る（通常はClaudeが自動作成）
+        </button>
+        {showManual && (
+          <Card className="mt-2">
+            <CardContent className="space-y-2 py-4 text-sm">
+              <p className="text-xs text-gray-500">LstepフルエクスポートCSV(cp932)をアップロードすると、変更点を計算して承認待ちにします。</p>
+              <input
+                type="file"
+                accept=".csv"
+                disabled={working}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) onManualUpload(f); }}
+                className="block w-full text-sm file:mr-3 file:rounded file:border-0 file:bg-gray-200 file:px-3 file:py-1.5 hover:file:bg-gray-300"
+              />
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* 履歴 */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <History className="h-4 w-4" />
-            更新履歴
-          </CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base"><History className="h-4 w-4" />反映履歴</CardTitle>
         </CardHeader>
         <CardContent>
           {log.length === 0 ? (
             <p className="text-sm text-gray-500">まだ履歴がありません。</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-gray-500">
-                    <th className="py-2 pr-2">日時</th>
-                    <th className="py-2 pr-2">アクション</th>
-                    <th className="py-2 pr-2">対象</th>
-                    <th className="py-2 pr-2">変更</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {log.map((r) => (
-                    <tr key={r.id} className="border-b">
-                      <td className="py-1.5 pr-2">{r.created_at}</td>
-                      <td className="py-1.5 pr-2">
-                        {r.action === 'generate_csv' ? 'CSV生成' : r.action === 'upload_confirmed' ? 'アップロード反映' : r.action}
-                      </td>
-                      <td className="py-1.5 pr-2">{r.target_rows}</td>
-                      <td className="py-1.5 pr-2 font-medium text-orange-600">{r.updated_rows}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-1 text-sm">
+              {log.map((r) => (
+                <div key={r.id} className="flex items-center justify-between border-b py-1">
+                  <span className="text-gray-500">{r.created_at}</span>
+                  <span>{r.action === 'upload_confirmed' ? 'LSTEP反映' : r.action === 'generate_csv' ? 'CSV生成' : r.action}</span>
+                  <span className="font-medium text-orange-600">{r.updated_rows}件</span>
+                </div>
+              ))}
             </div>
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function Stat({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
-  return (
-    <div className={`rounded-lg border p-3 text-center ${highlight ? 'border-orange-300 bg-orange-50' : 'bg-gray-50'}`}>
-      <div className={`text-2xl font-bold ${highlight ? 'text-orange-600' : 'text-gray-700'}`}>{value}</div>
-      <div className="text-xs text-gray-500">{label}</div>
     </div>
   );
 }
