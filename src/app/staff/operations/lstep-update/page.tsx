@@ -78,7 +78,7 @@ export default function LstepUpdatePage() {
   const [suggestions, setSuggestions] = useState<LinkSuggestion[]>([]);
   const [noCandidates, setNoCandidates] = useState<NoCandidate[]>([]);
   const [linkLoading, setLinkLoading] = useState(true);
-  const [linkWorking, setLinkWorking] = useState(false);
+  const [workingKey, setWorkingKey] = useState<string | null>(null); // 承認処理中のカード(他は操作可)
   const [parentNames, setParentNames] = useState<Record<string, string>>({}); // 親名入力 (key: member:lstep)
 
   const load = useCallback(async () => {
@@ -130,7 +130,8 @@ export default function LstepUpdatePage() {
   // 紐付け承認: link確定 → 表示名候補を自動更新 → 両セクション再読込
   // relationOverride: 要確認(13〜17歳等)のとき、TAROが本人/保護者を選んで承認する
   const approveLink = async (s: LinkSuggestion, c: LinkCandidate, relationOverride?: '本人' | '保護者') => {
-    setLinkWorking(true);
+    const key = `${s.member_id}:${c.lstep_id}`;
+    setWorkingKey(key);
     try {
       const res = await fetch(LINK_URL, {
         method: 'POST',
@@ -141,7 +142,7 @@ export default function LstepUpdatePage() {
           relation: relationOverride ?? c.relation_suggestion,
           confidence: c.confidence === '高' ? '確実' : '推定',
           parent_name:
-            parentNames[`${s.member_id}:${c.lstep_id}`] ??
+            parentNames[key] ??
             `${s.full_name_kana.split(/[\s　]+/)[0] ?? ''} ???`.trim(),
         }),
       });
@@ -151,13 +152,15 @@ export default function LstepUpdatePage() {
         return;
       }
       toast.success(`${s.full_name_kana} を紐付けました`);
-      // 表示名の変更候補を作り直す(承認済み・反映済みは引き継がれる)
-      await fetch(`${BATCH_URL}?mode=refresh`, { method: 'POST' });
-      await Promise.all([loadSuggestions(), load()]);
+      // サクサク動作: カードを即座に消し、②の更新は裏で走らせる(他のカードは待たせない)
+      setSuggestions((prev) => prev.filter((x) => x.member_id !== s.member_id));
+      fetch(`${BATCH_URL}?mode=refresh`, { method: 'POST' })
+        .then(() => load())
+        .catch(() => {/* 裏更新の失敗は次回リロードで回復 */});
     } catch (e) {
       toast.error(`エラー: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
-      setLinkWorking(false);
+      setWorkingKey(null);
     }
   };
 
@@ -293,56 +296,41 @@ export default function LstepUpdatePage() {
                           // 親名のデフォルト: 子の姓 + ??? (苗字はHACOMONOから分かる。名が不明でも承認可)
                           const surname = s.full_name_kana.split(/[\s　]+/)[0] ?? '';
                           const parentVal = parentNames[key] ?? (surname ? `${surname} ???` : '');
-                          const grayZone = c.line_type === '要確認';
-                          const asParent = grayZone || c.relation_suggestion === '保護者';
+                          const busy = workingKey === key;
+                          const rec = c.line_type === '要確認' ? null : c.relation_suggestion; // システムのおすすめ
                           const previewParent = `【保護者】${parentVal || '(親名を入力)'} / 子:${s.full_name_kana}`;
                           const previewSelf = `【本人】${s.full_name_kana}`;
                           return (
                             <div className="w-full space-y-1.5 border-t pt-1.5">
-                              {/* 最終的にLINEに付く表示名のプレビュー */}
-                              <div className="text-xs">
-                                <span className="text-gray-400">承認後の表示名: </span>
-                                {grayZone ? (
-                                  <>
-                                    <span className="font-semibold text-blue-700">{previewSelf}</span>
-                                    <span className="mx-1 text-gray-400">または</span>
-                                    <span className="font-semibold text-green-700">{previewParent}</span>
-                                  </>
-                                ) : (
-                                  <span className="font-semibold text-gray-900">
-                                    {c.relation_suggestion === '保護者' ? previewParent : previewSelf}
-                                  </span>
-                                )}
-                              </div>
-                              {asParent && (
-                                <input
-                                  type="text"
-                                  value={parentVal}
-                                  placeholder="親の名前 (不明なら 姓 ??? のままでOK)"
-                                  onChange={(e) => setParentNames((prev) => ({ ...prev, [key]: e.target.value }))}
-                                  className="w-full rounded border px-2 py-1 text-sm"
-                                />
-                              )}
-                              {grayZone ? (
-                                <div className="flex flex-wrap gap-1">
-                                  <Button size="sm" disabled={linkWorking} onClick={() => approveLink(s, c, '本人')} className="bg-blue-500 hover:bg-blue-600">
-                                    本人として承認
-                                  </Button>
-                                  <Button size="sm" disabled={linkWorking} onClick={() => approveLink(s, c, '保護者')} className="bg-green-600 hover:bg-green-700">
-                                    保護者として承認
-                                  </Button>
+                              {/* 最終的にLINEに付く表示名のプレビュー(本人/保護者の両方) */}
+                              <div className="space-y-0.5 text-xs">
+                                <div>
+                                  <span className="text-gray-400">本人なら: </span>
+                                  <span className="font-semibold text-blue-700">{previewSelf}</span>
                                 </div>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  disabled={linkWorking}
-                                  onClick={() => approveLink(s, c)}
-                                  className="bg-orange-500 hover:bg-orange-600"
-                                >
-                                  <Check className="mr-1 h-3.5 w-3.5" />
-                                  このLINEで承認（{c.relation_suggestion}）
+                                <div>
+                                  <span className="text-gray-400">保護者なら: </span>
+                                  <span className="font-semibold text-green-700">{previewParent}</span>
+                                </div>
+                              </div>
+                              <input
+                                type="text"
+                                value={parentVal}
+                                placeholder="親の名前 (不明なら 姓 ??? のままでOK)"
+                                onChange={(e) => setParentNames((prev) => ({ ...prev, [key]: e.target.value }))}
+                                className="w-full rounded border px-2 py-1 text-sm"
+                              />
+                              <div className="flex flex-wrap items-center gap-1">
+                                <Button size="sm" disabled={busy} onClick={() => approveLink(s, c, '本人')}
+                                  className={rec === '本人' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'}>
+                                  {busy ? '処理中...' : `本人として承認${rec === '本人' ? '★' : ''}`}
                                 </Button>
-                              )}
+                                <Button size="sm" disabled={busy} onClick={() => approveLink(s, c, '保護者')}
+                                  className={rec === '保護者' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'}>
+                                  {busy ? '処理中...' : `保護者として承認${rec === '保護者' ? '★' : ''}`}
+                                </Button>
+                                {rec && <span className="text-[10px] text-gray-400">★=おすすめ</span>}
+                              </div>
                             </div>
                           );
                         })()}
