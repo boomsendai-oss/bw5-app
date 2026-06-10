@@ -132,6 +132,7 @@ async function handleImport(req: NextRequest) {
     else if ((r.relation ?? '').trim() === '本人') memberByLid.set(r.lstep_id, r.member_id);
   }
 
+  const customerKanaByLid = new Map<string, string>(); // lstep_id → お客さまカナ
   let newCount = 0;
   let updateCount = 0;
   let canceledCount = 0;
@@ -173,6 +174,16 @@ async function handleImport(req: NextRequest) {
     const ageRaw = pick(r, ['ご年齢', '年齢', 'age']);
     const ageNum = ageRaw ? parseInt(ageRaw.replace(/[^0-9]/g, ''), 10) : NaN;
     const applicantAge = Number.isFinite(ageNum) && ageNum > 0 && ageNum < 120 ? ageNum : null;
+
+    // 「お客さま」列 = LINEアカウント持ち主の「漢字名/カナ名」。
+    // カナ部分を lstep_friends.customer_kana に保存 (保護者名のプリセットに使う)
+    const customerRaw = pick(r, ['お客さま', '顧客名']) || '';
+    const customerKana = customerRaw.includes('/')
+      ? customerRaw.split('/').pop()!.trim()
+      : '';
+    if (lstepId && customerKana) {
+      customerKanaByLid.set(lstepId, customerKana);
+    }
 
     let memberId: number | null = null;
     if (lstepId) {
@@ -282,6 +293,15 @@ async function handleImport(req: NextRequest) {
 
   for (let i = 0; i < stmts.length; i += 50) {
     await batch(stmts.slice(i, i + 50));
+  }
+
+  // お客さまカナを lstep_friends.customer_kana に保存 (親名プリセット用。既存値があれば上書き)
+  const kanaStmts = Array.from(customerKanaByLid.entries()).map(([lid, kana]) => ({
+    sql: `UPDATE lstep_friends SET customer_kana = ? WHERE lstep_id = ?`,
+    args: [kana, lid] as (string | number | null)[],
+  }));
+  for (let i = 0; i < kanaStmts.length; i += 50) {
+    await batch(kanaStmts.slice(i, i + 50));
   }
 
   // 当月サマリ

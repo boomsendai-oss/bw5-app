@@ -42,6 +42,7 @@ type LinkCandidate = {
   lstep_id: string;
   system_display_name: string;
   line_register_name: string;
+  customer_kana?: string;
   confidence: '高' | '中';
   reasons: string[];
   relation_suggestion: '本人' | '保護者' | '講師';
@@ -78,6 +79,7 @@ export default function LstepUpdatePage() {
   const [noCandidates, setNoCandidates] = useState<NoCandidate[]>([]);
   const [linkLoading, setLinkLoading] = useState(true);
   const [linkWorking, setLinkWorking] = useState(false);
+  const [parentNames, setParentNames] = useState<Record<string, string>>({}); // 親名入力 (key: member:lstep)
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,6 +140,7 @@ export default function LstepUpdatePage() {
           lstep_id: c.lstep_id,
           relation: relationOverride ?? c.relation_suggestion,
           confidence: c.confidence === '高' ? '確実' : '推定',
+          parent_name: parentNames[`${s.member_id}:${c.lstep_id}`] ?? c.customer_kana ?? '',
         }),
       });
       const data = await res.json();
@@ -283,30 +286,62 @@ export default function LstepUpdatePage() {
                           )}
                           <div className="text-xs text-gray-400">{c.reasons.slice(0, 2).join('、')}</div>
                         </div>
-                        {c.line_type === '要確認' ? (
-                          // 13〜17歳等: 本人LINEか親のLINEか断定できないので選んで承認
-                          <div className="flex flex-col gap-1">
-                            <span className="text-[10px] text-amber-600">このLINEは本人?保護者?</span>
-                            <div className="flex gap-1">
-                              <Button size="sm" disabled={linkWorking} onClick={() => approveLink(s, c, '本人')} className="bg-blue-500 hover:bg-blue-600">
-                                本人として承認
-                              </Button>
-                              <Button size="sm" disabled={linkWorking} onClick={() => approveLink(s, c, '保護者')} className="bg-green-600 hover:bg-green-700">
-                                保護者として承認
-                              </Button>
+                        {(() => {
+                          const key = `${s.member_id}:${c.lstep_id}`;
+                          const parentVal = parentNames[key] ?? c.customer_kana ?? '';
+                          const grayZone = c.line_type === '要確認';
+                          const asParent = grayZone || c.relation_suggestion === '保護者';
+                          const previewParent = `【保護者】${parentVal || '(親名を入力)'} / 子:${s.full_name_kana}`;
+                          const previewSelf = `【本人】${s.full_name_kana}`;
+                          return (
+                            <div className="w-full space-y-1.5 border-t pt-1.5">
+                              {/* 最終的にLINEに付く表示名のプレビュー */}
+                              <div className="text-xs">
+                                <span className="text-gray-400">承認後の表示名: </span>
+                                {grayZone ? (
+                                  <>
+                                    <span className="font-semibold text-blue-700">{previewSelf}</span>
+                                    <span className="mx-1 text-gray-400">または</span>
+                                    <span className="font-semibold text-green-700">{previewParent}</span>
+                                  </>
+                                ) : (
+                                  <span className="font-semibold text-gray-900">
+                                    {c.relation_suggestion === '保護者' ? previewParent : previewSelf}
+                                  </span>
+                                )}
+                              </div>
+                              {asParent && (
+                                <input
+                                  type="text"
+                                  value={parentVal}
+                                  placeholder="親の名前を入力 (例: ハマダ カナコ)"
+                                  onChange={(e) => setParentNames((prev) => ({ ...prev, [key]: e.target.value }))}
+                                  className="w-full rounded border px-2 py-1 text-sm"
+                                />
+                              )}
+                              {grayZone ? (
+                                <div className="flex flex-wrap gap-1">
+                                  <Button size="sm" disabled={linkWorking} onClick={() => approveLink(s, c, '本人')} className="bg-blue-500 hover:bg-blue-600">
+                                    本人として承認
+                                  </Button>
+                                  <Button size="sm" disabled={linkWorking || (asParent && !parentVal)} onClick={() => approveLink(s, c, '保護者')} className="bg-green-600 hover:bg-green-700">
+                                    保護者として承認
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  disabled={linkWorking || (c.relation_suggestion === '保護者' && !parentVal)}
+                                  onClick={() => approveLink(s, c)}
+                                  className="bg-orange-500 hover:bg-orange-600"
+                                >
+                                  <Check className="mr-1 h-3.5 w-3.5" />
+                                  このLINEで承認（{c.relation_suggestion}）
+                                </Button>
+                              )}
                             </div>
-                          </div>
-                        ) : (
-                          <Button
-                            size="sm"
-                            disabled={linkWorking}
-                            onClick={() => approveLink(s, c)}
-                            className="bg-orange-500 hover:bg-orange-600"
-                          >
-                            <Check className="mr-1 h-3.5 w-3.5" />
-                            このLINEで承認（{c.relation_suggestion}）
-                          </Button>
-                        )}
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>

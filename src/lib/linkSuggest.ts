@@ -18,6 +18,7 @@ export type LstepFriend = {
   system_display_name: string | null;
   line_register_name: string | null;
   real_name: string | null;
+  customer_kana: string | null;
 };
 
 export type Member = {
@@ -40,6 +41,7 @@ export type LinkCandidate = {
   lstep_id: string;
   system_display_name: string;
   line_register_name: string;
+  customer_kana: string; // 体験予約CSV由来の持ち主カナ(親名プリセット用)
   score: number;
   confidence: '高' | '中';
   reasons: string[];
@@ -245,7 +247,7 @@ export async function buildLinkSuggestions(
 
   // Lstep友だち (フォールバック)
   const friends = (await getAll(
-    `SELECT lstep_id, display_name, system_display_name, line_register_name, real_name
+    `SELECT lstep_id, display_name, system_display_name, line_register_name, real_name, customer_kana
      FROM lstep_friends WHERE COALESCE(blocked,0) = 0`
   )) as LstepFriend[];
 
@@ -290,6 +292,7 @@ export async function buildLinkSuggestions(
         lstep_id: lid,
         system_display_name: friend?.system_display_name ?? friend?.display_name ?? '',
         line_register_name: friend?.line_register_name ?? '',
+        customer_kana: friend?.customer_kana ?? '',
         score: 120, // 体験予約一致は最高信頼
         confidence: cls.line_type === '要確認' ? '中' : '高',
         reasons,
@@ -319,6 +322,7 @@ export async function buildLinkSuggestions(
         lstep_id: f.lstep_id,
         system_display_name: f.system_display_name ?? '',
         line_register_name: f.line_register_name ?? '',
+        customer_kana: f.customer_kana ?? '',
         score: s.score,
         confidence: s.score >= 100 ? '高' : '中',
         reasons: [...s.reasons, `LINE種別: ${cls.line_type}(${cls.reason})`],

@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
     lstep_id?: unknown;
     relation?: unknown;
     confidence?: unknown;
+    parent_name?: unknown; // 保護者承認時に運営が入力した親名(カナ推奨)
   };
   try {
     body = await req.json();
@@ -50,6 +51,14 @@ export async function POST(req: NextRequest) {
          confirmed_at = CURRENT_TIMESTAMP`,
       [memberId, lstepId, relation, confidence]
     );
+    // 親名が入力されていれば lstep_friends.parent_name に保存 (表示名生成で最優先)
+    const parentName = typeof body.parent_name === 'string' ? body.parent_name.trim() : '';
+    if (parentName) {
+      await execute(`UPDATE lstep_friends SET parent_name = ? WHERE lstep_id = ?`, [
+        parentName,
+        lstepId,
+      ]);
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

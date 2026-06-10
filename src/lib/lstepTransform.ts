@@ -42,6 +42,8 @@ type LinkRow = {
   system_display_name: string | null;
   line_register_name: string | null;
   display_name: string | null;
+  parent_name: string | null;
+  customer_kana: string | null;
   full_name_kana: string | null;
   hacomono_kaiin_no: string | null;
   birthday: string | null;
@@ -56,6 +58,8 @@ type AggMember = { kana: string; kaiin_no: string | null; birthday: string | nul
 type Agg = {
   system_display_name: string;
   line_name: string; // LINE登録名(無ければ表示名)
+  parent_name: string; // 運営が入力した親名(最優先)
+  customer_kana: string; // 体験予約CSV由来の持ち主カナ
   owners: AggMember[];
   children: AggMember[];
   teacher: boolean;
@@ -99,6 +103,7 @@ async function buildAggByLstepId(): Promise<Map<string, Agg>> {
   const linkRows = (await getAll(
     `SELECT lf.lstep_id, lf.system_display_name, lf.role,
             lf.line_register_name, lf.display_name,
+            lf.parent_name, lf.customer_kana,
             ml.relation,
             m.full_name_kana, m.hacomono_kaiin_no, m.birthday
      FROM lstep_friends lf
@@ -113,6 +118,8 @@ async function buildAggByLstepId(): Promise<Map<string, Agg>> {
       byLid.set(lid, {
         system_display_name: r.system_display_name ?? '',
         line_name: (r.line_register_name ?? '').trim() || (r.display_name ?? '').trim(),
+        parent_name: (r.parent_name ?? '').trim(),
+        customer_kana: (r.customer_kana ?? '').trim(),
         owners: [],
         children: [],
         teacher: false,
@@ -237,9 +244,12 @@ export async function transformLstepGrid(
       // 既存表示名が無い新規アカウントは LINE登録名(無ければ表示名)を親名に使う
       const rowLineNameForParent =
         lineNameCol !== undefined ? (row[lineNameCol] ?? '').trim() : '';
+      // 優先順位: 運営入力(parent_name) > 既存表示名から引継 > 予約CSVのカナ > LINE名
       const parent =
+        agg.parent_name ||
         extractParentName(currentDisplay) ||
         extractParentName(agg.system_display_name) ||
+        agg.customer_kana ||
         (rowLineNameForParent || agg.line_name || '').replace(/[\s　]+/g, ' ').trim() ||
         '???';
       newDisplay = childLabel ? `【保護者】${parent} / 子:${childLabel}` : '';
