@@ -140,7 +140,9 @@ export default function LstepUpdatePage() {
           lstep_id: c.lstep_id,
           relation: relationOverride ?? c.relation_suggestion,
           confidence: c.confidence === '高' ? '確実' : '推定',
-          parent_name: parentNames[`${s.member_id}:${c.lstep_id}`] ?? c.customer_kana ?? '',
+          parent_name:
+            parentNames[`${s.member_id}:${c.lstep_id}`] ??
+            `${s.full_name_kana.split(/[\s　]+/)[0] ?? ''} ???`.trim(),
         }),
       });
       const data = await res.json();
@@ -288,7 +290,9 @@ export default function LstepUpdatePage() {
                         </div>
                         {(() => {
                           const key = `${s.member_id}:${c.lstep_id}`;
-                          const parentVal = parentNames[key] ?? c.customer_kana ?? '';
+                          // 親名のデフォルト: 子の姓 + ??? (苗字はHACOMONOから分かる。名が不明でも承認可)
+                          const surname = s.full_name_kana.split(/[\s　]+/)[0] ?? '';
+                          const parentVal = parentNames[key] ?? (surname ? `${surname} ???` : '');
                           const grayZone = c.line_type === '要確認';
                           const asParent = grayZone || c.relation_suggestion === '保護者';
                           const previewParent = `【保護者】${parentVal || '(親名を入力)'} / 子:${s.full_name_kana}`;
@@ -314,7 +318,7 @@ export default function LstepUpdatePage() {
                                 <input
                                   type="text"
                                   value={parentVal}
-                                  placeholder="親の名前を入力 (例: ハマダ カナコ)"
+                                  placeholder="親の名前 (不明なら 姓 ??? のままでOK)"
                                   onChange={(e) => setParentNames((prev) => ({ ...prev, [key]: e.target.value }))}
                                   className="w-full rounded border px-2 py-1 text-sm"
                                 />
@@ -324,14 +328,14 @@ export default function LstepUpdatePage() {
                                   <Button size="sm" disabled={linkWorking} onClick={() => approveLink(s, c, '本人')} className="bg-blue-500 hover:bg-blue-600">
                                     本人として承認
                                   </Button>
-                                  <Button size="sm" disabled={linkWorking || (asParent && !parentVal)} onClick={() => approveLink(s, c, '保護者')} className="bg-green-600 hover:bg-green-700">
+                                  <Button size="sm" disabled={linkWorking} onClick={() => approveLink(s, c, '保護者')} className="bg-green-600 hover:bg-green-700">
                                     保護者として承認
                                   </Button>
                                 </div>
                               ) : (
                                 <Button
                                   size="sm"
-                                  disabled={linkWorking || (c.relation_suggestion === '保護者' && !parentVal)}
+                                  disabled={linkWorking}
                                   onClick={() => approveLink(s, c)}
                                   className="bg-orange-500 hover:bg-orange-600"
                                 >

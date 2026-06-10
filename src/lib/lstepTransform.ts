@@ -244,14 +244,15 @@ export async function transformLstepGrid(
       // 既存表示名が無い新規アカウントは LINE登録名(無ければ表示名)を親名に使う
       const rowLineNameForParent =
         lineNameCol !== undefined ? (row[lineNameCol] ?? '').trim() : '';
-      // 優先順位: 運営入力(parent_name) > 既存表示名から引継 > 予約CSVのカナ > LINE名
+      // 優先順位: 運営入力(parent_name) > 既存表示名から引継 > LINE名 > 子の姓+???
+      // (予約CSVの「お客さま」は受講する子のカナなので親名には使わない)
+      const childSurname = (agg.children[0]?.kana ?? '').split(/[\s　]+/)[0] ?? '';
       const parent =
         agg.parent_name ||
         extractParentName(currentDisplay) ||
         extractParentName(agg.system_display_name) ||
-        agg.customer_kana ||
         (rowLineNameForParent || agg.line_name || '').replace(/[\s　]+/g, ' ').trim() ||
-        '???';
+        (childSurname ? `${childSurname} ???` : '???');
       newDisplay = childLabel ? `【保護者】${parent} / 子:${childLabel}` : '';
     } else {
       // 講師 / 講師/保護者
