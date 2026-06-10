@@ -18,7 +18,7 @@ import { getAll } from '@/lib/db';
 
 export type LstepChange = {
   lstep_id: string;
-  role: string; // 本人 | 保護者 | 講師
+  role: string; // 本人 | 保護者 | 保護者/本人 | 講師 | 講師/保護者
   member_label: string;
   current_display: string; // 変換前のシステム表示名
   new_display: string; // 変換後のシステム表示名
@@ -44,16 +44,23 @@ type LinkRow = {
   birthday: string | null;
 };
 
+type AggMember = { kana: string; kaiin_no: string | null; birthday: string | null };
+
+// アカウント(lstep_id)単位の集約。relationで区別して保持する。
+//   owners   = relation'本人'  (アカウントの持ち主自身が会員。原則1人)
+//   children = relation'保護者' (持ち主が保護者である子会員。LINE未所持の子はここにぶら下げる)
+//   teacher  = relation'講師'
 type Agg = {
-  role: string; // '本人' | '保護者' | '講師' | ''
   system_display_name: string;
-  members: { kana: string; kaiin_no: string | null; birthday: string | null }[];
+  owners: AggMember[];
+  children: AggMember[];
+  teacher: boolean;
 };
 
-// 既存表示名から保護者名抽出 (例: 「【保護者】タンノ ユカ / 子:...」 → 「タンノ ユカ」)
+// 既存表示名から保護者名抽出 (「【保護者】タンノ ユカ / 子:...」「【保護者/本人】...」両対応)
 function extractParentName(sysName: string): string {
   if (!sysName) return '';
-  const m = sysName.match(/^【保護者】\s*([^\/]+?)\s*\/\s*子[:：]/);
+  const m = sysName.match(/^【保護者(?:\/本人)?】\s*([^\/]+?)\s*\/\s*子[:：]/);
   if (m) return m[1].trim();
   return '';
 }
@@ -99,25 +106,23 @@ async function buildAggByLstepId(): Promise<Map<string, Agg>> {
     const lid = r.lstep_id;
     if (!byLid.has(lid)) {
       byLid.set(lid, {
-        role: '',
         system_display_name: r.system_display_name ?? '',
-        members: [],
+        owners: [],
+        children: [],
+        teacher: false,
       });
     }
     const a = byLid.get(lid)!;
-    // 役割優先順位: 講師 > 保護者 > 本人 (リンクrelationベース、role列はfallback)
     const rel = (r.relation ?? r.role ?? '').trim();
-    if (rel === '講師') a.role = '講師';
-    else if (rel === '保護者' && a.role !== '講師') a.role = '保護者';
-    else if (rel === '本人' && a.role !== '講師' && a.role !== '保護者') a.role = '本人';
-    if (r.full_name_kana) {
-      if (!a.members.some((m) => m.kana === r.full_name_kana)) {
-        a.members.push({
-          kana: r.full_name_kana,
-          kaiin_no: r.hacomono_kaiin_no,
-          birthday: r.birthday,
-        });
-      }
+    if (rel === '講師') a.teacher = true;
+    const mem: AggMember | null = r.full_name_kana
+      ? { kana: r.full_name_kana, kaiin_no: r.hacomono_kaiin_no, birthday: r.birthday }
+      : null;
+    if (!mem) continue;
+    if (rel === '本人' || rel === '講師') {
+      if (!a.owners.some((m) => m.kana === mem.kana)) a.owners.push(mem);
+    } else if (rel === '保護者') {
+      if (!a.children.some((m) => m.kana === mem.kana)) a.children.push(mem);
     }
   }
   return byLid;
@@ -185,34 +190,67 @@ export async function transformLstepGrid(
     totalRows++;
 
     const agg = byLid.get(lid);
-    if (!agg || !agg.role) continue;
+    if (!agg || (agg.owners.length === 0 && agg.children.length === 0)) continue;
     targetRows++;
 
     // restrictTo指定時: 対象外の行はセルを変更せず元のまま残す(承認分だけ反映)
     if (restrictTo && !restrictTo.has(lid)) continue;
 
-    const memberLabel = buildMemberLabel(agg.members);
-
     // 変換対象CSV(=最新のLstepエクスポート)の現在のシステム表示名。
     // 保護者名・講師名は「いま実際にLINEに付いている表示名」から引き継ぐのが正しいので、
     // 行の現在値を最優先で参照し、DB(lstep_friends.system_display_name)はフォールバックにする。
-    // (daily_syncの軽量CSVだとDB側が空になるため、行を優先しないと親名が???になる)
     const currentDisplay = sysNameCol !== undefined ? (row[sysNameCol] ?? '').trim() : '';
 
-    // システム表示名生成
+    // 本人(持ち主)が複数 = 紐付け異常。自動リネームせず要確認として警告
+    if (agg.owners.length > 1 && !agg.teacher) {
+      warnings.push(
+        `要確認: アカウント ${lid} (${currentDisplay || '表示名なし'}) に本人が${agg.owners.length}人紐付いています(${agg.owners.map((o) => o.kana).join('・')})。本人は1人が原則です。紐付けを確認してください。`
+      );
+      continue;
+    }
+
+    const ownerLabel = buildMemberLabel(agg.owners); // 持ち主(会員)の名前
+    const childLabel = buildMemberLabel(agg.children); // 子(LINE未所持会員)の名前
+    const role =
+      agg.teacher && agg.children.length > 0 ? '講師/保護者'
+      : agg.teacher ? '講師'
+      : agg.owners.length > 0 && agg.children.length > 0 ? '保護者/本人'
+      : agg.children.length > 0 ? '保護者'
+      : '本人';
+
+    // システム表示名生成 (ルール: 本人は持ち主1人だけ。子は保護者の「子:」に連名)
     let newDisplay = '';
-    if (agg.role === '本人') {
-      newDisplay = memberLabel ? `【本人】${memberLabel}` : '';
-    } else if (agg.role === '保護者') {
+    if (role === '本人') {
+      newDisplay = ownerLabel ? `【本人】${ownerLabel}` : '';
+    } else if (role === '保護者/本人') {
+      // 持ち主自身も会員 & 子も会員 (例: キクチ リカ)
+      newDisplay = childLabel ? `【保護者/本人】${ownerLabel} / 子:${childLabel}` : `【本人】${ownerLabel}`;
+    } else if (role === '保護者') {
+      // 持ち主は非会員の保護者。親名は現在の表示名から引き継ぐ
       const parent =
         extractParentName(currentDisplay) || extractParentName(agg.system_display_name) || '???';
-      newDisplay = memberLabel ? `【保護者】${parent} / 子:${memberLabel}` : '';
-    } else if (agg.role === '講師') {
-      const mCur = currentDisplay.match(/^【講師】\s*(.+)$/);
-      const mDb = (agg.system_display_name ?? '').match(/^【講師】\s*(.+)$/);
-      const teacher = mCur ? mCur[1].trim() : mDb ? mDb[1].trim() : '';
-      newDisplay = teacher ? `【講師】${teacher}` : memberLabel ? `【講師】${memberLabel}` : '';
+      newDisplay = childLabel ? `【保護者】${parent} / 子:${childLabel}` : '';
+    } else {
+      // 講師 / 講師/保護者
+      const mCur = currentDisplay.match(/^【講師(?:\/保護者)?】\s*([^\/]+?)\s*(?:\/|$)/);
+      const mDb = (agg.system_display_name ?? '').match(/^【講師(?:\/保護者)?】\s*([^\/]+?)\s*(?:\/|$)/);
+      const teacher = mCur ? mCur[1].trim() : mDb ? mDb[1].trim() : ownerLabel;
+      if (!teacher) {
+        newDisplay = '';
+      } else if (role === '講師/保護者') {
+        newDisplay = `【講師/保護者】${teacher} / 子:${childLabel}`;
+      } else if (/\/\s*子[:：]/.test(currentDisplay)) {
+        // DBに子リンクが無いのに現表示には子がいる = リンク未整備。
+        // 子情報を消す退行を防ぐため現状維持(変更を出さない)
+        newDisplay = currentDisplay;
+      } else {
+        newDisplay = `【講師】${teacher}`;
+      }
     }
+
+    // 会員名(1)列: このアカウントに紐づく全会員(持ち主+子)
+    const allMembers = [...agg.owners, ...agg.children];
+    const memberLabel = buildMemberLabel(allMembers);
 
     if (newDisplay && sysNameCol !== undefined) {
       row[sysNameCol] = newDisplay;
@@ -221,21 +259,18 @@ export async function transformLstepGrid(
       row[memberName1Col] = memberLabel;
     }
     // 会員番号(1), 生年月日: 単独紐付けの時のみ
-    if (agg.members.length === 1) {
-      if (memberNo1Col !== undefined && agg.members[0].kaiin_no) {
-        row[memberNo1Col] = agg.members[0].kaiin_no;
+    if (allMembers.length === 1) {
+      if (memberNo1Col !== undefined && allMembers[0].kaiin_no) {
+        row[memberNo1Col] = allMembers[0].kaiin_no;
       }
-      if (memberBirthCol !== undefined && agg.members[0].birthday) {
-        row[memberBirthCol] = agg.members[0].birthday;
+      if (memberBirthCol !== undefined && allMembers[0].birthday) {
+        row[memberBirthCol] = allMembers[0].birthday;
       }
     }
-    // タグ列
-    if (agg.role === '本人' && phase4ACol !== undefined) row[phase4ACol] = '1';
-    if (agg.role === '保護者' && phase4BCol !== undefined) row[phase4BCol] = '1';
-    if (agg.role === '講師') {
-      if (instructorCol !== undefined) row[instructorCol] = '1';
-      if (newDisplay.includes('/ 子:') && phase4BCol !== undefined) row[phase4BCol] = '1';
-    }
+    // タグ列: 本入会=持ち主が会員 / 会員保護者=子がいる / 講師
+    if (agg.owners.length > 0 && !agg.teacher && phase4ACol !== undefined) row[phase4ACol] = '1';
+    if (agg.children.length > 0 && phase4BCol !== undefined) row[phase4BCol] = '1';
+    if (agg.teacher && instructorCol !== undefined) row[instructorCol] = '1';
 
     // スペース有無・並び順だけの差はノイズなので「変更なし」とみなす
     const changed = !!newDisplay && canonicalDisplay(newDisplay) !== canonicalDisplay(currentDisplay);
@@ -243,7 +278,7 @@ export async function transformLstepGrid(
     if (newDisplay) {
       changes.push({
         lstep_id: lid,
-        role: agg.role,
+        role,
         member_label: memberLabel,
         current_display: currentDisplay,
         new_display: newDisplay,
