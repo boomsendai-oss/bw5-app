@@ -100,7 +100,11 @@ export function normalizeKana(s: string): string {
       result += ch;
     }
   }
-  return result.replace(/[\s　・,、.。\-ー－/]/g, '');
+  return result
+    .replace(/[\s　・,、.。\-ー－/]/g, '')
+    // 四つ仮名の表記揺れを同一視 (ミヅキ=ミズキ 等。実際にマッチ漏れが起きた)
+    .replace(/ヅ/g, 'ズ')
+    .replace(/ヂ/g, 'ジ');
 }
 
 export function parseDate(s: string | undefined | null): string | null {
