@@ -38,9 +38,31 @@ type LogRow = {
   created_at: string;
 };
 
+type LinkCandidate = {
+  lstep_id: string;
+  system_display_name: string;
+  line_register_name: string;
+  confidence: '高' | '中';
+  reasons: string[];
+  relation_suggestion: '本人' | '保護者' | '講師';
+  line_type?: string;
+  source?: string;
+};
+
+type LinkSuggestion = {
+  member_id: number;
+  full_name: string;
+  full_name_kana: string;
+  candidates: LinkCandidate[];
+};
+
+type NoCandidate = { member_id: number; full_name: string; full_name_kana: string };
+
 const BATCH_URL = '/api/staff/operations/lstep-batch';
 const APPROVE_URL = '/api/staff/operations/lstep-approve';
 const LOG_URL = '/api/staff/operations/lstep-transform';
+const SUGGEST_URL = '/api/staff/operations/link-suggest';
+const LINK_URL = '/api/staff/operations/link';
 
 export default function LstepUpdatePage() {
   const [batch, setBatch] = useState<Batch | null>(null);
@@ -52,6 +74,10 @@ export default function LstepUpdatePage() {
   const [working, setWorking] = useState(false);
   const [log, setLog] = useState<LogRow[]>([]);
   const [showManual, setShowManual] = useState(false);
+  const [suggestions, setSuggestions] = useState<LinkSuggestion[]>([]);
+  const [noCandidates, setNoCandidates] = useState<NoCandidate[]>([]);
+  const [linkLoading, setLinkLoading] = useState(true);
+  const [linkWorking, setLinkWorking] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,10 +105,55 @@ export default function LstepUpdatePage() {
     } catch { /* noop */ }
   }, []);
 
+  const loadSuggestions = useCallback(async () => {
+    setLinkLoading(true);
+    try {
+      const res = await fetch(SUGGEST_URL);
+      if (res.ok) {
+        const data = await res.json();
+        setSuggestions(data.link_suggestions ?? []);
+        setNoCandidates(data.no_candidates ?? []);
+      }
+    } catch { /* noop */ } finally {
+      setLinkLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     load();
     loadLog();
-  }, [load, loadLog]);
+    loadSuggestions();
+  }, [load, loadLog, loadSuggestions]);
+
+  // 紐付け承認: link確定 → 表示名候補を自動更新 → 両セクション再読込
+  const approveLink = async (s: LinkSuggestion, c: LinkCandidate) => {
+    setLinkWorking(true);
+    try {
+      const res = await fetch(LINK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          member_id: s.member_id,
+          lstep_id: c.lstep_id,
+          relation: c.relation_suggestion,
+          confidence: c.confidence === '高' ? '確実' : '推定',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? '紐付けに失敗しました');
+        return;
+      }
+      toast.success(`${s.full_name_kana} を紐付けました`);
+      // 表示名の変更候補を作り直す(承認済み・反映済みは引き継がれる)
+      await fetch(`${BATCH_URL}?mode=refresh`, { method: 'POST' });
+      await Promise.all([loadSuggestions(), load()]);
+    } catch (e) {
+      toast.error(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setLinkWorking(false);
+    }
+  };
 
   const toggle = (id: number) => {
     setSelected((prev) => {
@@ -163,11 +234,95 @@ export default function LstepUpdatePage() {
             <ArrowLeft className="mr-1 h-4 w-4" />運用
           </Button>
         </Link>
-        <h1 className="text-xl font-bold">LSTEP表示名 更新</h1>
-        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => { load(); loadLog(); }}>
+        <h1 className="text-xl font-bold">LINE連携</h1>
+        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => { load(); loadLog(); loadSuggestions(); }}>
           <RefreshCw className="h-4 w-4" />
         </Button>
       </div>
+
+      {/* ① LINE紐付けの承認待ち */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            ① LINE紐付けの承認待ち
+            {!linkLoading && suggestions.length > 0 && (
+              <Badge className="bg-orange-100 text-orange-700">{suggestions.length}人</Badge>
+            )}
+          </CardTitle>
+          <p className="text-xs text-gray-500">
+            まだLINEと紐付いていない会員と、そのLINEアカウント候補です。正しければ「このLINEで承認」。
+            承認すると下の「② 表示名の承認待ち」に変更候補が自動で追加されます。
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {linkLoading ? (
+            <p className="py-4 text-center text-sm text-gray-400">候補を計算中...</p>
+          ) : suggestions.length === 0 && noCandidates.length === 0 ? (
+            <p className="py-4 text-center text-sm text-gray-500">未紐付けの会員はいません 🎉</p>
+          ) : (
+            <>
+              {suggestions.map((s) => (
+                <div key={s.member_id} className="rounded-md border p-3">
+                  <div className="mb-2 text-sm font-bold">
+                    {s.full_name}（{s.full_name_kana}）
+                  </div>
+                  <div className="space-y-2">
+                    {s.candidates.slice(0, 2).map((c) => (
+                      <div key={c.lstep_id} className="flex flex-wrap items-center gap-2 rounded bg-gray-50 p-2 text-sm">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold">
+                            LINE: {c.line_register_name || c.system_display_name || '(名前なし)'}
+                            <Badge className={`ml-2 ${c.confidence === '高' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                              信頼度{c.confidence}
+                            </Badge>
+                            {c.line_type && <span className="ml-2 text-xs text-gray-500">{c.line_type}</span>}
+                          </div>
+                          {c.system_display_name && (
+                            <div className="truncate text-xs text-gray-500">現在: {c.system_display_name}</div>
+                          )}
+                          <div className="text-xs text-gray-400">{c.reasons.slice(0, 2).join('、')}</div>
+                        </div>
+                        <Button
+                          size="sm"
+                          disabled={linkWorking}
+                          onClick={() => approveLink(s, c)}
+                          className="bg-orange-500 hover:bg-orange-600"
+                        >
+                          <Check className="mr-1 h-3.5 w-3.5" />
+                          このLINEで承認（{c.relation_suggestion}）
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {noCandidates.length > 0 && (
+                <div className="rounded-md border border-dashed p-3 text-sm">
+                  <div className="mb-1 font-semibold text-gray-600">
+                    候補が見つからない会員（{noCandidates.length}人）
+                  </div>
+                  <p className="mb-2 text-xs text-gray-400">
+                    体験予約データに一致がない会員です。「手動で探す」から検索して紐付けてください。
+                  </p>
+                  <div className="space-y-1">
+                    {noCandidates.map((m) => (
+                      <div key={m.member_id} className="flex items-center justify-between">
+                        <span>{m.full_name}（{m.full_name_kana}）</span>
+                        <Link
+                          href={`/staff/notifications/link?member_id=${m.member_id}`}
+                          className="text-xs text-orange-600 underline"
+                        >
+                          手動で探す
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* アップロード待ち通知 */}
       {pendingUploadTotal > 0 && (
@@ -186,16 +341,16 @@ export default function LstepUpdatePage() {
         <p className="py-10 text-center text-gray-400">読み込み中...</p>
       ) : !batch ? (
         <Card>
-          <CardContent className="py-10 text-center text-sm text-gray-500">
-            承認待ちの変更はありません。<br />
-            新しい紐付けがあると、Claudeがここに「承認待ち」を用意します。
+          <CardContent className="py-6 text-center text-sm text-gray-500">
+            ② 表示名の承認待ちはありません。<br />
+            上で紐付けを承認すると、ここに表示名の変更候補が出ます。
           </CardContent>
         </Card>
       ) : (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
-              承認待ちの変更
+              ② 表示名の承認待ち
               {counts && <Badge className="bg-orange-100 text-orange-700">{counts.pending}件</Badge>}
             </CardTitle>
             <p className="text-xs text-gray-500">

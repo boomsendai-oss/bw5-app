@@ -37,14 +37,20 @@ export async function GET(req: NextRequest) {
   const suggestions = await buildLinkSuggestions(members);
   // 候補が1件以上あるものだけ返す (ノイズ削減)
   const withCandidates = suggestions.filter((s) => s.candidates.length > 0);
+  // 候補なしの会員も一覧で返す (統合画面で「手動で探す」導線を出すため)
+  const withSet = new Set(withCandidates.map((s) => s.member_id));
+  const noCandidates = members
+    .filter((m) => !withSet.has(m.id))
+    .map((m) => ({ member_id: m.id, full_name: m.full_name, full_name_kana: m.full_name_kana }));
 
   return NextResponse.json({
     ok: true,
     summary: {
       unlinked_members: members.length,
       with_candidates: withCandidates.length,
-      without_candidates: members.length - withCandidates.length,
+      without_candidates: noCandidates.length,
     },
     link_suggestions: withCandidates,
+    no_candidates: noCandidates,
   });
 }

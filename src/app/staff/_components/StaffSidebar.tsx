@@ -12,6 +12,7 @@ import {
   Users,
   FileText,
   Settings2,
+  MessageCircle,
   Video,
   XCircle,
   PartyPopper,
@@ -63,6 +64,7 @@ const mainNavItems: NavItem[] = [
 const opsNavItems: NavItem[] = [
   { title: 'ブログ', href: '/staff/blog', icon: FileText },
   { title: 'オペレーション', href: '/staff/operations', icon: Settings2 },
+  { title: 'LINE連携', href: '/staff/operations/lstep-update', icon: MessageCircle },
   { title: '映像予約', href: '/staff/video-preorders', icon: Video },
   { title: '休講申請', href: '/staff/cancel-requests', icon: XCircle },
   { title: 'イベント', href: '/staff/events', icon: PartyPopper },

@@ -142,6 +142,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, uploaded });
   }
 
+  if (mode === 'refresh') {
+    // 直近バッチの保存CSVから候補を作り直す (紐付け承認後に表示名候補を更新する用)
+    const last = (await getOne(
+      `SELECT csv_text FROM lstep_pending_batches ORDER BY id DESC LIMIT 1`
+    )) as { csv_text: string } | null;
+    if (!last?.csv_text) {
+      return NextResponse.json(
+        { error: '元になるLstepエクスポートがありません。先にCSVから作成してください。' },
+        { status: 400 }
+      );
+    }
+    return createBatchFromCsv(last.csv_text, 'refresh');
+  }
+
   // mode === 'create' : エクスポートCSVから承認待ちバッチを作る
   let csvText: string;
   const note = url.searchParams.get('note') ?? null;
@@ -162,7 +176,11 @@ export async function POST(req: NextRequest) {
     );
   }
   if (!csvText.trim()) return NextResponse.json({ error: '空のCSVです' }, { status: 400 });
+  return createBatchFromCsv(csvText, note);
+}
 
+// CSVテキストから承認待ちバッチを作成 (create / refresh 共用)
+async function createBatchFromCsv(csvText: string, note: string | null) {
   const grid = parseCSV(csvText);
   const result = await transformLstepGrid(grid);
   if (result.warnings.some((w) => w.includes('システム表示名'))) {
@@ -172,7 +190,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const changed = result.changes.filter((c) => c.changed);
+  // 既に反映済み(uploaded)と同一の変更は再掲しない
+  // (保存CSVのシステム表示名はアップロード前の値のままなので、refresh時に重複が出るのを防ぐ)
+  const uploadedRows = (await getAll(
+    `SELECT lstep_id, new_display FROM lstep_pending_changes WHERE status = 'uploaded'`
+  )) as { lstep_id: string; new_display: string }[];
+  const uploadedSet = new Set(uploadedRows.map((r) => `${r.lstep_id} ${r.new_display}`));
+
+  // 承認済み(未反映)は新バッチに承認状態のまま引き継ぐ (refreshで承認が消えないように)
+  const approvedRows = (await getAll(
+    `SELECT lstep_id, new_display FROM lstep_pending_changes WHERE status = 'approved'`
+  )) as { lstep_id: string; new_display: string }[];
+  const approvedSet = new Set(approvedRows.map((r) => `${r.lstep_id} ${r.new_display}`));
+
+  const changed = result.changes.filter(
+    (c) => c.changed && !uploadedSet.has(`${c.lstep_id} ${c.new_display}`)
+  );
   if (changed.length === 0) {
     return NextResponse.json({
       ok: true,
@@ -192,11 +225,14 @@ export async function POST(req: NextRequest) {
   );
   const batchId = Number(ins.lastInsertRowid);
 
-  const stmts: InStatement[] = changed.map((c) => ({
-    sql: `INSERT INTO lstep_pending_changes (batch_id, lstep_id, line_name, role, member_label, current_display, new_display, status)
-          VALUES (?,?,?,?,?,?,?, 'pending')`,
-    args: [batchId, c.lstep_id, c.line_name, c.role, c.member_label, c.current_display, c.new_display],
-  }));
+  const stmts: InStatement[] = changed.map((c) => {
+    const carryApproved = approvedSet.has(`${c.lstep_id} ${c.new_display}`);
+    return {
+      sql: `INSERT INTO lstep_pending_changes (batch_id, lstep_id, line_name, role, member_label, current_display, new_display, status, decided_at)
+            VALUES (?,?,?,?,?,?,?,?, ${carryApproved ? 'CURRENT_TIMESTAMP' : 'NULL'})`,
+      args: [batchId, c.lstep_id, c.line_name, c.role, c.member_label, c.current_display, c.new_display, carryApproved ? 'approved' : 'pending'],
+    };
+  });
   for (let i = 0; i < stmts.length; i += 50) await dbBatch(stmts.slice(i, i + 50));
 
   return NextResponse.json({
