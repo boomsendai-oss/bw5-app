@@ -76,6 +76,7 @@ function ManualLinkPageInner() {
   // Link action
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const [selectedRelation, setSelectedRelation] = useState<string>('');
+  const [parentName, setParentName] = useState(''); // 保護者選択時の親名(カナ推奨)
   const [linking, setLinking] = useState(false);
   const [success, setSuccess] = useState(false);
   const [linkError, setLinkError] = useState('');
@@ -162,6 +163,7 @@ function ManualLinkPageInner() {
           lstep_id: lstepId,
           relation: selectedRelation,
           confidence: '確実',
+          parent_name: selectedRelation === '保護者' ? parentName : '',
         }),
       });
       if (!res.ok) {
@@ -369,6 +371,15 @@ function ManualLinkPageInner() {
                                 <SelectItem value="講師">講師</SelectItem>
                               </SelectContent>
                             </Select>
+                            {selectedRelation === '保護者' && (
+                              <input
+                                type="text"
+                                value={parentName}
+                                placeholder="親の名前(カナ) 例: コムカイ アサミ"
+                                onChange={(e) => setParentName(e.target.value)}
+                                className="h-8 w-44 rounded border px-2 text-xs"
+                              />
+                            )}
                             <Button
                               size="xs"
                               disabled={!selectedRelation || linking}
@@ -450,6 +461,15 @@ function ManualLinkPageInner() {
                                 <SelectItem value="講師">講師</SelectItem>
                               </SelectContent>
                             </Select>
+                            {selectedRelation === '保護者' && (
+                              <input
+                                type="text"
+                                value={parentName}
+                                placeholder="親の名前(カナ) 例: コムカイ アサミ"
+                                onChange={(e) => setParentName(e.target.value)}
+                                className="h-8 w-44 rounded border px-2 text-xs"
+                              />
+                            )}
                             <Button
                               size="xs"
                               disabled={!selectedRelation || linking}
