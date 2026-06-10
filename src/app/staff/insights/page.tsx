@@ -227,6 +227,16 @@ export default function InsightsPage() {
   const [reportBusy, setReportBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState('');
 
+  // GA4 LINEクリック (lib/ga4側で1hキャッシュ。GA4自体が数時間〜1日遅れ)
+  type LineClickRange = { days: number; total: number; ads: number; est_cpa_jpy: number | null };
+  const [lineClicks, setLineClicks] = useState<{ ok: boolean; error?: string; ranges: LineClickRange[] } | null>(null);
+  useEffect(() => {
+    fetch('/api/staff/insights/line-clicks', { credentials: 'include' })
+      .then((r) => r.json())
+      .then(setLineClicks)
+      .catch(() => setLineClicks({ ok: false, ranges: [] }));
+  }, []);
+
   const runAutoSnapshot = async () => {
     setAutoBusy(true);
     setActionMessage('');
@@ -535,7 +545,28 @@ export default function InsightsPage() {
                   sub="前月比 (週次取得後に表示)"
                   accent="purple"
                 />
+                <KpiCard
+                  label="LINE誘導クリック (7日)"
+                  value={lineClicks?.ok ? num(lineClicks.ranges.find((r) => r.days === 7)?.total ?? 0) : '—'}
+                  sub={lineClicks?.ok ? `うち広告経由 ${num(lineClicks.ranges.find((r) => r.days === 7)?.ads ?? 0)}件` : (lineClicks?.error ? 'GA4未設定' : '読込中...')}
+                  accent="purple"
+                />
+                <KpiCard
+                  label="LINE誘導クリック (30日)"
+                  value={lineClicks?.ok ? num(lineClicks.ranges.find((r) => r.days === 30)?.total ?? 0) : '—'}
+                  sub={lineClicks?.ok ? `うち広告経由 ${num(lineClicks.ranges.find((r) => r.days === 30)?.ads ?? 0)}件` : 'GA4集計は数時間遅れ'}
+                  accent="purple"
+                />
+                <KpiCard
+                  label="広告CPA概算 (30日)"
+                  value={(() => { const r = lineClicks?.ranges.find((x) => x.days === 30); return r?.est_cpa_jpy != null ? `¥${num(r.est_cpa_jpy)}` : '—'; })()}
+                  sub="日予算¥200×経過日数÷広告経由クリック (GA4基準・広告管理画面とは一致しない)"
+                  accent="purple"
+                />
               </div>
+              <p className="mt-1 text-[10px] text-neutral-400">
+                LINE誘導クリック: boom-sendai.com上のLINEリンク押下 (GA4 line_click・2026-06-10計測開始・数時間〜1日遅れ)
+              </p>
             </Section>
 
             {/* ===== A: 売上系 ===== */}

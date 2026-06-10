@@ -24,6 +24,7 @@ import {
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
 type Stats = {
+  lineClicks?: { total7: number; ads7: number }; // GA4 LINE誘導クリック(クライアント側で合成)
   members: { active: number; withdrew: number; unlinked: number };
   lessons: { active: number };
   videoPreorders: { total: number; unsent: number };
@@ -54,6 +55,10 @@ const CARDS: CardDef[] = [
     icon: BarChart3,
     title: '経営インサイト',
     description: '売上・顧客動態・稼働率・収益性をリアルタイム自動集計',
+    stat: s => s.lineClicks ? [
+      { label: 'LINEクリック7日', value: s.lineClicks.total7 },
+      { label: 'うち広告', value: s.lineClicks.ads7 },
+    ] : [],
   },
   {
     href: '/staff/payroll',
@@ -183,6 +188,16 @@ export default function StaffHubPage() {
       .then((d: Stats | null) => { if (d) setStats(d); })
       .catch(e => setErr(e.message))
       .finally(() => setLoading(false));
+
+    // GA4 LINEクリック(別エンドポイント・1hキャッシュ)。失敗してもハブは普通に表示
+    fetch('/api/staff/insights/line-clicks', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.ok) return;
+        const r7 = (d.ranges as { days: number; total: number; ads: number }[]).find(x => x.days === 7);
+        if (r7) setStats(prev => prev ? { ...prev, lineClicks: { total7: r7.total, ads7: r7.ads } } : prev);
+      })
+      .catch(() => {});
   }, []);
 
   return (
