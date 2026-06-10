@@ -59,6 +59,18 @@ type LinkSuggestion = {
 
 type NoCandidate = { member_id: number; full_name: string; full_name_kana: string };
 
+type RecentLink = {
+  id: number;
+  member_id: number;
+  lstep_id: string;
+  relation: string;
+  confirmed_at: string;
+  full_name: string;
+  full_name_kana: string;
+  line_register_name: string | null;
+  display_name: string | null;
+};
+
 const BATCH_URL = '/api/staff/operations/lstep-batch';
 const APPROVE_URL = '/api/staff/operations/lstep-approve';
 const LOG_URL = '/api/staff/operations/lstep-transform';
@@ -80,6 +92,8 @@ export default function LstepUpdatePage() {
   const [linkLoading, setLinkLoading] = useState(true);
   const [workingKey, setWorkingKey] = useState<string | null>(null); // 承認処理中のカード(他は操作可)
   const [parentNames, setParentNames] = useState<Record<string, string>>({}); // 親名入力 (key: member:lstep)
+  const [recentLinks, setRecentLinks] = useState<RecentLink[]>([]);
+  const [showRecent, setShowRecent] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,6 +130,8 @@ export default function LstepUpdatePage() {
         setSuggestions(data.link_suggestions ?? []);
         setNoCandidates(data.no_candidates ?? []);
       }
+      const r2 = await fetch(`${LINK_URL}?limit=20`);
+      if (r2.ok) setRecentLinks((await r2.json()).links ?? []);
     } catch { /* noop */ } finally {
       setLinkLoading(false);
     }
@@ -161,6 +177,25 @@ export default function LstepUpdatePage() {
       toast.error(`エラー: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setWorkingKey(null);
+    }
+  };
+
+  // 紐付けの取り消し: ①の承認待ちに戻る(未反映の表示名候補も消える)
+  const unlink = async (l: RecentLink) => {
+    if (!confirm(`${l.full_name_kana} と LINE「${l.line_register_name || l.display_name || l.lstep_id}」の紐付けを取り消しますか?`)) return;
+    try {
+      const res = await fetch(LINK_URL, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ member_id: l.member_id, lstep_id: l.lstep_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error ?? '取り消しに失敗しました'); return; }
+      toast.success(`${l.full_name_kana} の紐付けを取り消しました(①に戻ります)`);
+      fetch(`${BATCH_URL}?mode=refresh`, { method: 'POST' }).then(() => load()).catch(() => {});
+      await loadSuggestions();
+    } catch (e) {
+      toast.error(`エラー: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -374,7 +409,9 @@ export default function LstepUpdatePage() {
             <CloudUpload className="h-5 w-5 shrink-0 text-orange-600" />
             <div>
               <b className="text-orange-700">承認済み {pendingUploadTotal}件</b> がアップロード待ちです。
-              <span className="text-gray-600">次回Claudeがまとめて LSTEP に反映します（TAROさんの操作は不要）。</span>
+              <span className="text-gray-600">
+                <b>Claudeに「承認した」と一言伝えてください。</b>ClaudeがLSTEPに反映するとこの表示は消えます。
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -459,6 +496,37 @@ export default function LstepUpdatePage() {
           </CardContent>
         </Card>
       )}
+
+      {/* 紐付け済み(最近) — 間違えたときに取り消して①に戻せる */}
+      <div>
+        <button onClick={() => setShowRecent((v) => !v)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
+          <ChevronDown className={`h-3 w-3 transition-transform ${showRecent ? 'rotate-180' : ''}`} />
+          最近の紐付け（間違えたらここから取り消し）
+        </button>
+        {showRecent && (
+          <Card className="mt-2">
+            <CardContent className="space-y-1 py-4 text-sm">
+              {recentLinks.length === 0 ? (
+                <p className="text-gray-500">紐付けはまだありません。</p>
+              ) : (
+                recentLinks.map((l) => (
+                  <div key={l.id} className="flex items-center justify-between border-b py-1.5">
+                    <div className="min-w-0">
+                      <span className="font-medium">{l.full_name_kana}</span>
+                      <span className="mx-1 text-gray-400">↔</span>
+                      <span>LINE「{l.line_register_name || l.display_name || l.lstep_id}」</span>
+                      <span className="ml-1 text-xs text-gray-400">({l.relation} / {l.confirmed_at?.slice(0, 16)})</span>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => unlink(l)} className="shrink-0 text-red-600 hover:bg-red-50">
+                      取り消す
+                    </Button>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* 手動でエクスポートから作成（フォールバック/テスト用） */}
       <div>

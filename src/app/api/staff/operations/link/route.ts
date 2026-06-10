@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, getAll } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
@@ -64,4 +64,52 @@ export async function POST(req: NextRequest) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: `紐付け保存失敗: ${msg}` }, { status: 500 });
   }
+}
+
+// GET /api/staff/operations/link?limit=20
+//   最近確定した紐付け一覧 (承認の取り消しUI用)
+export async function GET(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
+  const url = new URL(req.url);
+  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') ?? 20)));
+  const rows = await getAll(
+    `SELECT ml.id, ml.member_id, ml.lstep_id, ml.relation, ml.confirmed_at,
+            m.full_name, m.full_name_kana,
+            lf.line_register_name, lf.display_name
+       FROM member_lstep_links ml
+       JOIN boom_members m ON m.id = ml.member_id
+       LEFT JOIN lstep_friends lf ON lf.lstep_id = ml.lstep_id
+      ORDER BY ml.confirmed_at DESC
+      LIMIT ?`,
+    [limit]
+  );
+  return NextResponse.json({ ok: true, links: rows });
+}
+
+// DELETE /api/staff/operations/link
+// body: { member_id, lstep_id }
+//   紐付けを取り消す(①の承認待ちに戻る)。表示名キューは呼び出し側でrefreshすること。
+export async function DELETE(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
+  let body: { member_id?: unknown; lstep_id?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'JSON が不正です' }, { status: 400 });
+  }
+  const memberId = Number(body.member_id);
+  const lstepId = typeof body.lstep_id === 'string' ? body.lstep_id.trim() : '';
+  if (!Number.isInteger(memberId) || memberId <= 0 || !lstepId) {
+    return NextResponse.json({ error: 'member_id と lstep_id が必要です' }, { status: 400 });
+  }
+  const res = await execute(
+    `DELETE FROM member_lstep_links WHERE member_id = ? AND lstep_id = ?`,
+    [memberId, lstepId]
+  );
+  // このアカウントの未反映の表示名候補も掃除 (uploadedの履歴は残す)
+  await execute(
+    `DELETE FROM lstep_pending_changes WHERE lstep_id = ? AND status IN ('pending','approved','rejected')`,
+    [lstepId]
+  );
+  return NextResponse.json({ ok: true, deleted: Number(res.rowsAffected ?? 0) });
 }
