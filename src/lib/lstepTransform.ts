@@ -166,6 +166,7 @@ export async function transformLstepGrid(
 
   const idCol = L.get('ID') ?? 0;
   const sysNameCol = L.get('システム表示名');
+  const lineNameCol = L.get('LINE登録名'); // どのLINEアカウントかの表示用(列があれば最優先)
   const memberName1Col = L.get('会員名(1)');
   const memberNo1Col = L.get('会員番号(1)');
   const memberBirthCol = L.get('会員生年月日');
@@ -282,9 +283,10 @@ export async function transformLstepGrid(
     const changed = !!newDisplay && canonicalDisplay(newDisplay) !== canonicalDisplay(currentDisplay);
     if (changed) updatedRows++;
     if (newDisplay) {
+      const rowLineName = lineNameCol !== undefined ? (row[lineNameCol] ?? '').trim() : '';
       changes.push({
         lstep_id: lid,
-        line_name: agg.line_name,
+        line_name: rowLineName || agg.line_name,
         role,
         member_label: memberLabel,
         current_display: currentDisplay,
