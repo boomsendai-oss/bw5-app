@@ -64,7 +64,11 @@ export function toKatakana(s: string): string {
 
 export function normalizeKana(s: string): string {
   if (!s) return '';
-  return toKatakana(s).replace(/[\s　・,、.。\-ー－/]/g, '');
+  return toKatakana(s)
+    .replace(/[\s　・,、.。\-ー－/]/g, '')
+    // 四つ仮名の表記揺れを同一視 (ミヅキ=ミズキ 等)。csvUtil.normalizeKana と合わせる
+    .replace(/ヅ/g, 'ズ')
+    .replace(/ヂ/g, 'ジ');
 }
 
 // "アベ セイナ" -> ["アベ", "セイナ"]
