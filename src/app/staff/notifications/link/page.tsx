@@ -310,13 +310,11 @@ function ManualLinkPageInner() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-gray-900">
-                            {c.system_display_name || '(表示名なし)'}
+                            LINE「{c.line_register_name || c.system_display_name || '(名前なし)'}」
                           </p>
-                          {c.line_register_name && (
-                            <p className="text-xs text-gray-500">
-                              LINE登録名: {c.line_register_name}
-                            </p>
-                          )}
+                          <p className="text-xs text-gray-600">
+                            現在の表示名: {c.system_display_name || '(未設定)'}
+                          </p>
                           <p className="mt-1 text-xs text-gray-400">
                             ID: {c.lstep_id}
                           </p>
@@ -420,18 +418,14 @@ function ManualLinkPageInner() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-gray-900">
-                            {r.system_display_name ||
-                              r.display_name ||
-                              '(表示名なし)'}
+                            LINE「{r.line_register_name || r.display_name || '(名前なし)'}」
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            現在の表示名: {r.system_display_name || r.display_name || '(未設定)'}
                           </p>
                           {r.real_name && (
                             <p className="text-xs text-gray-500">
                               本名: {r.real_name}
-                            </p>
-                          )}
-                          {r.line_register_name && (
-                            <p className="text-xs text-gray-500">
-                              LINE登録名: {r.line_register_name}
                             </p>
                           )}
                           <p className="mt-1 text-xs text-gray-400">
