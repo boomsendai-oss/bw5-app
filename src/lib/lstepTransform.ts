@@ -18,6 +18,7 @@ import { getAll } from '@/lib/db';
 
 export type LstepChange = {
   lstep_id: string;
+  line_name: string; // LINEアカウント名(LINE登録名)。どのアカウントの話かを示す
   role: string; // 本人 | 保護者 | 保護者/本人 | 講師 | 講師/保護者
   member_label: string;
   current_display: string; // 変換前のシステム表示名
@@ -39,6 +40,8 @@ type LinkRow = {
   relation: string | null;
   role: string | null;
   system_display_name: string | null;
+  line_register_name: string | null;
+  display_name: string | null;
   full_name_kana: string | null;
   hacomono_kaiin_no: string | null;
   birthday: string | null;
@@ -52,6 +55,7 @@ type AggMember = { kana: string; kaiin_no: string | null; birthday: string | nul
 //   teacher  = relation'講師'
 type Agg = {
   system_display_name: string;
+  line_name: string; // LINE登録名(無ければ表示名)
   owners: AggMember[];
   children: AggMember[];
   teacher: boolean;
@@ -94,6 +98,7 @@ function canonicalDisplay(s: string): string {
 async function buildAggByLstepId(): Promise<Map<string, Agg>> {
   const linkRows = (await getAll(
     `SELECT lf.lstep_id, lf.system_display_name, lf.role,
+            lf.line_register_name, lf.display_name,
             ml.relation,
             m.full_name_kana, m.hacomono_kaiin_no, m.birthday
      FROM lstep_friends lf
@@ -107,6 +112,7 @@ async function buildAggByLstepId(): Promise<Map<string, Agg>> {
     if (!byLid.has(lid)) {
       byLid.set(lid, {
         system_display_name: r.system_display_name ?? '',
+        line_name: (r.line_register_name ?? '').trim() || (r.display_name ?? '').trim(),
         owners: [],
         children: [],
         teacher: false,
@@ -278,6 +284,7 @@ export async function transformLstepGrid(
     if (newDisplay) {
       changes.push({
         lstep_id: lid,
+        line_name: agg.line_name,
         role,
         member_label: memberLabel,
         current_display: currentDisplay,

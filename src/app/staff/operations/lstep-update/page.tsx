@@ -11,6 +11,7 @@ import { ArrowLeft, Check, X, CloudUpload, History, RefreshCw, ChevronDown } fro
 type Change = {
   id: number;
   lstep_id: string;
+  line_name: string | null;
   role: string;
   member_label: string;
   current_display: string;
@@ -231,6 +232,9 @@ export default function LstepUpdatePage() {
                     <div className="min-w-0 flex-1">
                       <div className="mb-0.5 flex items-center gap-1.5">
                         {roleBadge(c.role)}
+                        <span className="truncate text-xs font-semibold text-gray-700">
+                          LINE: {c.line_name || '(名前なし)'}
+                        </span>
                         {c.status === 'approved' && <Badge className="bg-green-100 text-green-700">承認済</Badge>}
                         {c.status === 'rejected' && <Badge className="bg-gray-200 text-gray-600">却下</Badge>}
                         {c.status === 'uploaded' && <Badge className="bg-blue-100 text-blue-700">反映済</Badge>}

@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
   }
 
   const changes = await getAll(
-    `SELECT id, lstep_id, role, member_label, current_display, new_display, status
+    `SELECT id, lstep_id, line_name, role, member_label, current_display, new_display, status
        FROM lstep_pending_changes
       WHERE batch_id = ?
       ORDER BY (status='approved') DESC, role, member_label`,
@@ -193,9 +193,9 @@ export async function POST(req: NextRequest) {
   const batchId = Number(ins.lastInsertRowid);
 
   const stmts: InStatement[] = changed.map((c) => ({
-    sql: `INSERT INTO lstep_pending_changes (batch_id, lstep_id, role, member_label, current_display, new_display, status)
-          VALUES (?,?,?,?,?,?, 'pending')`,
-    args: [batchId, c.lstep_id, c.role, c.member_label, c.current_display, c.new_display],
+    sql: `INSERT INTO lstep_pending_changes (batch_id, lstep_id, line_name, role, member_label, current_display, new_display, status)
+          VALUES (?,?,?,?,?,?,?, 'pending')`,
+    args: [batchId, c.lstep_id, c.line_name, c.role, c.member_label, c.current_display, c.new_display],
   }));
   for (let i = 0; i < stmts.length; i += 50) await dbBatch(stmts.slice(i, i + 50));
 
