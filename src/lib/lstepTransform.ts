@@ -233,9 +233,15 @@ export async function transformLstepGrid(
       // 持ち主自身も会員 & 子も会員 (例: キクチ リカ)
       newDisplay = childLabel ? `【保護者/本人】${ownerLabel} / 子:${childLabel}` : `【本人】${ownerLabel}`;
     } else if (role === '保護者') {
-      // 持ち主は非会員の保護者。親名は現在の表示名から引き継ぐ
+      // 持ち主は非会員の保護者。親名は現在の表示名から引き継ぐ。
+      // 既存表示名が無い新規アカウントは LINE登録名(無ければ表示名)を親名に使う
+      const rowLineNameForParent =
+        lineNameCol !== undefined ? (row[lineNameCol] ?? '').trim() : '';
       const parent =
-        extractParentName(currentDisplay) || extractParentName(agg.system_display_name) || '???';
+        extractParentName(currentDisplay) ||
+        extractParentName(agg.system_display_name) ||
+        (rowLineNameForParent || agg.line_name || '').replace(/[\s　]+/g, ' ').trim() ||
+        '???';
       newDisplay = childLabel ? `【保護者】${parent} / 子:${childLabel}` : '';
     } else {
       // 講師 / 講師/保護者
