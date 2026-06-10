@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
        FROM boom_members m
        LEFT JOIN member_lstep_links ml ON ml.member_id = m.id
       WHERE ml.id IS NULL ${statusCond}
+        AND m.full_name_kana IS NOT NULL AND m.full_name_kana != ''
       ORDER BY m.enrolled_at DESC
       LIMIT ?`,
     [limit]

@@ -129,19 +129,21 @@ export function scoreCandidate(
   const sys = friend.system_display_name ?? '';
   const line = friend.line_register_name ?? '';
   const real = friend.real_name ?? '';
+  const disp = friend.display_name ?? ''; // 表示名にだけカナがあるケース(例:イマムラミズキ)
 
   const sysKana = normalizeKana(sys);
   const lineKana = normalizeKana(line);
   const realKana = normalizeKana(real);
+  const dispKana = normalizeKana(disp);
 
   let score = 0;
   const reasons: string[] = [];
 
-  if (memberKana.sei && (sysKana.includes(memberKana.sei) || lineKana.includes(memberKana.sei) || realKana.includes(memberKana.sei))) {
+  if (memberKana.sei && (sysKana.includes(memberKana.sei) || lineKana.includes(memberKana.sei) || realKana.includes(memberKana.sei) || dispKana.includes(memberKana.sei))) {
     score += 50;
     reasons.push('姓カナ一致');
   }
-  if (memberKana.mei && memberKana.mei.length >= 2 && (sysKana.includes(memberKana.mei) || lineKana.includes(memberKana.mei) || realKana.includes(memberKana.mei))) {
+  if (memberKana.mei && memberKana.mei.length >= 2 && (sysKana.includes(memberKana.mei) || lineKana.includes(memberKana.mei) || realKana.includes(memberKana.mei) || dispKana.includes(memberKana.mei))) {
     score += 30;
     reasons.push('名カナ一致');
   }
@@ -169,7 +171,7 @@ export function scoreCandidate(
   if (score < 60) return null;
 
   let relation: '本人' | '保護者' | '講師' = '本人';
-  const sysJoined = `${sys} ${line} ${real}`;
+  const sysJoined = `${sys} ${line} ${real} ${disp}`;
   if (/子[：:]|（子|\(子|母|父|保護者|ママ|パパ/.test(sysJoined) || siblingMatch) {
     relation = '保護者';
   }
