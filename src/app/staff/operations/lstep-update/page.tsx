@@ -126,7 +126,8 @@ export default function LstepUpdatePage() {
   }, [load, loadLog, loadSuggestions]);
 
   // 紐付け承認: link確定 → 表示名候補を自動更新 → 両セクション再読込
-  const approveLink = async (s: LinkSuggestion, c: LinkCandidate) => {
+  // relationOverride: 要確認(13〜17歳等)のとき、TAROが本人/保護者を選んで承認する
+  const approveLink = async (s: LinkSuggestion, c: LinkCandidate, relationOverride?: '本人' | '保護者') => {
     setLinkWorking(true);
     try {
       const res = await fetch(LINK_URL, {
@@ -135,7 +136,7 @@ export default function LstepUpdatePage() {
         body: JSON.stringify({
           member_id: s.member_id,
           lstep_id: c.lstep_id,
-          relation: c.relation_suggestion,
+          relation: relationOverride ?? c.relation_suggestion,
           confidence: c.confidence === '高' ? '確実' : '推定',
         }),
       });
@@ -282,15 +283,30 @@ export default function LstepUpdatePage() {
                           )}
                           <div className="text-xs text-gray-400">{c.reasons.slice(0, 2).join('、')}</div>
                         </div>
-                        <Button
-                          size="sm"
-                          disabled={linkWorking}
-                          onClick={() => approveLink(s, c)}
-                          className="bg-orange-500 hover:bg-orange-600"
-                        >
-                          <Check className="mr-1 h-3.5 w-3.5" />
-                          このLINEで承認（{c.relation_suggestion}）
-                        </Button>
+                        {c.line_type === '要確認' ? (
+                          // 13〜17歳等: 本人LINEか親のLINEか断定できないので選んで承認
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[10px] text-amber-600">このLINEは本人?保護者?</span>
+                            <div className="flex gap-1">
+                              <Button size="sm" disabled={linkWorking} onClick={() => approveLink(s, c, '本人')} className="bg-blue-500 hover:bg-blue-600">
+                                本人として承認
+                              </Button>
+                              <Button size="sm" disabled={linkWorking} onClick={() => approveLink(s, c, '保護者')} className="bg-green-600 hover:bg-green-700">
+                                保護者として承認
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            disabled={linkWorking}
+                            onClick={() => approveLink(s, c)}
+                            className="bg-orange-500 hover:bg-orange-600"
+                          >
+                            <Check className="mr-1 h-3.5 w-3.5" />
+                            このLINEで承認（{c.relation_suggestion}）
+                          </Button>
+                        )}
                       </div>
                     ))}
                   </div>
