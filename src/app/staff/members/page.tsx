@@ -45,10 +45,12 @@ export default function MembersPage() {
   const [q, setQ] = useState('');
   const [planFilter, setPlanFilter] = useState<'' | 'ticket' | 'monthly' | 'kyukai'>('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [selected, setSelected] = useState<Member | null>(null);
 
   const load = useCallback(async (query: string, plan: string) => {
     setLoading(true);
+    setLoadError(false);
     try {
       const params = new URLSearchParams();
       if (query) params.set('q', query);
@@ -59,8 +61,15 @@ export default function MembersPage() {
         window.location.href = '/staff/events/login?next=/staff/members';
         return;
       }
+      // 取得失敗を「該当なし」と誤認させない(T-172)。500等は明示的にエラー表示。
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
       const data = await res.json();
       setMembers(data.members ?? []);
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -133,7 +142,18 @@ export default function MembersPage() {
 
       <div className="px-3 py-3 space-y-2 max-w-2xl mx-auto">
         {loading && <p className="text-sm text-neutral-500 text-center py-6">読み込み中...</p>}
-        {!loading && members.length === 0 && (
+        {!loading && loadError && (
+          <div className="text-center py-6">
+            <p className="text-sm text-red-600 mb-2">読み込みに失敗しました</p>
+            <button
+              onClick={() => load(q, planFilter)}
+              className="text-sm px-4 py-2 bg-orange-500 text-white rounded-lg font-semibold"
+            >
+              再試行
+            </button>
+          </div>
+        )}
+        {!loading && !loadError && members.length === 0 && (
           <p className="text-sm text-neutral-500 text-center py-6">該当する会員がいません</p>
         )}
         {members.map((m) => {

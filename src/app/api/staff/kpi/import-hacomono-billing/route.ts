@@ -6,9 +6,15 @@ import { parseCSV, rowsToDicts, parseDate } from '@/lib/csvUtil';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+// 完全一致を全キーで先に試し、無ければ部分一致にフォールバックする。
+// 部分一致を後回しにしないと「割引金額」が「金額」を誤ヒットするバグが起きる（T-155）。
 function pick(rec: Record<string, string>, ...keys: string[]): string {
+  // 1) 完全一致を優先（全キー）
   for (const k of keys) {
     if (rec[k] !== undefined && rec[k] !== '') return rec[k];
+  }
+  // 2) 部分一致フォールバック（全キー）
+  for (const k of keys) {
     for (const recKey of Object.keys(rec)) {
       if (recKey.includes(k) && rec[recKey] !== '') return rec[recKey];
     }
@@ -23,13 +29,21 @@ function parseAmt(s: string): number {
 }
 
 // 商品名から経費カテゴリ推定 (HACOMONO命名規則ベース)
+// 注意(T-155): 新規入会の課金行は「初月会費＋翌月会費＋入会金＋クーポン割引」が
+//   1行に結合され、合計金額はクーポン適用後の正味額になる。スタートダッシュ
+//   クーポンで入会金は実質0円になるため、この正味額は実質的にプラン売上である。
+//   そのため「プラン系(初月会費/月会費/マンスリー)」を「入会金」より先に判定し、
+//   結合行をenrollment_feeに誤って落とさないようにする。
+//   純粋な「入会金x1」単独行(プラン語を含まない)のみenrollment_feeとする。
 function guessProductCategory(productName: string): string {
   const p = productName.toLowerCase();
   // システム変更手数料は入会金ではなく「その他」(プラン変更・休会延長等で発生)
   if (/システム変更手数料|手数料/.test(p)) return 'other';
-  if (/入会金|enrollment|signup|admission/.test(p)) return 'enrollment_fee';
-  if (/プラン|plan|月会費|月額|定額|サブスク|マンスリー/.test(p)) return 'plan';
+  // プラン系(初月会費・月会費・マンスリー等)を最優先 → 結合行をplanに正しく寄せる
+  if (/プラン|plan|月会費|初月会費|月額|定額|サブスク|マンスリー/.test(p)) return 'plan';
   if (/チケット|ticket|単発|回数券|ドロップイン|追加受講|ビジター/.test(p)) return 'ticket';
+  // プラン語を含まない純粋な入会金単独行のみ enrollment_fee
+  if (/入会金|enrollment|signup|admission/.test(p)) return 'enrollment_fee';
   return 'other';
 }
 
@@ -83,9 +97,14 @@ export async function POST(req: NextRequest) {
       // 精算日時 (HACOMONO売上CSV) または 日付/課金日 (汎用)
       const dateStr = pick(rec, '精算日時', '課金日', '決済日', '請求日', '購入日', '日付');
       const billingDate = parseDate(dateStr ? dateStr.split(' ')[0] : '');
-      // 明細精算金額 (売上明細) または 金額/請求金額 (汎用)
-      const amount = parseAmt(pick(rec, '明細精算金額', '精算合計金額', '金額', '販売額', '請求金額', 'amount'));
-      if (!billingDate || amount === 0) { skipped++; continue; }
+      // 金額カラムの優先順位（T-155）:
+      //   合計金額 = クーポン割引適用後の正味額（売上集計CSV）。これを最優先。
+      //   精算合計金額/明細精算金額 = 売上明細CSV(別フォーマット)の正味額。
+      //   「割引金額」は絶対に拾わない（マイナス値で売上が逆転するため pick候補から除外）。
+      const amount = parseAmt(pick(rec, '合計金額', '精算合計金額', '明細精算金額', '販売額', '請求金額', 'amount'));
+      // billingDate さえあれば amount===0/負（初月日割¥0・返金行）も取り込む。
+      // 月会費の返金（-1,500等）も正しく売上に反映させるため amount条件で弾かない。
+      if (!billingDate) { skipped++; continue; }
       const productName = pick(rec, '商品名', '摘要', 'プラン名', 'チケット名', '商品', '販売商品');
       const memberId = pick(rec, 'メンバーID', '会員ID', 'メンバー');
       const kaiinNo = pick(rec, '会員番号', '会員No');

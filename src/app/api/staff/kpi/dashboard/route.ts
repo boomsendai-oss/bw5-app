@@ -215,9 +215,13 @@ export async function GET(req: NextRequest) {
   const studioTotal = n((await safeOne(
     `SELECT COALESCE(SUM(total_amount), 0) AS t FROM studio_billing_runs WHERE year_month = ?`, [ym]
   ))?.t);
+  // 給与・スタジオ料カテゴリは payroll_runs / studio_billing_runs で別管理しており、
+  // expenses 側にも同カテゴリが入っていると二重計上になる(T-166)。集計から除外する。
   const expensesByCategory = await safeAll(
     `SELECT category, COALESCE(SUM(amount), 0) AS t FROM expenses
-     WHERE expense_date BETWEEN ? AND ? GROUP BY category`,
+     WHERE expense_date BETWEEN ? AND ?
+       AND category NOT IN ('給与', '人件費', 'スタジオ料', 'スタジオ使用料', 'スタジオ代')
+     GROUP BY category`,
     [monthStart, monthEnd]
   );
   const expBreakdown = {

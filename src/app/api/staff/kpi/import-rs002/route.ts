@@ -9,14 +9,15 @@ export const runtime = 'nodejs';
 // POST /api/staff/kpi/import-rs002
 // CSVテキストをbodyに送る、または multipart/form-data でファイルアップロード
 //
-// HACOMONO RS002 のカラム名は微妙に違う可能性があるので、柔軟にマッチング
+// HACOMONO RS002 のカラム名に対する完全一致マッチング。
+// 注意(T-163): 以前は部分一致フォールバックがあり、「キャンセル数」検索が
+//   「無断キャンセル数」カラムを誤ヒットして no_show_count == cancel_count に
+//   なっていた(本番141行全件で破損)。RS002には純粋な「キャンセル数」カラムは
+//   存在しない(無断キャンセル数=no_show / キャンセル待ち数=waitlist のみ)ため、
+//   完全一致のみとし、該当無しは空文字(=null)を返す。
 function pick(rec: Record<string, string>, ...keys: string[]): string {
   for (const k of keys) {
     if (rec[k] !== undefined && rec[k] !== '') return rec[k];
-    // 部分一致もチェック
-    for (const recKey of Object.keys(rec)) {
-      if (recKey.includes(k) && rec[recKey] !== '') return rec[recKey];
-    }
   }
   return '';
 }
