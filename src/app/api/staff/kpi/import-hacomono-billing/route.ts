@@ -106,6 +106,9 @@ export async function POST(req: NextRequest) {
       // 月会費の返金（-1,500等）も正しく売上に反映させるため amount条件で弾かない。
       if (!billingDate) { skipped++; continue; }
       const productName = pick(rec, '商品名', '摘要', 'プラン名', 'チケット名', '商品', '販売商品');
+      // 売上ID = HACOMONO取引一意ID。これを重複排除キーにすることで、
+      // 同一会員が同日に同一商品を複数回購入した取引も正確に保持する(T-155 follow-up)。
+      const saleId = pick(rec, '売上ID', '取引ID', 'sale_id', 'id');
       const memberId = pick(rec, 'メンバーID', '会員ID', 'メンバー');
       const kaiinNo = pick(rec, '会員番号', '会員No');
       const paymentMethod = pick(rec, '支払方法', '決済方法');
@@ -150,18 +153,40 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      await execute(
-        `INSERT INTO hacomono_billing_records
-         (billing_date, member_id, kaiin_no, boom_member_id, product_name, product_category, amount, payment_method, status, imported_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(billing_date, member_id, product_name, amount) DO UPDATE SET
-           product_category=excluded.product_category,
-           boom_member_id=excluded.boom_member_id,
-           payment_method=excluded.payment_method,
-           status=excluded.status,
-           imported_at=CURRENT_TIMESTAMP`,
-        [billingDate, memberId || null, kaiinNo || null, boomMemberId, productName || null, category, amount, paymentMethod || null, status || null]
-      );
+      // 売上IDがあれば取引単位で upsert (同日同一商品の複数購入も保持)。
+      // 売上IDが無い旧フォーマットCSVは従来通り billing_date+member_id+product_name+amount で
+      // 重複を抑止する(売上IDなし行同士の取りこぼし防止)。
+      if (saleId) {
+        await execute(
+          `INSERT INTO hacomono_billing_records
+           (sale_id, billing_date, member_id, kaiin_no, boom_member_id, product_name, product_category, amount, payment_method, status, imported_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(sale_id) DO UPDATE SET
+             billing_date=excluded.billing_date,
+             member_id=excluded.member_id,
+             kaiin_no=excluded.kaiin_no,
+             boom_member_id=excluded.boom_member_id,
+             product_name=excluded.product_name,
+             product_category=excluded.product_category,
+             amount=excluded.amount,
+             payment_method=excluded.payment_method,
+             status=excluded.status,
+             imported_at=CURRENT_TIMESTAMP`,
+          [saleId, billingDate, memberId || null, kaiinNo || null, boomMemberId, productName || null, category, amount, paymentMethod || null, status || null]
+        );
+      } else {
+        await execute(
+          `INSERT INTO hacomono_billing_records
+           (billing_date, member_id, kaiin_no, boom_member_id, product_name, product_category, amount, payment_method, status, imported_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
+           WHERE NOT EXISTS (
+             SELECT 1 FROM hacomono_billing_records
+             WHERE billing_date=? AND member_id IS ? AND product_name IS ? AND amount=?
+           )`,
+          [billingDate, memberId || null, kaiinNo || null, boomMemberId, productName || null, category, amount, paymentMethod || null, status || null,
+           billingDate, memberId || null, productName || null, amount]
+        );
+      }
       imported++;
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
