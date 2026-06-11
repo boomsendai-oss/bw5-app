@@ -204,6 +204,8 @@ async function handleSync(req: NextRequest) {
   // (HACOMONOの退会CSVは「手続き中」だけを返し、完全退会後は両CSVから消えるため、
   //  これを拾わないと退会が永久に記録されない)
   // - staff はHACOMONO会員CSVに載らないので除外
+  // - 休会 は契約中CSVから外れるだけで退会ではないので除外 (mid92/123で誤判定実績あり)
+  // - visitor は課金取込の自動生成レコードで会員CSVに載らないので除外
   // - 部分CSVアップロード事故でいきなり大量退会にならないよう、契約中CSVが
   //   50件以上ある(=全件エクスポートらしい)ときだけ実行する
   const withdrewIdSet = new Set(withdrewMembers.map((m) => m.hacomono_member_id));
@@ -211,7 +213,7 @@ async function handleSync(req: NextRequest) {
   if (activeMembers.length >= 50) {
     for (const exist of existingMembers) {
       if (exist.status !== 'active') continue;
-      if (exist.member_type === 'staff') continue;
+      if (exist.member_type === 'staff' || exist.member_type === '休会' || exist.member_type === 'visitor') continue;
       if (!exist.hacomono_member_id) continue;
       if (activeIdSet.has(exist.hacomono_member_id)) continue;
       if (withdrewIdSet.has(exist.hacomono_member_id)) continue;
