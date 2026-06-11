@@ -10,13 +10,15 @@ export const maxDuration = 60;
 // 手動同期 (/api/staff/schedule/sync-lesson-calendar) と同じ処理を、管理パスワード無しで
 // Cron専用に実行する。認証は CRON_SECRET (Vercelが Authorization: Bearer で送る) で行う。
 export async function GET(req: NextRequest) {
-  // CRON_SECRET が設定されていれば Bearer 認証を必須にする (外部からの無断実行を防ぐ)
+  // フェイルクローズ (T-168): CRON_SECRET未設定なら実行拒否、Bearer不一致は401。
+  // VercelのcronはCRON_SECRET環境変数を自動でBearerとして送ってくる
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get('authorization');
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    }
+  if (!secret) {
+    return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 });
+  }
+  const auth = req.headers.get('authorization');
+  if (auth !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
   try {

@@ -131,6 +131,49 @@ type DashboardData = {
   generated_at: string;
 };
 
+// 同期鮮度バッジ (T-165): 最終同期と稼働率データの古さを常時表示
+function SyncFreshness() {
+  const [health, setHealth] = useState<{
+    last_run: { ran_at: string; status: string; lstep_state_age_days: number | null } | null;
+    utilization_last_date: string | null;
+  } | null>(null);
+  useEffect(() => {
+    fetch('/api/staff/operations/sync-health', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setHealth)
+      .catch(() => {});
+  }, []);
+  if (!health) return null;
+  const daysAgo = (d: string | null) => {
+    if (!d) return null;
+    return Math.floor((Date.now() - new Date(d.replace(' ', 'T') + (d.includes('T') || d.includes('+') ? '' : 'Z')).getTime()) / 86400000);
+  };
+  const runAge = daysAgo(health.last_run?.ran_at ?? null);
+  const utilAge = daysAgo(health.utilization_last_date);
+  const failed = health.last_run?.status === 'error';
+  const stale = runAge !== null && runAge >= 2;
+  const utilStale = utilAge !== null && utilAge >= 7;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+      <span className={`rounded-full px-2 py-0.5 font-medium ${failed ? 'bg-red-100 text-red-700' : stale ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+        {health.last_run
+          ? `同期: ${failed ? '❌失敗' : '✅成功'} ${runAge === 0 ? '今日' : `${runAge}日前`}`
+          : '同期記録なし'}
+      </span>
+      {health.utilization_last_date && (
+        <span className={`rounded-full px-2 py-0.5 font-medium ${utilStale ? 'bg-yellow-100 text-yellow-700' : 'bg-neutral-100 text-neutral-500'}`}>
+          稼働率データ: 〜{health.utilization_last_date}{utilStale ? ' ⚠️古い' : ''}
+        </span>
+      )}
+      {(health.last_run?.lstep_state_age_days ?? 0) >= 20 && (
+        <span className="rounded-full bg-yellow-100 px-2 py-0.5 font-medium text-yellow-700">
+          🔑 Lstepセッション {health.last_run!.lstep_state_age_days}日経過
+        </span>
+      )}
+    </div>
+  );
+}
+
 function num(n: number): string { return n.toLocaleString('ja-JP'); }
 function pct(n: number, decimals = 1): string { return `${n.toFixed(decimals)}%`; }
 
@@ -397,6 +440,7 @@ export default function InsightsPage() {
               経営インサイト
             </h1>
             <p className="text-xs text-neutral-500">月次KPI自動集計ダッシュボード</p>
+            <SyncFreshness />
           </div>
           <div className="flex items-center gap-1 flex-wrap">
             <Button variant="outline" size="sm" className="text-xs relative" disabled={uploading} asChild>
