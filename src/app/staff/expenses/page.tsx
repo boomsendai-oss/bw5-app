@@ -101,6 +101,42 @@ export default function ExpensesPage() {
     }
   };
 
+  // 一括確定 (T-167): チェックした出金明細をまとめてカテゴリ確定
+  const [selectedTxns, setSelectedTxns] = useState<Set<number>>(new Set());
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const toggleTxn = (id: number) => {
+    setSelectedTxns(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkConfirm = async () => {
+    if (!bulkCategory || selectedTxns.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await fetch('/api/staff/expenses/confirm-bank', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txn_ids: Array.from(selectedTxns), category: bulkCategory }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSelectedTxns(new Set());
+      setBulkCategory('');
+      load(ym);
+    } catch (e) {
+      setErr(`一括確定失敗: ${e instanceof Error ? e.message : String(e)}`);
+      load(ym);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const deleteExpense = async (id: number) => {
     showConfirm(
       '経費削除',
@@ -237,10 +273,47 @@ export default function ExpensesPage() {
           {/* 未確定銀行明細 */}
           {!loading && data && (
             <TabsContent value="pending">
+              {/* 一括確定バー (T-167) */}
+              <div className="mb-2 flex items-center gap-2 flex-wrap rounded-lg border bg-orange-50 border-orange-200 px-3 py-2">
+                <span className="text-xs font-semibold text-orange-800">
+                  {selectedTxns.size > 0 ? `${selectedTxns.size}件選択中` : 'チェックして一括確定'}
+                </span>
+                <select
+                  value={bulkCategory}
+                  onChange={e => setBulkCategory(e.target.value)}
+                  className="px-2 py-1 border rounded text-xs bg-white"
+                >
+                  <option value="">カテゴリを選択...</option>
+                  {data.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <Button
+                  size="sm"
+                  disabled={!bulkCategory || selectedTxns.size === 0 || bulkBusy}
+                  onClick={bulkConfirm}
+                  className="text-xs h-7"
+                >
+                  {bulkBusy ? <Loader2 className="size-3 animate-spin" /> : `${selectedTxns.size}件を一括確定`}
+                </Button>
+                {selectedTxns.size > 0 && (
+                  <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setSelectedTxns(new Set())}>
+                    選択解除
+                  </Button>
+                )}
+              </div>
               <div className="bg-white rounded-lg border">
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="text-xs w-8">
+                        <input
+                          type="checkbox"
+                          checked={data.pendingBankTxns.filter(t => t.amount < 0).length > 0 && data.pendingBankTxns.filter(t => t.amount < 0).every(t => selectedTxns.has(t.id))}
+                          onChange={e => {
+                            const outgoing = data.pendingBankTxns.filter(t => t.amount < 0).map(t => t.id);
+                            setSelectedTxns(e.target.checked ? new Set(outgoing) : new Set());
+                          }}
+                        />
+                      </TableHead>
                       <TableHead className="text-xs whitespace-nowrap">日付</TableHead>
                       <TableHead className="text-xs whitespace-nowrap">摘要</TableHead>
                       <TableHead className="text-xs whitespace-nowrap">振込先</TableHead>
@@ -251,7 +324,12 @@ export default function ExpensesPage() {
                   </TableHeader>
                   <TableBody>
                     {data.pendingBankTxns.map(t => (
-                      <TableRow key={t.id}>
+                      <TableRow key={t.id} className={selectedTxns.has(t.id) ? 'bg-orange-50' : ''}>
+                        <TableCell className="text-xs">
+                          {t.amount < 0 && (
+                            <input type="checkbox" checked={selectedTxns.has(t.id)} onChange={() => toggleTxn(t.id)} />
+                          )}
+                        </TableCell>
                         <TableCell className="text-xs font-mono whitespace-nowrap">{t.txn_date}</TableCell>
                         <TableCell className="text-xs max-w-xs truncate">{t.description ?? '--'}</TableCell>
                         <TableCell className="text-xs text-slate-500 whitespace-nowrap">{t.counterparty ?? '--'}</TableCell>
@@ -270,7 +348,7 @@ export default function ExpensesPage() {
                       </TableRow>
                     ))}
                     {data.pendingBankTxns.length === 0 && (
-                      <TableRow><TableCell colSpan={6} className="py-4 text-center text-slate-400">未確定の銀行明細なし (経営インサイト画面で銀行CSV取込)</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={7} className="py-4 text-center text-slate-400">未確定の銀行明細なし (経営インサイト画面で銀行CSV取込)</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>

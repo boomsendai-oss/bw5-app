@@ -26,8 +26,10 @@ function parseAmount(s: string): number {
 }
 
 // 摘要から経費カテゴリを推定
+// NFKC正規化(T-167): 銀行明細は「Ｖｅｒｃｅｌ」「ＡＭＡＺＯＮ」等の全角表記が多く、
+// 正規化しないとASCIIパターンに一致せず自動推定が効かない。
 function guessCategory(desc: string, counterparty: string): string | null {
-  const all = `${desc} ${counterparty}`.toLowerCase();
+  const all = `${desc} ${counterparty}`.normalize('NFKC').toLowerCase();
   if (/vercel|turso|claude|anthropic|github|notion|hacomono|lstep|linestep|google.*workspace|wix|cloudflare|openai|figma/i.test(all)) return 'システム費';
   if (/google.*ads|meta|facebook|instagram.*広告|line.*広告|yahoo.*広告|広告/i.test(all)) return '広告費';
   if (/docomo|au|softbank|楽天モバイル|nuro|フレッツ|ocn|biglobe|sakura|aws/i.test(all)) return '通信費';
@@ -89,10 +91,11 @@ export async function POST(req: NextRequest) {
       const counterparty = pick(rec, '振込依頼人', '振込先', 'counterparty');
       const balance = parseAmount(pick(rec, '残高', 'balance'));
       // recurring_expenses の摘要マッチパターン優先 → なければヒューリスティック
-      const all = `${description} ${counterparty}`.toLowerCase();
+      // 全角表記対策でNFKC正規化してから照合する(T-167)
+      const all = `${description} ${counterparty}`.normalize('NFKC').toLowerCase();
       let matchedRecurring: Recurring | null = null;
       for (const r of recurring) {
-        const pat = (r.match_pattern ?? '').toLowerCase();
+        const pat = (r.match_pattern ?? '').normalize('NFKC').toLowerCase();
         if (pat && all.includes(pat)) { matchedRecurring = r; break; }
       }
       const category = matchedRecurring?.category ?? guessCategory(description, counterparty);

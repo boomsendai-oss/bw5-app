@@ -84,12 +84,15 @@ async function handleSync(req: NextRequest) {
   type ExistingMember = {
     id: number;
     hacomono_member_id: string;
+    full_name: string | null;
     plan_code: string | null;
     plan_name: string | null;
     status: string;
+    withdrew_at: string | null;
+    member_type: string | null;
   };
   const existingMembers = (await getAll(
-    `SELECT id, hacomono_member_id, plan_code, plan_name, status FROM boom_members`
+    `SELECT id, hacomono_member_id, full_name, plan_code, plan_name, status, withdrew_at, member_type FROM boom_members`
   )) as ExistingMember[];
   const existingByMid = new Map<string, ExistingMember>();
   for (const m of existingMembers) existingByMid.set(m.hacomono_member_id, m);
@@ -152,9 +155,24 @@ async function handleSync(req: NextRequest) {
 
   const newMembers: MemberSnapshot[] = [];
   const planChanges: { member: MemberSnapshot; from: { code: string | null; name: string | null }; to: { code: string | null; name: string | null } }[] = [];
-  const withdrewDetected: MemberSnapshot[] = [];
+  const withdrewDetected: { hacomono_member_id: string; full_name: string; withdrew_at: string | null }[] = [];
+
+  // 退会手続き日マップ (T-159)。
+  // HACOMONOは退会手続き済みでも在籍最終日までは「契約中CSV」に載せ続ける。
+  // 以前は契約中行が後勝ちで withdrew_at を NULL に戻し続け、最終日後は両CSVから
+  // 消えて誰も更新しない → 退会が10ヶ月間1件も記録されないバグになっていた。
+  // 両CSVに居る会員は「契約中(status=active)のまま withdrew_at だけ保持」する。
+  // 在籍カウントは日付窓方式(withdrew_at > 月末)なので退会日まで正しく在籍に数えられる。
+  const withdrewAtByMid = new Map<string, string | null>();
+  for (const m of withdrewMembers) {
+    withdrewAtByMid.set(m.hacomono_member_id, m.withdrew_at);
+  }
 
   for (const m of activeMembers) {
+    // 退会手続き済みの契約中会員: withdrew_at を退会CSVから引き継ぐ
+    const pendingWithdrawal = withdrewAtByMid.get(m.hacomono_member_id);
+    if (pendingWithdrawal) m.withdrew_at = pendingWithdrawal;
+
     const exist = existingByMid.get(m.hacomono_member_id);
     if (!exist) {
       newMembers.push(m);
@@ -166,15 +184,52 @@ async function handleSync(req: NextRequest) {
           to: { code: m.plan_code, name: m.plan_name },
         });
       }
+      // 新たに退会手続きが検出された会員(既存DBに退会日が無い)を通知対象に
+      if (pendingWithdrawal && !exist.withdrew_at) {
+        withdrewDetected.push({ hacomono_member_id: m.hacomono_member_id, full_name: m.full_name, withdrew_at: pendingWithdrawal });
+      }
     }
   }
-  // 契約中CSVにも入ってるIDは「再入会済」なので退会扱いしない
   const activeIdSet = new Set(activeMembers.map((m) => m.hacomono_member_id));
+  // 契約中CSVに居ない退会CSV会員 = 完全退会済み
   for (const m of withdrewMembers) {
     if (activeIdSet.has(m.hacomono_member_id)) continue;
     const exist = existingByMid.get(m.hacomono_member_id);
     if (!exist || exist.status === 'active') {
-      withdrewDetected.push(m);
+      withdrewDetected.push({ hacomono_member_id: m.hacomono_member_id, full_name: m.full_name, withdrew_at: m.withdrew_at });
+    }
+  }
+
+  // 消失検出 (T-159): DB上activeなのに両CSVから消えた会員 = 退会済み。
+  // (HACOMONOの退会CSVは「手続き中」だけを返し、完全退会後は両CSVから消えるため、
+  //  これを拾わないと退会が永久に記録されない)
+  // - staff はHACOMONO会員CSVに載らないので除外
+  // - 部分CSVアップロード事故でいきなり大量退会にならないよう、契約中CSVが
+  //   50件以上ある(=全件エクスポートらしい)ときだけ実行する
+  const withdrewIdSet = new Set(withdrewMembers.map((m) => m.hacomono_member_id));
+  const disappeared: ExistingMember[] = [];
+  if (activeMembers.length >= 50) {
+    for (const exist of existingMembers) {
+      if (exist.status !== 'active') continue;
+      if (exist.member_type === 'staff') continue;
+      if (!exist.hacomono_member_id) continue;
+      if (activeIdSet.has(exist.hacomono_member_id)) continue;
+      if (withdrewIdSet.has(exist.hacomono_member_id)) continue;
+      disappeared.push(exist);
+    }
+    if (disappeared.length > 0) {
+      const stmts = disappeared.map((d) => ({
+        sql: `UPDATE boom_members SET status='withdrew',
+               withdrew_at=COALESCE(withdrew_at, datetime('now')),
+               updated_at=CURRENT_TIMESTAMP WHERE id = ?`,
+        args: [d.id] as (string | number)[],
+      }));
+      for (let i = 0; i < stmts.length; i += 50) {
+        await batch(stmts.slice(i, i + 50));
+      }
+      for (const d of disappeared) {
+        withdrewDetected.push({ hacomono_member_id: d.hacomono_member_id, full_name: d.full_name ?? '', withdrew_at: d.withdrew_at });
+      }
     }
   }
 

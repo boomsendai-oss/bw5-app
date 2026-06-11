@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
-import { getActiveMemberCount, getUtilizationRate } from '@/lib/kpiMetrics';
+import { getActiveMemberCount, getActiveMemberCountByType, getUtilizationRate, NON_CUSTOMER_TYPES_SQL } from '@/lib/kpiMetrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,24 +30,30 @@ export async function GET(req: NextRequest) {
   const prevStart = `${prevYm}-01`;
 
   // ===== B: 顧客動態 =====
+  // 在籍系は全て課金対象顧客のみ(staff/休会/visitor除外 = T-164)。
   // 月初在籍数 = 月初時点で active かつ enrolled_at <= 月初(または NULL) かつ (withdrew_at IS NULL or > 月初)
   const startActive = n((await safeOne(
     `SELECT COUNT(*) AS n FROM boom_members
      WHERE (enrolled_at IS NULL OR enrolled_at <= ?)
-       AND (withdrew_at IS NULL OR withdrew_at > ?)`,
+       AND (withdrew_at IS NULL OR withdrew_at > ?)
+       AND ${NON_CUSTOMER_TYPES_SQL}`,
     [monthStart, monthStart]
   ))?.n);
   // 月末在籍数 — 正準ロジック(src/lib/kpiMetrics.ts)に集約。
   // この関数は上記インラインSQLと同一定義(月末境界 monthEndISO で <= / >)。
   const endActive = await getActiveMemberCount(ym);
+  // member_type 別在籍 (月額/チケット分離表示用 = T-164)
+  const regularActive = await getActiveMemberCountByType(ym, 'regular');
+  const ticketActive = await getActiveMemberCountByType(ym, 'ticket');
+  const collegeActive = await getActiveMemberCountByType(ym, 'college');
   // 当月新規入会
   const newSignups = n((await safeOne(
-    `SELECT COUNT(*) AS n FROM boom_members WHERE enrolled_at BETWEEN ? AND ?`,
+    `SELECT COUNT(*) AS n FROM boom_members WHERE enrolled_at BETWEEN ? AND ? AND ${NON_CUSTOMER_TYPES_SQL}`,
     [monthStart, monthEndISO]
   ))?.n);
   // 当月退会
   const churned = n((await safeOne(
-    `SELECT COUNT(*) AS n FROM boom_members WHERE withdrew_at BETWEEN ? AND ?`,
+    `SELECT COUNT(*) AS n FROM boom_members WHERE withdrew_at BETWEEN ? AND ? AND ${NON_CUSTOMER_TYPES_SQL}`,
     [monthStart, monthEndISO]
   ))?.n);
   const churnRate = startActive > 0 ? (churned / startActive) * 100 : 0;
@@ -274,6 +280,10 @@ export async function GET(req: NextRequest) {
     members: {
       start_active: startActive,
       end_active: endActive,
+      // member_type 別内訳 (T-164): 月額/チケット/カレッジを分離表示
+      regular_active: regularActive,
+      ticket_active: ticketActive,
+      college_active: collegeActive,
       new_signups: newSignups,
       churned: churned,
       net_growth: netGrowth,

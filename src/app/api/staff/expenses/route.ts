@@ -5,7 +5,9 @@ import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const CATEGORIES = ['広告費', 'システム費', '通信費', '備品', '給与', 'スタジオ料', 'その他'];
+// 「給与」「スタジオ料」は payroll_runs / studio_billing_runs で別管理のため
+// 経費カテゴリから除外(T-166: expensesに入れると利益集計で二重計上になる)
+const CATEGORIES = ['広告費', 'システム費', '通信費', '備品', 'その他'];
 
 // GET /api/staff/expenses?year_month=YYYY-MM
 export async function GET(req: NextRequest) {

@@ -16,6 +16,16 @@ function splitYm(ym: string): [number, number] {
 }
 
 /**
+ * 在籍数から除外する member_type (T-164)。
+ * - staff: スタッフアカウント(顧客ではない)
+ * - 休会: 休会中(課金対象外)
+ * - visitor: 課金CSV取込が自動生成した氏名未確認の仮レコード
+ * member_type が NULL の行は顧客とみなして含める(安全側)。
+ * 課金対象顧客 = regular + ticket + college (本番172名 = HACOMONO契約中と一致)。
+ */
+export const NON_CUSTOMER_TYPES_SQL = `(member_type IS NULL OR member_type NOT IN ('staff', '休会', 'visitor'))`;
+
+/**
  * 指定月末時点の在籍数(日付ウィンドウ方式)。ym='YYYY-MM'。
  *
  * dashboard route の「月末在籍数(endActive)」と同一定義:
@@ -32,8 +42,29 @@ export async function getActiveMemberCount(ym: string): Promise<number> {
   const row = await getOne(
     `SELECT COUNT(*) AS n FROM boom_members
       WHERE (enrolled_at IS NULL OR enrolled_at <= ?)
-        AND (withdrew_at IS NULL OR withdrew_at > ?)`,
+        AND (withdrew_at IS NULL OR withdrew_at > ?)
+        AND ${NON_CUSTOMER_TYPES_SQL}`,
     [monthEndISO, monthEndISO]
+  );
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * member_type 別の月末在籍数 (T-164)。
+ * 'regular'(月額) / 'ticket'(チケット) / 'college'(カレッジ) などを個別に数える。
+ * 成長戦略を「月額会員を増やすのか、チケット会員を増やすのか」で分けて
+ * 議論できるようにダッシュボードに並記する用途。
+ */
+export async function getActiveMemberCountByType(ym: string, memberType: string): Promise<number> {
+  const [y, m] = splitYm(ym);
+  const lastDay = new Date(y, m, 0).getDate();
+  const monthEndISO = `${ym}-${String(lastDay).padStart(2, '0')}T23:59:59`;
+  const row = await getOne(
+    `SELECT COUNT(*) AS n FROM boom_members
+      WHERE (enrolled_at IS NULL OR enrolled_at <= ?)
+        AND (withdrew_at IS NULL OR withdrew_at > ?)
+        AND member_type = ?`,
+    [monthEndISO, monthEndISO, memberType]
   );
   return Number(row?.n ?? 0);
 }
