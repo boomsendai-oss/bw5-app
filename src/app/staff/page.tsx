@@ -9,7 +9,6 @@ import {
   Receipt,
   Building2,
   XCircle,
-  TrendingUp,
   Users,
   Calendar,
   Radio,
@@ -83,15 +82,6 @@ const CARDS: CardDef[] = [
     icon: XCircle,
     title: '休講申請',
     description: 'インストラクターからの休講申請を承認/却下',
-  },
-  {
-    href: '/staff/dashboard',
-    icon: TrendingUp,
-    title: 'KPIスナップショット (旧)',
-    description: '月次手動入力ダッシュボード',
-    stat: s => [
-      { label: '月次レポート', value: s.monthly.reports },
-    ],
   },
   {
     href: '/staff/members',
