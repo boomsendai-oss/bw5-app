@@ -46,6 +46,18 @@ export async function GET(req: NextRequest) {
   const regularActive = await getActiveMemberCountByType(ym, 'regular');
   const ticketActive = await getActiveMemberCountByType(ym, 'ticket');
   const collegeActive = await getActiveMemberCountByType(ym, 'college');
+  // チケット実働/休眠 (T-175): 月末時点で直近90日以内にチェックインがあれば実働。
+  // 休眠はDBを書き換えず表示時に計算する(復帰したら自動で実働に戻る)
+  const ticketEngaged = n((await safeOne(
+    `SELECT COUNT(*) AS n FROM boom_members m
+     WHERE m.member_type='ticket' AND m.status='active'
+       AND (m.withdrew_at IS NULL OR m.withdrew_at > ?)
+       AND EXISTS (SELECT 1 FROM hacomono_reservations r
+                   WHERE r.boom_member_id = m.id AND r.status='チェックイン'
+                     AND r.lesson_date BETWEEN date(?, '-90 days') AND ?)`,
+    [monthEndISO, monthEnd, monthEnd]
+  ))?.n);
+  const ticketDormant = Math.max(0, ticketActive - ticketEngaged);
   // 当月新規入会
   const newSignups = n((await safeOne(
     `SELECT COUNT(*) AS n FROM boom_members WHERE enrolled_at BETWEEN ? AND ? AND ${NON_CUSTOMER_TYPES_SQL}`,
@@ -283,6 +295,8 @@ export async function GET(req: NextRequest) {
       // member_type 別内訳 (T-164): 月額/チケット/カレッジを分離表示
       regular_active: regularActive,
       ticket_active: ticketActive,
+      ticket_engaged: ticketEngaged,
+      ticket_dormant: ticketDormant,
       college_active: collegeActive,
       new_signups: newSignups,
       churned: churned,

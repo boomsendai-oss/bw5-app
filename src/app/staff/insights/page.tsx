@@ -95,6 +95,7 @@ type DashboardData = {
   members: {
     start_active: number; end_active: number; new_signups: number;
     regular_active?: number; ticket_active?: number; college_active?: number;
+    ticket_engaged?: number; ticket_dormant?: number;
     churned: number; net_growth: number; churn_rate: number;
   };
   trial: { count: number; enrolled_within_14d: number; cvr: number };
@@ -486,9 +487,11 @@ export default function InsightsPage() {
                   label="在籍数(月末)"
                   value={num(data.members.end_active)}
                   sub={
-                    data.members.regular_active != null
-                      ? `月額${num(data.members.regular_active)} / チケ${num(data.members.ticket_active ?? 0)} / 学割${num(data.members.college_active ?? 0)} (月初 ${num(data.members.start_active)})`
-                      : `有効会員 (boom_members) / 月初 ${num(data.members.start_active)}人`
+                    data.members.ticket_engaged != null
+                      ? `月額${num(data.members.regular_active ?? 0)} / 学割${num(data.members.college_active ?? 0)} / チケ実働${num(data.members.ticket_engaged)} (休眠${num(data.members.ticket_dormant ?? 0)})`
+                      : data.members.regular_active != null
+                        ? `月額${num(data.members.regular_active)} / チケ${num(data.members.ticket_active ?? 0)} / 学割${num(data.members.college_active ?? 0)} (月初 ${num(data.members.start_active)})`
+                        : `有効会員 (boom_members) / 月初 ${num(data.members.start_active)}人`
                   }
                   target={target.members_active}
                   current={data.members.end_active}
