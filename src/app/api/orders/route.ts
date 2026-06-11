@@ -1,9 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getAll } from '@/lib/db';
+import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+// 注文一覧は氏名・メアド等のPIIを含むため認証必須(T-170)
+export async function GET(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const merchOrders = await getAll(`
       SELECT mo.id, mo.buyer_name, mo.payment_method, mo.status, mo.created_at,

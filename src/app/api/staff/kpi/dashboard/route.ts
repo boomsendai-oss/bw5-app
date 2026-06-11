@@ -235,6 +235,32 @@ export async function GET(req: NextRequest) {
   const totalExpenses = payrollTotal + studioTotal + Object.values(expBreakdown).reduce((a, b) => a + b, 0);
   const operatingProfit = coreRevenue - totalExpenses;
 
+  // 締め確定ガード(T-158): 営業利益=売上−給与−スタジオ料−経費 だが、各財源の
+  // 当月データが揃わないと利益が虚偽になる。4財源それぞれの当月行有無を返し、
+  // フロントは全部揃った月だけ黒字赤字を確定表示する。
+  const billingCount = n((await safeOne(
+    `SELECT COUNT(*) AS c FROM hacomono_billing_records WHERE billing_date BETWEEN ? AND ?`, [monthStart, monthEnd]
+  ))?.c);
+  const payrollCount = n((await safeOne(
+    `SELECT COUNT(*) AS c FROM payroll_runs WHERE year_month = ?`, [ym]
+  ))?.c);
+  const studioCount = n((await safeOne(
+    `SELECT COUNT(*) AS c FROM studio_billing_runs WHERE year_month = ?`, [ym]
+  ))?.c);
+  const expenseCount = n((await safeOne(
+    `SELECT COUNT(*) AS c FROM expenses WHERE expense_date BETWEEN ? AND ?`, [monthStart, monthEnd]
+  ))?.c);
+  const sourceAvailability = {
+    revenue: billingCount > 0,
+    payroll: payrollCount > 0,
+    studio: studioCount > 0,
+    expenses: expenseCount > 0,
+  };
+  const missingSources = Object.entries(sourceAvailability)
+    .filter(([, ok]) => !ok)
+    .map(([k]) => ({ revenue: '売上(課金)', payroll: '給与', studio: 'スタジオ料', expenses: '経費' }[k] ?? k));
+  const profitConfirmed = missingSources.length === 0;
+
   // ===== 目標値 =====
   const targets = await safeAll(`SELECT metric_key, target_value FROM kpi_targets WHERE year_month = ?`, [ym]);
   const targetMap: Record<string, number> = {};
@@ -302,6 +328,11 @@ export async function GET(req: NextRequest) {
       total_expenses: totalExpenses,
       operating_profit: operatingProfit,
       profit_margin: coreRevenue > 0 ? (operatingProfit / coreRevenue) * 100 : 0,
+      // 締め確定ガード(T-158): 4財源が全て揃った月だけ profit_confirmed=true。
+      // フロントは false の月は黒字赤字を確定表示せず「データ不足」を出す。
+      source_availability: sourceAvailability,
+      missing_sources: missingSources,
+      profit_confirmed: profitConfirmed,
     },
     targets: targetMap,
     generated_at: new Date().toISOString(),

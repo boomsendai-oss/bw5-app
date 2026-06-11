@@ -121,6 +121,9 @@ type DashboardData = {
     revenue: number; payroll: number; studio: number;
     expense_breakdown: Record<string, number>;
     total_expenses: number; operating_profit: number; profit_margin: number;
+    source_availability?: { revenue: boolean; payroll: boolean; studio: boolean; expenses: boolean };
+    missing_sources?: string[];
+    profit_confirmed?: boolean;
   };
   targets: Record<string, number>;
   generated_at: string;
@@ -154,7 +157,7 @@ type KpiCardProps = {
   target?: number;
   current?: number;
   unit?: string;
-  accent?: 'orange' | 'blue' | 'green' | 'red' | 'purple';
+  accent?: 'orange' | 'blue' | 'green' | 'red' | 'purple' | 'neutral';
   warn?: boolean;
 };
 
@@ -165,6 +168,7 @@ function KpiCard({ label, value, sub, target, current, unit, accent = 'orange', 
     green: 'text-green-700',
     red: 'text-red-700',
     purple: 'text-purple-700',
+    neutral: 'text-neutral-500',
   };
   const progress = target && current !== undefined ? Math.min(100, (current / target) * 100) : null;
   return (
@@ -737,12 +741,18 @@ export default function InsightsPage() {
 
             {/* ===== D: 収益性 ===== */}
             <Section title="収益性" icon={<Gem className="h-4 w-4 text-orange-500" />} hint="営業利益 = 本業売上 - 給与 - スタジオ料 - 経費">
+              {/* 締め確定ガード(T-158): 4財源が揃っていない月は黒字赤字を確定表示しない */}
+              {data.profitability.profit_confirmed === false && (
+                <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  ⚠️ この月は <b>{(data.profitability.missing_sources ?? []).join('・')}</b> のデータが未取込のため、営業利益は<b>確定値ではありません</b>（参考値）。全財源が揃うと黒字赤字を確定表示します。
+                </div>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3">
                 <KpiCard
-                  label="営業利益"
+                  label={data.profitability.profit_confirmed === false ? '営業利益(参考値)' : '営業利益'}
                   value={yen(data.profitability.operating_profit)}
-                  sub={`利益率 ${pct(data.profitability.profit_margin)}`}
-                  accent={data.profitability.operating_profit >= 0 ? 'green' : 'red'}
+                  sub={data.profitability.profit_confirmed === false ? 'データ不足・未確定' : `利益率 ${pct(data.profitability.profit_margin)}`}
+                  accent={data.profitability.profit_confirmed === false ? 'neutral' : (data.profitability.operating_profit >= 0 ? 'green' : 'red')}
                 />
                 <KpiCard
                   label="給与"

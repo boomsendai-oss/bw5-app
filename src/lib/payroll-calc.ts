@@ -17,6 +17,8 @@ export type PayrollLine = {
   transit_fee: number;
   source: 'lesson_instance' | 'lesson_master_expanded';
   source_ref_id: number | null;
+  // 単価が未登録(¥0は意図的だが、キー欠落は事故)の行を識別する(T-156)
+  rate_missing?: boolean;
 };
 
 export type PayrollResult = {
@@ -26,6 +28,8 @@ export type PayrollResult = {
   lines: PayrollLine[];
   total_lesson_amount: number;
   total_transit_amount: number;
+  // 単価未登録の行が1つでもあれば true。計算時に「要確認」として可視化する(T-156)
+  has_rate_missing: boolean;
 };
 
 /**
@@ -57,6 +61,22 @@ export function resolveRate(
   durationMinutes: number,
 ): number {
   return overrideRate ?? rateMap.get(`${instructorId}_${durationMinutes}`) ?? 0;
+}
+
+/**
+ * 単価が「未登録」かどうかを判定する(T-156)。
+ * override も rateMap のキーも存在しない場合のみ true。
+ * rateMap にキーがあれば値が0でも「意図的な¥0」とみなし missing 扱いしない
+ * (例: 代表TARO はレッスン給与なしで¥0を明示登録している)。
+ */
+export function isRateMissing(
+  overrideRate: number | null | undefined,
+  rateMap: Map<string, number>,
+  instructorId: number,
+  durationMinutes: number,
+): boolean {
+  if (overrideRate != null) return false;
+  return !rateMap.has(`${instructorId}_${durationMinutes}`);
 }
 
 /**
@@ -158,6 +178,7 @@ export function aggregateInstances(
     const dm = ins.duration_minutes ?? minutesBetween(ins.start_time, ins.end_time);
     const overrideRate = ins.master_id != null ? (masterOverrideMap.get(ins.master_id) ?? null) : null;
     const rate = resolveRate(overrideRate, rateMap, ins.instructor_id, dm);
+    const rateMissing = isRateMissing(overrideRate, rateMap, ins.instructor_id, dm);
     const transitCandidate = resolveTransitFee(ins.transit_fee_override, transitMap, ins.instructor_id, ins.studio_id);
     const transit = deduplicateTransit(transitCandidate, ins.instructor_id, ins.studio_id, ins.date, transitCharged);
     result.lines.push({
@@ -171,7 +192,9 @@ export function aggregateInstances(
       transit_fee: transit,
       source: 'lesson_instance',
       source_ref_id: ins.id,
+      rate_missing: rateMissing,
     });
+    if (rateMissing) result.has_rate_missing = true;
     result.total_lesson_amount += rate;
     result.total_transit_amount += transit;
   }
@@ -196,6 +219,7 @@ export function expandMasters(
     if (result.salary_type === 'monthly_fixed') continue;
     const dm = master.duration_minutes ?? (master.default_start_time && master.default_end_time ? minutesBetween(master.default_start_time, master.default_end_time) : 0);
     const rate = resolveRate(master.override_rate, rateMap, master.default_instructor_id, dm);
+    const rateMissing = isRateMissing(master.override_rate, rateMap, master.default_instructor_id, dm);
     const transitCandidate = master.default_studio_id ? (transitMap.get(`${master.default_instructor_id}_${master.default_studio_id}`) ?? 0) : 0;
     const transit = deduplicateTransit(transitCandidate, master.default_instructor_id, master.default_studio_id, dateStr, transitCharged);
     result.lines.push({
@@ -209,7 +233,9 @@ export function expandMasters(
       transit_fee: transit,
       source: 'lesson_master_expanded',
       source_ref_id: master.id,
+      rate_missing: rateMissing,
     });
+    if (rateMissing) result.has_rate_missing = true;
     result.total_lesson_amount += rate;
     result.total_transit_amount += transit;
   }
@@ -228,6 +254,7 @@ export function buildResultsMap(instructors: InstructorInput[]): Map<number, Pay
       lines: [],
       total_lesson_amount: 0,
       total_transit_amount: 0,
+      has_rate_missing: false,
     });
   }
   return map;

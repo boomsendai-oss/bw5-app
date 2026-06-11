@@ -4,7 +4,9 @@ import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+// 注文一覧は氏名・メアド等のPIIを含むため認証必須(T-170)
+export async function GET(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const orders = await getAll(`
       SELECT mo.*, m.name as merch_name, m.price as merch_price
