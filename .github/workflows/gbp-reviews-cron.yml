@@ -1,0 +1,25 @@
+# GBPクチコミ取込cron (T-178)
+# JST 6:00 / 12:00 / 18:00 / 24:00 = UTC 21:00 / 3:00 / 9:00 / 15:00
+# (GitHub Actionsのcronは数分遅延することがあるが用途上問題なし)
+name: gbp-reviews-cron
+
+on:
+  schedule:
+    - cron: '0 21,3,9,15 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/gbp-reviews
+        run: |
+          set -e
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/gbp-reviews)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1
