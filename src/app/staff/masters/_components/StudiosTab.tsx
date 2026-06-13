@@ -235,7 +235,7 @@ export default function StudiosTab({ studios, setStudios, reload, setMsg }: Prop
               {editing.pricing_model !== 'block' && (
                 <div>
                   <Label className="text-xs">1時間あたり単価 (¥)</Label>
-                  <Input type="number" value={String(editing.hourly_rate ?? 0)} onChange={e => updateField({ hourly_rate: Number(e.target.value) || 0 })} />
+                  <Input type="number" inputMode="numeric" value={editing.hourly_rate || ''} onChange={e => updateField({ hourly_rate: Number(e.target.value) || 0 })} placeholder="例: 2000" />
                 </div>
               )}
               {editing.pricing_model === 'block' && (
@@ -266,7 +266,8 @@ export default function StudiosTab({ studios, setStudios, reload, setMsg }: Prop
                         />
                         <Input
                           type="number"
-                          value={b.price}
+                          inputMode="numeric"
+                          value={b.price || ''}
                           onChange={e => { const nb = [...editBlocks]; nb[i] = { ...nb[i], price: Number(e.target.value) || 0 }; setEditBlocks(nb); }}
                           className="w-24"
                           placeholder="料金"
@@ -286,7 +287,7 @@ export default function StudiosTab({ studios, setStudios, reload, setMsg }: Prop
               )}
               <div>
                 <Label className="text-xs">1日あたりバッファ分数 (例: 30)</Label>
-                <Input type="number" value={String(editing.daily_buffer_minutes ?? 0)} onChange={e => updateField({ daily_buffer_minutes: Number(e.target.value) || 0 })} />
+                <Input type="number" inputMode="numeric" value={editing.daily_buffer_minutes || ''} onChange={e => updateField({ daily_buffer_minutes: Number(e.target.value) || 0 })} placeholder="0" />
               </div>
               <div>
                 <Label className="text-xs">メモ</Label>

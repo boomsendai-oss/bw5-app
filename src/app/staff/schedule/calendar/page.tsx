@@ -932,8 +932,16 @@ function EditLessonContent({ target, studios, instructors, onClose, onSave }: {
       </DialogHeader>
       <div className="space-y-3 text-sm">
         <div className="space-y-1">
-          <Label className="text-[11px] font-semibold">日付（変更すると別日へ移動）</Label>
-          <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} />
+          <Label className="text-[11px] font-semibold">スタジオ</Label>
+          <Select value={studioId || '__none__'} onValueChange={v => setStudioId(v === '__none__' ? '' : v)}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="未設定" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">未設定</SelectItem>
+              {studios.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-1">
           <Label className="text-[11px] font-semibold">時間</Label>
@@ -945,18 +953,6 @@ function EditLessonContent({ target, studios, instructors, onClose, onSave }: {
             }} />
             <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} />
           </div>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-[11px] font-semibold">スタジオ</Label>
-          <Select value={studioId || '__none__'} onValueChange={v => setStudioId(v === '__none__' ? '' : v)}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="未設定" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">未設定</SelectItem>
-              {studios.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
         </div>
         <div className="space-y-1">
           <Label className="text-[11px] font-semibold">インストラクター</Label>
@@ -973,6 +969,11 @@ function EditLessonContent({ target, studios, instructors, onClose, onSave }: {
         <div className="space-y-1">
           <Label className="text-[11px] font-semibold">メモ</Label>
           <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="メモ (任意)" />
+        </div>
+        {/* 日付変更は「別日へ移動」する危険操作なので最下部に分離 */}
+        <div className="space-y-1 border-t pt-3 mt-1">
+          <Label className="text-[11px] font-semibold text-amber-600">日付（変更すると別日へ移動）</Label>
+          <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} />
         </div>
         <DialogFooter className="flex gap-2 pt-1">
           <Button variant="secondary" onClick={onClose} className="flex-1">キャンセル</Button>
