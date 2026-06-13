@@ -59,7 +59,15 @@ const mainNavItems: NavItem[] = [
   { title: '経費管理', href: '/staff/expenses', icon: Receipt },
   { title: 'スタジオ請求', href: '/staff/studio-billing', icon: Building2 },
   { title: 'KPI・分析', href: '/staff/insights', icon: BarChart3 },
-  { title: '会員管理', href: '/staff/members', icon: Users },
+  {
+    title: '会員管理',
+    href: '/staff/members',
+    icon: Users,
+    subItems: [
+      { title: '会員一覧', href: '/staff/members' },
+      { title: '退会候補', href: '/staff/members/withdrawal-candidates' },
+    ],
+  },
 ];
 
 const opsNavItems: NavItem[] = [

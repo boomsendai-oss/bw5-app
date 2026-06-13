@@ -303,6 +303,45 @@ export function getSchemaStatements(): InStatement[] {
       args: [],
     },
     {
+      // === 会員ルールv1: チケット会員 自動退会の進行管理 ===
+      // 退会の「実行」はHACOMONO上で人手(不可逆操作)。本テーブルは候補→事前通知→
+      // 退会処理 の各段階を記録し、二重通知・取りこぼしを防ぐ監査用バックボーン。
+      sql: `CREATE TABLE IF NOT EXISTS withdrawal_notices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      member_id INTEGER NOT NULL,
+      reason TEXT NOT NULL,               -- inactive_6mo / never_attended_3mo / long_dormant_nodata
+      last_checkin_date TEXT,             -- 判定時点の最終チェックイン (なければNULL)
+      checkin_count INTEGER DEFAULT 0,
+      notified_at TEXT,                   -- 退会1ヶ月前の事前通知を送った日時 (未送信ならNULL)
+      notice_channel TEXT,                -- line / email / both
+      extended_until TEXT,                -- スタッフが延長した場合の再判定日 (タイマーリセット)
+      withdrawn_at TEXT,                  -- 実際にHACOMONOで退会処理した日 (人手記録)
+      status TEXT DEFAULT 'candidate',    -- candidate / notified / extended / withdrawn / reactivated
+      note TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(member_id)
+    )`,
+      args: [],
+    },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_withdrawal_notices_status ON withdrawal_notices(status)`, args: [] },
+    {
+      // === 会員ルールv1: お帰りクーポン(入会金半額2,000円・永年) 付与記録 ===
+      // 自動退会・自主退会の両方で付与。再入会時の本人確認・重複防止に使う。
+      sql: `CREATE TABLE IF NOT EXISTS homecoming_coupons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      member_id INTEGER NOT NULL,
+      trigger TEXT NOT NULL,              -- auto_withdrawal / self_withdrawal
+      coupon_label TEXT DEFAULT '入会金半額(2,000円)・永年',
+      issued_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      delivered_channel TEXT,             -- line / email
+      redeemed_at TEXT,                   -- 再入会で使われた日 (任意)
+      note TEXT
+    )`,
+      args: [],
+    },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_homecoming_coupons_member ON homecoming_coupons(member_id)`, args: [] },
+    {
       sql: `CREATE TABLE IF NOT EXISTS trial_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       lstep_id TEXT,
