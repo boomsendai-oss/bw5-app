@@ -37,6 +37,8 @@ export type WithdrawalCandidate = {
   // 連絡手段カバレッジ
   has_email: boolean;
   has_line: boolean;
+  // 家族アカウント保護: 現役で通う家族(代表/家族メンバー)とリンクしている場合その氏名
+  family_active_link: string | null;
   // 進行状態 (withdrawal_notices より)
   notice_status: string | null; // candidate / notified / extended / withdrawn / reactivated
   notified_at: string | null;
@@ -52,8 +54,9 @@ export type WithdrawalAssessment = {
     data_floor: string | null; // 受講データの最古日
     notice_window_days: number;
   };
-  candidates: WithdrawalCandidate[]; // 今すでに退会条件を満たす
+  candidates: WithdrawalCandidate[]; // 今すでに退会条件を満たす(家族保護済み)
   pre_notice: WithdrawalCandidate[]; // あと notice_window_days 日で条件到達 (= 1ヶ月前事前通知の対象)
+  family_review: WithdrawalCandidate[]; // 本人は未受講だが現役の家族とリンク → 自動退会から除外・要手動確認
 };
 
 const REASON_LABELS: Record<WithdrawalReason, string> = {
@@ -88,6 +91,7 @@ type Row = {
   full_name_kana: string | null;
   enrolled_at: string | null;
   email: string | null;
+  rep_name: string | null;
   last_checkin: string | null;
   checkin_count: number;
   has_line: number;
@@ -134,6 +138,7 @@ export async function assessTicketWithdrawals(opts?: {
        m.full_name_kana AS full_name_kana,
        m.enrolled_at   AS enrolled_at,
        m.email         AS email,
+       m.rep_name      AS rep_name,
        (SELECT MAX(r.lesson_date) FROM hacomono_reservations r
           WHERE r.boom_member_id = m.id AND r.status = 'チェックイン') AS last_checkin,
        (SELECT COUNT(*) FROM hacomono_reservations r
@@ -149,9 +154,40 @@ export async function assessTicketWithdrawals(opts?: {
 
   const candidates: WithdrawalCandidate[] = [];
   const preNotice: WithdrawalCandidate[] = [];
+  const familyReview: WithdrawalCandidate[] = [];
 
   // データ全期間が normalMonths 以上あるか (long_dormant_nodata 判定の前提)
   const dataSpanOk = dataFloor ? dataFloor <= sixMonthsAgo : false;
+
+  // 家族アカウント保護用のグラフを作る。
+  //   現役で通っている会員(=直近 normalMonths 内にチェックイン有り)の氏名を集め、
+  //   退会候補が「現役会員と家族リンク(rep_name どちらか向き)」している場合は
+  //   自動退会から外して family_review に回す。代表者を退会させると家族メンバーの
+  //   運用に影響しうるため(例: 親が代表で子が現役)。
+  const famRows = await getAll(
+    `SELECT m.full_name AS full_name, m.rep_name AS rep_name,
+       (SELECT MAX(r.lesson_date) FROM hacomono_reservations r
+          WHERE r.boom_member_id = m.id AND r.status = 'チェックイン') AS last_checkin,
+       (SELECT COUNT(*) FROM hacomono_reservations r
+          WHERE r.boom_member_id = m.id AND r.status = 'チェックイン') AS cc
+     FROM boom_members m WHERE m.status = 'active'`
+  );
+  const activeAttendeeNames = new Set<string>(); // 現役で通っている会員の氏名
+  const repNamesOfActiveAttendees = new Set<string>(); // 現役会員が「代表」に指している氏名
+  for (const f of famRows) {
+    const lc = dateOnly(f.last_checkin);
+    const attending = f.cc > 0 && lc !== null && lc >= sixMonthsAgo;
+    if (!attending) continue;
+    if (f.full_name) activeAttendeeNames.add(String(f.full_name).trim());
+    if (f.rep_name && String(f.rep_name).trim()) repNamesOfActiveAttendees.add(String(f.rep_name).trim());
+  }
+  // 候補が現役家族とリンクしているか → リンク先の氏名(なければ null)
+  const familyActiveLink = (fullName: string, repName: string | null): string | null => {
+    const rep = repName ? repName.trim() : '';
+    if (rep && activeAttendeeNames.has(rep)) return rep; // 自分の代表が現役
+    if (fullName && repNamesOfActiveAttendees.has(fullName.trim())) return fullName; // 自分を代表とする現役家族がいる
+    return null;
+  };
 
   for (const r of rows) {
     const lastCheckin = dateOnly(r.last_checkin);
@@ -168,6 +204,7 @@ export async function assessTicketWithdrawals(opts?: {
       checkin_count: r.checkin_count,
       has_email: !!(r.email && r.email.trim()),
       has_line: r.has_line > 0,
+      family_active_link: familyActiveLink(r.full_name, r.rep_name),
       notice_status: r.notice_status,
       notified_at: r.notified_at,
       extended_until: r.extended_until,
@@ -178,24 +215,29 @@ export async function assessTicketWithdrawals(opts?: {
     // 既に退会処理済みはスキップ
     if (r.notice_status === 'withdrawn') continue;
 
+    // 退会候補の判定。家族保護に該当する場合は candidates ではなく familyReview へ。
+    const pushCandidate = (reason: WithdrawalReason) => {
+      const c = { ...base, reason, reason_label: REASON_LABELS[reason] };
+      if (base.family_active_link) familyReview.push(c);
+      else candidates.push(c);
+    };
+
     if (r.checkin_count >= 1) {
       // 通常ルール
       if (lastCheckin && lastCheckin < sixMonthsAgo) {
-        candidates.push({ ...base, reason: 'inactive_6mo', reason_label: REASON_LABELS.inactive_6mo });
+        pushCandidate('inactive_6mo');
       } else if (lastCheckin && lastCheckin >= noticeUpper && lastCheckin < noticeLower) {
-        // あと noticeWindowDays 日で6ヶ月到達 → 事前通知対象
+        // あと noticeWindowDays 日で6ヶ月到達 → 事前通知対象 (家族保護は最終退会時に効くのでここでは分けない)
         preNotice.push({ ...base, reason: 'inactive_6mo', reason_label: REASON_LABELS.inactive_6mo });
       }
     } else {
       // 0回受講
       if (enrollReliable) {
         // 信頼できる入会日: 入会3ヶ月例外
-        if (enrolledDate! < threeMonthsAgo) {
-          candidates.push({ ...base, reason: 'never_attended_3mo', reason_label: REASON_LABELS.never_attended_3mo });
-        }
+        if (enrolledDate! < threeMonthsAgo) pushCandidate('never_attended_3mo');
       } else if (dataSpanOk) {
         // 移行組で0回: 偽の入会日に頼らず観測事実で判定
-        candidates.push({ ...base, reason: 'long_dormant_nodata', reason_label: REASON_LABELS.long_dormant_nodata });
+        pushCandidate('long_dormant_nodata');
       }
     }
   }
@@ -205,6 +247,7 @@ export async function assessTicketWithdrawals(opts?: {
     (a.full_name_kana || a.full_name).localeCompare(b.full_name_kana || b.full_name, 'ja');
   candidates.sort(byKana);
   preNotice.sort(byKana);
+  familyReview.sort(byKana);
 
   return {
     params: {
@@ -217,5 +260,6 @@ export async function assessTicketWithdrawals(opts?: {
     },
     candidates,
     pre_notice: preNotice,
+    family_review: familyReview,
   };
 }

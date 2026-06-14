@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
     ...assessment,
     candidate_count: assessment.candidates.length,
     pre_notice_count: assessment.pre_notice.length,
+    family_review_count: assessment.family_review.length,
   });
 }
 

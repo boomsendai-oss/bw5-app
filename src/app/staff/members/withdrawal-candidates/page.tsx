@@ -18,6 +18,7 @@ type Candidate = {
   reason_label: string;
   has_email: boolean;
   has_line: boolean;
+  family_active_link: string | null;
   notice_status: string | null;
   notified_at: string | null;
   extended_until: string | null;
@@ -35,8 +36,10 @@ type Assessment = {
   };
   candidates: Candidate[];
   pre_notice: Candidate[];
+  family_review: Candidate[];
   candidate_count: number;
   pre_notice_count: number;
+  family_review_count: number;
 };
 
 const REASON_STYLE: Record<string, string> = {
@@ -179,14 +182,18 @@ export default function WithdrawalCandidatesPage() {
 
       {data && (
         <>
-          <div className="grid grid-cols-2 gap-2 text-center">
+          <div className="grid grid-cols-3 gap-2 text-center">
             <div className="rounded-lg border bg-red-50 p-3">
               <div className="text-2xl font-bold text-red-600">{data.candidate_count}</div>
               <div className="text-[11px] text-muted-foreground">退会条件を満たす</div>
             </div>
             <div className="rounded-lg border bg-amber-50 p-3">
               <div className="text-2xl font-bold text-amber-600">{data.pre_notice_count}</div>
-              <div className="text-[11px] text-muted-foreground">あと{data.params.notice_window_days}日で到達<br />(事前通知対象)</div>
+              <div className="text-[11px] text-muted-foreground">あと{data.params.notice_window_days}日で到達<br />(事前通知)</div>
+            </div>
+            <div className="rounded-lg border bg-purple-50 p-3">
+              <div className="text-2xl font-bold text-purple-600">{data.family_review_count}</div>
+              <div className="text-[11px] text-muted-foreground">家族要確認<br />(自動退会から除外)</div>
             </div>
           </div>
 
@@ -210,6 +217,25 @@ export default function WithdrawalCandidatesPage() {
               <div className="grid sm:grid-cols-2 gap-2">{data.candidates.map((c) => renderCard(c))}</div>
             )}
           </section>
+
+          {data.family_review.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold text-purple-700">家族要確認（自動退会から除外）</h2>
+              <p className="text-[11px] text-muted-foreground">
+                本人は未受講だが、<strong>現役で通っている家族</strong>とアカウントが繋がっている人。代表者を退会させると家族の運用に影響する恐れがあるため、自動退会の対象から外しています。退会させるかは手動で判断してください。
+              </p>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {data.family_review.map((c) => (
+                  <div key={c.member_id} className="rounded-lg border border-purple-200 bg-purple-50 p-3 space-y-1">
+                    <div className="font-semibold text-sm">{c.full_name}</div>
+                    {c.full_name_kana && <div className="text-[11px] text-muted-foreground">{c.full_name_kana}</div>}
+                    <div className="text-[11px] text-purple-700">現役の家族リンク: <strong>{c.family_active_link}</strong></div>
+                    <div className="text-[11px] text-muted-foreground">最終受講: {c.last_checkin ?? '(受講なし)'}（{c.checkin_count}回）／{c.reason_label}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </>
       )}
     </div>
