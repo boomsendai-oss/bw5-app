@@ -170,7 +170,7 @@ export default function WithdrawalCandidatesPage() {
         <div>
           このリストは<strong>判定のみ</strong>です。実際の退会処理は<strong>HACOMONOで手動</strong>で行ってください（アプリはHACOMONOに書き込みません）。
           各ボタンはアプリ内の進行記録だけを更新します。<br />
-          <span className="text-amber-700">※既存の塩漬け会員は、いきなり退会させず「おかえり配信」→猶予期間の後に対象化する方針（猶予期間はTARO確定待ち）。</span>
+          <span className="text-amber-700">※既存の塩漬け会員は、いきなり退会させない。「おかえり配信」→<strong>2ヶ月の猶予</strong>→反応がなければ対象化（2026-06-14 確定）。</span>
         </div>
       </div>
 
