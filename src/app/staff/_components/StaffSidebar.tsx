@@ -18,6 +18,7 @@ import {
   PartyPopper,
   Search,
   Star,
+  UserX,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -66,6 +67,7 @@ const mainNavItems: NavItem[] = [
     subItems: [
       { title: '会員一覧', href: '/staff/members' },
       { title: '退会候補', href: '/staff/members/withdrawal-candidates' },
+      { title: 'おかえりリスト', href: '/staff/members/dormant-outreach' },
     ],
   },
 ];
@@ -73,6 +75,7 @@ const mainNavItems: NavItem[] = [
 const opsNavItems: NavItem[] = [
   { title: 'ブログ', href: '/staff/blog', icon: FileText },
   { title: 'オペレーション', href: '/staff/operations', icon: Settings2 },
+  { title: 'ノーショー候補', href: '/staff/operations/noshow', icon: UserX },
   { title: 'LINE連携', href: '/staff/operations/lstep-update', icon: MessageCircle },
   { title: '映像予約', href: '/staff/video-preorders', icon: Video },
   { title: '休講申請', href: '/staff/cancel-requests', icon: XCircle },
