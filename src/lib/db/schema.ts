@@ -269,6 +269,14 @@ export function getSchemaStatements(): InStatement[] {
       withdrew_at TEXT,
       status TEXT NOT NULL DEFAULT 'active',
       member_type TEXT DEFAULT 'regular',
+      -- 契約プラン情報 (sync/route.ts が ML010 契約中CSVから取り込む。T-171: 本番legacy ALTERと正本を一致させる)
+      plan_code TEXT,
+      plan_name TEXT,
+      plan_started_at TEXT,
+      plan_continued_months TEXT,
+      -- 保護者/代表者情報 (子供会員の家族突合・代表者判定に使用)
+      guardian_relation TEXT,
+      rep_name TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { UserMinus, AlertTriangle, Mail, MessageCircle, Clock, Check, RotateCcw } from 'lucide-react';
+import { UserMinus, AlertTriangle, Mail, MessageCircle, Clock, Check, RotateCcw, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -71,6 +71,33 @@ export default function WithdrawalCandidatesPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const exportCsv = async () => {
+    if (!data || data.candidates.length === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const withdrawal_date =
+      prompt('退会手続き日(終了日)を YYYY-MM-DD で。OKで今日にします。', today) || today;
+    const res = await fetch('/api/staff/members/withdrawal-export', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        member_ids: data.candidates.map((c) => c.member_id),
+        withdrawal_date,
+      }),
+    });
+    if (!res.ok) {
+      alert(`CSV書き出し失敗: HTTP ${res.status}`);
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `契約プラン_退会_${withdrawal_date}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const act = async (c: Candidate, action: string, extra?: Record<string, unknown>) => {
     setBusyId(c.member_id);
@@ -210,7 +237,16 @@ export default function WithdrawalCandidatesPage() {
           )}
 
           <section className="space-y-2">
-            <h2 className="text-sm font-semibold">退会候補（{data.candidate_count}名）</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">退会候補（{data.candidate_count}名）</h2>
+              <Button size="xs" variant="outline" onClick={exportCsv} disabled={data.candidate_count === 0}>
+                <Download className="size-3" /> 契約プランCSV書き出し
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              HACOMONO「契約プラン」importに投入する退会CSV（退会手続き日時入り）。契約番号はDBに無いため空欄＝
+              <strong>まずインポート検証でメアド/会員番号キーが通るか確認</strong>してから本インポート（人手・不可逆）。
+            </p>
             {data.candidates.length === 0 ? (
               <p className="text-sm text-muted-foreground">該当なし</p>
             ) : (
