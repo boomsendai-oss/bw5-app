@@ -100,6 +100,7 @@ type DashboardData = {
   };
   trial: { count: number; enrolled_within_14d: number; cvr: number };
   line: { friends_now: number; blocked: number; total: number; block_rate: number };
+  // (TrialFunnel は別type・下記参照)
   revenue: {
     core: number;
     breakdown: { plan: number; ticket: number; enrollment_fee: number; other: number };
@@ -129,6 +130,19 @@ type DashboardData = {
   };
   targets: Record<string, number>;
   generated_at: string;
+};
+
+type TrialFunnel = {
+  ok: boolean;
+  empty?: boolean;
+  visited: number;
+  breakdown: { monthly: number; ticket: number; kyukai: number; no_plan: number };
+  no_plan_detail: { dup_suspect: number; recent: number; churned: number };
+  cvr_base: number;
+  monthly_cvr: number;
+  any_contract_cvr: number;
+  dup_suspects: { name: string; enrolled: string | null; last: string | null }[];
+  churned_list: { name: string; enrolled: string | null; last: string | null }[];
 };
 
 // 同期鮮度バッジ (T-165): 最終同期と稼働率データの古さを常時表示
@@ -284,6 +298,15 @@ export default function InsightsPage() {
       .then((r) => r.json())
       .then(setLineClicks)
       .catch(() => setLineClicks({ ok: false, ranges: [] }));
+  }, []);
+
+  // 体験→入会ファネル (T-157/T-160: hacomono_all_members ベース)
+  const [funnel, setFunnel] = useState<TrialFunnel | null>(null);
+  useEffect(() => {
+    fetch('/api/staff/kpi/trial-funnel', { credentials: 'include' })
+      .then((r) => r.json())
+      .then(setFunnel)
+      .catch(() => setFunnel(null));
   }, []);
 
   const runAutoSnapshot = async () => {
@@ -623,6 +646,60 @@ export default function InsightsPage() {
               <p className="mt-1 text-[10px] text-neutral-400">
                 LINE誘導クリック: boom-sendai.com上のLINEリンク押下 (GA4 line_click・2026-06-10計測開始・数時間〜1日遅れ)
               </p>
+            </Section>
+
+            {/* ===== 体験→入会ファネル (T-157/T-160) ===== */}
+            <Section title="体験→入会ファネル" icon={<Sprout className="h-4 w-4 text-orange-500" />} hint="HACOMONO会員登録=体験来店とみなした累計CVR">
+              {!funnel || funnel.empty || !funnel.ok ? (
+                <p className="text-xs text-neutral-400">
+                  全メンバー(ML001)未取込のため未表示。日次同期(次回)で自動取込されます。
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                    <KpiCard
+                      label="体験来店(会員登録)"
+                      value={num(funnel.visited)}
+                      sub="HACOMONOに登録された顧客"
+                      unit="人"
+                      accent="orange"
+                    />
+                    <KpiCard
+                      label="体験→月額CVR ★"
+                      value={pct(funnel.monthly_cvr)}
+                      sub={`月額${num(funnel.breakdown.monthly)}人 / 母数${num(funnel.cvr_base)}人`}
+                      unit="%"
+                      accent="orange"
+                    />
+                    <KpiCard
+                      label="チケット転換"
+                      value={num(funnel.breakdown.ticket)}
+                      sub="月額なし(ゆるい受け皿)"
+                      unit="人"
+                      accent="blue"
+                    />
+                    <KpiCard
+                      label="未契約(会員登録のみ)"
+                      value={num(funnel.breakdown.no_plan)}
+                      sub={`離脱${num(funnel.no_plan_detail.churned)}/最近${num(funnel.no_plan_detail.recent)}/重複疑い${num(funnel.no_plan_detail.dup_suspect)}`}
+                      unit="人"
+                      accent="purple"
+                    />
+                  </div>
+                  <p className="mt-1 text-[10px] text-neutral-400">
+                    ★本命KPI=体験→「月額会員」CVR。チケット込みの参考値は {pct(funnel.any_contract_cvr)}（月額0円で入りやすく甘く出る）。
+                    母数は「来店」から重複ノイズ{num(funnel.no_plan_detail.dup_suspect)}人・最近30日登録{num(funnel.no_plan_detail.recent)}人(判定中)を除いた確定数。
+                  </p>
+                  {funnel.dup_suspects.length > 0 && (
+                    <div className="mt-2 rounded-lg border border-purple-200 bg-purple-50 p-2 text-[11px]">
+                      <div className="font-semibold text-purple-700 mb-1">⚠️ 重複/誤登録の疑い {funnel.dup_suspects.length}件（HACOMONOで名寄せ推奨）</div>
+                      <div className="text-neutral-600">
+                        {funnel.dup_suspects.map((d) => `${d.name}(受講なし・誰かの保護者として登録)`).join(' / ')}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </Section>
 
             {/* ===== A: 売上系 ===== */}
