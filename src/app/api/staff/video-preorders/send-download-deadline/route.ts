@@ -85,7 +85,13 @@ export async function POST(req: NextRequest) {
     const key = r.email.trim().toLowerCase();
     if (!byEmail.has(key)) byEmail.set(key, { buyer_name: r.buyer_name, email: r.email.trim() });
   }
-  const recipients = [...byEmail.values()];
+  let recipients = [...byEmail.values()];
+
+  // only: 指定したメールアドレスだけに本送信する (失敗分の再送用)
+  if (Array.isArray(body.only) && body.only.length > 0) {
+    const onlySet = new Set(body.only.map((e: string) => String(e).trim().toLowerCase()));
+    recipients = recipients.filter((r) => onlySet.has(r.email.toLowerCase()));
+  }
 
   // テスト送信
   if (body.testTo) {
