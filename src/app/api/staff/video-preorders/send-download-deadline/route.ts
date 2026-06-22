@@ -9,6 +9,8 @@ export const maxDuration = 120;
 
 // ダウンロード期限（Vimeo 終了）
 const DEADLINE_LABEL = '2026年6月25日(水)';
+// 映像ページ(Vimeo showcase)。パスワードは6/5の案内メールに記載のものを利用してもらう(本メールには載せない)
+const VIDEO_URL = 'https://vimeo.com/showcase/12263534';
 
 function escapeHtml(s: string): string {
   return String(s)
@@ -32,9 +34,19 @@ function buildHtml(buyerName: string): string {
     <p>ダウンロード期間は <strong style="color:#ea580c;">${DEADLINE_LABEL}まで</strong> となっております。<br />
     <strong>期限を過ぎるとダウンロードができなくなり、再配布・再販売も行っておりません。</strong></p>
     <p>まだお手元に保存されていない方は、<strong>今のうちに、すべてのデータをダウンロードして保存</strong>しておくことを強くおすすめします。</p>
+
+    <div style="text-align:center; margin: 24px 0;">
+      <a href="${VIDEO_URL}" style="display:inline-block; background:#ea580c; color:#fff; padding:14px 36px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:16px;" target="_blank">▶ 映像ページを開く</a>
+      <div style="font-size:12px; color:#999; word-break:break-all; margin-top:8px;">${VIDEO_URL}</div>
+    </div>
+
     <p style="font-size:14px; color:#555;">
-      ダウンロードは、以前お送りしたメールに記載のリンクから行えます。<br />
-      リンクが見当たらない場合や、ダウンロードがうまくいかない場合は、お早めに本メールにご返信ください。
+      ページを開くと<strong>視聴パスワード</strong>を聞かれます。<br />
+      パスワードは、<strong>6月5日にお送りした「視聴・ダウンロードのご案内」メール</strong>に記載のものをご入力ください。<br />
+      各動画の<strong>右下のダウンロードボタン</strong>から保存できます（画質を選べます）。
+    </p>
+    <p style="font-size:13px; color:#777;">
+      メールが見当たらない場合や、ダウンロードがうまくいかない場合は、お早めに本メールにご返信いただくか、BOOM公式LINEへご連絡ください。
     </p>
     <hr style="margin: 28px 0; border: none; border-top: 1px solid #eee;" />
     <p style="font-size: 12px; color: #888; line-height: 1.7;">
