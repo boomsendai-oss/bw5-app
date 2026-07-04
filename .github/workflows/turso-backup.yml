@@ -1,0 +1,33 @@
+# Turso本番DB 日次バックアップ
+# 毎日 JST 03:30 (UTC 18:30) にDBを丸ごとダンプし、GitHub Actionsのアーティファクトとして保存。
+# Macに依存せずクラウドで動く。復元は artifact の .sql を turso db shell などに流すだけ。
+# 手動実行: Actionsタブ → turso-backup → Run workflow（または gh workflow run turso-backup.yml）
+name: turso-backup
+
+on:
+  schedule:
+    - cron: '30 18 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install libsql client
+        run: npm i @libsql/client@latest --no-audit --no-fund
+      - name: Dump Turso DB
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: node scripts/backup_turso.cjs
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: turso-backup-${{ github.run_id }}
+          path: backup/*.sql
+          retention-days: 30
