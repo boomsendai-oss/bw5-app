@@ -6,7 +6,9 @@ export const dynamic = 'force-dynamic';
 
 // GET /api/video-orders — admin/staff use; returns video preorders
 // マッピング: video_preorders → 管理画面が期待する VideoOrder 型
-export async function GET() {
+// 予約者の氏名・メール・電話(PII)を返すので認可必須(PATCH/DELETEと同じ)。
+export async function GET(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const rows = await getAll(
       `SELECT v.id, v.buyer_name, v.email, v.phone, v.note, v.status, v.created_at,

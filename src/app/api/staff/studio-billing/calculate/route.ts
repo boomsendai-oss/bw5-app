@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
-import { calculateStudioBillingForMonth, persistStudioBillingRun } from '@/lib/studioBilling';
+import { calculateStudioBillingForMonth, persistStudioBillingRun, zeroStaleDraftStudioBillingRuns } from '@/lib/studioBilling';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -17,5 +17,7 @@ export async function POST(req: NextRequest) {
     const runId = await persistStudioBillingRun(ym, r, payment_dates[r.studio_id]);
     ids.push({ studio_id: r.studio_id, run_id: runId, total_amount: r.total_lesson_amount });
   }
-  return NextResponse.json({ year_month: ym, calculated: ids.length, runs: ids });
+  // 今回 run を作らなかった(当月利用なし)スタジオの残置 draft を0円化(過大計上防止 A-2)
+  const zeroed = await zeroStaleDraftStudioBillingRuns(ym, ids.map((i) => i.studio_id));
+  return NextResponse.json({ year_month: ym, calculated: ids.length, runs: ids, zeroed_stale_drafts: zeroed });
 }

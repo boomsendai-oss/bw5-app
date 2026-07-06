@@ -53,7 +53,7 @@ type MasterSlot<M> = { master: M; dateStr: string; dow: number };
  * 単月: expandedKeys にない master × 日付 の組み合わせを列挙する。
  * 消費側はこのリストをイテレートしてドメイン固有のレコードを生成する。
  */
-export function expandMasterSlots<M extends { id: number; default_day_of_week: number }>(
+export function expandMasterSlots<M extends { id: number; default_day_of_week: number; start_date?: string | null; end_date?: string | null }>(
   yearMonth: string,
   masters: readonly M[],
   expandedKeys: Set<string>,
@@ -68,6 +68,9 @@ export function expandMasterSlots<M extends { id: number; default_day_of_week: n
     for (const master of masters) {
       if (master.default_day_of_week !== dow) continue;
       if (expandedKeys.has(`${master.id}_${dateStr}`)) continue;
+      // start_date/end_date 範囲外は生成しない (終了クラスへの誤展開を防ぐ)。
+      // 呼び出し側が日付列を持たない場合は undefined → 範囲制限なしで従来通り。
+      if (isMasterOutOfRange(master, dateStr)) continue;
       slots.push({ master, dateStr, dow });
     }
   }

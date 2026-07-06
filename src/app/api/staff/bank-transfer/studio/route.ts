@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
-import { generateBankTransferCsv, type BankTransferLine } from '@/lib/bankCsv';
+import { generateBankTransferCsv, toHankakuKana, type BankTransferLine } from '@/lib/bankCsv';
 import { encodeShiftJIS } from '@/lib/sjis';
 
 export const dynamic = 'force-dynamic';
@@ -39,13 +39,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'No confirmed studio billing for bank transfer' }, { status: 400 });
   }
 
+  const force = url.searchParams.get('force') === '1';
   const transferLines: BankTransferLine[] = [];
   const warnings: string[] = [];
   for (const r of rows) {
     if (!r.bank_account_number) { warnings.push(`${r.studio_name}: 口座番号未登録`); continue; }
     if (!r.bank_code || !r.bank_branch_code) warnings.push(`${r.studio_name}: 銀行/支店コード未登録`);
+    const name = r.bank_account_holder || r.studio_name;
+    if (!toHankakuKana(name).trim()) warnings.push(`${r.studio_name}: 受取人カナに変換できません(口座名義カナを登録してください)`);
     transferLines.push({
-      recipient_name: r.bank_account_holder || r.studio_name,
+      recipient_name: name,
       bank_code: r.bank_code ?? '',
       branch_code: r.bank_branch_code ?? '',
       account_type: r.bank_account_type ?? '1',
@@ -54,8 +57,23 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  const validCount = transferLines.filter((l) => l.bank_code && l.account_number && l.amount > 0).length;
   const csv = generateBankTransferCsv(transferLines, { requester_name: 'ﾌﾞｰﾑ ﾀﾞﾝｽｽｸｰﾙ' });
-  const filename = `studio_${ym}_${rows.length}件.csv`;
+
+  if (url.searchParams.get('format') === 'json') {
+    return NextResponse.json({ csv, warnings, count_ok: validCount, count_total: rows.length });
+  }
+  // fail-closed: 未登録/変換不可があると黙って未払いになるため、強行フラグ無しでは中止(A-3)
+  if (warnings.length > 0 && !force) {
+    return NextResponse.json({
+      error: `振込CSVに未登録/変換不可の行があります(${warnings.length}件)。修正するか ?force=1 で再取得してください`,
+      warnings,
+      count_ok: validCount,
+      count_total: rows.length,
+    }, { status: 400 });
+  }
+
+  const filename = `studio_${ym}_${validCount}件.csv`;
   let body: BodyInit;
   let contentType: string;
   if (encoding === 'utf8') {

@@ -112,9 +112,11 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
     default_day_of_week: number; default_start_time: string; default_end_time: string;
     duration_minutes: number | null;
     default_studio_id: number | null;
+    start_date: string | null; end_date: string | null;
   };
   const masters = (await getAll(
-    `SELECT id, class_name, default_day_of_week, default_start_time, default_end_time, duration_minutes, default_studio_id
+    `SELECT id, class_name, default_day_of_week, default_start_time, default_end_time, duration_minutes, default_studio_id,
+            start_date, end_date
      FROM lesson_master WHERE active = 1`
   )) as MasterRow[];
 
@@ -343,4 +345,34 @@ export async function persistStudioBillingRun(yearMonth: string, result: StudioB
   }
 
   return runId;
+}
+
+/**
+ * 当月の draft スタジオ使用料runのうち、今回の結果に含まれない(=当月利用なし)スタジオの
+ * run を 0円化する。前回の draft 金額の残置による過大計上を防ぐ(A-2)。
+ * confirmed/paid は触らない。調整は保持する。
+ * @returns 0円化した run 数
+ */
+export async function zeroStaleDraftStudioBillingRuns(yearMonth: string, keepStudioIds: number[]): Promise<number> {
+  const keep = new Set(keepStudioIds);
+  const drafts = (await getAll(
+    `SELECT id, studio_id FROM studio_billing_runs WHERE year_month = ? AND status = 'draft'`,
+    [yearMonth]
+  )) as { id: number; studio_id: number }[];
+  let cleaned = 0;
+  for (const d of drafts) {
+    if (keep.has(d.studio_id)) continue;
+    const adj = ((await getAll(
+      `SELECT COALESCE(SUM(amount), 0) AS total FROM studio_billing_adjustments WHERE studio_billing_run_id = ?`,
+      [d.id]
+    )) as { total: number }[])[0]?.total ?? 0;
+    await execute(
+      `UPDATE studio_billing_runs SET total_hours = 0, total_lesson_amount = 0,
+              total_adjustment_amount = ?, total_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [adj, adj, d.id]
+    );
+    await execute(`DELETE FROM studio_billing_lines WHERE studio_billing_run_id = ?`, [d.id]);
+    cleaned++;
+  }
+  return cleaned;
 }

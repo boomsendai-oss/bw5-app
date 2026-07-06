@@ -153,6 +153,9 @@ export type MasterInput = {
   default_instructor_id: number | null;
   default_studio_id: number | null;
   studio_name: string | null;
+  // レッスンの開講期間。終了クラス(end_date設定済)への誤展開を防ぐ。
+  start_date?: string | null;
+  end_date?: string | null;
 };
 
 /**

@@ -63,10 +63,12 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
     duration_minutes: number | null; override_rate: number | null;
     default_instructor_id: number | null; default_studio_id: number | null;
     studio_name: string | null;
+    start_date: string | null; end_date: string | null;
   };
   const masters = (await getAll(
     `SELECT lm.id, lm.class_name, lm.default_day_of_week, lm.default_start_time, lm.default_end_time,
             lm.duration_minutes, lm.override_rate, lm.default_instructor_id, lm.default_studio_id,
+            lm.start_date, lm.end_date,
             s.name AS studio_name
      FROM lesson_master lm
      LEFT JOIN studios s ON s.id = lm.default_studio_id
@@ -147,4 +149,35 @@ export async function persistPayrollRun(yearMonth: string, result: PayrollResult
   }
 
   return runId;
+}
+
+/**
+ * 当月の draft 給与runのうち、今回の計算結果に含まれない(=実績が消えた/全休講)講師の
+ * run を 0円化する。前回計算の draft 金額が残置され「全員確定→振込CSV」で誤支給に
+ * なるのを防ぐ(A-2)。confirmed/paid は一切触らない。調整(adjustments)は保持する。
+ * @param keepInstructorIds 今回 run を作成/更新した講師ID
+ * @returns 0円化した run 数
+ */
+export async function zeroStaleDraftPayrollRuns(yearMonth: string, keepInstructorIds: number[]): Promise<number> {
+  const keep = new Set(keepInstructorIds);
+  const drafts = (await getAll(
+    `SELECT id, instructor_id FROM payroll_runs WHERE year_month = ? AND status = 'draft'`,
+    [yearMonth]
+  )) as { id: number; instructor_id: number }[];
+  let cleaned = 0;
+  for (const d of drafts) {
+    if (keep.has(d.instructor_id)) continue;
+    const adj = ((await getAll(
+      `SELECT COALESCE(SUM(amount), 0) AS total FROM payroll_adjustments WHERE payroll_run_id = ?`,
+      [d.id]
+    )) as { total: number }[])[0]?.total ?? 0;
+    await execute(
+      `UPDATE payroll_runs SET total_lesson_amount = 0, total_transit_amount = 0,
+              total_adjustment_amount = ?, total_amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [adj, adj, d.id]
+    );
+    await execute(`DELETE FROM payroll_lines WHERE payroll_run_id = ?`, [d.id]);
+    cleaned++;
+  }
+  return cleaned;
 }

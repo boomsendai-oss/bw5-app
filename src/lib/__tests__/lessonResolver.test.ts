@@ -156,6 +156,20 @@ describe('expandMasterSlots', () => {
   it('master が空なら空配列', () => {
     expect(expandMasterSlots('2026-06', [], new Set())).toEqual([]);
   });
+
+  it('end_date を過ぎた日は展開しない(終了クラスへの誤支給防止 A-1)', () => {
+    // 月曜master が 2026-06-15 で終了 → 06-22, 06-29 は生成されない
+    const ending = [{ id: 1, default_day_of_week: 1, end_date: '2026-06-15' }];
+    const slots = expandMasterSlots('2026-06', ending, new Set());
+    expect(slots.map(s => s.dateStr)).toEqual(['2026-06-01', '2026-06-08', '2026-06-15']);
+  });
+
+  it('start_date より前の日は展開しない', () => {
+    // 月曜master が 2026-06-15 開講 → 06-01, 06-08 は生成されない
+    const starting = [{ id: 1, default_day_of_week: 1, start_date: '2026-06-15' }];
+    const slots = expandMasterSlots('2026-06', starting, new Set());
+    expect(slots.map(s => s.dateStr)).toEqual(['2026-06-15', '2026-06-22', '2026-06-29']);
+  });
 });
 
 // ── expandMasterSlotsRange ──

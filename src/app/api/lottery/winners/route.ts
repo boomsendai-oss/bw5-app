@@ -1,13 +1,16 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getAll, getOne } from '@/lib/db';
+import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/lottery/winners — staff-facing winners list
-export async function GET() {
+// 当選者の実名(PII)を返すので認可必須。ip/fingerprint は運用に不要なので返さない。
+export async function GET(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const winners = await getAll(
-      "SELECT id, fingerprint, ip, prize_name, prize_tier, winner_name, created_at FROM lottery_entries WHERE won = 1 ORDER BY created_at ASC"
+      "SELECT id, prize_name, prize_tier, winner_name, created_at FROM lottery_entries WHERE won = 1 ORDER BY created_at ASC"
     );
     const total = await getOne('SELECT COUNT(*) as c FROM lottery_entries');
     const totalEntries = Number(total?.c ?? 0);

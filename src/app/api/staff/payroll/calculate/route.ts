@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
-import { calculatePayrollForMonth, persistPayrollRun } from '@/lib/payroll';
+import { calculatePayrollForMonth, persistPayrollRun, zeroStaleDraftPayrollRuns } from '@/lib/payroll';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -44,5 +44,7 @@ export async function POST(req: NextRequest) {
       total_amount: r.total_lesson_amount + r.total_transit_amount,
     });
   }
-  return NextResponse.json({ year_month: ym, payment_date, calculated: ids.length, runs: ids, warnings });
+  // 今回 run を作らなかった講師の残置 draft を0円化(誤支給防止 A-2)
+  const zeroed = await zeroStaleDraftPayrollRuns(ym, ids.map((i) => i.instructor_id));
+  return NextResponse.json({ year_month: ym, payment_date, calculated: ids.length, runs: ids, warnings, zeroed_stale_drafts: zeroed });
 }

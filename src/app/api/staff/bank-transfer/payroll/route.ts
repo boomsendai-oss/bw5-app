@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
-import { generateBankTransferCsv, type BankTransferLine } from '@/lib/bankCsv';
+import { generateBankTransferCsv, toHankakuKana, type BankTransferLine } from '@/lib/bankCsv';
 import { encodeShiftJIS } from '@/lib/sjis';
 
 export const dynamic = 'force-dynamic';
@@ -46,6 +46,7 @@ export async function GET(req: NextRequest) {
 
   // 銀行コード/支店コードはinstructorsテーブルに分離されてないので、bank_name/bank_branchから推定
   // ※ 現状は手動入力前提で、警告と共にrequester実装。bank_code/branch_codeカラム追加は別マイグレーションで対応
+  const force = url.searchParams.get('force') === '1';
   const transferLines: BankTransferLine[] = [];
   const warnings: string[] = [];
   for (const r of rows) {
@@ -57,6 +58,10 @@ export async function GET(req: NextRequest) {
     if (!r.bank_code || !r.bank_branch_code) {
       warnings.push(`${r.instructor_name}: 銀行コード/支店コード未登録`);
     }
+    // 漢字名義などが半角カナ変換で全スペース化すると銀行に無名口座で出てしまう
+    if (!toHankakuKana(name).trim()) {
+      warnings.push(`${r.instructor_name}: 受取人カナに変換できません(口座名義カナを登録してください)`);
+    }
     transferLines.push({
       recipient_name: name,
       bank_code: r.bank_code ?? '',
@@ -67,11 +72,27 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // 実際にCSVへ出力される有効行数(bankCsv側でskipされない行)
+  const validCount = transferLines.filter((l) => l.bank_code && l.account_number && l.amount > 0).length;
   const csv = generateBankTransferCsv(transferLines, {
     requester_name: 'ﾌﾞｰﾑ ﾀﾞﾝｽｽｸｰﾙ',
   });
 
-  const filename = `payroll_${ym}_${rows.length}件.csv`;
+  // format=json は情報提供用(警告と有効件数を返す)
+  if (url.searchParams.get('format') === 'json') {
+    return NextResponse.json({ csv, warnings, count_ok: validCount, count_total: rows.length });
+  }
+  // fail-closed: 未登録/変換不可があると1名でも黙って未払いになるため、強行フラグ無しでは中止(A-3)
+  if (warnings.length > 0 && !force) {
+    return NextResponse.json({
+      error: `振込CSVに未登録/変換不可の行があります(${warnings.length}件)。修正するか、内容を確認のうえ ?force=1 を付けて再取得してください`,
+      warnings,
+      count_ok: validCount,
+      count_total: rows.length,
+    }, { status: 400 });
+  }
+
+  const filename = `payroll_${ym}_${validCount}件.csv`;
   let body: BodyInit;
   let contentType: string;
   if (encoding === 'utf8') {
@@ -83,9 +104,6 @@ export async function GET(req: NextRequest) {
     contentType = 'text/csv; charset=shift_jis';
   }
 
-  if (warnings.length > 0 && url.searchParams.get('format') === 'json') {
-    return NextResponse.json({ csv, warnings, count: rows.length });
-  }
   return new NextResponse(body, {
     headers: {
       'Content-Type': contentType,

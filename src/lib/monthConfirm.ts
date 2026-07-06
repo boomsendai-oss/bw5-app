@@ -1,4 +1,5 @@
 import { execute, getAll, getOne } from './db';
+import { isMasterOutOfRange } from './lessonResolver';
 
 // ============================================
 // 月の確定/凍結 (Phase2 ①)
@@ -46,6 +47,8 @@ type MasterRow = {
   default_end_time: string | null;
   default_studio_id: number | null;
   default_instructor_id: number | null;
+  start_date: string | null;
+  end_date: string | null;
 };
 
 /**
@@ -73,7 +76,8 @@ export async function materializeMonth(yearMonth: string): Promise<number> {
   }
 
   const masters = (await getAll(
-    `SELECT id, default_day_of_week, default_start_time, default_end_time, default_studio_id, default_instructor_id
+    `SELECT id, default_day_of_week, default_start_time, default_end_time, default_studio_id, default_instructor_id,
+            start_date, end_date
      FROM lesson_master WHERE active = 1`
   )) as MasterRow[];
 
@@ -84,6 +88,7 @@ export async function materializeMonth(yearMonth: string): Promise<number> {
     for (const mst of masters) {
       if (mst.default_day_of_week !== dow) continue;
       if (!mst.default_start_time || !mst.default_end_time) continue; // 時間未設定マスターは展開対象外
+      if (isMasterOutOfRange(mst, dateStr)) continue; // 開講期間外(終了クラス等)は実体化しない
       if (existing.has(`${mst.id}_${dateStr}`)) continue;
       await execute(
         `INSERT INTO lesson_instances (master_id, date, start_time, end_time, studio_id, instructor_id, status, auto_materialized)

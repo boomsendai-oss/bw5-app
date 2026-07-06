@@ -4,6 +4,7 @@ import { execute, getAll, getOne, batch } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { parseCSV, rowsToDicts, parseDate, parseDateTime } from '@/lib/csvUtil';
 import { buildLinkSuggestions, type Member as SuggestMember, type LinkSuggestion } from '@/lib/linkSuggest';
+import { deriveMemberType } from '@/lib/memberType';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -119,6 +120,7 @@ async function handleSync(req: NextRequest) {
     plan_continued_months: string | null;
     guardian_relation: string | null;
     rep_name: string | null;
+    member_type: string;
     status: 'active' | 'withdrew';
   };
 
@@ -129,6 +131,7 @@ async function handleSync(req: NextRequest) {
     const repNameRaw = (r['代表氏名'] ?? '').trim();
     const fullName = (r['氏名'] ?? '').trim();
     const repName = repNameRaw && repNameRaw !== fullName ? repNameRaw : null;
+    const planName = (r['契約プラン名'] ?? '').trim() || null;
     return {
       hacomono_member_id: mid,
       hacomono_kaiin_no: (r['会員番号'] ?? '').trim() || null,
@@ -140,12 +143,14 @@ async function handleSync(req: NextRequest) {
       enrolled_at: parseDateTime(r['入会日時']),
       withdrew_at: status === 'withdrew' ? parseDateTime(r['退会手続き日']) : null,
       plan_code: (r['契約プランコード'] ?? '').trim() || null,
-      plan_name: (r['契約プラン名'] ?? '').trim() || null,
+      plan_name: planName,
       plan_started_at: parseDate(r['プラン契約適用開始日']),
       plan_continued_months: (r['プラン継続期間'] ?? '').trim() || null,
       // 緊急連絡先続柄(母/父等)。子供会員なら保護者の存在を示す強いシグナル。
       guardian_relation: (r['緊急連絡先続柄'] ?? '').trim() || null,
       rep_name: repName,
+      // member_type は plan_name から毎回導出し鮮度を保つ(B-1: 退会/休眠/KPIの対象集合を凍結させない)
+      member_type: deriveMemberType(planName),
       status,
     };
   };
@@ -206,33 +211,64 @@ async function handleSync(req: NextRequest) {
   // - staff はHACOMONO会員CSVに載らないので除外
   // - 休会 は契約中CSVから外れるだけで退会ではないので除外 (mid92/123で誤判定実績あり)
   // - visitor は課金取込の自動生成レコードで会員CSVに載らないので除外
-  // - 部分CSVアップロード事故でいきなり大量退会にならないよう、契約中CSVが
-  //   50件以上ある(=全件エクスポートらしい)ときだけ実行する
+  //
+  // B-2: 旧実装は「契約中CSVが50件以上」だけを安全弁にしていたため、店舗別など
+  //   部分CSVを誤アップロードすると残り全員(数十名)を即 status='withdrew' に一括更新して
+  //   しまった。カバレッジ(現役ロスターのうち今回CSVに含まれた割合)で部分CSVを検知し、
+  //   ほぼ全件(>=90%)かつ消失が少数(<=5)のときだけ自動退会。それ以外は status を触らず
+  //   承認待ち(withdrew_pending)として返し、人が確認する。
   const withdrewIdSet = new Set(withdrewMembers.map((m) => m.hacomono_member_id));
-  const disappeared: ExistingMember[] = [];
-  if (activeMembers.length >= 50) {
-    for (const exist of existingMembers) {
-      if (exist.status !== 'active') continue;
-      if (exist.member_type === 'staff' || exist.member_type === '休会' || exist.member_type === 'visitor') continue;
-      if (!exist.hacomono_member_id) continue;
-      if (activeIdSet.has(exist.hacomono_member_id)) continue;
-      if (withdrewIdSet.has(exist.hacomono_member_id)) continue;
-      disappeared.push(exist);
+
+  // 現在DB上でactiveな「実会員」ロスター(staff/休会/visitor と mid欠落は対象外)
+  const roster = existingMembers.filter(
+    (e) => e.status === 'active' && !!e.hacomono_member_id
+      && e.member_type !== 'staff' && e.member_type !== '休会' && e.member_type !== 'visitor'
+  );
+  const presentInCsv = roster.filter(
+    (e) => activeIdSet.has(e.hacomono_member_id) || withdrewIdSet.has(e.hacomono_member_id)
+  ).length;
+  const syncCoverage = roster.length > 0 ? presentInCsv / roster.length : 1;
+
+  const disappeared: ExistingMember[] = roster.filter(
+    (e) => !activeIdSet.has(e.hacomono_member_id) && !withdrewIdSet.has(e.hacomono_member_id)
+  );
+
+  const COVERAGE_MIN = 0.9;
+  const AUTO_WITHDRAW_MAX = 5;
+  const canAutoWithdraw = syncCoverage >= COVERAGE_MIN && disappeared.length <= AUTO_WITHDRAW_MAX;
+  const withdrewPending: { hacomono_member_id: string; full_name: string; withdrew_at: string | null }[] = [];
+
+  if (disappeared.length > 0 && canAutoWithdraw) {
+    const stmts = disappeared.map((d) => ({
+      sql: `UPDATE boom_members SET status='withdrew',
+             withdrew_at=COALESCE(withdrew_at, datetime('now')),
+             updated_at=CURRENT_TIMESTAMP WHERE id = ?`,
+      args: [d.id] as (string | number)[],
+    }));
+    for (let i = 0; i < stmts.length; i += 50) {
+      await batch(stmts.slice(i, i + 50));
     }
-    if (disappeared.length > 0) {
-      const stmts = disappeared.map((d) => ({
-        sql: `UPDATE boom_members SET status='withdrew',
-               withdrew_at=COALESCE(withdrew_at, datetime('now')),
-               updated_at=CURRENT_TIMESTAMP WHERE id = ?`,
-        args: [d.id] as (string | number)[],
-      }));
-      for (let i = 0; i < stmts.length; i += 50) {
-        await batch(stmts.slice(i, i + 50));
-      }
-      for (const d of disappeared) {
-        withdrewDetected.push({ hacomono_member_id: d.hacomono_member_id, full_name: d.full_name ?? '', withdrew_at: d.withdrew_at });
-      }
+    for (const d of disappeared) {
+      withdrewDetected.push({ hacomono_member_id: d.hacomono_member_id, full_name: d.full_name ?? '', withdrew_at: d.withdrew_at });
     }
+  } else if (disappeared.length > 0) {
+    // 承認待ち: 部分CSV/大量消失の疑い → status は変更せず人の確認に回す
+    for (const d of disappeared) {
+      withdrewPending.push({ hacomono_member_id: d.hacomono_member_id, full_name: d.full_name ?? '', withdrew_at: d.withdrew_at });
+    }
+    // 1時間以内に同種通知が無ければ集約通知を1件だけ作る(スパム防止)
+    await execute(
+      `INSERT INTO staff_notifications (type, title, detail, severity, related_member_id, related_lstep_id)
+       SELECT 'withdraw_pending_review', ?, ?, 'warning', NULL, NULL
+       WHERE NOT EXISTS (
+         SELECT 1 FROM staff_notifications
+         WHERE type='withdraw_pending_review' AND created_at > datetime('now','-1 hour')
+       )`,
+      [
+        `退会候補 ${withdrewPending.length}件 要確認 (同期カバレッジ ${Math.round(syncCoverage * 100)}%・自動退会は保留)`,
+        JSON.stringify({ count: withdrewPending.length, coverage: syncCoverage, members: withdrewPending.slice(0, 50) }),
+      ]
+    );
   }
 
   // --- DB UPSERT ---
@@ -242,8 +278,8 @@ async function handleSync(req: NextRequest) {
       (hacomono_member_id, hacomono_kaiin_no, full_name, full_name_kana, birthday,
        email, phone, enrolled_at, withdrew_at, status,
        plan_code, plan_name, plan_started_at, plan_continued_months,
-       guardian_relation, rep_name, updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
+       guardian_relation, rep_name, member_type, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
     ON CONFLICT(hacomono_member_id) DO UPDATE SET
       hacomono_kaiin_no=excluded.hacomono_kaiin_no,
       full_name=excluded.full_name,
@@ -260,6 +296,7 @@ async function handleSync(req: NextRequest) {
       plan_continued_months=excluded.plan_continued_months,
       guardian_relation=excluded.guardian_relation,
       rep_name=excluded.rep_name,
+      member_type=excluded.member_type,
       updated_at=CURRENT_TIMESTAMP
   `;
 
@@ -285,6 +322,7 @@ async function handleSync(req: NextRequest) {
       m.plan_continued_months,
       m.guardian_relation,
       m.rep_name,
+      m.member_type,
     ] as (string | number | null)[],
   }));
   for (let i = 0; i < memberStatements.length; i += 50) {
@@ -372,6 +410,8 @@ async function handleSync(req: NextRequest) {
     summary: {
       new_members: newMembers.length,
       withdrew_members: withdrewDetected.length,
+      withdrew_pending: withdrewPending.length,
+      sync_coverage: Math.round(syncCoverage * 1000) / 1000,
       plan_changes: planChanges.length,
       lstep_new_total: lstepNew.length,
       lstep_new_unmatched: lstepNewUnmatched.length,
@@ -391,6 +431,8 @@ async function handleSync(req: NextRequest) {
         full_name: m.full_name,
         withdrew_at: m.withdrew_at,
       })),
+      // B-2: 自動退会せず承認待ちにした消失会員(部分CSV/大量消失の疑い)
+      withdrew_pending: withdrewPending,
       plan_changes: planChanges.map((p) => ({
         hacomono_member_id: p.member.hacomono_member_id,
         full_name: p.member.full_name,

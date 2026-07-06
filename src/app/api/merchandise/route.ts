@@ -43,7 +43,10 @@ async function loadAll() {
   return { items: withVariants, orders };
 }
 
-export async function GET() {
+// loadAll() は merch_orders の購入者名(PII)を含むため、GET も認可必須。
+// 公開ショップは /api/merchandise GET を使っていない(admin/merch のみが呼ぶ)。
+export async function GET(req: NextRequest) {
+  if (!(await isAuthorized(req))) return unauthorized();
   try {
     const data = await loadAll();
     return NextResponse.json(data);
