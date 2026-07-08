@@ -1,4 +1,4 @@
-import { createClient, type Client, type InStatement, type ResultSet } from '@libsql/client';
+import { createClient, type Client, type InStatement, type ResultSet, type Transaction } from '@libsql/client';
 import { getSchemaStatements } from './db/schema';
 import { runMigrations } from './db/migrations';
 import { runSeeds } from './db/seed';
@@ -64,4 +64,24 @@ export async function getOne(sql: string, args: any[] = []): Promise<any | null>
 export async function batch(statements: InStatement[], mode: 'write' | 'read' | 'deferred' = 'write'): Promise<ResultSet[]> {
   await initDb();
   return getClient().batch(statements, mode);
+}
+
+/**
+ * 書き込みトランザクション（PR-3 / 技術的負債改修設計）。中断時は全ロールバックされる。
+ * check-then-act や 複数INSERTで途中失敗すると不整合(¥0給与・二重instance・売上重複)になる
+ * 経路を原子化するためのヘルパ。
+ *
+ * ⚠️ libSQL HTTPの対話Txにはアイドルタイムアウトがあるため、fn 内でDB外の重い処理
+ *   (外部API・PDF生成等)を行わないこと。単一batchで済むものは batch() を使う。
+ */
+export async function withWriteTx<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
+  await initDb();
+  const tx = await getClient().transaction('write');
+  try {
+    const result = await fn(tx);
+    await tx.commit();
+    return result;
+  } finally {
+    tx.close(); // commit済みなら no-op、未commitなら rollback
+  }
 }
