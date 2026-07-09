@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getAll, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { oneOf, canTransition, PAYROLL_STATUSES } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -35,7 +36,19 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const body = await req.json().catch(() => ({}));
   const updates: string[] = [];
   const args: (string | number | null)[] = [];
-  if (typeof body.status === 'string') { updates.push('status = ?'); args.push(body.status); }
+  // M5: status は列挙値+許可された遷移のみ。タイポ文字列や paid→draft の
+  //   不正遷移(二重支給経路)を弾く。同一statusへの再設定(pdf_url同時更新等)は許可。
+  if (typeof body.status === 'string') {
+    if (!oneOf(body.status, PAYROLL_STATUSES)) {
+      return NextResponse.json({ error: 'status は draft/confirmed/paid のいずれか' }, { status: 400 });
+    }
+    const cur = await getOne(`SELECT status FROM payroll_runs WHERE id = ?`, [runId]);
+    if (!cur) return NextResponse.json({ error: 'not found' }, { status: 404 });
+    if (cur.status !== body.status && !canTransition(cur.status as string, body.status)) {
+      return NextResponse.json({ error: `status遷移不可: ${cur.status} → ${body.status}` }, { status: 409 });
+    }
+    updates.push('status = ?'); args.push(body.status);
+  }
   if (typeof body.pdf_url === 'string') { updates.push('pdf_url = ?'); args.push(body.pdf_url); }
   if (typeof body.notes === 'string') { updates.push('notes = ?'); args.push(body.notes); }
   if (body.status === 'paid') { updates.push('paid_at = CURRENT_TIMESTAMP'); }

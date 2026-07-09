@@ -90,8 +90,9 @@ export async function materializeMonth(yearMonth: string): Promise<number> {
       if (!mst.default_start_time || !mst.default_end_time) continue; // 時間未設定マスターは展開対象外
       if (isMasterOutOfRange(mst, dateStr)) continue; // 開講期間外(終了クラス等)は実体化しない
       if (existing.has(`${mst.id}_${dateStr}`)) continue;
+      // A-6: UNIQUE(master_id,date)と噛み合わせ、並行確定でも二重instance化しない
       await execute(
-        `INSERT INTO lesson_instances (master_id, date, start_time, end_time, studio_id, instructor_id, status, auto_materialized)
+        `INSERT OR IGNORE INTO lesson_instances (master_id, date, start_time, end_time, studio_id, instructor_id, status, auto_materialized)
          VALUES (?, ?, ?, ?, ?, ?, 'scheduled', 1)`,
         [mst.id, dateStr, mst.default_start_time, mst.default_end_time, mst.default_studio_id, mst.default_instructor_id]
       );

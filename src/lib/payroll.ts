@@ -1,4 +1,4 @@
-import { execute, getAll, getOne } from './db';
+import { execute, getAll, getOne, withWriteTx } from './db';
 import { isMonthConfirmed } from './monthConfirm';
 import {
   calcPaymentDate,
@@ -122,33 +122,35 @@ export async function persistPayrollRun(yearMonth: string, result: PayrollResult
     : 0;
 
   const totalAmount = result.total_lesson_amount + result.total_transit_amount + adjustments;
-  let runId: number;
 
-  if (existing) {
-    runId = existing.id as number;
-    await execute(
-      `UPDATE payroll_runs SET total_lesson_amount = ?, total_transit_amount = ?, total_adjustment_amount = ?, total_amount = ?, payment_date = ?, generated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [result.total_lesson_amount, result.total_transit_amount, adjustments, totalAmount, paymentDate, runId]
-    );
-    await execute(`DELETE FROM payroll_lines WHERE payroll_run_id = ?`, [runId]);
-  } else {
-    const r = await execute(
-      `INSERT INTO payroll_runs (year_month, instructor_id, total_lesson_amount, total_transit_amount, total_adjustment_amount, total_amount, payment_date, status, generated_at)
+  // M18: run の UPDATE/INSERT → lines の DELETE → 逐次INSERT を単一トランザクションで原子化。
+  //   途中失敗で「runはあるが明細が欠けた/古い」状態を残さない(挙動は従来と同一)。
+  return withWriteTx(async (tx) => {
+    let runId: number;
+    if (existing) {
+      runId = existing.id as number;
+      await tx.execute({
+        sql: `UPDATE payroll_runs SET total_lesson_amount = ?, total_transit_amount = ?, total_adjustment_amount = ?, total_amount = ?, payment_date = ?, generated_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        args: [result.total_lesson_amount, result.total_transit_amount, adjustments, totalAmount, paymentDate, runId],
+      });
+      await tx.execute({ sql: `DELETE FROM payroll_lines WHERE payroll_run_id = ?`, args: [runId] });
+    } else {
+      const r = await tx.execute({
+        sql: `INSERT INTO payroll_runs (year_month, instructor_id, total_lesson_amount, total_transit_amount, total_adjustment_amount, total_amount, payment_date, status, generated_at)
        VALUES (?, ?, ?, ?, 0, ?, ?, 'draft', CURRENT_TIMESTAMP)`,
-      [yearMonth, result.instructor_id, result.total_lesson_amount, result.total_transit_amount, totalAmount, paymentDate]
-    );
-    runId = Number(r.lastInsertRowid);
-  }
-
-  for (const line of result.lines) {
-    await execute(
-      `INSERT INTO payroll_lines (payroll_run_id, lesson_date, class_name, duration_minutes, studio_name, studio_id, lesson_master_id, lesson_rate, transit_fee, source, source_ref_id)
+        args: [yearMonth, result.instructor_id, result.total_lesson_amount, result.total_transit_amount, totalAmount, paymentDate],
+      });
+      runId = Number(r.lastInsertRowid);
+    }
+    for (const line of result.lines) {
+      await tx.execute({
+        sql: `INSERT INTO payroll_lines (payroll_run_id, lesson_date, class_name, duration_minutes, studio_name, studio_id, lesson_master_id, lesson_rate, transit_fee, source, source_ref_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [runId, line.lesson_date, line.class_name, line.duration_minutes, line.studio_name, line.studio_id, line.lesson_master_id, line.lesson_rate, line.transit_fee, line.source, line.source_ref_id]
-    );
-  }
-
-  return runId;
+        args: [runId, line.lesson_date, line.class_name, line.duration_minutes, line.studio_name, line.studio_id, line.lesson_master_id, line.lesson_rate, line.transit_fee, line.source, line.source_ref_id],
+      });
+    }
+    return runId;
+  });
 }
 
 /**

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { oneOf, INSTANCE_STATUSES, badRequest } from '@/lib/validate';
+import { isIsoDate, isHhmm } from '@/lib/dateJst';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,6 +21,16 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const numId = parseId(id);
   if (numId === null) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
   const body = await req.json().catch(() => ({}));
+  // M13: 無検証で status='休講' や date='2026-7-5' 等が全系統(給与/同期)を狂わせるのを防ぐ
+  if (body.status !== undefined && !oneOf(body.status, INSTANCE_STATUSES)) return badRequest('status は scheduled/cancelled/removed のいずれか');
+  if (body.date !== undefined && !isIsoDate(body.date)) return badRequest('date は YYYY-MM-DD 形式');
+  if (body.start_time !== undefined && !isHhmm(body.start_time)) return badRequest('start_time は HH:MM 形式');
+  if (body.end_time !== undefined && !isHhmm(body.end_time)) return badRequest('end_time は HH:MM 形式');
+  for (const f of ['studio_id', 'instructor_id'] as const) {
+    if (body[f] !== undefined && body[f] !== null && !(Number.isInteger(body[f]) && body[f] > 0)) {
+      return badRequest(`${f} は正整数か null`);
+    }
+  }
   // date: 別日付へのリスケ(移動)用。start_time/end_time等の編集と同じく PATCH で更新できる。
   const fields = ['date', 'start_time', 'end_time', 'studio_id', 'instructor_id', 'status', 'notes'];
   const updates: string[] = [];

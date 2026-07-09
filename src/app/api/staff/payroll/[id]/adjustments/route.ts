@@ -30,6 +30,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   const runId = Number(id);
   if (!Number.isInteger(runId) || runId <= 0) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
+  // M4: 支払い済み(paid)の給与runは調整不可(合計が書き換わり振込済み金額と乖離する)
+  const run = await getOne(`SELECT status FROM payroll_runs WHERE id = ?`, [runId]);
+  if (!run) return NextResponse.json({ error: 'not found' }, { status: 404 });
+  if (run.status === 'paid') return NextResponse.json({ error: '支払い済みの給与は調整できません' }, { status: 409 });
   const body = await req.json().catch(() => ({}));
   if (!body.adjustment_type || !VALID_TYPES.includes(body.adjustment_type)) {
     return NextResponse.json({ error: `adjustment_type must be one of ${VALID_TYPES.join(', ')}` }, { status: 400 });
@@ -50,6 +54,10 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   const { id } = await ctx.params;
   const runId = Number(id);
   if (!Number.isInteger(runId) || runId <= 0) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
+  // M4: 支払い済み(paid)の給与runの調整は削除不可
+  const run = await getOne(`SELECT status FROM payroll_runs WHERE id = ?`, [runId]);
+  if (!run) return NextResponse.json({ error: 'not found' }, { status: 404 });
+  if (run.status === 'paid') return NextResponse.json({ error: '支払い済みの給与は調整できません' }, { status: 409 });
   const url = new URL(req.url);
   const adjId = url.searchParams.get('adj_id');
   if (!adjId) return NextResponse.json({ error: 'adj_id required' }, { status: 400 });

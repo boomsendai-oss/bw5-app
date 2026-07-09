@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute, getOne } from '@/lib/db';
+import { execute, getOne, batch } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import type { InStatement } from '@libsql/client';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -55,31 +56,40 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (instructorId === null) return NextResponse.json({ error: 'invalid id' }, { status: 400 });
   const body = await req.json().catch(() => ({}));
   // body: { rates: [{duration_minutes, rate}], transit_fees: [{studio_id, amount}] }
+  // A-5: 事前に全行を検証してから DELETE+INSERT を単一batchで原子化する。
+  //   旧実装は DELETE→逐次INSERTが非トランザクションで、途中失敗すると単価が
+  //   消えて resolveRate が¥0にフォールバック→¥0給与→無警告で振込、の経路があった。
+  const stmts: InStatement[] = [];
   if (Array.isArray(body.rates)) {
-    await execute(`DELETE FROM instructor_rates WHERE instructor_id = ?`, [instructorId]);
+    const rows: { dur: number; rate: number }[] = [];
     for (const r of body.rates) {
       const dur = Number(r.duration_minutes);
       const rate = Number(r.rate);
-      if (Number.isFinite(dur) && dur > 0 && Number.isFinite(rate)) {
-        await execute(
-          `INSERT INTO instructor_rates (instructor_id, duration_minutes, rate) VALUES (?, ?, ?)`,
-          [instructorId, dur, rate]
-        );
+      if (!Number.isFinite(dur) || dur <= 0 || !Number.isFinite(rate) || rate < 0) {
+        return NextResponse.json({ error: `不正な単価行があります (duration_minutes>0, rate>=0)` }, { status: 400 });
       }
+      rows.push({ dur, rate });
+    }
+    stmts.push({ sql: `DELETE FROM instructor_rates WHERE instructor_id = ?`, args: [instructorId] });
+    for (const r of rows) {
+      stmts.push({ sql: `INSERT INTO instructor_rates (instructor_id, duration_minutes, rate) VALUES (?, ?, ?)`, args: [instructorId, r.dur, r.rate] });
     }
   }
   if (Array.isArray(body.transit_fees)) {
-    await execute(`DELETE FROM instructor_transit_fees WHERE instructor_id = ?`, [instructorId]);
+    const rows: { studioId: number; amount: number }[] = [];
     for (const t of body.transit_fees) {
       const studioId = Number(t.studio_id);
       const amount = Number(t.amount);
-      if (Number.isFinite(studioId) && studioId > 0 && Number.isFinite(amount)) {
-        await execute(
-          `INSERT INTO instructor_transit_fees (instructor_id, studio_id, amount) VALUES (?, ?, ?)`,
-          [instructorId, studioId, amount]
-        );
+      if (!Number.isFinite(studioId) || studioId <= 0 || !Number.isFinite(amount) || amount < 0) {
+        return NextResponse.json({ error: `不正な交通費行があります (studio_id>0, amount>=0)` }, { status: 400 });
       }
+      rows.push({ studioId, amount });
+    }
+    stmts.push({ sql: `DELETE FROM instructor_transit_fees WHERE instructor_id = ?`, args: [instructorId] });
+    for (const r of rows) {
+      stmts.push({ sql: `INSERT INTO instructor_transit_fees (instructor_id, studio_id, amount) VALUES (?, ?, ?)`, args: [instructorId, r.studioId, r.amount] });
     }
   }
+  if (stmts.length > 0) await batch(stmts, 'write');
   return NextResponse.json({ ok: true });
 }
