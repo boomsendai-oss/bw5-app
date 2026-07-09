@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute, getOne } from '@/lib/db';
+import { execute, getOne, batch } from '@/lib/db';
+import type { InStatement } from '@libsql/client';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { oneOf, INSTANCE_STATUSES, badRequest } from '@/lib/validate';
 import { isIsoDate, isHhmm } from '@/lib/dateJst';
@@ -43,21 +44,30 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   // 手動編集された instance は「自動実体化(確定スナップショット)」ではなくなる。
   // → 確定解除時に削除されず、決定として残る。
   updates.push('auto_materialized = 0');
-  args.push(numId);
-  await execute(`UPDATE lesson_instances SET ${updates.join(', ')} WHERE id = ?`, args);
 
-  // 別日へ移動(date変更)した場合: 移動先に残っている「同じmasterの古い removed 番兵」を掃除する。
-  // (レッスンを行ったり来たり組み替えても、不要な番兵レコードが溜まらないようにする)
-  if (body.date !== undefined) {
-    const row = await getOne(`SELECT master_id FROM lesson_instances WHERE id = ?`, [numId]);
-    const mid = row?.master_id;
-    if (mid != null) {
-      await execute(
-        `DELETE FROM lesson_instances WHERE master_id = ? AND date = ? AND status = 'removed' AND id != ?`,
-        [mid, body.date, numId]
-      );
-    }
+  // A-4: レッスン移動(date変更)を単一batchで原子化する。旧実装は本体UPDATE後に
+  //   クライアントが別リクエストで旧日付へ removed 番兵を作っており、そのPOSTが失敗すると
+  //   master が旧日付に再展開→レッスン二重化→給与二重計上になっていた。
+  //   さらに A-6 の UNIQUE(master_id,date) 下では移動先に古い removed 番兵が残っていると
+  //   UPDATE が衝突するため、DELETE(移動先) → UPDATE → INSERT(移動元番兵) の順で実行する。
+  const before = await getOne(`SELECT date, master_id, start_time, end_time FROM lesson_instances WHERE id = ?`, [numId]);
+  const movingTo = before && body.date !== undefined && String(body.date) !== String(before.date) ? String(body.date) : null;
+  const mid = before?.master_id as number | null | undefined;
+
+  const stmts: InStatement[] = [];
+  if (movingTo && mid != null) {
+    // 移動先に残る古い removed 番兵を先に消す(UPDATEのUNIQUE衝突を回避)
+    stmts.push({ sql: `DELETE FROM lesson_instances WHERE master_id = ? AND date = ? AND status = 'removed' AND id != ?`, args: [mid, movingTo, numId] });
   }
+  stmts.push({ sql: `UPDATE lesson_instances SET ${updates.join(', ')} WHERE id = ?`, args: [...args, numId] });
+  if (movingTo && mid != null) {
+    // 移動元(旧日付)に removed 番兵を置き master の再展開を止める。start/end は NOT NULL のため供給。
+    stmts.push({
+      sql: `INSERT OR IGNORE INTO lesson_instances (master_id, date, start_time, end_time, status, auto_materialized) VALUES (?, ?, ?, ?, 'removed', 1)`,
+      args: [mid, String(before.date), before.start_time as string, before.end_time as string],
+    });
+  }
+  await batch(stmts, 'write');
   return NextResponse.json({ ok: true });
 }
 

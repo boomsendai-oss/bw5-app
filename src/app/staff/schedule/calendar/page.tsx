@@ -378,14 +378,13 @@ export default function ScheduleCalendarPage() {
   };
 
   const saveInstanceEdit = async (target: EditTarget, payload: { date: string; start_time: string; end_time: string; studio_id: number | null; instructor_id: number | null; notes: string | null }) => {
+    // A-4: 日付移動(旧日付へのremoved番兵)はサーバのPATCHが単一トランザクションで
+    //   原子的に処理する。旧実装のクライアント2段リクエスト(instantiateMaster)は廃止。
     await fetch(`/api/staff/schedule/instances/${target.instance_id}`, {
       method: 'PATCH', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (payload.date !== target.date && target.master_id) {
-      await instantiateMaster(target.date, target.master_id, 'removed');
-    }
     setEditTarget(null);
     await reloadDay(target.date);
   };

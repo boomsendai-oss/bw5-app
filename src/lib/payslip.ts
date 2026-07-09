@@ -119,11 +119,14 @@ export function buildPayslipHtml(data: PayslipData): string {
       `<td class="num">${yen(a.amount)}</td></tr>\n`;
   }
   if (isFixed) {
+    // M7: 固定給行を先頭に「連結」する。旧実装は rowsHtml を再代入して直前の調整行を
+    //   消していたため、月額固定講師の明細から調整行が消え、tfoot合計と不一致になっていた。
     rowsHtml =
       `<tr><td>—</td><td>—</td><td>月額固定給</td>` +
       `<td class="num">${yen(run.total_lesson_amount)}</td>` +
       `<td class="num">—</td><td class="num">—</td>` +
-      `<td class="num">${yen(run.total_lesson_amount)}</td></tr>\n`;
+      `<td class="num">${yen(run.total_lesson_amount)}</td></tr>\n` +
+      rowsHtml;
   }
 
   const NAVY = "#141b4f", TEAL = "#0ba29a", BEIGE = "#e4d2c2", BEIGE_L = "#f3ece4";
