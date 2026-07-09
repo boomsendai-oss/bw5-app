@@ -3,6 +3,7 @@ import {
   calcPaymentDate,
   minutesBetween,
   resolveRate,
+  resolveRateWithFallback,
   resolveTransitFee,
   deduplicateTransit,
   buildResultsMap,
@@ -608,5 +609,31 @@ describe('統合: instance集計 + master展開', () => {
     // 休講は lines に入らない + master も 6/1 をスキップ → 4行
     expect(r.lines).toHaveLength(4);
     expect(r.total_lesson_amount).toBe(24000); // 6000 x 4
+  });
+});
+
+// ── M2: resolveRateWithFallback（実時間バケット優先＋master分数フォールバック）──
+describe('resolveRateWithFallback (M2)', () => {
+  // AOI(id1)想定: 60分¥4000 / 90分¥6000
+  const rateMap = new Map<string, number>([['1_60', 4000], ['1_90', 6000]]);
+  it('実時間バケットがあれば実時間で払う(延長=90分→¥6000)', () => {
+    const r = resolveRateWithFallback(null, rateMap, 1, 90, 60);
+    expect(r).toEqual({ rate: 6000, rateMissing: false, bucketFallback: false });
+  });
+  it('実時間==master分数なら通常どおり', () => {
+    const r = resolveRateWithFallback(null, rateMap, 1, 60, 60);
+    expect(r).toEqual({ rate: 4000, rateMissing: false, bucketFallback: false });
+  });
+  it('実時間バケット欠落→master分数で代用しfallback警告(120分未登録→60分で代用)', () => {
+    const r = resolveRateWithFallback(null, rateMap, 1, 120, 60);
+    expect(r).toEqual({ rate: 4000, rateMissing: false, bucketFallback: true });
+  });
+  it('override_rateがあれば最優先', () => {
+    const r = resolveRateWithFallback(9999, rateMap, 1, 90, 60);
+    expect(r).toEqual({ rate: 9999, rateMissing: false, bucketFallback: false });
+  });
+  it('実時間もmaster分数も未登録ならrate_missing', () => {
+    const r = resolveRateWithFallback(null, rateMap, 1, 45, 30);
+    expect(r).toEqual({ rate: 0, rateMissing: true, bucketFallback: false });
   });
 });

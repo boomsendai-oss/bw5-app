@@ -87,6 +87,8 @@ export default function PayrollPage() {
   const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  // A-2: 給与計算の警告(単価未登録・実時間バケット代用・残置draft0円化)を表示するため保持
+  const [warnings, setWarnings] = useState<{ instructor_name?: string; reason: string }[]>([]);
   const [err, setErr] = useState('');
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [adjForm, setAdjForm] = useState<{ type: string; amount: string; description: string }>({ type: 'event_bonus', amount: '', description: '' });
@@ -131,6 +133,7 @@ export default function PayrollPage() {
       async () => {
         setBusy(true);
         setErr('');
+        setWarnings([]);
         try {
           const res = await fetch(`/api/staff/payroll/calculate`, {
             method: 'POST',
@@ -139,6 +142,9 @@ export default function PayrollPage() {
             body: JSON.stringify({ year_month: ym }),
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+          // A-2: サーバの警告(単価未登録/実時間バケット代用)を画面に出す
+          const data = await res.json().catch(() => ({} as Record<string, unknown>));
+          setWarnings(Array.isArray(data.warnings) ? data.warnings : []);
           load(ym);
         } catch (e) {
           setErr(e instanceof Error ? e.message : String(e));
@@ -148,6 +154,38 @@ export default function PayrollPage() {
         }
       }
     );
+  };
+
+  // A-3: 振込CSVは fetch で取得し、未登録/変換不可(400)なら警告を出して強行(force)を選ばせる。
+  //   旧実装の素の <a download> は 400 JSON をそのまま .csv として保存し、1名未払いに気づけなかった。
+  const downloadBankCsv = async (force = false) => {
+    setErr('');
+    try {
+      const url = `/api/staff/bank-transfer/payroll?year_month=${ym}${force ? '&force=1' : ''}`;
+      const res = await fetch(url, { credentials: 'include' });
+      if (res.status === 400) {
+        const data = await res.json().catch(() => ({} as Record<string, unknown>));
+        const list = Array.isArray(data.warnings) ? '\n・' + (data.warnings as string[]).join('\n・') : '';
+        showConfirm(
+          '振込CSVに未登録/変換不可の行があります',
+          `${(data.error as string) ?? ''}${list}\n\nこのまま該当行を除いて出力しますか?（口座情報を直してからの再取得を推奨）`,
+          () => downloadBankCsv(true)
+        );
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition') || '';
+      const fnMatch = cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i);
+      const filename = fnMatch ? decodeURIComponent(fnMatch[1]) : `payroll_${ym}.csv`;
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(objUrl);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const [rowBusy, setRowBusy] = useState<Record<number, string>>({});
@@ -406,6 +444,15 @@ export default function PayrollPage() {
       <div className="max-w-6xl mx-auto p-3 sm:p-4">
         {err && <div className="mb-3 p-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm">{err}</div>}
 
+        {warnings.length > 0 && (
+          <div className="mb-3 p-3 rounded bg-amber-50 border border-amber-200 text-amber-900 text-sm">
+            <div className="font-semibold mb-1">⚠ 給与計算の警告（{warnings.length}件）— 確定・振込の前に確認してください</div>
+            <ul className="list-disc pl-5 space-y-0.5">
+              {warnings.map((w, i) => <li key={i}>{w.instructor_name ? `${w.instructor_name}: ` : ''}{w.reason}</li>)}
+            </ul>
+          </div>
+        )}
+
         <div className="bg-white rounded-lg border border-neutral-200 p-3 mb-3 flex items-center justify-between flex-wrap gap-2">
           <div className="text-sm flex items-center gap-3 flex-wrap">
             <div>
@@ -420,10 +467,8 @@ export default function PayrollPage() {
               {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />}
               {busy ? '処理中...' : '計算実行'}
             </Button>
-            <Button variant="secondary" size="sm" asChild>
-              <a href={`/api/staff/bank-transfer/payroll?year_month=${ym}`} download>
-                <Landmark /> 振込CSV
-              </a>
+            <Button variant="secondary" size="sm" onClick={() => downloadBankCsv(false)}>
+              <Landmark /> 振込CSV
             </Button>
             <Button onClick={uploadAll} disabled={busy || runs.length === 0} variant="outline" size="sm" className="text-emerald-700 border-emerald-300 hover:bg-emerald-50">
               {busy ? <Loader2 className="animate-spin" /> : <Upload />}

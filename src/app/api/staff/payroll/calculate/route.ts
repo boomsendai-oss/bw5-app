@@ -27,6 +27,14 @@ export async function POST(req: NextRequest) {
         reason: `レッスンはあるが単価が未登録の行があります(¥0計上の恐れ)。instructor_rates を確認してください`,
       });
     }
+    // M2: 実時間バケット欠落で master分数バケットに代用計上した(延長分の単価要登録)
+    if (r.has_bucket_fallback) {
+      warnings.push({
+        instructor_id: r.instructor_id,
+        instructor_name: r.instructor_name,
+        reason: `実時間の単価が未登録のため、master設定分数の単価で代用計上しました。延長分の単価バケットを登録してください`,
+      });
+    }
     // 純粋に0(単価未登録もなく実績もない)講師は従来通りskip。
     // ただし rate_missing がある場合はskipせず run を残して可視化する。
     if (

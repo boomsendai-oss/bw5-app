@@ -43,8 +43,36 @@ function formatTime(totalMinutes: number): string {
 
 type Block = { label: string; start: string; end: string; price: number };
 
-// [minStart, maxEnd] をカバーできる最小の区分を選ぶ。
-// 候補(start<=minStart かつ end>=maxEnd)のうち price最小。なければ全日(=最も広く price最大の区分)を返す。
+// 区間[ms,me]を隙間なく被覆する最安の区分集合を貪欲に求める。被覆不能なら null。
+// cursor をカバーする(start<=cursor<end)区分のうち最も遠くまで延びるものを選び前進する。
+export function cheapestCover(blocks: Block[], ms: number, me: number): { price: number; labels: string[] } | null {
+  let cursor = ms, price = 0;
+  const labels: string[] = [];
+  const used = new Set<number>();
+  let guard = 0;
+  while (cursor < me && guard++ <= blocks.length) {
+    let pick: Block | null = null, pickIdx = -1;
+    blocks.forEach((b, i) => {
+      if (used.has(i)) return;
+      const bs = toMinutes(b.start), be = toMinutes(b.end);
+      if (bs <= cursor && be > cursor) {
+        if (!pick || be > toMinutes(pick.end) || (be === toMinutes(pick.end) && b.price < pick.price)) { pick = b; pickIdx = i; }
+      }
+    });
+    if (!pick) return null; // cursor をカバーする区分が無い(隙間) → 被覆不能
+    price += (pick as Block).price;
+    labels.push((pick as Block).label);
+    used.add(pickIdx);
+    cursor = toMinutes((pick as Block).end);
+  }
+  return cursor >= me ? { price, labels } : null;
+}
+
+// [minStart, maxEnd] をカバーする区分を選ぶ。
+// 1) 単一でカバーできる区分があれば最安を採用。
+// 2) 無ければ複数区分の最安の組み合わせ(合算)を採用(M6: 旧実装は「最高額の1区分」で
+//    複数区分またぎを過少計上していた)。
+// 3) どうしても被覆できない(全区分の範囲外)ときのみ従来どおり最大価格区分にフォールバック。
 function selectBlock(blocks: Block[], minStart: string, maxEnd: string): Block | null {
   if (blocks.length === 0) return null;
   const ms = toMinutes(minStart);
@@ -53,7 +81,11 @@ function selectBlock(blocks: Block[], minStart: string, maxEnd: string): Block |
   if (covering.length > 0) {
     return covering.reduce((best, b) => (b.price < best.price ? b : best));
   }
-  // カバーできる区分がない場合は全日相当(終了が最も遅く、開始が最も早い=最大価格)をフォールバック
+  const combo = cheapestCover(blocks, ms, me);
+  if (combo && combo.labels.length > 0) {
+    return { label: combo.labels.join('+'), start: minStart, end: maxEnd, price: combo.price };
+  }
+  // 被覆不能: 従来どおり最大価格区分
   return blocks.reduce((best, b) => (b.price > best.price ? b : best));
 }
 

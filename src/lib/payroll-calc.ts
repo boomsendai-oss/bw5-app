@@ -19,6 +19,8 @@ export type PayrollLine = {
   source_ref_id: number | null;
   // 単価が未登録(¥0は意図的だが、キー欠落は事故)の行を識別する(T-156)
   rate_missing?: boolean;
+  // M2: 実時間の単価バケットが未登録で、master分数バケットで代用計上した行(延長分の単価要登録)
+  rate_bucket_fallback?: boolean;
 };
 
 export type PayrollResult = {
@@ -30,6 +32,8 @@ export type PayrollResult = {
   total_transit_amount: number;
   // 単価未登録の行が1つでもあれば true。計算時に「要確認」として可視化する(T-156)
   has_rate_missing: boolean;
+  // M2: 実時間バケット欠落でmaster分数バケットにフォールバックした行が1つでもあれば true
+  has_bucket_fallback: boolean;
 };
 
 /**
@@ -77,6 +81,30 @@ export function isRateMissing(
 ): boolean {
   if (overrideRate != null) return false;
   return !rateMap.has(`${instructorId}_${durationMinutes}`);
+}
+
+/**
+ * M2: レッスンの実時間で単価を決定する。
+ * 探索順: override_rate → 実時間バケット rateMap[instructorId_actualMin]
+ *   → (実時間バケット欠落時) master分数バケット rateMap[instructorId_masterDur] で代用(bucketFallback)
+ *   → どれも無ければ rate=0・rateMissing。
+ * これにより「90分バケット登録済の講師は延長分が即増額」「未登録なら据え置き+可視化」となる。
+ */
+export function resolveRateWithFallback(
+  overrideRate: number | null | undefined,
+  rateMap: Map<string, number>,
+  instructorId: number,
+  actualMin: number,
+  masterDur: number | null | undefined,
+): { rate: number; rateMissing: boolean; bucketFallback: boolean } {
+  if (overrideRate != null) return { rate: overrideRate, rateMissing: false, bucketFallback: false };
+  const actualKey = `${instructorId}_${actualMin}`;
+  if (rateMap.has(actualKey)) return { rate: rateMap.get(actualKey) ?? 0, rateMissing: false, bucketFallback: false };
+  if (masterDur != null && masterDur !== actualMin) {
+    const masterKey = `${instructorId}_${masterDur}`;
+    if (rateMap.has(masterKey)) return { rate: rateMap.get(masterKey) ?? 0, rateMissing: false, bucketFallback: true };
+  }
+  return { rate: 0, rateMissing: true, bucketFallback: false };
 }
 
 /**
@@ -178,10 +206,13 @@ export function aggregateInstances(
     const result = resultsMap.get(ins.instructor_id);
     if (!result) continue;
     if (result.salary_type === 'monthly_fixed') continue;
-    const dm = ins.duration_minutes ?? minutesBetween(ins.start_time, ins.end_time);
+    // M2: 支払い分数は実時間(start/end)。実時間が取れない(0)ときのみ master分数へフォールバック。
+    const actualMin = minutesBetween(ins.start_time, ins.end_time);
+    const masterDur = ins.duration_minutes; // JOINで取得した lm.duration_minutes(master設定分数)
+    const dm = actualMin > 0 ? actualMin : (masterDur ?? 0);
     const overrideRate = ins.master_id != null ? (masterOverrideMap.get(ins.master_id) ?? null) : null;
-    const rate = resolveRate(overrideRate, rateMap, ins.instructor_id, dm);
-    const rateMissing = isRateMissing(overrideRate, rateMap, ins.instructor_id, dm);
+    // 単価: override → 実時間バケット → master分数バケット(fallback警告) → missing
+    const { rate, rateMissing, bucketFallback } = resolveRateWithFallback(overrideRate, rateMap, ins.instructor_id, dm, masterDur);
     const transitCandidate = resolveTransitFee(ins.transit_fee_override, transitMap, ins.instructor_id, ins.studio_id);
     const transit = deduplicateTransit(transitCandidate, ins.instructor_id, ins.studio_id, ins.date, transitCharged);
     result.lines.push({
@@ -196,8 +227,10 @@ export function aggregateInstances(
       source: 'lesson_instance',
       source_ref_id: ins.id,
       rate_missing: rateMissing,
+      rate_bucket_fallback: bucketFallback,
     });
     if (rateMissing) result.has_rate_missing = true;
+    if (bucketFallback) result.has_bucket_fallback = true;
     result.total_lesson_amount += rate;
     result.total_transit_amount += transit;
   }
@@ -258,6 +291,7 @@ export function buildResultsMap(instructors: InstructorInput[]): Map<number, Pay
       total_lesson_amount: 0,
       total_transit_amount: 0,
       has_rate_missing: false,
+      has_bucket_fallback: false,
     });
   }
   return map;
