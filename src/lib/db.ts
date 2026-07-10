@@ -25,6 +25,13 @@ export async function initDb(): Promise<void> {
   if (initialized) return;
   initialized = true;
 
+  // 本番はスキーマ適用済みのDBに対しマイグレーション台帳(scripts/migrate.mjs)で
+  // 変更を管理する。ここでの初期化(CREATE TABLE 70本+列チェック 40本超)は
+  // サーバーレスの新インスタンス起動ごとに数秒かかりコールドスタートを悪化させる
+  // ため、SKIP_DB_INIT=1 でスキップできるようにする(2026-07-10 体感速度改善)。
+  // ローカル開発(file DB)や未設定環境では従来通りフル初期化する。
+  if (process.env.SKIP_DB_INIT === '1') return;
+
   const c = getClient();
 
   // 1. Create all tables and indexes
