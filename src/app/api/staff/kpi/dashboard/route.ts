@@ -29,82 +29,162 @@ export async function GET(req: NextRequest) {
   const prevYm = toYM(new Date(y, m - 2, 1));
   const prevStart = `${prevYm}-01`;
 
-  // ===== B: 顧客動態 =====
-  // 在籍系は全て課金対象顧客のみ(staff/休会/visitor除外 = T-164)。
-  // 月初在籍数 = 月初時点で active かつ enrolled_at <= 月初(または NULL) かつ (withdrew_at IS NULL or > 月初)
-  const startActive = n((await safeOne(
-    `SELECT COUNT(*) AS n FROM boom_members
-     WHERE (enrolled_at IS NULL OR enrolled_at <= ?)
-       AND (withdrew_at IS NULL OR withdrew_at > ?)
-       AND ${NON_CUSTOMER_TYPES_SQL}`,
-    [monthStart, monthStart]
-  ))?.n);
-  // 月末在籍数 — 正準ロジック(src/lib/kpiMetrics.ts)に集約。
-  // この関数は上記インラインSQLと同一定義(月末境界 monthEndISO で <= / >)。
-  const endActive = await getActiveMemberCount(ym);
-  // member_type 別在籍 (月額/チケット分離表示用 = T-164)
-  const regularActive = await getActiveMemberCountByType(ym, 'regular');
-  const ticketActive = await getActiveMemberCountByType(ym, 'ticket');
-  const collegeActive = await getActiveMemberCountByType(ym, 'college');
-  // チケット実働/休眠 (T-175): 月末時点で直近90日以内にチェックインがあれば実働。
-  // 休眠はDBを書き換えず表示時に計算する(復帰したら自動で実働に戻る)
-  const ticketEngaged = n((await safeOne(
-    `SELECT COUNT(*) AS n FROM boom_members m
-     WHERE m.member_type='ticket' AND m.status='active'
-       AND (m.withdrew_at IS NULL OR m.withdrew_at > ?)
-       AND EXISTS (SELECT 1 FROM hacomono_reservations r
-                   WHERE r.boom_member_id = m.id AND r.status='チェックイン'
-                     AND r.lesson_date BETWEEN date(?, '-90 days') AND ?)`,
-    [monthEndISO, monthEnd, monthEnd]
-  ))?.n);
+  // ===== 一括並列取得 =====
+  // 以前は20本超のクエリを逐次awaitしており、1本ごとのDB往復(Turso)が積み上がって
+  // 毎回5秒超かかっていた。各クエリは互いに独立なので Promise.all で一括並列化する。
+  // 計算(派生値)は取得後にまとめて行う。SQL・定義は従来と同一。
+  const UTIL_EXPR =
+    `CASE WHEN capacity IS NOT NULL AND capacity > 0
+          THEN CAST(total_reservations AS REAL) / capacity
+          ELSE utilization_rate END`;
+
+  const [
+    startActiveRow,
+    endActive,
+    regularActive,
+    ticketActive,
+    collegeActive,
+    ticketEngagedRow,
+    newSignupsRow,
+    churnedRow,
+    trialCountRow,
+    trialEnrolledRow,
+    lineFriendsRow,
+    lineBlockedRow,
+    lineTotalRow,
+    billingRows,
+    merchTotalRow,
+    videoSettings,
+    videoCountRow,
+    utilClassRows,
+    overrideRows,
+    lowThrRow,
+    graceRow,
+    avgUtilization,
+    payrollTotalRow,
+    studioTotalRow,
+    expensesByCategory,
+    billingCountRow,
+    payrollCountRow,
+    studioCountRow,
+    expenseCountRow,
+    targets,
+  ] = await Promise.all([
+    // B: 顧客動態 — 在籍系は全て課金対象顧客のみ(staff/休会/visitor除外 = T-164)
+    safeOne(
+      `SELECT COUNT(*) AS n FROM boom_members
+       WHERE (enrolled_at IS NULL OR enrolled_at <= ?)
+         AND (withdrew_at IS NULL OR withdrew_at > ?)
+         AND ${NON_CUSTOMER_TYPES_SQL}`,
+      [monthStart, monthStart]
+    ),
+    // 月末在籍数 — 正準ロジック(src/lib/kpiMetrics.ts)に集約
+    getActiveMemberCount(ym),
+    getActiveMemberCountByType(ym, 'regular'),
+    getActiveMemberCountByType(ym, 'ticket'),
+    getActiveMemberCountByType(ym, 'college'),
+    // チケット実働 (T-175): 月末時点で直近90日以内にチェックインがあれば実働
+    safeOne(
+      `SELECT COUNT(*) AS n FROM boom_members m
+       WHERE m.member_type='ticket' AND m.status='active'
+         AND (m.withdrew_at IS NULL OR m.withdrew_at > ?)
+         AND EXISTS (SELECT 1 FROM hacomono_reservations r
+                     WHERE r.boom_member_id = m.id AND r.status='チェックイン'
+                       AND r.lesson_date BETWEEN date(?, '-90 days') AND ?)`,
+      [monthEndISO, monthEnd, monthEnd]
+    ),
+    safeOne(
+      `SELECT COUNT(*) AS n FROM boom_members WHERE enrolled_at BETWEEN ? AND ? AND ${NON_CUSTOMER_TYPES_SQL}`,
+      [monthStart, monthEndISO]
+    ),
+    safeOne(
+      `SELECT COUNT(*) AS n FROM boom_members WHERE withdrew_at BETWEEN ? AND ? AND ${NON_CUSTOMER_TYPES_SQL}`,
+      [monthStart, monthEndISO]
+    ),
+    safeOne(
+      `SELECT COUNT(*) AS n FROM trial_records WHERE reserved_at BETWEEN ? AND ?`,
+      [monthStart, monthEndISO]
+    ),
+    // CVR: 当月体験者のうち、体験日から14日以内に入会した人
+    safeOne(
+      `SELECT COUNT(DISTINCT tr.id) AS n
+       FROM trial_records tr
+       LEFT JOIN boom_members bm ON bm.id = tr.member_id
+       WHERE tr.reserved_at BETWEEN ? AND ?
+         AND bm.enrolled_at IS NOT NULL
+         AND date(bm.enrolled_at) <= date(tr.reserved_at, '+14 days')
+         AND date(bm.enrolled_at) >= date(tr.reserved_at)`,
+      [monthStart, monthEndISO]
+    ),
+    safeOne(`SELECT COUNT(*) AS n FROM lstep_friends WHERE blocked = 0`),
+    safeOne(`SELECT COUNT(*) AS n FROM lstep_friends WHERE blocked = 1`),
+    safeOne(`SELECT COUNT(*) AS n FROM lstep_friends`),
+    // A: 売上系
+    safeAll(
+      `SELECT product_category, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS cnt
+       FROM hacomono_billing_records
+       WHERE billing_date BETWEEN ? AND ?
+       GROUP BY product_category`,
+      [monthStart, monthEnd]
+    ),
+    safeOne(
+      `SELECT COALESCE(SUM(quantity * (SELECT price FROM merchandise WHERE id = mo.merch_id)), 0) AS total
+       FROM merch_orders mo WHERE created_at BETWEEN ? AND ?`,
+      [monthStart, monthEndISO]
+    ),
+    safeOne(`SELECT value FROM settings WHERE key = 'video_price'`),
+    safeOne(
+      `SELECT COUNT(*) AS n FROM video_preorders WHERE created_at BETWEEN ? AND ? AND (status IS NULL OR status != 'duplicate')`,
+      [monthStart, monthEndISO]
+    ),
+    // C: 稼働率 — 予約ベース(総予約数/定員)。定員なし行のみ保存値へフォールバック
+    safeAll(
+      `SELECT program_name, staff_name, AVG(${UTIL_EXPR}) AS avg_rate, COUNT(*) AS cnt
+       FROM lesson_utilization WHERE lesson_date BETWEEN ? AND ?
+       GROUP BY program_name, staff_name
+       HAVING cnt >= 1`,
+      [monthStart, monthEnd]
+    ),
+    safeAll(`SELECT program_name, category, launched_at FROM class_kpi_overrides`),
+    safeOne(`SELECT value FROM settings WHERE key = 'kpi_util_low_threshold'`),
+    safeOne(`SELECT value FROM settings WHERE key = 'kpi_util_new_grace_months'`),
+    getUtilizationRate(ym),
+    // D: 収益性
+    safeOne(`SELECT COALESCE(SUM(total_amount), 0) AS t FROM payroll_runs WHERE year_month = ?`, [ym]),
+    safeOne(`SELECT COALESCE(SUM(total_amount), 0) AS t FROM studio_billing_runs WHERE year_month = ?`, [ym]),
+    // 給与・スタジオ料は別管理のため expenses 側の同カテゴリは除外(T-166 二重計上防止)
+    safeAll(
+      `SELECT category, COALESCE(SUM(amount), 0) AS t FROM expenses
+       WHERE expense_date BETWEEN ? AND ?
+         AND category NOT IN ('給与', '人件費', 'スタジオ料', 'スタジオ使用料', 'スタジオ代')
+       GROUP BY category`,
+      [monthStart, monthEnd]
+    ),
+    // 締め確定ガード(T-158): 4財源の当月データ有無
+    safeOne(`SELECT COUNT(*) AS c FROM hacomono_billing_records WHERE billing_date BETWEEN ? AND ?`, [monthStart, monthEnd]),
+    safeOne(`SELECT COUNT(*) AS c FROM payroll_runs WHERE year_month = ?`, [ym]),
+    safeOne(`SELECT COUNT(*) AS c FROM studio_billing_runs WHERE year_month = ?`, [ym]),
+    safeOne(`SELECT COUNT(*) AS c FROM expenses WHERE expense_date BETWEEN ? AND ?`, [monthStart, monthEnd]),
+    safeAll(`SELECT metric_key, target_value FROM kpi_targets WHERE year_month = ?`, [ym]),
+  ]);
+
+  // ===== B: 顧客動態 (派生値) =====
+  const startActive = n(startActiveRow?.n);
+  const ticketEngaged = n(ticketEngagedRow?.n);
   const ticketDormant = Math.max(0, ticketActive - ticketEngaged);
-  // 当月新規入会
-  const newSignups = n((await safeOne(
-    `SELECT COUNT(*) AS n FROM boom_members WHERE enrolled_at BETWEEN ? AND ? AND ${NON_CUSTOMER_TYPES_SQL}`,
-    [monthStart, monthEndISO]
-  ))?.n);
-  // 当月退会
-  const churned = n((await safeOne(
-    `SELECT COUNT(*) AS n FROM boom_members WHERE withdrew_at BETWEEN ? AND ? AND ${NON_CUSTOMER_TYPES_SQL}`,
-    [monthStart, monthEndISO]
-  ))?.n);
+  const newSignups = n(newSignupsRow?.n);
+  const churned = n(churnedRow?.n);
   const churnRate = startActive > 0 ? (churned / startActive) * 100 : 0;
   const netGrowth = newSignups - churned;
-
-  // 体験申込数 (当月)
-  const trialCount = n((await safeOne(
-    `SELECT COUNT(*) AS n FROM trial_records WHERE reserved_at BETWEEN ? AND ?`,
-    [monthStart, monthEndISO]
-  ))?.n);
-  // CVR: 当月体験者のうち、体験日から14日以内に入会した人
-  const trialEnrolled = n((await safeOne(
-    `SELECT COUNT(DISTINCT tr.id) AS n
-     FROM trial_records tr
-     LEFT JOIN boom_members bm ON bm.id = tr.member_id
-     WHERE tr.reserved_at BETWEEN ? AND ?
-       AND bm.enrolled_at IS NOT NULL
-       AND date(bm.enrolled_at) <= date(tr.reserved_at, '+14 days')
-       AND date(bm.enrolled_at) >= date(tr.reserved_at)`,
-    [monthStart, monthEndISO]
-  ))?.n);
+  const trialCount = n(trialCountRow?.n);
+  const trialEnrolled = n(trialEnrolledRow?.n);
   const trialCvr = trialCount > 0 ? (trialEnrolled / trialCount) * 100 : 0;
-
-  // LINE友だち数 (現在値) と前月差
-  const lineFriendsNow = n((await safeOne(`SELECT COUNT(*) AS n FROM lstep_friends WHERE blocked = 0`))?.n);
-  // ブロック済み友だち数 と ブロック率 (配信健全性KPI)
-  const lineBlocked = n((await safeOne(`SELECT COUNT(*) AS n FROM lstep_friends WHERE blocked = 1`))?.n);
-  const lineTotal = n((await safeOne(`SELECT COUNT(*) AS n FROM lstep_friends`))?.n);
+  const lineFriendsNow = n(lineFriendsRow?.n);
+  const lineBlocked = n(lineBlockedRow?.n);
+  const lineTotal = n(lineTotalRow?.n);
   const lineBlockRate = lineTotal > 0 ? (lineBlocked / lineTotal) * 100 : 0;
 
-  // ===== A: 売上系 =====
-  // hacomono_billing_records が無ければ未取込
-  const billingRows = await safeAll(
-    `SELECT product_category, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS cnt
-     FROM hacomono_billing_records
-     WHERE billing_date BETWEEN ? AND ?
-     GROUP BY product_category`,
-    [monthStart, monthEnd]
-  );
+  // ===== A: 売上系 (派生値) =====
   const revenueBreakdown = {
     plan: 0, ticket: 0, enrollment_fee: 0, other: 0,
   } as Record<string, number>;
@@ -114,45 +194,9 @@ export async function GET(req: NextRequest) {
   }
   const coreRevenue = revenueBreakdown.plan + revenueBreakdown.ticket + revenueBreakdown.enrollment_fee;
   const arpu = endActive > 0 ? revenueBreakdown.plan / endActive : 0;
-
-  // 補助売上 (物販/映像)
-  const merchTotal = n((await safeOne(
-    `SELECT COALESCE(SUM(quantity * (SELECT price FROM merchandise WHERE id = mo.merch_id)), 0) AS total
-     FROM merch_orders mo WHERE created_at BETWEEN ? AND ?`,
-    [monthStart, monthEndISO]
-  ))?.total);
-  const videoSettings = await safeOne(`SELECT value FROM settings WHERE key = 'video_price'`);
+  const merchTotal = n(merchTotalRow?.total);
   const videoPrice = n(videoSettings?.value);
-  const videoCount = n((await safeOne(
-    `SELECT COUNT(*) AS n FROM video_preorders WHERE created_at BETWEEN ? AND ? AND (status IS NULL OR status != 'duplicate')`,
-    [monthStart, monthEndISO]
-  ))?.n);
-
-  // ===== C: オペレーション (稼働率) =====
-  // 予約ベース稼働率 = 総予約数 / 定員。
-  // HACOMONO RS002 の「稼働率」列はチェックイン(実出席)ベースのため、
-  // まだ出席を取っていない/月途中のレッスンは予約があっても 0% と記録される
-  // (例: 多賀城HOUSE/おっちゃん系が 0% に見えていた原因)。
-  // 経営判断では「どれだけ枠が予約で埋まっているか」が重要なので予約ベースを採用。
-  // 定員が無い行のみ、保存済み稼働率にフォールバック。
-  const UTIL_EXPR =
-    `CASE WHEN capacity IS NOT NULL AND capacity > 0
-          THEN CAST(total_reservations AS REAL) / capacity
-          ELSE utilization_rate END`;
-
-  // クラス別 (program_name, staff_name) 集計 — 当月。
-  // ここで取得した各クラスを後段でカテゴリ分類し、ヘッドライン平均は
-  // 「通常クラス(normal)」のみで予約数 (cnt) 重み付けして算出する。
-  const utilClassRows = await safeAll(
-    `SELECT program_name, staff_name, AVG(${UTIL_EXPR}) AS avg_rate, COUNT(*) AS cnt
-     FROM lesson_utilization WHERE lesson_date BETWEEN ? AND ?
-     GROUP BY program_name, staff_name
-     HAVING cnt >= 1`,
-    [monthStart, monthEnd]
-  );
-
-  // 分類上書き設定 (program_name 単位)
-  const overrideRows = await safeAll(`SELECT program_name, category, launched_at FROM class_kpi_overrides`);
+  const videoCount = n(videoCountRow?.n);
   const overrideMap = new Map<string, { category: string | null; launched_at: string | null }>();
   for (const o of overrideRows) {
     overrideMap.set(o.program_name as string, {
@@ -162,8 +206,6 @@ export async function GET(req: NextRequest) {
   }
 
   // しきい値 (settings に行があれば尊重、無ければデフォルト)
-  const lowThrRow = await safeOne(`SELECT value FROM settings WHERE key = 'kpi_util_low_threshold'`);
-  const graceRow = await safeOne(`SELECT value FROM settings WHERE key = 'kpi_util_new_grace_months'`);
   const lowThreshold = lowThrRow && lowThrRow.value != null ? Number(lowThrRow.value) : 0.20;
   const graceMonths = graceRow && graceRow.value != null ? Number(graceRow.value) : 6;
 
@@ -217,7 +259,6 @@ export async function GET(req: NextRequest) {
   // ここの分類(上の normalClasses/newClasses/...)はクラス別リスト表示用に
   // 残すが、ヘッドラインの数値は正準関数を呼んで二重定義を排除する。
   const normalWeightSum = normalClasses.reduce((a, c) => a + c.cnt, 0);
-  const avgUtilization = await getUtilizationRate(ym);
   const utilLessonCount = normalWeightSum;
   // data_available は分類前の元データの有無で判定 (全件除外でも未取込扱いにしない)
   const utilHasData = utilClassRows.length > 0;
@@ -226,22 +267,9 @@ export async function GET(req: NextRequest) {
   const topClasses = [...normalClasses].sort((a, b) => b.avg_rate - a.avg_rate).slice(0, 10);
   const bottomClasses = [...normalClasses].sort((a, b) => a.avg_rate - b.avg_rate).slice(0, 10);
 
-  // ===== D: 収益性 =====
-  const payrollTotal = n((await safeOne(
-    `SELECT COALESCE(SUM(total_amount), 0) AS t FROM payroll_runs WHERE year_month = ?`, [ym]
-  ))?.t);
-  const studioTotal = n((await safeOne(
-    `SELECT COALESCE(SUM(total_amount), 0) AS t FROM studio_billing_runs WHERE year_month = ?`, [ym]
-  ))?.t);
-  // 給与・スタジオ料カテゴリは payroll_runs / studio_billing_runs で別管理しており、
-  // expenses 側にも同カテゴリが入っていると二重計上になる(T-166)。集計から除外する。
-  const expensesByCategory = await safeAll(
-    `SELECT category, COALESCE(SUM(amount), 0) AS t FROM expenses
-     WHERE expense_date BETWEEN ? AND ?
-       AND category NOT IN ('給与', '人件費', 'スタジオ料', 'スタジオ使用料', 'スタジオ代')
-     GROUP BY category`,
-    [monthStart, monthEnd]
-  );
+  // ===== D: 収益性 (派生値) =====
+  const payrollTotal = n(payrollTotalRow?.t);
+  const studioTotal = n(studioTotalRow?.t);
   const expBreakdown = {
     広告費: 0, システム費: 0, 通信費: 0, 備品: 0, その他: 0,
   } as Record<string, number>;
@@ -256,18 +284,10 @@ export async function GET(req: NextRequest) {
   // 締め確定ガード(T-158): 営業利益=売上−給与−スタジオ料−経費 だが、各財源の
   // 当月データが揃わないと利益が虚偽になる。4財源それぞれの当月行有無を返し、
   // フロントは全部揃った月だけ黒字赤字を確定表示する。
-  const billingCount = n((await safeOne(
-    `SELECT COUNT(*) AS c FROM hacomono_billing_records WHERE billing_date BETWEEN ? AND ?`, [monthStart, monthEnd]
-  ))?.c);
-  const payrollCount = n((await safeOne(
-    `SELECT COUNT(*) AS c FROM payroll_runs WHERE year_month = ?`, [ym]
-  ))?.c);
-  const studioCount = n((await safeOne(
-    `SELECT COUNT(*) AS c FROM studio_billing_runs WHERE year_month = ?`, [ym]
-  ))?.c);
-  const expenseCount = n((await safeOne(
-    `SELECT COUNT(*) AS c FROM expenses WHERE expense_date BETWEEN ? AND ?`, [monthStart, monthEnd]
-  ))?.c);
+  const billingCount = n(billingCountRow?.c);
+  const payrollCount = n(payrollCountRow?.c);
+  const studioCount = n(studioCountRow?.c);
+  const expenseCount = n(expenseCountRow?.c);
   const sourceAvailability = {
     revenue: billingCount > 0,
     payroll: payrollCount > 0,
@@ -280,7 +300,6 @@ export async function GET(req: NextRequest) {
   const profitConfirmed = missingSources.length === 0;
 
   // ===== 目標値 =====
-  const targets = await safeAll(`SELECT metric_key, target_value FROM kpi_targets WHERE year_month = ?`, [ym]);
   const targetMap: Record<string, number> = {};
   for (const t of targets) targetMap[t.metric_key as string] = Number(t.target_value);
 
