@@ -101,6 +101,37 @@ export function ageFromBirthday(birthday: string | null | undefined, today: Date
   return age;
 }
 
+// ===== M12: 体験予約由来候補の降格判定 (降格方向のみの純関数) =====
+// 同姓同名(同一カナ名が複数の友だちIDにマッチ)や年齢の食い違いがあるのに
+// スコア120・confidence'高'のまま提示すると、別人のLINEに紐付けて
+// 顧客連絡の誤配信につながる。自動で確信度を上げる方向には使わない。
+
+/** 会員birthday由来の年齢と体験予約時の申込年齢の許容差(年)。
+ *  体験→現在の経年(±1〜2年)は正常なので、それを超える食い違いのみ「別人疑い」とする。 */
+export const AGE_MISMATCH_TOLERANCE_YEARS = 3;
+
+export function demoteTrialCandidate(args: {
+  /** 同一カナ名でマッチした友だちIDの数 (2以上=同名複数) */
+  matchedCount: number;
+  /** 会員の birthday 由来の現在年齢 (不明なら null) */
+  birthdayAge: number | null;
+  /** 体験予約CSV側の申込時年齢 (不明なら null) */
+  trialAge: number | null;
+}): { demote: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  if (args.matchedCount > 1) {
+    reasons.push('同名複数・要確認');
+  }
+  if (
+    args.birthdayAge != null &&
+    args.trialAge != null &&
+    Math.abs(args.birthdayAge - args.trialAge) > AGE_MISMATCH_TOLERANCE_YEARS
+  ) {
+    reasons.push(`年齢不一致(会員${args.birthdayAge}歳/体験${args.trialAge}歳)・要確認`);
+  }
+  return { demote: reasons.length > 0, reasons };
+}
+
 // LINE種別と推測役割を判定
 export function classifyLineType(args: {
   age: number | null;
@@ -285,22 +316,26 @@ export async function buildLinkSuggestions(
       if (seen.has(lid)) continue;
       seen.add(lid);
       const siblingCount = childKanaByLstep.get(lid)?.size ?? 1;
-      const age = ageFromBirthday(extra?.birthday) ?? ageByLstepKana.get(`${lid}|${memberKana}`) ?? null;
+      const birthdayAge = ageFromBirthday(extra?.birthday);
+      const trialAge = ageByLstepKana.get(`${lid}|${memberKana}`) ?? null;
+      const age = birthdayAge ?? trialAge;
       const cls = classifyLineType({
         age,
         guardianRelation: extra?.guardian_relation ?? null,
         hasRep: !!extra?.rep_name,
         siblingCount,
       });
+      // M12: 同名複数マッチ・年齢不一致は confidence を '中' に降格 (降格方向のみ)
+      const dem = demoteTrialCandidate({ matchedCount: matchedLstep.size, birthdayAge, trialAge });
       const friend = friends.find((f) => f.lstep_id === lid);
-      const reasons = ['体験予約カナ名一致', `LINE種別: ${cls.line_type}(${cls.reason})`];
+      const reasons = ['体験予約カナ名一致', `LINE種別: ${cls.line_type}(${cls.reason})`, ...dem.reasons];
       cands.push({
         lstep_id: lid,
         system_display_name: friend?.system_display_name ?? friend?.display_name ?? '',
         line_register_name: friend?.line_register_name ?? '',
         customer_kana: friend?.customer_kana ?? '',
         score: 120, // 体験予約一致は最高信頼
-        confidence: cls.line_type === '要確認' ? '中' : '高',
+        confidence: dem.demote || cls.line_type === '要確認' ? '中' : '高',
         reasons,
         relation_suggestion: cls.relation,
         line_type: cls.line_type,
