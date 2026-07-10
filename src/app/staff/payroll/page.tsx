@@ -474,23 +474,22 @@ export default function PayrollPage() {
           const allConfirmed = hasRuns && runs.every(r => r.status === 'confirmed' || r.status === 'paid');
           const uploadedCount = runs.filter(r => !!(r.drive_file_id || r.payslip_uploaded_at)).length;
           const allUploaded = hasRuns && uploadedCount === runs.length;
-          const phase: 'calc' | 'confirm' | 'execute' | 'done' = !hasRuns ? 'calc' : anyDraft ? 'confirm' : !allUploaded ? 'execute' : 'done';
+          const phase: 'calc' | 'confirm' | 'distribute' | 'transfer' = !hasRuns ? 'calc' : anyDraft ? 'confirm' : !allUploaded ? 'distribute' : 'transfer';
           const stateOf = (n: number): 'done' | 'current' | 'avail' | 'locked' =>
             n === 1 ? (hasRuns ? 'done' : 'current')
             : n === 2 ? (hasRuns ? 'done' : 'locked')
             : n === 3 ? (!hasRuns ? 'locked' : anyDraft ? 'current' : 'done')
-            : n === 4 ? (!allConfirmed ? 'locked' : 'avail')
-            : (!allConfirmed ? 'locked' : allUploaded ? 'done' : 'avail');
+            : n === 4 ? (!allConfirmed ? 'locked' : allUploaded ? 'done' : 'current')
+            : (!allConfirmed || !allUploaded ? 'locked' : 'avail');
           const STEPS = [
             { n: 1, label: '計算', name: '計算実行', desc: 'レッスン実績から下書き作成' },
             { n: 2, label: '確認', name: '中身確認', desc: '各講師の金額・明細をチェック' },
             { n: 3, label: '確定', name: '全員確定', desc: '金額を凍結（変更不可に）' },
-            { n: 4, label: '振込CSV', name: '振込CSV', desc: 'GMO振込用CSVを出力' },
-            { n: 5, label: '配布', name: '明細配布', desc: '明細PDFを各講師Driveへ' },
+            { n: 4, label: '配布', name: '明細配布', desc: '明細PDFを各講師Driveへ（講師が確認）' },
+            { n: 5, label: '振込CSV', name: '振込CSV', desc: '確認がとれたら銀行へ振込用CSV' },
           ];
           let heroNo = '', heroTitle = '', heroDesc = '', heroNote = '';
           let primary: { label: string; onClick: () => void; icon: ReactNode } | null = null;
-          let secondary: { label: string; onClick: () => void; icon: ReactNode } | null = null;
           if (phase === 'calc') {
             heroNo = 'STEP 1 / 5'; heroTitle = '給与を計算する';
             heroDesc = `${ym} のレッスン実績から、講師全員の給与下書きを作成します。`;
@@ -501,17 +500,16 @@ export default function PayrollPage() {
             heroDesc = '金額を確認したら凍結します。確定後は変更できません。';
             heroNote = 'タップ後に確認画面が出ます（すぐには確定されません）';
             primary = { label: '全員確定する', onClick: confirmAll, icon: <CheckCircle /> };
-          } else if (phase === 'execute') {
-            heroNo = 'STEP 4 / 5'; heroTitle = '振込と明細配布';
-            heroDesc = '確定済みの金額で、振込CSVを出して明細を配布します。';
-            heroNote = '振込CSVと配布は順不同でOKです';
-            primary = { label: '振込CSVをダウンロード', onClick: () => downloadBankCsv(false), icon: <Landmark /> };
-            secondary = { label: '明細を全員へ配布', onClick: uploadAll, icon: <Upload /> };
+          } else if (phase === 'distribute') {
+            heroNo = 'STEP 4 / 5'; heroTitle = '明細を配布して確認してもらう';
+            heroDesc = '各講師のGoogle Driveへ明細PDFをアップします。講師に金額を確認してもらってから振込します。';
+            heroNote = '講師の確認がとれたら、次のステップで振込CSVを出します';
+            primary = { label: '明細を全員へ配布', onClick: uploadAll, icon: <Upload /> };
           } else {
-            heroNo = '完了'; heroTitle = 'この月分、すべて完了';
-            heroDesc = '確定・振込CSV・明細配布まで終わりました。おつかれさまでした。';
-            heroNote = '振込CSVはいつでも再取得できます';
-            secondary = { label: '振込CSVを再取得', onClick: () => downloadBankCsv(false), icon: <Landmark /> };
+            heroNo = 'STEP 5 / 5'; heroTitle = '振込CSVを出す';
+            heroDesc = '明細の配布は完了。講師の確認がとれたら、GMO振込用CSVを書き出して銀行へ取り込みます。';
+            heroNote = 'これが最後のステップです（何度でも再取得できます）';
+            primary = { label: '振込CSVをダウンロード', onClick: () => downloadBankCsv(false), icon: <Landmark /> };
           }
           return (
             <div className="mb-3 space-y-2.5">
@@ -530,9 +528,9 @@ export default function PayrollPage() {
                 })}
               </div>
 
-              <div className={`rounded-2xl border p-4 ${phase === 'done' ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-brand-200 shadow-sm'}`}>
+              <div className="rounded-2xl border p-4 bg-white border-brand-200 shadow-sm">
                 <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-brand-600">
-                  <span>{phase === 'done' ? '✓ 完了' : 'いまやること'}</span>
+                  <span>いまやること</span>
                   <span className="text-sand-400 font-bold">{heroNo}</span>
                 </div>
                 <h2 className="text-xl font-extrabold mt-1 text-navy-700">{heroTitle}</h2>
@@ -547,12 +545,6 @@ export default function PayrollPage() {
                   <Button onClick={primary.onClick} disabled={busy} className="w-full mt-3 h-14 text-base font-extrabold">
                     {busy ? <Loader2 className="animate-spin" /> : primary.icon}
                     {primary.label}
-                  </Button>
-                )}
-                {secondary && (
-                  <Button onClick={secondary.onClick} disabled={busy || runs.length === 0} variant="outline" className="w-full mt-2 h-12 border-brand-300 text-brand-700">
-                    {busy ? <Loader2 className="animate-spin" /> : secondary.icon}
-                    {secondary.label}
                   </Button>
                 )}
                 <p className="text-[11px] text-sand-400 text-center mt-2">{heroNote}</p>
