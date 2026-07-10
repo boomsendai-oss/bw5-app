@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { RefreshCw, Landmark, Upload, CheckCircle, Eye, Trash2, FolderOpen, Printer, Loader2, CalendarDays, ArrowUpFromLine } from 'lucide-react';
+import { RefreshCw, Landmark, Upload, CheckCircle, Eye, Trash2, FolderOpen, Printer, Loader2, CalendarDays, ArrowUpFromLine, Check, Lock } from 'lucide-react';
 import { yen } from '@/lib/utils';
 
 type PayrollRun = {
@@ -462,24 +462,124 @@ export default function PayrollPage() {
             <span><span className="text-slate-500">対象者:</span> <span className="font-bold">{runs.length}人</span></span>
             <span><span className="text-slate-500">合計:</span> <span className="font-bold text-brand-700">{yen(grandTotal)}</span></span>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            <Button onClick={calculate} disabled={busy} size="sm">
-              {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-              {busy ? '処理中...' : '計算実行'}
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => downloadBankCsv(false)}>
-              <Landmark /> 振込CSV
-            </Button>
-            <Button onClick={uploadAll} disabled={busy || runs.length === 0} variant="outline" size="sm" className="text-emerald-700 border-emerald-300 hover:bg-emerald-50">
-              {busy ? <Loader2 className="animate-spin" /> : <Upload />}
-              {busy ? '処理中...' : '全員アップ'}
-            </Button>
-            <Button onClick={confirmAll} disabled={busy || runs.length === 0} variant="secondary" size="sm">
-              {busy ? <Loader2 className="animate-spin" /> : <CheckCircle />}
-              {busy ? '処理中...' : '全員確定'}
-            </Button>
-          </div>
+          {runs.length > 0 && (
+            <button onClick={calculate} disabled={busy} className="text-xs text-slate-500 hover:text-brand-700 underline underline-offset-2 disabled:opacity-50">再計算</button>
+          )}
         </div>
+
+        {/* 給与フロー: 次の一手カード + 5ステップ一覧（誤操作防止・スマホ最適化） */}
+        {(() => {
+          const hasRuns = runs.length > 0;
+          const anyDraft = runs.some(r => r.status === 'draft');
+          const allConfirmed = hasRuns && runs.every(r => r.status === 'confirmed' || r.status === 'paid');
+          const uploadedCount = runs.filter(r => !!(r.drive_file_id || r.payslip_uploaded_at)).length;
+          const allUploaded = hasRuns && uploadedCount === runs.length;
+          const phase: 'calc' | 'confirm' | 'execute' | 'done' = !hasRuns ? 'calc' : anyDraft ? 'confirm' : !allUploaded ? 'execute' : 'done';
+          const stateOf = (n: number): 'done' | 'current' | 'avail' | 'locked' =>
+            n === 1 ? (hasRuns ? 'done' : 'current')
+            : n === 2 ? (hasRuns ? 'done' : 'locked')
+            : n === 3 ? (!hasRuns ? 'locked' : anyDraft ? 'current' : 'done')
+            : n === 4 ? (!allConfirmed ? 'locked' : 'avail')
+            : (!allConfirmed ? 'locked' : allUploaded ? 'done' : 'avail');
+          const STEPS = [
+            { n: 1, label: '計算', name: '計算実行', desc: 'レッスン実績から下書き作成' },
+            { n: 2, label: '確認', name: '中身確認', desc: '各講師の金額・明細をチェック' },
+            { n: 3, label: '確定', name: '全員確定', desc: '金額を凍結（変更不可に）' },
+            { n: 4, label: '振込CSV', name: '振込CSV', desc: 'GMO振込用CSVを出力' },
+            { n: 5, label: '配布', name: '明細配布', desc: '明細PDFを各講師Driveへ' },
+          ];
+          let heroNo = '', heroTitle = '', heroDesc = '', heroNote = '';
+          let primary: { label: string; onClick: () => void; icon: ReactNode } | null = null;
+          let secondary: { label: string; onClick: () => void; icon: ReactNode } | null = null;
+          if (phase === 'calc') {
+            heroNo = 'STEP 1 / 5'; heroTitle = '給与を計算する';
+            heroDesc = `${ym} のレッスン実績から、講師全員の給与下書きを作成します。`;
+            heroNote = 'まだお金は動きません（下書きのみ）';
+            primary = { label: '計算実行', onClick: calculate, icon: <RefreshCw /> };
+          } else if (phase === 'confirm') {
+            heroNo = 'STEP 3 / 5'; heroTitle = '全員分を確定する';
+            heroDesc = '金額を確認したら凍結します。確定後は変更できません。';
+            heroNote = 'タップ後に確認画面が出ます（すぐには確定されません）';
+            primary = { label: '全員確定する', onClick: confirmAll, icon: <CheckCircle /> };
+          } else if (phase === 'execute') {
+            heroNo = 'STEP 4 / 5'; heroTitle = '振込と明細配布';
+            heroDesc = '確定済みの金額で、振込CSVを出して明細を配布します。';
+            heroNote = '振込CSVと配布は順不同でOKです';
+            primary = { label: '振込CSVをダウンロード', onClick: () => downloadBankCsv(false), icon: <Landmark /> };
+            secondary = { label: '明細を全員へ配布', onClick: uploadAll, icon: <Upload /> };
+          } else {
+            heroNo = '完了'; heroTitle = 'この月分、すべて完了';
+            heroDesc = '確定・振込CSV・明細配布まで終わりました。おつかれさまでした。';
+            heroNote = '振込CSVはいつでも再取得できます';
+            secondary = { label: '振込CSVを再取得', onClick: () => downloadBankCsv(false), icon: <Landmark /> };
+          }
+          return (
+            <div className="mb-3 space-y-2.5">
+              <div className="flex items-center">
+                {STEPS.map((s, i) => {
+                  const st = stateOf(s.n);
+                  return (
+                    <div key={s.n} className="flex-1 flex flex-col items-center relative">
+                      {i > 0 && <div className={`absolute top-3 right-1/2 w-full h-0.5 ${stateOf(STEPS[i - 1].n) === 'done' ? 'bg-brand-500' : 'bg-sand-200'}`} />}
+                      <div className={`relative z-10 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${st === 'done' ? 'bg-emerald-600 text-white' : st === 'current' ? 'bg-brand-500 text-white ring-4 ring-brand-100' : st === 'avail' ? 'bg-white text-brand-700 border-2 border-brand-300' : 'bg-sand-100 text-sand-400'}`}>
+                        {st === 'done' ? <Check className="size-4" /> : st === 'locked' ? <Lock className="size-3" /> : s.n}
+                      </div>
+                      <span className={`mt-1 text-[10px] font-semibold ${st === 'locked' ? 'text-sand-400' : st === 'done' ? 'text-emerald-700' : 'text-brand-700'}`}>{s.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className={`rounded-2xl border p-4 ${phase === 'done' ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-brand-200 shadow-sm'}`}>
+                <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-brand-600">
+                  <span>{phase === 'done' ? '✓ 完了' : 'いまやること'}</span>
+                  <span className="text-sand-400 font-bold">{heroNo}</span>
+                </div>
+                <h2 className="text-xl font-extrabold mt-1 text-navy-700">{heroTitle}</h2>
+                <p className="text-[13px] text-slate-500 mt-1.5">{heroDesc}</p>
+                {hasRuns && (
+                  <div className="mt-3 flex items-center justify-between rounded-xl bg-sand-50 border border-sand-200 px-3.5 py-2.5">
+                    <span className="text-xs text-slate-500 font-semibold">講師{runs.length}名 ・ 合計</span>
+                    <span className="text-lg font-extrabold text-navy-700 tabular-nums">{yen(grandTotal)}</span>
+                  </div>
+                )}
+                {primary && (
+                  <Button onClick={primary.onClick} disabled={busy} className="w-full mt-3 h-14 text-base font-extrabold">
+                    {busy ? <Loader2 className="animate-spin" /> : primary.icon}
+                    {primary.label}
+                  </Button>
+                )}
+                {secondary && (
+                  <Button onClick={secondary.onClick} disabled={busy || runs.length === 0} variant="outline" className="w-full mt-2 h-12 border-brand-300 text-brand-700">
+                    {busy ? <Loader2 className="animate-spin" /> : secondary.icon}
+                    {secondary.label}
+                  </Button>
+                )}
+                <p className="text-[11px] text-sand-400 text-center mt-2">{heroNote}</p>
+              </div>
+
+              <div className="rounded-2xl border border-neutral-200 bg-white overflow-hidden">
+                {STEPS.map(s => {
+                  const st = stateOf(s.n);
+                  return (
+                    <div key={s.n} className={`flex items-center gap-3 px-3.5 py-2.5 border-b border-neutral-100 last:border-b-0 ${st === 'locked' ? 'opacity-60' : ''}`}>
+                      <div className={`flex-none w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${st === 'done' ? 'bg-emerald-50 text-emerald-700' : st === 'current' ? 'bg-brand-500 text-white' : st === 'avail' ? 'bg-brand-50 text-brand-700 border border-dashed border-brand-300' : 'bg-sand-100 text-sand-400'}`}>
+                        {st === 'done' ? <Check className="size-4" /> : st === 'locked' ? <Lock className="size-3" /> : s.n}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-sm font-bold ${st === 'locked' ? 'text-sand-400' : 'text-navy-700'}`}>{s.name}</div>
+                        <div className="text-[11px] text-slate-400">{s.desc}</div>
+                      </div>
+                      <div className={`text-[11px] font-bold whitespace-nowrap ${st === 'done' ? 'text-emerald-700' : st === 'current' ? 'text-brand-700' : st === 'avail' ? 'text-brand-600' : 'text-sand-400'}`}>
+                        {st === 'done' ? '完了' : st === 'current' ? '次はこれ' : st === 'avail' ? '実行できます' : <span className="inline-flex items-center gap-1"><Lock className="size-3" />確定後</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {loading && (
           <div className="space-y-2">
@@ -489,9 +589,6 @@ export default function PayrollPage() {
           </div>
         )}
 
-        {!loading && runs.length === 0 && (
-          <p className="text-slate-500 text-sm p-4 bg-white rounded border">この月の計算結果はまだありません。「計算実行」を押してください。</p>
-        )}
 
         {/* スマホ: カード型レイアウト */}
         {runs.length > 0 && (
