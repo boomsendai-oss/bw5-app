@@ -21,6 +21,7 @@
 // 「今月退会対象リスト」を算出するだけ。事前通知の送信・退会処理はスタッフが行う。
 
 import { getAll, getOne } from './db';
+import { todayJst, shiftMonthsClamped, shiftDays, isIsoDate } from './dateJst';
 
 export type WithdrawalReason = 'inactive_6mo' | 'never_attended_3mo' | 'long_dormant_nodata';
 
@@ -57,6 +58,7 @@ export type WithdrawalAssessment = {
   candidates: WithdrawalCandidate[]; // 今すでに退会条件を満たす(家族保護済み)
   pre_notice: WithdrawalCandidate[]; // あと notice_window_days 日で条件到達 (= 1ヶ月前事前通知の対象)
   family_review: WithdrawalCandidate[]; // 本人は未受講だが現役の家族とリンク → 自動退会から除外・要手動確認
+  warnings: string[]; // データ異常の防御的検出 (M9: 不正な extended_until 等。member_id 付き)
 };
 
 const REASON_LABELS: Record<WithdrawalReason, string> = {
@@ -65,19 +67,9 @@ const REASON_LABELS: Record<WithdrawalReason, string> = {
   long_dormant_nodata: '長期未受講(受講データ全期間で0回)',
 };
 
-// YYYY-MM-DD の日付文字列を N ヶ月ずらす
-function shiftMonths(isoDate: string, months: number): string {
-  const [y, m, d] = isoDate.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1 + months, d));
-  return dt.toISOString().slice(0, 10);
-}
-
-// YYYY-MM-DD の日付文字列を N 日ずらす
-function shiftDays(isoDate: string, days: number): string {
-  const [y, m, d] = isoDate.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d + days));
-  return dt.toISOString().slice(0, 10);
-}
+// 日付シフトは dateJst.ts の shiftMonthsClamped / shiftDays を使う (M8/PR-1)。
+// 旧ローカル shiftMonths は月末で膨張ロールオーバーし(例: 2026-08-31 の6ヶ月前が
+// 2026-03-03 になる)、早すぎる候補化を起こしていたため月末クランプ版へ移設・置換した。
 
 function dateOnly(s: string | null): string | null {
   if (!s) return null;
@@ -85,11 +77,148 @@ function dateOnly(s: string | null): string | null {
   return s.slice(0, 10);
 }
 
+// ============================================================
+// L1: 退会判定コア (純関数) — DBに触らない。vitest はここを叩く。
+// assessTicketWithdrawals はデータ取得・家族グラフ構築・整形のみを担い、
+// 「誰が退会対象か」の判断はすべて classifyWithdrawal に集約する。
+// ============================================================
+
+/** classifyWithdrawal に渡す1会員分の観測値 */
+export type ClassifyRow = {
+  checkin_count: number;
+  last_checkin: string | null; // 生値可 ('YYYY-MM-DD HH:MM:SS' 等)。内部で日付に正規化
+  enrolled_at: string | null;
+  extended_until: string | null;
+  notice_status: string | null;
+  /** 現役家族とのリンク先氏名 (assess側で家族グラフから算出)。非null なら家族保護 */
+  family_active_link: string | null;
+  /** boom_members.created_at (この会員の行が初めて同期された日時)。M11の member_since 算出用 */
+  member_created_at: string | null;
+};
+
+/** 判定パラメータ (buildWithdrawalParams で算出) */
+export type ClassifyParams = {
+  today: string;
+  sixMonthsAgo: string;
+  threeMonthsAgo: string;
+  noticeUpper: string; // 事前通知帯の下限 (= sixMonthsAgo)
+  noticeLower: string; // 事前通知帯の上限 (= sixMonthsAgo + noticeWindowDays)
+  reliableEnrollCutoff: string;
+  dataFloor: string | null;
+  dataSpanOk: boolean; // 受講データ全期間が normalMonths 以上あるか
+};
+
+export type ClassifyBucket = 'candidate' | 'pre_notice' | 'family_review' | 'none';
+
+export type Classification = {
+  bucket: ClassifyBucket;
+  reason: WithdrawalReason | null; // bucket='none' のとき null
+  warnings: string[]; // データ異常の防御的検出 (M9読み側等)
+};
+
+/** enrolled_at が移行クラスタ(2025-08一括登録)より後で信頼できるか */
+export function isEnrollReliable(enrolledAt: string | null, reliableEnrollCutoff: string): boolean {
+  const d = dateOnly(enrolledAt);
+  return !!d && d >= reliableEnrollCutoff;
+}
+
+/**
+ * 1会員の退会判定 (純関数)。
+ * - 延長中(extended_until が未来) / 退会処理済み → none
+ *   ★M9読み側: extended_until が不正形式なら「延長無効 + warning」(黙って延長扱いにしない)。
+ *     旧実装は生文字列比較だったため '2026/08/01' 等の不正値が「未来の延長」と誤解釈され
+ *     退会候補を恒久的に隠しうる('/' > '-' の辞書順)。
+ * - 受講あり: 最終受講6ヶ月超 → candidate、事前通知帯 → pre_notice
+ * - 0回受講: 入会日が信頼できれば3ヶ月例外、信頼不可なら観測事実(long_dormant_nodata)
+ *   ★M11(a): long_dormant_nodata は member_since(=enrolled_at ?? created_at ?? dataFloor)が
+ *     6ヶ月以上前の会員のみ。enrolled_at 不明の新規会員(同期されたばかり)を
+ *     「移行組の長期休眠」と誤判定して退会させない。
+ * - candidate 相当でも家族保護(family_active_link)に該当すれば family_review
+ */
+export function classifyWithdrawal(row: ClassifyRow, p: ClassifyParams): Classification {
+  const warnings: string[] = [];
+  const none: Classification = { bucket: 'none', reason: null, warnings };
+  const lastCheckin = dateOnly(row.last_checkin);
+  const enrolledDate = dateOnly(row.enrolled_at);
+  const enrollReliable = isEnrollReliable(row.enrolled_at, p.reliableEnrollCutoff);
+
+  // 延長中(extended_until が未来)はスキップ — スタッフがタイマーリセット済み (M9読み側防御込み)
+  if (row.extended_until) {
+    if (!isIsoDate(row.extended_until)) {
+      warnings.push(
+        `extended_until '${row.extended_until}' は不正な日付形式のため延長を無効として扱いました`
+      );
+      // 延長無効 → 通常判定を続行
+    } else if (row.extended_until > p.today) {
+      return none;
+    }
+  }
+  // 既に退会処理済みはスキップ
+  if (row.notice_status === 'withdrawn') return none;
+
+  // 家族保護: candidate 相当は family_review へ回す (pre_notice は通知のみなので分けない)
+  const candidateBucket: ClassifyBucket = row.family_active_link ? 'family_review' : 'candidate';
+
+  if (row.checkin_count >= 1) {
+    // 通常ルール
+    if (lastCheckin && lastCheckin < p.sixMonthsAgo) {
+      return { bucket: candidateBucket, reason: 'inactive_6mo', warnings };
+    }
+    if (lastCheckin && lastCheckin >= p.noticeUpper && lastCheckin < p.noticeLower) {
+      // あと noticeWindowDays 日で6ヶ月到達 → 事前通知対象
+      return { bucket: 'pre_notice', reason: 'inactive_6mo', warnings };
+    }
+    return none;
+  }
+
+  // 0回受講
+  if (enrollReliable) {
+    // 信頼できる入会日: 入会3ヶ月例外
+    if (enrolledDate! < p.threeMonthsAgo) {
+      return { bucket: candidateBucket, reason: 'never_attended_3mo', warnings };
+    }
+    return none;
+  }
+  if (p.dataSpanOk) {
+    // 移行組で0回: 偽の入会日に頼らず観測事実で判定。
+    // ★M11(a): この会員を6ヶ月以上前から把握している場合のみ (新規混入の保護)
+    const memberSince = enrolledDate ?? dateOnly(row.member_created_at) ?? p.dataFloor;
+    if (memberSince != null && memberSince <= p.sixMonthsAgo) {
+      return { bucket: candidateBucket, reason: 'long_dormant_nodata', warnings };
+    }
+    return none;
+  }
+  return none;
+}
+
+/** 判定パラメータの算出 (純関数)。基準日まわりの日付計算はすべてここに集約する。 */
+export function buildWithdrawalParams(opts: {
+  today: string;
+  normalMonths: number;
+  exceptionMonths: number;
+  reliableEnrollCutoff: string;
+  noticeWindowDays: number;
+  dataFloor: string | null;
+}): ClassifyParams {
+  const { today, normalMonths, exceptionMonths, reliableEnrollCutoff, noticeWindowDays, dataFloor } = opts;
+  // M8: 月末クランプ版 (2026-08-31 の6ヶ月前 = 2026-02-28。旧実装は 2026-03-03 に膨張し早すぎ候補化)
+  const sixMonthsAgo = shiftMonthsClamped(today, -normalMonths);
+  const threeMonthsAgo = shiftMonthsClamped(today, -exceptionMonths);
+  // 事前通知の対象帯: 最終受講が [sixMonthsAgo, sixMonthsAgo + noticeWindowDays) の人。
+  // = まだ6ヶ月未満だが、あと noticeWindowDays 日で6ヶ月に到達する人。
+  const noticeUpper = sixMonthsAgo;
+  const noticeLower = shiftDays(sixMonthsAgo, noticeWindowDays);
+  // データ全期間が normalMonths 以上あるか (long_dormant_nodata 判定の前提)
+  const dataSpanOk = dataFloor ? dataFloor <= sixMonthsAgo : false;
+  return { today, sixMonthsAgo, threeMonthsAgo, noticeUpper, noticeLower, reliableEnrollCutoff, dataFloor, dataSpanOk };
+}
+
 type Row = {
   member_id: number;
   full_name: string;
   full_name_kana: string | null;
   enrolled_at: string | null;
+  member_created_at: string | null;
   email: string | null;
   rep_name: string | null;
   last_checkin: string | null;
@@ -111,19 +240,14 @@ export async function assessTicketWithdrawals(opts?: {
   reliableEnrollCutoff?: string;
   noticeWindowDays?: number;
 }): Promise<WithdrawalAssessment> {
-  const today = opts?.todayIso ?? new Date().toISOString().slice(0, 10);
+  // M10: 基準日はJST。旧実装の new Date().toISOString() はUTCで、JSTの朝9時前に
+  // 実行すると前日扱いになり月末月初で候補リストがズレていた。
+  const today = opts?.todayIso ?? todayJst();
   const normalMonths = opts?.normalMonths ?? 6;
   const exceptionMonths = opts?.exceptionMonths ?? 3;
   // 移行クラスタ(2025-08)より後を「信頼できる入会日」とみなす
   const reliableEnrollCutoff = opts?.reliableEnrollCutoff ?? '2025-09-01';
   const noticeWindowDays = opts?.noticeWindowDays ?? 30;
-
-  const sixMonthsAgo = shiftMonths(today, -normalMonths);
-  const threeMonthsAgo = shiftMonths(today, -exceptionMonths);
-  // 事前通知の対象帯: 最終受講が [sixMonthsAgo, sixMonthsAgo + noticeWindowDays) の人。
-  // = まだ6ヶ月未満だが、あと noticeWindowDays 日で6ヶ月に到達する人。
-  const noticeUpper = sixMonthsAgo;
-  const noticeLower = shiftDays(sixMonthsAgo, noticeWindowDays);
 
   // 受講データの最古日 (long_dormant_nodata 判定に使う)
   const floorRow = await getOne(
@@ -131,12 +255,23 @@ export async function assessTicketWithdrawals(opts?: {
   );
   const dataFloor: string | null = floorRow?.floor ?? null;
 
+  const params = buildWithdrawalParams({
+    today,
+    normalMonths,
+    exceptionMonths,
+    reliableEnrollCutoff,
+    noticeWindowDays,
+    dataFloor,
+  });
+  const { sixMonthsAgo } = params;
+
   const rows = (await getAll(
     `SELECT
        m.id            AS member_id,
        m.full_name     AS full_name,
        m.full_name_kana AS full_name_kana,
        m.enrolled_at   AS enrolled_at,
+       m.created_at    AS member_created_at,
        m.email         AS email,
        m.rep_name      AS rep_name,
        (SELECT MAX(r.lesson_date) FROM hacomono_reservations r
@@ -155,9 +290,7 @@ export async function assessTicketWithdrawals(opts?: {
   const candidates: WithdrawalCandidate[] = [];
   const preNotice: WithdrawalCandidate[] = [];
   const familyReview: WithdrawalCandidate[] = [];
-
-  // データ全期間が normalMonths 以上あるか (long_dormant_nodata 判定の前提)
-  const dataSpanOk = dataFloor ? dataFloor <= sixMonthsAgo : false;
+  const warnings: string[] = []; // M9読み側等のデータ異常検出 (member_id 付き)
 
   // 家族アカウント保護用のグラフを作る。
   //   現役で通っている会員(=直近 normalMonths 内にチェックイン有り)の氏名を集め、
@@ -190,17 +323,13 @@ export async function assessTicketWithdrawals(opts?: {
   };
 
   for (const r of rows) {
-    const lastCheckin = dateOnly(r.last_checkin);
-    const enrolledDate = dateOnly(r.enrolled_at);
-    const enrollReliable = !!enrolledDate && enrolledDate >= reliableEnrollCutoff;
-
     const base = {
       member_id: r.member_id,
       full_name: r.full_name,
       full_name_kana: r.full_name_kana,
       enrolled_at: r.enrolled_at,
-      enrolled_reliable: enrollReliable,
-      last_checkin: lastCheckin,
+      enrolled_reliable: isEnrollReliable(r.enrolled_at, reliableEnrollCutoff),
+      last_checkin: dateOnly(r.last_checkin),
       checkin_count: r.checkin_count,
       has_email: !!(r.email && r.email.trim()),
       has_line: r.has_line > 0,
@@ -210,36 +339,26 @@ export async function assessTicketWithdrawals(opts?: {
       extended_until: r.extended_until,
     };
 
-    // 延長中(extended_until が未来)はスキップ — スタッフがタイマーリセット済み
-    if (r.extended_until && r.extended_until > today) continue;
-    // 既に退会処理済みはスキップ
-    if (r.notice_status === 'withdrawn') continue;
+    // 判定は純関数 classifyWithdrawal に集約 (L1)
+    const cls = classifyWithdrawal(
+      {
+        checkin_count: r.checkin_count,
+        last_checkin: r.last_checkin,
+        enrolled_at: r.enrolled_at,
+        extended_until: r.extended_until,
+        notice_status: r.notice_status,
+        family_active_link: base.family_active_link,
+        member_created_at: r.member_created_at,
+      },
+      params
+    );
+    for (const w of cls.warnings) warnings.push(`member_id=${r.member_id}: ${w}`);
+    if (cls.bucket === 'none') continue;
 
-    // 退会候補の判定。家族保護に該当する場合は candidates ではなく familyReview へ。
-    const pushCandidate = (reason: WithdrawalReason) => {
-      const c = { ...base, reason, reason_label: REASON_LABELS[reason] };
-      if (base.family_active_link) familyReview.push(c);
-      else candidates.push(c);
-    };
-
-    if (r.checkin_count >= 1) {
-      // 通常ルール
-      if (lastCheckin && lastCheckin < sixMonthsAgo) {
-        pushCandidate('inactive_6mo');
-      } else if (lastCheckin && lastCheckin >= noticeUpper && lastCheckin < noticeLower) {
-        // あと noticeWindowDays 日で6ヶ月到達 → 事前通知対象 (家族保護は最終退会時に効くのでここでは分けない)
-        preNotice.push({ ...base, reason: 'inactive_6mo', reason_label: REASON_LABELS.inactive_6mo });
-      }
-    } else {
-      // 0回受講
-      if (enrollReliable) {
-        // 信頼できる入会日: 入会3ヶ月例外
-        if (enrolledDate! < threeMonthsAgo) pushCandidate('never_attended_3mo');
-      } else if (dataSpanOk) {
-        // 移行組で0回: 偽の入会日に頼らず観測事実で判定
-        pushCandidate('long_dormant_nodata');
-      }
-    }
+    const c: WithdrawalCandidate = { ...base, reason: cls.reason!, reason_label: REASON_LABELS[cls.reason!] };
+    if (cls.bucket === 'candidate') candidates.push(c);
+    else if (cls.bucket === 'family_review') familyReview.push(c);
+    else preNotice.push(c);
   }
 
   // 氏名カナ順で安定ソート
@@ -261,5 +380,6 @@ export async function assessTicketWithdrawals(opts?: {
     candidates,
     pre_notice: preNotice,
     family_review: familyReview,
+    warnings,
   };
 }

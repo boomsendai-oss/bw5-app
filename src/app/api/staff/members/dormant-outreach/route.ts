@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { getAll } from '@/lib/db';
+import { todayJst, shiftDays } from '@/lib/dateJst';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -14,6 +15,10 @@ export const maxDuration = 30;
  *
  *   対象: member_type='ticket' かつ status='active' で
  *     最終チェックインが days 日より前 (または1度も受講なし)。
+ *   ★M11(b): さらに「enrolled_at IS NOT NULL かつ 入会から days 日超」を必須条件にする。
+ *     「新規入会でまだ0回」の人へ「おかえり」を誤配信しないため。
+ *     enrolled_at 不明(NULL)の会員は入会直後の可能性を否定できないので
+ *     【仕様として配信対象から除外】する(送らない側に倒す)。
  *   返却: 氏名・連絡手段カバレッジ・lstep_id(セグメント用)・最終受講・経過日数。
  */
 export async function GET(req: NextRequest) {
@@ -22,6 +27,10 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   let days = Number(url.searchParams.get('days'));
   if (!Number.isFinite(days) || days <= 0) days = 90;
+
+  // M10: 基準日はJST (旧: サーバ現在時刻=UTC由来で朝9時前に1日ズレ)
+  const todayIso = todayJst();
+  const enrolledBefore = shiftDays(todayIso, -days);
 
   const rows = await getAll(
     `SELECT
@@ -36,17 +45,20 @@ export async function GET(req: NextRequest) {
        (SELECT l.lstep_id FROM member_lstep_links l WHERE l.member_id = m.id AND l.relation = '本人' LIMIT 1) AS lstep_id_self,
        (SELECT COUNT(*) FROM member_lstep_links l WHERE l.member_id = m.id) AS line_links
      FROM boom_members m
-     WHERE m.member_type = 'ticket' AND m.status = 'active'`
+     WHERE m.member_type = 'ticket' AND m.status = 'active'
+       AND m.enrolled_at IS NOT NULL AND TRIM(m.enrolled_at) <> ''
+       AND m.enrolled_at < ?`,
+    [enrolledBefore]
   );
 
-  const today = new Date();
+  const todayMs = Date.parse(todayIso + 'T00:00:00Z');
   const dormant = rows
     .map((r) => {
       const last = r.last_checkin ? String(r.last_checkin).slice(0, 10) : null;
       let daysSince: number | null = null;
       if (last) {
         const lc = new Date(last + 'T00:00:00Z');
-        daysSince = Math.floor((today.getTime() - lc.getTime()) / 86400000);
+        daysSince = Math.floor((todayMs - lc.getTime()) / 86400000);
       }
       return {
         member_id: r.member_id,
@@ -66,6 +78,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     threshold_days: days,
+    // M11(b): 入会日がこの日以降(または不明)の会員は「新規」とみなし配信対象から除外済み
+    enrolled_before: enrolledBefore,
     total: dormant.length,
     coverage: {
       email: dormant.filter((d) => d.has_email).length,

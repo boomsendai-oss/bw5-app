@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { execute, getOne } from '@/lib/db';
 import { assessTicketWithdrawals } from '@/lib/membershipRules';
+import { todayJst, nowUtcIso, isIsoDate } from '@/lib/dateJst';
+import { badRequest } from '@/lib/validate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -63,8 +65,9 @@ export async function POST(req: NextRequest) {
   // 既存行があるか
   const existing = await getOne(`SELECT id FROM withdrawal_notices WHERE member_id = ?`, [memberId]);
 
-  // action → 反映する列
-  const now = new Date().toISOString();
+  // action → 反映する列。記録タイムスタンプはUTC ISO(既存行の書式に合わせる)、
+  // 「日付としての判定」に使う列(extended_until/withdrawn_at)はJST基準 (M10)。
+  const now = nowUtcIso();
   let status = 'candidate';
   let notifiedAt: string | null = null;
   let extendedUntil: string | null = null;
@@ -77,13 +80,25 @@ export async function POST(req: NextRequest) {
     status = 'extended';
     extendedUntil = body.extended_until ? String(body.extended_until) : null;
     if (!extendedUntil) {
-      return NextResponse.json({ error: 'extended_until required for extend' }, { status: 400 });
+      return badRequest('extended_until required for extend');
+    }
+    // ★M9書き込み側: 形式・実在日を強制。不正値は読み側(membershipRules)で
+    //   「未来の延長」と誤解釈され退会候補を恒久的に隠す事故の元だった。
+    if (!isIsoDate(extendedUntil)) {
+      return badRequest('extended_until は YYYY-MM-DD (実在する日付) で指定してください');
+    }
+    // 過去日(今日以前)の延長は無意味 (判定は extended_until > today のみスキップ) なので拒否
+    if (extendedUntil <= todayJst()) {
+      return badRequest('extended_until には明日以降の日付を指定してください (過去日は延長になりません)');
     }
   } else if (action === 'withdrawn') {
     // ★注意: これは「HACOMONOで退会処理をした」という人手記録にすぎない。
     //   アプリ側はHACOMONOに一切書き込まない。
+    if (body.withdrawn_at != null && !isIsoDate(body.withdrawn_at)) {
+      return badRequest('withdrawn_at は YYYY-MM-DD (実在する日付) で指定してください');
+    }
     status = 'withdrawn';
-    withdrawnAt = body.withdrawn_at ? String(body.withdrawn_at) : now.slice(0, 10);
+    withdrawnAt = typeof body.withdrawn_at === 'string' ? body.withdrawn_at : todayJst();
   } else if (action === 'reset') {
     status = 'candidate';
   }

@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import { getAll, getOne, execute } from './db';
+import { todayJst } from './dateJst';
 import { getConfirmedMonthsSet } from './monthConfirm';
 import {
   buildExpandedKeys,
@@ -41,6 +42,7 @@ type InstanceRow = {
   studio_id: number | null;
   instructor_id: number | null;
   status: string;
+  auto_materialized: number | null; // 1=月確定の自動実体化 / 0=手動作成・編集(振替等)
   notes: string | null;
   master_class_name: string | null;
   studio_name: string | null;
@@ -81,9 +83,11 @@ export async function buildLessonsForMonths(months: number, startYm?: string): P
     baseYear = parseInt(startYm.slice(0, 4), 10);
     baseMonth = parseInt(startYm.slice(5, 7), 10);
   } else {
-    const now = new Date();
-    baseYear = now.getFullYear();
-    baseMonth = now.getMonth() + 1; // 1-12
+    // M10: サーバTZ(Vercel=UTC)の getFullYear/getMonth だと、JSTの月初朝9時前に
+    // 前月起点となり出力窓が1ヶ月ズレる。基準は常にJSTの今日から取る。
+    const t = todayJst();
+    baseYear = parseInt(t.slice(0, 4), 10);
+    baseMonth = parseInt(t.slice(5, 7), 10); // 1-12
   }
 
   // 期間 (今月初日 〜 (baseMonth + months - 1) の月末日)
@@ -133,7 +137,12 @@ export async function buildLessonsForMonths(months: number, startYm?: string): P
   // a) インスタンス (実開催/休講)
   for (const ins of instances) {
     if (ins.status === 'removed') continue;
-    if (outOfRange(ins.master_id, ins.date)) continue;
+    // M15: master期間外の抑止は「自動実体化されたinstance」のみに適用する。
+    // 手動作成・編集(振替等。PATCHで auto_materialized=0 に落ちる)のinstanceは
+    // スタッフの決定なので、masterの start_date/end_date 外でも出力する。
+    // 旧実装は無条件に continue しており、期間外への振替がGoogleカレンダー/
+    // HACOMONO出力から消えていた (buildLessonsForMonths は両方の共通経路)。
+    if (ins.auto_materialized === 1 && outOfRange(ins.master_id, ins.date)) continue;
     const dow = new Date(ins.date + 'T00:00:00').getDay();
     lessons.push({
       date: ins.date,

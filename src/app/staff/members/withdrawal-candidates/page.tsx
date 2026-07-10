@@ -103,7 +103,7 @@ export default function WithdrawalCandidatesPage() {
   const act = async (c: Candidate, action: string, extra?: Record<string, unknown>) => {
     setBusyId(c.member_id);
     try {
-      await fetch('/api/staff/members/withdrawal-candidates', {
+      const res = await fetch('/api/staff/members/withdrawal-candidates', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -116,6 +116,11 @@ export default function WithdrawalCandidatesPage() {
           ...extra,
         }),
       });
+      if (!res.ok) {
+        // M9: 不正な日付等の400を黙殺すると「延長を記録できたつもり」事故になるため必ず表示
+        const j = await res.json().catch(() => null);
+        alert(`操作に失敗しました: ${j?.error ?? `HTTP ${res.status}`}`);
+      }
       await load();
     } finally {
       setBusyId(null);
