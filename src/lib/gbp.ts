@@ -79,3 +79,4 @@ export async function putGbpReply(token: string, reviewId: string, comment: stri
     throw new Error(`GBP reviews.updateReply失敗: ${res.status} ${await res.text()}`);
   }
 }
+

@@ -1,6 +1,7 @@
 // クチコミ返信ドラフト生成 (T-178)
 // Claude API (claude-sonnet-4-6) で返信案を作る。投稿は必ず人間の承認後。
 import Anthropic from '@anthropic-ai/sdk';
+import { extractOriginalComment } from './gbpText';
 
 // 返信ポリシー: docs/指示書_GBPクチコミ自動返信システム_20260611.md フェーズ4
 // (出典: Googleクチコミ返信の全体戦略)
@@ -30,8 +31,10 @@ export function draftConfigured(): boolean {
 
 export async function generateReplyDraft(input: DraftInput): Promise<string> {
   const client = new Anthropic();
-  const body = input.comment?.trim()
-    ? `クチコミ本文:\n${input.comment}`
+  // 英訳前置("(Translated by Google) ... (Original) ...")を除いた原文だけをAIに渡す
+  const original = extractOriginalComment(input.comment);
+  const body = original
+    ? `クチコミ本文:\n${original}`
     : 'クチコミ本文: (本文なし・星評価のみ)';
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',

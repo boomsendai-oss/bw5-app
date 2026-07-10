@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { extractOriginalComment } from '@/lib/gbpText';
 
 type Review = {
   review_id: string;
@@ -160,7 +161,7 @@ export default function GbpReviewsPage() {
                 </div>
 
                 <p className="mb-3 whitespace-pre-wrap rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
-                  {r.comment || '(本文なし・星評価のみ)'}
+                  {extractOriginalComment(r.comment) || '(本文なし・星評価のみ)'}
                 </p>
 
                 {editable ? (
