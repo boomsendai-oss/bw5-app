@@ -3,12 +3,13 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Calculator } from 'lucide-react';
+import { Calculator } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type FormState = {
   snapshot_date: string; // YYYY-MM
@@ -153,17 +154,11 @@ function InputForm() {
 
   return (
     <main className="text-neutral-900">
-      <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-brand-600">
-          {isEdit ? '月次データ編集' : '月次データ追加'}
-        </h1>
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/staff/insights">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            KPI・分析へ戻る
-          </Link>
-        </Button>
-      </header>
+      <StaffPageHeader
+        title={isEdit ? '月次データ編集' : '月次データ追加'}
+        backHref="/staff/insights"
+        backLabel="KPI・分析"
+      />
 
       <div className="max-w-2xl mx-auto p-4 sm:p-6">
         <Card>

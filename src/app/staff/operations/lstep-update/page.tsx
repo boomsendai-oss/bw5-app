@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, X, CloudUpload, History, RefreshCw, ChevronDown } from 'lucide-react';
+import { Check, X, CloudUpload, History, RefreshCw, ChevronDown } from 'lucide-react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type Change = {
   id: number;
@@ -271,18 +272,18 @@ export default function LstepUpdatePage() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
-      <div className="flex items-center gap-2">
-        <Link href="/staff/operations">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-1 h-4 w-4" />運用
+    <div>
+      <StaffPageHeader
+        title="LINE連携"
+        backHref="/staff/operations"
+        backLabel="オペレーション"
+        rightExtra={
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => { load(); loadLog(); loadSuggestions(); }}>
+            <RefreshCw className="h-4 w-4" />
           </Button>
-        </Link>
-        <h1 className="text-xl font-bold">LINE連携</h1>
-        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => { load(); loadLog(); loadSuggestions(); }}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
+        }
+      />
+      <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
 
       {/* ① LINE紐付けの承認待ち */}
       <Card>
@@ -571,6 +572,7 @@ export default function LstepUpdatePage() {
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

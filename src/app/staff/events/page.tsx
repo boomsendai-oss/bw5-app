@@ -9,7 +9,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { CalendarDays, Plus, ChevronRight, X } from 'lucide-react';
+import { Plus, ChevronRight, X } from 'lucide-react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type EventRow = {
   id: number;
@@ -73,13 +74,10 @@ export default function EventsListPage() {
 
   return (
     <div>
-      <div className="max-w-3xl mx-auto p-6 space-y-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="size-5 text-brand-600" />
-            <h1 className="text-lg font-bold text-brand-600">イベント管理</h1>
-            <span className="text-xs text-muted-foreground hidden sm:inline">BW5・発表会等のイベント設定・タスク</span>
-          </div>
+      <StaffPageHeader
+        title="イベント管理"
+        description="BW5・発表会等のイベント設定・タスク"
+        rightExtra={
           <Button
             onClick={() => setShowForm((v) => !v)}
             variant={showForm ? 'outline' : 'default'}
@@ -87,7 +85,9 @@ export default function EventsListPage() {
           >
             {showForm ? <><X className="size-3.5 mr-1" />キャンセル</> : <><Plus className="size-3.5 mr-1" />新規イベント</>}
           </Button>
-        </div>
+        }
+      />
+      <div className="max-w-3xl mx-auto p-6 space-y-4">
 
         {showForm && (
           <Card>

@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { UserMinus, AlertTriangle, Mail, MessageCircle, Clock, Check, RotateCcw, Download } from 'lucide-react';
+import { AlertTriangle, Mail, MessageCircle, Clock, Check, RotateCcw, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type Candidate = {
   member_id: number;
@@ -188,11 +189,13 @@ export default function WithdrawalCandidatesPage() {
   );
 
   return (
-    <div className="p-4 max-w-3xl mx-auto space-y-4">
-      <div className="flex items-center gap-2">
-        <UserMinus className="size-5 text-brand-500" />
-        <h1 className="text-lg font-bold">チケット会員 退会候補</h1>
-      </div>
+    <div>
+      <StaffPageHeader
+        title="チケット会員 退会候補"
+        backHref="/staff/members"
+        backLabel="会員管理"
+      />
+      <div className="p-4 max-w-3xl mx-auto space-y-4">
 
       {/* 重要バナー: 不可逆操作の人手処理を明示 */}
       <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-[12px] text-amber-900 flex gap-2">
@@ -274,6 +277,7 @@ export default function WithdrawalCandidatesPage() {
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

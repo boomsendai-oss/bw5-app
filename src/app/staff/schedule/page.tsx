@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { CalendarDays, Plus, Upload } from 'lucide-react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -258,6 +259,7 @@ export default function SchedulePage() {
 
   return (
     <div className="pb-20">
+      <StaffPageHeader title="スケジュール" />
       <Tabs value={tab} onValueChange={setTab}>
         <div className="bg-white border-b px-4 py-3">
           <div className="flex items-center gap-2">

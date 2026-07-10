@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -222,21 +223,14 @@ function ManualLinkPageInner() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6">
-      {/* Header */}
-      <div className="mb-6 flex items-center gap-3">
-        <Link
-          href="/staff/notifications"
-          className="text-sm text-gray-500 hover:text-brand-600"
-        >
-          &larr; 通知フィード
-        </Link>
-      </div>
-      <h1 className="mb-6 text-2xl font-bold text-gray-900">
-        手動 LINE 紐付け
-      </h1>
-
-      {/* Member Info Card */}
+    <div>
+      <StaffPageHeader
+        title="手動 LINE 紐付け"
+        backHref="/staff/notifications"
+        backLabel="通知"
+      />
+      <div className="mx-auto max-w-2xl px-4 py-6">
+        {/* Member Info Card */}
       {memberLoading && (
         <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4 text-center text-gray-500">
           読み込み中...
@@ -522,6 +516,7 @@ function ManualLinkPageInner() {
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

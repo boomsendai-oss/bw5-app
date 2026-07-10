@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Search, Users, Calendar, ExternalLink } from 'lucide-react';
+import { Search, Calendar, ExternalLink } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type LstepLink = {
   member_id: number;
@@ -86,25 +87,20 @@ export default function MembersPage() {
 
   return (
     <main className="text-neutral-900">
-      <div className="border-b bg-white px-4 py-3">
-        <div className="max-w-2xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h1 className="text-lg font-bold text-neutral-800 flex items-center gap-1.5">
-              <Users className="h-5 w-5 text-brand-500" />
-              会員管理
-            </h1>
-            <p className="text-xs text-neutral-500">HACOMONO会員の検索 / プラン / Lstep紐付け</p>
-          </div>
-          <div className="flex items-center gap-2">
+      <StaffPageHeader
+        title="会員管理"
+        description="HACOMONO会員の検索 / プラン / Lstep紐付け"
+        rightExtra={
+          <>
             <Button variant="link" size="sm" className="text-xs text-brand-600" asChild>
               <a href="/staff/schedule"><Calendar className="h-3 w-3 mr-1" />スケジュール</a>
             </Button>
             <Button variant="link" size="sm" className="text-xs text-brand-600" asChild>
               <a href="/staff/operations"><ExternalLink className="h-3 w-3 mr-1" />運営オペレーション</a>
             </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="bg-white border-b px-4 py-3">
         <div className="max-w-2xl mx-auto">

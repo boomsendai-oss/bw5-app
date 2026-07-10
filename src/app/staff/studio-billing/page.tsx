@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { RefreshCw, Landmark, Trash2, Loader2 } from 'lucide-react';
 import { yen } from '@/lib/utils';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type Run = {
   id: number;
@@ -229,6 +230,7 @@ export default function StudioBillingPage() {
 
   return (
     <div className="text-neutral-900">
+      <StaffPageHeader title="スタジオ請求" description="月次スタジオ使用料の計算・確定・振込" />
       {/* AlertDialog for confirmations */}
       <AlertDialog open={confirmDialog.open} onOpenChange={open => !open && setConfirmDialog(s => ({ ...s, open: false }))}>
         <AlertDialogContent>

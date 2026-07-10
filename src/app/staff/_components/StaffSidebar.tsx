@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  Home,
   Database,
   Calendar,
   Wallet,
@@ -144,12 +145,15 @@ export default function StaffSidebar({
   return (
     <Sidebar>
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-1">
+        <Link
+          href="/staff"
+          className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-sidebar-accent transition-colors"
+        >
           <div className="flex size-7 items-center justify-center rounded-md bg-brand-500 text-white text-xs font-bold">
             B
           </div>
           <span className="font-semibold text-sm">BOOM Staff</span>
-        </div>
+        </Link>
         {onOpenCommandPalette && (
           <button
             onClick={onOpenCommandPalette}
@@ -164,6 +168,24 @@ export default function StaffSidebar({
         )}
       </SidebarHeader>
       <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === '/staff'}
+                  tooltip="ホーム"
+                >
+                  <Link href="/staff">
+                    <Home className="size-4" />
+                    <span>ホーム</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
         <NavGroup label="管理" items={mainNavItems} pathname={pathname} />
         <NavGroup label="運用" items={opsNavItems} pathname={pathname} />
       </SidebarContent>

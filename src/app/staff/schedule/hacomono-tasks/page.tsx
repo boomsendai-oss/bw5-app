@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Building2, ClipboardCopy, RefreshCw, AlertTriangle } from 'lucide-react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -168,6 +169,7 @@ export default function HacomonoTasksPage() {
 
   return (
     <div className="pb-20">
+      <StaffPageHeader title="HACOMONO連携タスク" backHref="/staff/schedule" backLabel="スケジュール" />
       <div className="max-w-3xl mx-auto px-3 py-4 space-y-4">
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-[11px] text-amber-800 leading-relaxed">
           HACOMONOは毎週レッスン枠を自動で作ります。下の「削除する枠」は、アプリの実予定では

@@ -455,10 +455,10 @@ export default function InsightsPage() {
 
   return (
     <main className="text-neutral-900">
-      <div className="border-b bg-white px-4 py-3">
+      <div className="border-b border-sand-200 bg-white px-4 py-3">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h1 className="text-lg font-bold text-neutral-800 flex items-center gap-1.5">
+            <h1 className="text-lg font-bold text-navy-800 flex items-center gap-1.5">
               <BarChart3 className="h-5 w-5 text-brand-500" />
               経営インサイト
             </h1>

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { RefreshCw, Landmark, Upload, CheckCircle, Eye, Trash2, FolderOpen, Printer, Loader2, CalendarDays, ArrowUpFromLine, Check, Lock } from 'lucide-react';
 import { yen } from '@/lib/utils';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type PayrollRun = {
   id: number;
@@ -425,6 +426,7 @@ export default function PayrollPage() {
 
   return (
     <div className="text-neutral-900">
+      <StaffPageHeader title="給与計算" description="月次インストラクター給与の計算・確定・配布・振込" />
       {/* AlertDialog for confirmations */}
       <AlertDialog open={confirmDialog.open} onOpenChange={open => !open && setConfirmDialog(s => ({ ...s, open: false }))}>
         <AlertDialogContent>

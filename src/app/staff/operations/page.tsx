@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { RefreshCw, Link2, Download, Check, X, Users, HelpCircle, Calendar, Video } from 'lucide-react';
+import { Link2, Download, Check, X, Users, HelpCircle, Calendar, Video } from 'lucide-react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type SyncSummary = {
   new_members: number;
@@ -267,20 +268,19 @@ export default function OperationsPage() {
 
   return (
     <div>
-      <div className="max-w-2xl mx-auto p-3 space-y-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <RefreshCw className="size-5 text-brand-600" />
-            <h1 className="text-lg font-bold text-brand-600">運営オペレーション</h1>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
+      <StaffPageHeader
+        title="運営オペレーション"
+        description="月次CSV突合・紐付け推測・月次レポート生成"
+        rightExtra={
+          <>
             <Button variant="link" size="xs" asChild><Link href="/staff/schedule"><Calendar className="size-3 mr-0.5" />スケジュール</Link></Button>
             <Button variant="link" size="xs" asChild><Link href="/staff/members"><Users className="size-3 mr-0.5" />会員管理</Link></Button>
             <Button variant="link" size="xs" asChild><Link href="/staff/video-preorders"><Video className="size-3 mr-0.5" />映像予約</Link></Button>
             <Button variant="link" size="xs" asChild><Link href="/staff/operations/lstep-update"><Link2 className="size-3 mr-0.5" />LSTEP表示名更新</Link></Button>
-          </div>
-        </div>
-        <p className="text-xs text-muted-foreground -mt-2">月次CSV突合・紐付け推測・月次レポート生成</p>
+          </>
+        }
+      />
+      <div className="max-w-2xl mx-auto p-3 space-y-4">
 
         <Card>
           <CardHeader>

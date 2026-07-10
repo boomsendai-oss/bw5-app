@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Download, Lock, Plus, Pencil, X, Ban, Undo2, Trash2, Sparkles, ClipboardList, Copy, RefreshCw, AlertTriangle, Info } from 'lucide-react';
 import Link from 'next/link';
+import StaffPageHeader from '@/components/StaffPageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -451,6 +452,7 @@ export default function ScheduleCalendarPage() {
 
   return (
     <div className="text-neutral-900">
+      <StaffPageHeader title="レッスンカレンダー" backHref="/staff/schedule" backLabel="スケジュール" />
       <div className="max-w-6xl mx-auto p-3 sm:p-4">
         {/* Header bar with export + today buttons */}
         <div className="flex items-center justify-end gap-1.5 mb-3">

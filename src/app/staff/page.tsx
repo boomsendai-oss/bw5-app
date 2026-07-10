@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import StaffPageHeader from '@/components/StaffPageHeader';
 import {
   Database,
   BarChart3,
@@ -191,16 +192,18 @@ export default function StaffHubPage() {
   }, []);
 
   return (
-    <div className="max-w-6xl mx-auto p-4 sm:p-6">
-      {/* ページタイトル + 最終更新 */}
-      <div className="flex items-baseline justify-between gap-3 flex-wrap mb-4">
-        <h1 className="text-lg sm:text-xl font-bold text-brand-600">BOOM スタッフ管理</h1>
-        <p className="text-xs text-neutral-500">
-          {stats?.generated_at
-            ? `最終更新: ${new Date(stats.generated_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}`
-            : '読込中...'}
-        </p>
-      </div>
+    <div>
+      <StaffPageHeader
+        title="BOOM スタッフ管理"
+        rightExtra={
+          <p className="text-xs text-neutral-500">
+            {stats?.generated_at
+              ? `最終更新: ${new Date(stats.generated_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}`
+              : '読込中...'}
+          </p>
+        }
+      />
+      <div className="max-w-6xl mx-auto p-4 sm:p-6">
 
       {err && (
         <div className="mb-4 p-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm">
@@ -279,6 +282,7 @@ export default function StaffHubPage() {
       <footer className="mt-8 text-center text-xs text-neutral-400">
         BOOM Dance School / Staff Hub
       </footer>
+      </div>
     </div>
   );
 }

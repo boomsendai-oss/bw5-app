@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -164,31 +165,30 @@ export default function NotificationsPage() {
   const unacknowledgedCount = notifications.filter((n) => !n.acknowledged).length;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-6">
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-gray-900">
-            📋 通知フィード
-          </h1>
-          {unacknowledgedCount > 0 && (
-            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-brand-500 px-2 text-xs font-bold text-white">
-              {unacknowledgedCount}
-            </span>
-          )}
-        </div>
-        {unacknowledgedCount > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={acknowledgeAll}
-          >
-            すべて確認
-          </Button>
-        )}
-      </div>
-
-      {/* Filter Tabs */}
+    <div>
+      <StaffPageHeader
+        title="📋 通知フィード"
+        rightExtra={
+          <>
+            {unacknowledgedCount > 0 && (
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-brand-500 px-2 text-xs font-bold text-white">
+                {unacknowledgedCount}
+              </span>
+            )}
+            {unacknowledgedCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={acknowledgeAll}
+              >
+                すべて確認
+              </Button>
+            )}
+          </>
+        }
+      />
+      <div className="mx-auto max-w-2xl px-4 py-6">
+        {/* Filter Tabs */}
       <div className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
         <button
           className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -323,6 +323,7 @@ export default function NotificationsPage() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

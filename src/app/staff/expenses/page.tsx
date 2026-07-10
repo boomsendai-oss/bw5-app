@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Trash2, Plus, RefreshCw, Loader2, ClipboardList, Landmark, PinIcon } from 'lucide-react';
 import { yen } from '@/lib/utils';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type Expense = {
   id: number;
@@ -162,6 +163,7 @@ export default function ExpensesPage() {
 
   return (
     <div className="text-neutral-900">
+      <StaffPageHeader title="経費管理" description="月次経費の登録・集計・予算実績" />
       {/* AlertDialog for confirmations */}
       <AlertDialog open={confirmDialog.open} onOpenChange={open => !open && setConfirmDialog(s => ({ ...s, open: false }))}>
         <AlertDialogContent>

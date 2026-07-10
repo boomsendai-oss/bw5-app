@@ -4,7 +4,8 @@ import { useEffect, useState, use as usePromise } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, ListTodo, Users, Clock3, Wallet, CircleDot, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ListTodo, Users, Clock3, Wallet, CircleDot, CheckCircle2, AlertCircle } from 'lucide-react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type EventRow = {
   id: number;
@@ -55,20 +56,13 @@ export default function EventDashboard({ params }: { params: Promise<{ eventId: 
 
   return (
     <div>
-      <header className="bg-card border-b px-6 py-4">
-        <div className="max-w-3xl mx-auto">
-          <Link href="/staff/events" className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1">
-            <ArrowLeft className="size-3" />一覧へ
-          </Link>
-          <h1 className="text-xl font-bold text-brand-600 mt-1">
-            {event.code} <span className="text-foreground">{event.name}</span>
-          </h1>
-          <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-            <span>{event.event_date ?? '日付未定'}</span>
-            <Badge variant="secondary" className="text-[10px]">{event.status}</Badge>
-          </div>
-        </div>
-      </header>
+      <StaffPageHeader
+        title={`${event.code} ${event.name}`}
+        description={event.event_date ?? '日付未定'}
+        backHref="/staff/events"
+        backLabel="イベント"
+        rightExtra={<Badge variant="secondary" className="text-[10px]">{event.status}</Badge>}
+      />
 
       <div className="max-w-3xl mx-auto p-6 space-y-4">
         <section className="grid grid-cols-4 gap-3">

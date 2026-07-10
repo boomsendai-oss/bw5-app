@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { HeartHandshake, Mail, MessageCircle, Download, AlertTriangle } from 'lucide-react';
+import { Mail, MessageCircle, Download, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type Member = {
   member_id: number;
@@ -78,11 +79,13 @@ export default function DormantOutreachPage() {
   };
 
   return (
-    <div className="p-4 max-w-3xl mx-auto space-y-4">
-      <div className="flex items-center gap-2">
-        <HeartHandshake className="size-5 text-brand-500" />
-        <h1 className="text-lg font-bold">休眠チケット会員 おかえりリスト</h1>
-      </div>
+    <div>
+      <StaffPageHeader
+        title="休眠チケット会員 おかえりリスト"
+        backHref="/staff/members"
+        backLabel="会員管理"
+      />
+      <div className="p-4 max-w-3xl mx-auto space-y-4">
 
       <div className="rounded-lg border border-brand-200 bg-brand-50 p-3 text-[12px] text-brand-900 flex gap-2">
         <AlertTriangle className="size-4 shrink-0 mt-0.5" />
@@ -165,6 +168,7 @@ export default function DormantOutreachPage() {
           </section>
         </>
       )}
+      </div>
     </div>
   );
 }

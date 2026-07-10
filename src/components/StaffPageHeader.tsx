@@ -1,36 +1,48 @@
 'use client';
 
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 
 type Props = {
   title: string;          // 例: "🗂️ マスターデータ管理"
   description?: string;   // 副題 (省略可)
+  backHref?: string;      // 親ページへ戻る導線 (ドリルダウン時のみ)
+  backLabel?: string;     // 戻るラベル (省略時 "戻る")
   rightExtra?: React.ReactNode; // 右側に追加要素 (任意)
 };
 
 /**
- * スタッフ画面共通ヘッダー
- * - 左: タイトル
- * - 右: 「🏠 ホームに戻る」ボタン
+ * スタッフ画面共通ヘッダー (全 /staff/* 配下で使う想定)
+ * - 任意: 親ページへの「← 戻る」導線 (backHref)
+ * - タイトル + 副題
+ * - 右: ページ固有の操作 (rightExtra)
  *
- * 全 /staff/* 配下のページで使う想定。
+ * ホームへの導線はレイアウト側 (サイドバー / モバイルヘッダー) に集約したため
+ * ここには置かない。色はBOOMブランド (navy/brand/sand)。
  */
-export default function StaffPageHeader({ title, description, rightExtra }: Props) {
+export default function StaffPageHeader({
+  title,
+  description,
+  backHref,
+  backLabel,
+  rightExtra,
+}: Props) {
   return (
-    <header className="bg-white border-b border-orange-100 px-4 py-3 sticky top-0 z-10">
+    <header className="bg-white border-b border-sand-200 px-4 py-3 sticky top-0 z-10">
       <div className="max-w-6xl mx-auto flex items-start justify-between gap-3 flex-wrap">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-base sm:text-lg font-bold text-orange-600 truncate">{title}</h1>
+          {backHref && (
             <Link
-              href="/staff"
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-orange-50 hover:bg-orange-100 text-orange-700 text-[10px] sm:text-xs font-semibold border border-orange-200"
+              href={backHref}
+              className="inline-flex items-center gap-1 text-[11px] sm:text-xs text-brand-600 hover:text-brand-700 mb-1"
             >
-              🏠 <span className="hidden sm:inline">ホーム</span>
+              <ArrowLeft className="size-3.5" />
+              {backLabel ?? '戻る'}
             </Link>
-          </div>
+          )}
+          <h1 className="text-base sm:text-lg font-bold text-navy-800 truncate">{title}</h1>
           {description && (
-            <p className="text-[10px] sm:text-xs text-neutral-500 mt-0.5 truncate">{description}</p>
+            <p className="text-[11px] sm:text-xs text-neutral-500 mt-0.5 truncate">{description}</p>
           )}
         </div>
         {rightExtra && (

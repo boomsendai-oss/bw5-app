@@ -24,7 +24,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { Video, Mail, CreditCard, Clock, CheckCircle2, Copy, RotateCcw, Search } from 'lucide-react';
+import { Mail, CreditCard, Clock, CheckCircle2, Copy, RotateCcw, Search } from 'lucide-react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type Preorder = {
   id: number;
@@ -250,12 +251,11 @@ export default function VideoPreordersPage() {
 
   return (
     <div>
+      <StaffPageHeader
+        title="映像予約 管理"
+        description="BW5映像データ予約・確認メール・支払いリンク管理"
+      />
       <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4">
-        <div className="flex items-center gap-2">
-          <Video className="size-5 text-brand-600" />
-          <h1 className="text-lg font-bold text-brand-600">映像予約 管理</h1>
-          <span className="text-xs text-muted-foreground hidden sm:inline">BW5映像データ予約・確認メール・支払いリンク管理</span>
-        </div>
 
         {/* Summary */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">

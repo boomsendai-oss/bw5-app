@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { extractOriginalComment } from '@/lib/gbpText';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type Review = {
   review_id: string;
@@ -111,16 +111,12 @@ export default function GbpReviewsPage() {
   const pendingCount = reviews.filter((r) => r.status === 'draft_ready' || r.status === 'new').length;
 
   return (
-    <div className="mx-auto max-w-3xl p-4 sm:p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">クチコミ返信</h1>
-          <p className="text-sm text-gray-500">Googleクチコミの承認キュー — 未対応 {pendingCount} 件</p>
-        </div>
-        <Link href="/staff" className="rounded-lg border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
-          ホーム
-        </Link>
-      </div>
+    <div>
+      <StaffPageHeader
+        title="クチコミ返信"
+        description={`Googleクチコミの承認キュー — 未対応 ${pendingCount} 件`}
+      />
+      <div className="mx-auto max-w-3xl p-4 sm:p-6">
 
       {!gbpConfigured && (
         <div className="mb-4 rounded-lg border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-800">
@@ -212,6 +208,7 @@ export default function GbpReviewsPage() {
       {feedback && feedback.id === '' && (
         <p className="mt-4 text-center text-sm text-red-600">{feedback.msg}</p>
       )}
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CalendarDays, Building2, MessageSquare, RefreshCw, Copy, ExternalLink, AlertTriangle, Info } from 'lucide-react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -148,6 +149,7 @@ export default function ScheduleSyncPage() {
 
   return (
     <div className="pb-20">
+      <StaffPageHeader title="外部カレンダー同期" backHref="/staff/schedule" backLabel="スケジュール" />
       <div className="max-w-3xl mx-auto px-3 py-4 space-y-4">
         {tokenErr && (
           <div className="p-3 rounded bg-red-50 border border-red-200 text-red-800 text-xs">

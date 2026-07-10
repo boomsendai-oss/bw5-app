@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,7 +32,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { FileText, Plus, Rocket, Pencil, Trash2, Lock, Bot, ArrowLeft } from 'lucide-react';
+import { Plus, Rocket, Pencil, Trash2, Lock, Bot } from 'lucide-react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type BlogPost = {
   id: number;
@@ -226,17 +226,10 @@ export default function StaffBlogPage() {
 
   return (
     <div>
-      <header className="bg-card border-b px-4 py-3 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-baseline gap-3">
-            <Link href="/staff" className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1">
-              <ArrowLeft className="size-3" />スタッフ
-            </Link>
-            <h1 className="text-lg sm:text-xl font-bold text-brand-600 flex items-center gap-2">
-              <FileText className="size-5" />ブログ記事管理
-            </h1>
-          </div>
-          <div className="flex gap-2">
+      <StaffPageHeader
+        title="ブログ記事管理"
+        rightExtra={
+          <>
             <Button
               variant="outline"
               size="sm"
@@ -249,9 +242,9 @@ export default function StaffBlogPage() {
             <Button size="sm" onClick={openNew}>
               <Plus className="size-3.5 mr-1" />新規作成
             </Button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className="max-w-6xl mx-auto p-4 sm:p-6">
         {loading ? (

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, use as usePromise } from 'react';
-import Link from 'next/link';
+import StaffPageHeader from '@/components/StaffPageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +19,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
 type Todo = {
   id: number;
@@ -113,14 +113,11 @@ export default function TodoPage({ params }: { params: Promise<{ eventId: string
 
   return (
     <div>
-      <header className="bg-card border-b px-6 py-4">
-        <div className="max-w-4xl mx-auto">
-          <Link href={`/staff/events/${eventId}`} className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1">
-            <ArrowLeft className="size-3" />ダッシュボード
-          </Link>
-          <h1 className="text-xl font-bold text-brand-600 mt-1">ToDo リスト</h1>
-        </div>
-      </header>
+      <StaffPageHeader
+        title="ToDo リスト"
+        backHref={`/staff/events/${eventId}`}
+        backLabel="イベント詳細"
+      />
 
       <div className="max-w-4xl mx-auto p-6 space-y-4">
         {/* Add form */}

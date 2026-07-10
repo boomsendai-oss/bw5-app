@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { UserX, Clock, AlertTriangle } from 'lucide-react';
+import { Clock, AlertTriangle } from 'lucide-react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -54,11 +55,13 @@ export default function NoshowCandidatesPage() {
     c.full_name || c.lstep_display_name || '(氏名未取得)';
 
   return (
-    <div className="p-4 max-w-3xl mx-auto space-y-4">
-      <div className="flex items-center gap-2">
-        <UserX className="size-5 text-brand-500" />
-        <h1 className="text-lg font-bold">体験ノーショー候補</h1>
-      </div>
+    <div>
+      <StaffPageHeader
+        title="体験ノーショー候補"
+        backHref="/staff/operations"
+        backLabel="オペレーション"
+      />
+      <div className="p-4 max-w-3xl mx-auto space-y-4">
 
       <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-[12px] text-amber-900 flex gap-2">
         <AlertTriangle className="size-4 shrink-0 mt-0.5" />
@@ -121,6 +124,7 @@ export default function NoshowCandidatesPage() {
           </section>
         </>
       )}
+      </div>
     </div>
   );
 }

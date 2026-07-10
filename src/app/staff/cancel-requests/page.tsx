@@ -16,7 +16,8 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Ban, Clock, ClipboardList, Check, X, ShieldCheck } from 'lucide-react';
+import { Clock, ClipboardList, Check, X, ShieldCheck } from 'lucide-react';
+import StaffPageHeader from '@/components/StaffPageHeader';
 
 type CancelReq = {
   id: number;
@@ -105,12 +106,11 @@ export default function CancelRequestsPage() {
 
   return (
     <div className="text-foreground">
+      <StaffPageHeader
+        title="休講申請"
+        description="インストラクターからの休講申請を確認・承認"
+      />
       <div className="max-w-5xl mx-auto p-3 sm:p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <Ban className="size-5 text-brand-600" />
-          <h1 className="text-lg font-bold text-brand-600">休講申請</h1>
-          <span className="text-xs text-muted-foreground">インストラクターからの休講申請を確認・承認</span>
-        </div>
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList variant="line">
