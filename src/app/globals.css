@@ -487,6 +487,14 @@ body {
   ここでだけブランド色(ティール/ネイビー)に上書きする。
   お客さん向けページ(BW5イベント)は :root のオレンジのまま影響を受けない。
 */
+/* スタッフ画面滞在中は html/body の下地をニュートラルへ
+   (既定はBW5オレンジ。バウンススクロールやセーフエリアに覗くのを防ぐ。
+    JS側でも上書きしており、こちらは:has対応ブラウザ向けの宣言的な保険) */
+html:has(.staff-theme),
+body:has(.staff-theme) {
+  background: #fafafa;
+}
+
 .staff-theme {
   --primary: #00A090;
   --primary-foreground: #ffffff;

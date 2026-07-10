@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import StaffSidebar from './StaffSidebar';
@@ -8,6 +8,20 @@ import CommandPalette from './CommandPalette';
 
 export default function StaffLayoutClient({ children }: { children: React.ReactNode }) {
   const [commandOpen, setCommandOpen] = useState(false);
+
+  // body/html の下地はサイト全体でBW5オレンジ(globals.cssのvar(--bg-primary))。
+  // スタッフ画面ではスクロールバウンス時やセーフエリアにオレンジが覗くため、
+  // 滞在中だけニュートラルに上書きする(離脱時は復元)。globals.cssの:has()ルールの保険。
+  useEffect(() => {
+    const prevBody = document.body.style.background;
+    const prevHtml = document.documentElement.style.background;
+    document.body.style.background = '#fafafa';
+    document.documentElement.style.background = '#fafafa';
+    return () => {
+      document.body.style.background = prevBody;
+      document.documentElement.style.background = prevHtml;
+    };
+  }, []);
 
   return (
     <TooltipProvider>

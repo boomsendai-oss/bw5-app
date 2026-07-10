@@ -58,6 +58,9 @@ export default function RootLayout({
                 rm('meta[name="apple-mobile-web-app-title"]');
                 rm('link[rel="apple-touch-icon"]');
                 function add(tag, attrs){var e = d.createElement(tag); for(var k in attrs){e.setAttribute(k, attrs[k]);} head.appendChild(e); return e;}
+                // theme-color もパス別: スタッフ=ブランドネイビー / それ以外=BW5オレンジ (2026-07-10)
+                rm('meta[name="theme-color"]');
+                add('meta', {name: 'theme-color', content: isStaff ? '#101040' : '#f27a1a'});
                 if (!isStaff) {
                   add('link', {rel: 'manifest', href: '/main-manifest.webmanifest'});
                   add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
