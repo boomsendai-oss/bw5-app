@@ -172,7 +172,7 @@ export default function NotificationsPage() {
             📋 通知フィード
           </h1>
           {unacknowledgedCount > 0 && (
-            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-orange-500 px-2 text-xs font-bold text-white">
+            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-brand-500 px-2 text-xs font-bold text-white">
               {unacknowledgedCount}
             </span>
           )}
@@ -193,7 +193,7 @@ export default function NotificationsPage() {
         <button
           className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
             filter === 'unacknowledged'
-              ? 'bg-white text-orange-600 shadow-sm'
+              ? 'bg-white text-brand-600 shadow-sm'
               : 'text-gray-600 hover:text-gray-900'
           }`}
           onClick={() => setFilter('unacknowledged')}
@@ -203,7 +203,7 @@ export default function NotificationsPage() {
         <button
           className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
             filter === 'all'
-              ? 'bg-white text-orange-600 shadow-sm'
+              ? 'bg-white text-brand-600 shadow-sm'
               : 'text-gray-600 hover:text-gray-900'
           }`}
           onClick={() => setFilter('all')}
@@ -307,7 +307,7 @@ export default function NotificationsPage() {
                     <Button
                       variant="outline"
                       size="xs"
-                      className="border-orange-300 text-orange-600 hover:bg-orange-50"
+                      className="border-brand-300 text-brand-600 hover:bg-brand-50"
                       onClick={() =>
                         router.push(
                           `/staff/notifications/link?member_id=${n.member_id}&notification_id=${n.id}`

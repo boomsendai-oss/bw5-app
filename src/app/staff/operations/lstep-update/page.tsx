@@ -290,7 +290,7 @@ export default function LstepUpdatePage() {
           <CardTitle className="flex items-center gap-2 text-base">
             ① LINE紐付けの承認待ち
             {!linkLoading && suggestions.length > 0 && (
-              <Badge className="bg-orange-100 text-orange-700">{suggestions.length}人</Badge>
+              <Badge className="bg-brand-100 text-brand-700">{suggestions.length}人</Badge>
             )}
           </CardTitle>
           <p className="text-xs text-gray-500">
@@ -388,7 +388,7 @@ export default function LstepUpdatePage() {
                         <span>{m.full_name}（{m.full_name_kana}）</span>
                         <Link
                           href={`/staff/notifications/link?member_id=${m.member_id}`}
-                          className="text-xs text-orange-600 underline"
+                          className="text-xs text-brand-600 underline"
                         >
                           手動で探す
                         </Link>
@@ -404,11 +404,11 @@ export default function LstepUpdatePage() {
 
       {/* アップロード待ち通知 */}
       {pendingUploadTotal > 0 && (
-        <Card className="border-orange-300 bg-orange-50">
+        <Card className="border-brand-300 bg-brand-50">
           <CardContent className="flex items-center gap-3 py-4 text-sm">
-            <CloudUpload className="h-5 w-5 shrink-0 text-orange-600" />
+            <CloudUpload className="h-5 w-5 shrink-0 text-brand-600" />
             <div>
-              <b className="text-orange-700">承認済み {pendingUploadTotal}件</b> がアップロード待ちです。
+              <b className="text-brand-700">承認済み {pendingUploadTotal}件</b> がアップロード待ちです。
               <span className="text-gray-600">
                 <b>Claudeに「承認した」と一言伝えてください。</b>ClaudeがLSTEPに反映するとこの表示は消えます。
               </span>
@@ -431,7 +431,7 @@ export default function LstepUpdatePage() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               ② 表示名の承認待ち
-              {counts && <Badge className="bg-orange-100 text-orange-700">{counts.pending}件</Badge>}
+              {counts && <Badge className="bg-brand-100 text-brand-700">{counts.pending}件</Badge>}
             </CardTitle>
             <p className="text-xs text-gray-500">
               バッチ#{batch.id}・{batch.created_at}（対象{batch.target_rows}件中 変更{batch.changed_rows}件）。
@@ -441,7 +441,7 @@ export default function LstepUpdatePage() {
           <CardContent className="space-y-3">
             {pendingChanges.length > 0 && (
               <label className="flex cursor-pointer items-center gap-2 border-b pb-2 text-sm font-medium">
-                <input type="checkbox" checked={allPendingSelected} onChange={toggleAll} className="h-4 w-4 accent-orange-500" />
+                <input type="checkbox" checked={allPendingSelected} onChange={toggleAll} className="h-4 w-4 accent-brand-500" />
                 すべて選択（{selected.size}/{pendingChanges.length}）
               </label>
             )}
@@ -461,7 +461,7 @@ export default function LstepUpdatePage() {
                         type="checkbox"
                         checked={selected.has(c.id)}
                         onChange={() => toggle(c.id)}
-                        className="mt-1 h-4 w-4 shrink-0 accent-orange-500"
+                        className="mt-1 h-4 w-4 shrink-0 accent-brand-500"
                       />
                     )}
                     <div className="min-w-0 flex-1">
@@ -484,7 +484,7 @@ export default function LstepUpdatePage() {
 
             {pendingChanges.length > 0 && (
               <div className="flex flex-wrap gap-2 border-t pt-3">
-                <Button onClick={() => decide('approve')} disabled={working || selected.size === 0} className="bg-orange-500 hover:bg-orange-600">
+                <Button onClick={() => decide('approve')} disabled={working || selected.size === 0} className="bg-brand-500 hover:bg-brand-600">
                   <Check className="mr-1 h-4 w-4" />
                   選択した{selected.size}件を承認
                 </Button>
@@ -564,7 +564,7 @@ export default function LstepUpdatePage() {
                 <div key={r.id} className="flex items-center justify-between border-b py-1">
                   <span className="text-gray-500">{r.created_at}</span>
                   <span>{r.action === 'upload_confirmed' ? 'LSTEP反映' : r.action === 'generate_csv' ? 'CSV生成' : r.action}</span>
-                  <span className="font-medium text-orange-600">{r.updated_rows}件</span>
+                  <span className="font-medium text-brand-600">{r.updated_rows}件</span>
                 </div>
               ))}
             </div>

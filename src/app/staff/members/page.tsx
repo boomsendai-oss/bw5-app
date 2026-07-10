@@ -90,16 +90,16 @@ export default function MembersPage() {
         <div className="max-w-2xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h1 className="text-lg font-bold text-neutral-800 flex items-center gap-1.5">
-              <Users className="h-5 w-5 text-orange-500" />
+              <Users className="h-5 w-5 text-brand-500" />
               会員管理
             </h1>
             <p className="text-xs text-neutral-500">HACOMONO会員の検索 / プラン / Lstep紐付け</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="link" size="sm" className="text-xs text-orange-600" asChild>
+            <Button variant="link" size="sm" className="text-xs text-brand-600" asChild>
               <a href="/staff/schedule"><Calendar className="h-3 w-3 mr-1" />スケジュール</a>
             </Button>
-            <Button variant="link" size="sm" className="text-xs text-orange-600" asChild>
+            <Button variant="link" size="sm" className="text-xs text-brand-600" asChild>
               <a href="/staff/operations"><ExternalLink className="h-3 w-3 mr-1" />運営オペレーション</a>
             </Button>
           </div>
@@ -129,7 +129,7 @@ export default function MembersPage() {
                 key={opt.value}
                 variant={planFilter === opt.value ? 'default' : 'outline'}
                 size="sm"
-                className={`text-xs rounded-full ${planFilter === opt.value ? 'bg-orange-500 hover:bg-orange-600' : ''}`}
+                className={`text-xs rounded-full ${planFilter === opt.value ? 'bg-brand-500 hover:bg-brand-600' : ''}`}
                 onClick={() => setPlanFilter(opt.value as '' | 'ticket' | 'monthly' | 'kyukai')}
               >
                 {opt.label}
@@ -147,7 +147,7 @@ export default function MembersPage() {
             <p className="text-sm text-red-600 mb-2">読み込みに失敗しました</p>
             <button
               onClick={() => load(q, planFilter)}
-              className="text-sm px-4 py-2 bg-orange-500 text-white rounded-lg font-semibold"
+              className="text-sm px-4 py-2 bg-brand-500 text-white rounded-lg font-semibold"
             >
               再試行
             </button>
@@ -164,7 +164,7 @@ export default function MembersPage() {
               onClick={() => setSelected(m)}
               className="w-full text-left"
             >
-              <Card className="hover:border-orange-200 active:bg-orange-50 transition-colors">
+              <Card className="hover:border-brand-200 active:bg-brand-50 transition-colors">
                 <CardContent className="p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
@@ -180,7 +180,7 @@ export default function MembersPage() {
                       </div>
                       {m.plan_name && (
                         <div className="text-[11px] mt-1">
-                          <Badge variant="outline" className="text-orange-700 bg-orange-50">{m.plan_name}</Badge>
+                          <Badge variant="outline" className="text-brand-700 bg-brand-50">{m.plan_name}</Badge>
                         </div>
                       )}
                     </div>
@@ -264,7 +264,7 @@ export default function MembersPage() {
                                 {(l.system_display_name || l.display_name || l.line_register_name || l.lstep_id)
                                   .replace(/^【[^】]+】\s*/, '')}
                               </span>
-                              <Badge variant="outline" className="text-orange-700 bg-orange-50 text-[10px]">
+                              <Badge variant="outline" className="text-brand-700 bg-brand-50 text-[10px]">
                                 {l.relation}
                               </Badge>
                             </div>

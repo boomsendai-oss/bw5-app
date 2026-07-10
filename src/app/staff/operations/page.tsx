@@ -221,7 +221,7 @@ export default function OperationsPage() {
                             <span className="font-medium">{c.system_display_name || c.line_register_name || '(名前なし)'}</span>
                             {c.line_type && <LineTypeBadge type={c.line_type} />}
                             {c.source === '体験予約' && (
-                              <Badge variant="secondary" className="bg-orange-100 text-orange-700 text-[10px]">体験予約一致</Badge>
+                              <Badge variant="secondary" className="bg-brand-100 text-brand-700 text-[10px]">体験予約一致</Badge>
                             )}
                             <Badge variant={isHi ? 'outline' : 'secondary'} className={isHi ? 'bg-green-100 text-green-700 text-[10px]' : 'bg-yellow-100 text-yellow-800 text-[10px]'}>
                               {isHi ? '高信頼' : '中信頼'} / スコア:{c.score}
@@ -270,8 +270,8 @@ export default function OperationsPage() {
       <div className="max-w-2xl mx-auto p-3 space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <RefreshCw className="size-5 text-orange-600" />
-            <h1 className="text-lg font-bold text-orange-600">運営オペレーション</h1>
+            <RefreshCw className="size-5 text-brand-600" />
+            <h1 className="text-lg font-bold text-brand-600">運営オペレーション</h1>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Button variant="link" size="xs" asChild><Link href="/staff/schedule"><Calendar className="size-3 mr-0.5" />スケジュール</Link></Button>
@@ -307,9 +307,9 @@ export default function OperationsPage() {
         </Card>
 
         {/* Backfill section */}
-        <Card className="border-orange-200">
+        <Card className="border-brand-200">
           <CardHeader>
-            <CardTitle className="text-base text-orange-700 flex items-center gap-2">
+            <CardTitle className="text-base text-brand-700 flex items-center gap-2">
               <Link2 className="size-4" />未紐付け会員の LINE 候補
             </CardTitle>
             <CardDescription>
@@ -395,9 +395,9 @@ export default function OperationsPage() {
             )}
 
             {result.link_suggestions && result.link_suggestions.length > 0 && (
-              <Card className="border-orange-200">
+              <Card className="border-brand-200">
                 <CardHeader>
-                  <CardTitle className="text-base text-orange-700 flex items-center gap-2">
+                  <CardTitle className="text-base text-brand-700 flex items-center gap-2">
                     <Link2 className="size-4" />紐付け候補 (新規入会者)
                   </CardTitle>
                   <CardDescription className="text-[11px]">体験予約のカナ名で会員と突合し、LINE種別(本人/保護者/要確認)を自動判定しました。承認で紐付け確定します。</CardDescription>
@@ -435,7 +435,7 @@ function FileField({ label, file, onChange }: { label: string; file: File | null
         type="file"
         accept=".csv"
         onChange={(e) => onChange(e.target.files?.[0] ?? null)}
-        className="block w-full text-xs text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:bg-orange-50 file:text-orange-700"
+        className="block w-full text-xs text-foreground file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:bg-brand-50 file:text-brand-700"
       />
       {file && <span className="block text-[10px] text-muted-foreground truncate">{file.name}</span>}
     </div>
@@ -446,7 +446,7 @@ function SummaryRow({ label, value, highlight, muted }: { label: string; value: 
   return (
     <li className="flex justify-between">
       <span className={muted ? 'text-muted-foreground' : ''}>{label}</span>
-      <span className={`font-bold ${highlight ? 'text-orange-600' : muted ? 'text-muted-foreground' : ''}`}>{value}</span>
+      <span className={`font-bold ${highlight ? 'text-brand-600' : muted ? 'text-muted-foreground' : ''}`}>{value}</span>
     </li>
   );
 }

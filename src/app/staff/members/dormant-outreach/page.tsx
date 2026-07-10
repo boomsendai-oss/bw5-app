@@ -80,11 +80,11 @@ export default function DormantOutreachPage() {
   return (
     <div className="p-4 max-w-3xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
-        <HeartHandshake className="size-5 text-orange-500" />
+        <HeartHandshake className="size-5 text-brand-500" />
         <h1 className="text-lg font-bold">休眠チケット会員 おかえりリスト</h1>
       </div>
 
-      <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-[12px] text-orange-900 flex gap-2">
+      <div className="rounded-lg border border-brand-200 bg-brand-50 p-3 text-[12px] text-brand-900 flex gap-2">
         <AlertTriangle className="size-4 shrink-0 mt-0.5" />
         <div>
           チケット会員で<strong>最終受講から{days}日以上</strong>（または1度も受講なし）の人の一覧です。
@@ -113,8 +113,8 @@ export default function DormantOutreachPage() {
       {data && (
         <>
           <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-lg border bg-orange-50 p-3">
-              <div className="text-2xl font-bold text-orange-600">{data.total}</div>
+            <div className="rounded-lg border bg-brand-50 p-3">
+              <div className="text-2xl font-bold text-brand-600">{data.total}</div>
               <div className="text-[11px] text-muted-foreground">休眠 ({days}日+)</div>
             </div>
             <div className="rounded-lg border bg-green-50 p-3">
@@ -142,7 +142,7 @@ export default function DormantOutreachPage() {
                             <div className="text-[11px] text-muted-foreground truncate">{m.full_name_kana}</div>
                           )}
                         </div>
-                        <Badge className="shrink-0 text-[10px] bg-orange-100 text-orange-700">
+                        <Badge className="shrink-0 text-[10px] bg-brand-100 text-brand-700">
                           {m.days_since_checkin !== null ? `${m.days_since_checkin}日` : '受講なし'}
                         </Badge>
                       </div>

@@ -194,7 +194,7 @@ export default function StaffHubPage() {
     <div className="max-w-6xl mx-auto p-4 sm:p-6">
       {/* ページタイトル + 最終更新 */}
       <div className="flex items-baseline justify-between gap-3 flex-wrap mb-4">
-        <h1 className="text-lg sm:text-xl font-bold text-orange-600">BOOM スタッフ管理</h1>
+        <h1 className="text-lg sm:text-xl font-bold text-brand-600">BOOM スタッフ管理</h1>
         <p className="text-xs text-neutral-500">
           {stats?.generated_at
             ? `最終更新: ${new Date(stats.generated_at).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}`
@@ -233,14 +233,14 @@ export default function StaffHubPage() {
           const Icon = card.icon;
           return (
             <Link key={card.href} href={card.href} className="group">
-              <Card className="h-full hover:border-orange-300 hover:shadow-md transition-all">
+              <Card className="h-full hover:border-brand-300 hover:shadow-md transition-all">
                 <CardHeader>
                   <div className="flex items-start gap-2">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-orange-50 text-orange-600 group-hover:bg-orange-100">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand-50 text-brand-600 group-hover:bg-brand-100">
                       <Icon className="size-4" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-orange-700 group-hover:text-orange-800 text-sm">
+                      <CardTitle className="text-brand-700 group-hover:text-brand-800 text-sm">
                         {card.title}
                       </CardTitle>
                       <CardDescription className="text-xs mt-0.5 leading-relaxed">

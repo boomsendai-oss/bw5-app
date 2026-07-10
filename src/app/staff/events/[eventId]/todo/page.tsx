@@ -115,10 +115,10 @@ export default function TodoPage({ params }: { params: Promise<{ eventId: string
     <div>
       <header className="bg-card border-b px-6 py-4">
         <div className="max-w-4xl mx-auto">
-          <Link href={`/staff/events/${eventId}`} className="text-xs text-orange-600 hover:underline inline-flex items-center gap-1">
+          <Link href={`/staff/events/${eventId}`} className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1">
             <ArrowLeft className="size-3" />ダッシュボード
           </Link>
-          <h1 className="text-xl font-bold text-orange-600 mt-1">ToDo リスト</h1>
+          <h1 className="text-xl font-bold text-brand-600 mt-1">ToDo リスト</h1>
         </div>
       </header>
 
@@ -230,7 +230,7 @@ export default function TodoPage({ params }: { params: Promise<{ eventId: string
                           </div>
                         )}
                         <div className="text-xs mt-1 flex flex-wrap gap-1.5">
-                          {t.category && <Badge variant="secondary" className="bg-orange-50 text-orange-700">{t.category}</Badge>}
+                          {t.category && <Badge variant="secondary" className="bg-brand-50 text-brand-700">{t.category}</Badge>}
                           {t.assignee && <Badge variant="outline">{t.assignee}</Badge>}
                           {t.priority && <Badge variant="destructive">優先度:{t.priority}</Badge>}
                           {t.due_period && <Badge variant="secondary" className="bg-blue-50 text-blue-700">{t.due_period}</Badge>}

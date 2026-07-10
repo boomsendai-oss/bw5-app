@@ -252,8 +252,8 @@ export default function VideoPreordersPage() {
     <div>
       <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4">
         <div className="flex items-center gap-2">
-          <Video className="size-5 text-orange-600" />
-          <h1 className="text-lg font-bold text-orange-600">映像予約 管理</h1>
+          <Video className="size-5 text-brand-600" />
+          <h1 className="text-lg font-bold text-brand-600">映像予約 管理</h1>
           <span className="text-xs text-muted-foreground hidden sm:inline">BW5映像データ予約・確認メール・支払いリンク管理</span>
         </div>
 

@@ -19,7 +19,7 @@ type Review = {
 };
 
 const STATUS_LABEL: Record<Review['status'], { label: string; cls: string }> = {
-  draft_ready: { label: '承認待ち', cls: 'bg-orange-100 text-orange-700' },
+  draft_ready: { label: '承認待ち', cls: 'bg-brand-100 text-brand-700' },
   new: { label: 'ドラフト生成待ち', cls: 'bg-yellow-100 text-yellow-700' },
   posted: { label: '返信済み', cls: 'bg-green-100 text-green-700' },
   skipped: { label: 'スキップ', cls: 'bg-gray-100 text-gray-500' },
@@ -170,7 +170,7 @@ export default function GbpReviewsPage() {
                       返信ドラフト{r.status === 'new' ? ' (自動生成待ち — 手書きでも投稿できます)' : ' (編集できます)'}
                     </label>
                     <textarea
-                      className="w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-orange-500 focus:outline-none"
+                      className="w-full rounded-lg border border-gray-300 p-3 text-sm focus:border-brand-500 focus:outline-none"
                       rows={5}
                       value={edits[r.review_id] ?? r.draft ?? ''}
                       onChange={(e) => setEdits((prev) => ({ ...prev, [r.review_id]: e.target.value }))}
@@ -179,7 +179,7 @@ export default function GbpReviewsPage() {
                       <button
                         onClick={() => approve(r)}
                         disabled={busy === r.review_id || !gbpConfigured}
-                        className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-40"
+                        className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-40"
                       >
                         {busy === r.review_id ? '投稿中...' : '承認して投稿'}
                       </button>

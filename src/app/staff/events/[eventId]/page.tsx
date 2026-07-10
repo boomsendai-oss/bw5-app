@@ -57,10 +57,10 @@ export default function EventDashboard({ params }: { params: Promise<{ eventId: 
     <div>
       <header className="bg-card border-b px-6 py-4">
         <div className="max-w-3xl mx-auto">
-          <Link href="/staff/events" className="text-xs text-orange-600 hover:underline inline-flex items-center gap-1">
+          <Link href="/staff/events" className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1">
             <ArrowLeft className="size-3" />一覧へ
           </Link>
-          <h1 className="text-xl font-bold text-orange-600 mt-1">
+          <h1 className="text-xl font-bold text-brand-600 mt-1">
             {event.code} <span className="text-foreground">{event.name}</span>
           </h1>
           <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
@@ -74,7 +74,7 @@ export default function EventDashboard({ params }: { params: Promise<{ eventId: 
         <section className="grid grid-cols-4 gap-3">
           <SummaryCard label="ToDo 合計" value={summary.total} icon={<ListTodo className="size-4 text-muted-foreground" />} />
           <SummaryCard label="未着手" value={summary.open} icon={<AlertCircle className="size-4 text-red-500" />} color="text-red-600" />
-          <SummaryCard label="進行中" value={summary.in_progress} icon={<CircleDot className="size-4 text-orange-500" />} color="text-orange-600" />
+          <SummaryCard label="進行中" value={summary.in_progress} icon={<CircleDot className="size-4 text-brand-500" />} color="text-brand-600" />
           <SummaryCard label="完了" value={summary.done} icon={<CheckCircle2 className="size-4 text-emerald-500" />} color="text-emerald-600" />
         </section>
 
@@ -128,7 +128,7 @@ function NavCard({
     <Link href={href} className="block">
       <Card className="hover:shadow-md transition cursor-pointer">
         <CardHeader>
-          <CardTitle className="text-sm flex items-center gap-2 text-orange-600">{icon}{title}</CardTitle>
+          <CardTitle className="text-sm flex items-center gap-2 text-brand-600">{icon}{title}</CardTitle>
           <CardDescription className="text-xs">{desc}</CardDescription>
         </CardHeader>
       </Card>

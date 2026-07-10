@@ -11,12 +11,14 @@ export default function StaffLayoutClient({ children }: { children: React.ReactN
 
   return (
     <TooltipProvider>
-      <SidebarProvider>
+      {/* .staff-theme: shadcnトークンをブランド色(ティール)に上書き (globals.css参照) */}
+      <SidebarProvider className="staff-theme">
         <StaffSidebar onOpenCommandPalette={() => setCommandOpen(true)} />
         <SidebarInset className="bg-neutral-50 text-neutral-900">
-          <header className="flex h-10 shrink-0 items-center gap-2 border-b border-neutral-200 bg-white px-3 md:hidden">
-            <SidebarTrigger className="-ml-1" />
-            <span className="text-sm font-semibold text-orange-600">BOOM Staff</span>
+          {/* モバイルヘッダー: ブランドのネイビーで公式感 */}
+          <header className="flex h-10 shrink-0 items-center gap-2 border-b border-navy-800 bg-navy-700 px-3 md:hidden">
+            <SidebarTrigger className="-ml-1 text-white hover:bg-navy-600 hover:text-white" />
+            <span className="text-sm font-semibold text-white">BOOM Staff</span>
           </header>
           <div className="flex-1">
             {children}

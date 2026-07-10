@@ -91,7 +91,7 @@ export default function MastersClient() {
       )}
 
       {/* HPに反映バー */}
-      <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between flex-wrap gap-2">
+      <div className="mb-4 p-3 bg-brand-50 border border-brand-200 rounded-lg flex items-center justify-between flex-wrap gap-2">
         <div className="text-sm text-slate-700">
           <span className="font-semibold flex items-center gap-1 inline-flex">
             <Globe className="size-4" />

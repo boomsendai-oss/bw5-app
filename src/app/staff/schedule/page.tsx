@@ -315,7 +315,7 @@ export default function SchedulePage() {
           )}
 
           {csvMessage && (
-            <p className="text-xs mt-2 text-orange-700">{csvMessage}</p>
+            <p className="text-xs mt-2 text-brand-700">{csvMessage}</p>
           )}
         </div>
 
@@ -337,7 +337,7 @@ export default function SchedulePage() {
                           <button
                             key={s.id}
                             onClick={() => openEdit(s)}
-                            className="w-full text-left bg-white border border-neutral-200 rounded-xl p-3 active:bg-orange-50"
+                            className="w-full text-left bg-white border border-neutral-200 rounded-xl p-3 active:bg-brand-50"
                           >
                             <div className="flex items-baseline justify-between gap-2">
                               <span className="font-semibold text-neutral-800 truncate">
@@ -356,7 +356,7 @@ export default function SchedulePage() {
                                   e.stopPropagation();
                                   openEdit(s);
                                 }}
-                                className="text-[11px] bg-orange-50 text-orange-700 rounded-full px-2 py-0.5"
+                                className="text-[11px] bg-brand-50 text-brand-700 rounded-full px-2 py-0.5"
                               >
                                 編集
                               </span>
@@ -395,7 +395,7 @@ export default function SchedulePage() {
                   <button
                     key={e.id}
                     onClick={() => openEdit(e)}
-                    className="w-full text-left bg-white border border-neutral-200 rounded-xl p-3 active:bg-orange-50"
+                    className="w-full text-left bg-white border border-neutral-200 rounded-xl p-3 active:bg-brand-50"
                   >
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="font-semibold text-neutral-800 truncate">
@@ -418,7 +418,7 @@ export default function SchedulePage() {
                 ))}
                 <Button
                   variant="outline"
-                  className="w-full border-dashed border-orange-300 text-orange-700"
+                  className="w-full border-dashed border-brand-300 text-brand-700"
                   onClick={() => {
                     setEditingId(null);
                     setEditing({

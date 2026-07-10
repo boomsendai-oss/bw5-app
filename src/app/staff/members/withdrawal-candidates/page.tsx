@@ -190,7 +190,7 @@ export default function WithdrawalCandidatesPage() {
   return (
     <div className="p-4 max-w-3xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
-        <UserMinus className="size-5 text-orange-500" />
+        <UserMinus className="size-5 text-brand-500" />
         <h1 className="text-lg font-bold">チケット会員 退会候補</h1>
       </div>
 

@@ -229,10 +229,10 @@ export default function StaffBlogPage() {
       <header className="bg-card border-b px-4 py-3 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-baseline gap-3">
-            <Link href="/staff" className="text-xs text-orange-600 hover:underline inline-flex items-center gap-1">
+            <Link href="/staff" className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1">
               <ArrowLeft className="size-3" />スタッフ
             </Link>
-            <h1 className="text-lg sm:text-xl font-bold text-orange-600 flex items-center gap-2">
+            <h1 className="text-lg sm:text-xl font-bold text-brand-600 flex items-center gap-2">
               <FileText className="size-5" />ブログ記事管理
             </h1>
           </div>
@@ -316,7 +316,7 @@ export default function StaffBlogPage() {
       <Dialog open={!!editing} onOpenChange={(open) => { if (!open) setEditing(null); }}>
         <DialogContent className="sm:max-w-3xl max-h-[95vh] flex flex-col" showCloseButton>
           <DialogHeader>
-            <DialogTitle className="text-orange-700">
+            <DialogTitle className="text-brand-700">
               {editing?.id ? `編集: ${editing.title || ''}` : '新規記事'}
             </DialogTitle>
           </DialogHeader>

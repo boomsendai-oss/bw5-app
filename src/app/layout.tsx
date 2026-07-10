@@ -79,7 +79,7 @@ export default function RootLayout({
                             : p.indexOf('/admin') === 0 ? 'BW5 管理' : 'BW5';
                   var icon  = p.indexOf('/staff/orders') === 0 ? '/images/icon-staff-orders.png'
                             : p.indexOf('/staff/backstage') === 0 ? '/images/icon-staff-backstage.png'
-                            : p.indexOf('/staff') === 0 ? '/images/icon-staff-orders.png'
+                            : p.indexOf('/staff') === 0 ? '/images/icon-staff.png'
                             : p.indexOf('/admin') === 0 ? '/images/icon-admin.png' : '/apple-touch-icon.png';
                   add('meta', {name: 'apple-mobile-web-app-title', content: title});
                   add('link', {rel: 'apple-touch-icon', href: icon});

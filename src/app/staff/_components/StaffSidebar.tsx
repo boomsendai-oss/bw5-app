@@ -145,7 +145,7 @@ export default function StaffSidebar({
     <Sidebar>
       <SidebarHeader>
         <div className="flex items-center gap-2 px-2 py-1">
-          <div className="flex size-7 items-center justify-center rounded-md bg-orange-500 text-white text-xs font-bold">
+          <div className="flex size-7 items-center justify-center rounded-md bg-brand-500 text-white text-xs font-bold">
             B
           </div>
           <span className="font-semibold text-sm">BOOM Staff</span>

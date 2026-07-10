@@ -227,7 +227,7 @@ function ManualLinkPageInner() {
       <div className="mb-6 flex items-center gap-3">
         <Link
           href="/staff/notifications"
-          className="text-sm text-gray-500 hover:text-orange-600"
+          className="text-sm text-gray-500 hover:text-brand-600"
         >
           &larr; 通知フィード
         </Link>
@@ -307,7 +307,7 @@ function ManualLinkPageInner() {
               </h2>
               <div className="flex flex-col gap-2">
                 {autoCandidates.map((c) => (
-                  <Card key={`auto-${c.lstep_id}`} className="border-orange-200 bg-orange-50/30">
+                  <Card key={`auto-${c.lstep_id}`} className="border-brand-200 bg-brand-50/30">
                     <CardContent>
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -327,7 +327,7 @@ function ManualLinkPageInner() {
                               variant={c.confidence === '高' ? 'default' : 'secondary'}
                               className={
                                 c.confidence === '高'
-                                  ? 'bg-orange-500 text-white'
+                                  ? 'bg-brand-500 text-white'
                                   : 'bg-amber-100 text-amber-800'
                               }
                             >
@@ -384,7 +384,7 @@ function ManualLinkPageInner() {
                               size="xs"
                               disabled={!selectedRelation || linking}
                               onClick={() => handleLink(c.lstep_id)}
-                              className="bg-orange-500 text-white hover:bg-orange-600"
+                              className="bg-brand-500 text-white hover:bg-brand-600"
                             >
                               {linking ? '処理中...' : '確定'}
                             </Button>
@@ -400,7 +400,7 @@ function ManualLinkPageInner() {
                           <Button
                             size="xs"
                             variant="outline"
-                            className="border-orange-300 text-orange-600 hover:bg-orange-50"
+                            className="border-brand-300 text-brand-600 hover:bg-brand-50"
                             onClick={() =>
                               startLink(c.lstep_id, c.relation_suggestion)
                             }
@@ -474,7 +474,7 @@ function ManualLinkPageInner() {
                               size="xs"
                               disabled={!selectedRelation || linking}
                               onClick={() => handleLink(r.lstep_id)}
-                              className="bg-orange-500 text-white hover:bg-orange-600"
+                              className="bg-brand-500 text-white hover:bg-brand-600"
                             >
                               {linking ? '処理中...' : '確定'}
                             </Button>
@@ -490,7 +490,7 @@ function ManualLinkPageInner() {
                           <Button
                             size="xs"
                             variant="outline"
-                            className="border-orange-300 text-orange-600 hover:bg-orange-50"
+                            className="border-brand-300 text-brand-600 hover:bg-brand-50"
                             onClick={() => startLink(r.lstep_id)}
                           >
                             紐付け

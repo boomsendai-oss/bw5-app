@@ -190,11 +190,11 @@ export default function ExpensesPage() {
           <div className="bg-white border rounded-lg p-3 mb-3">
             <div className="flex justify-between items-baseline mb-2">
               <h3 className="font-bold text-sm">カテゴリ別集計</h3>
-              <div className="text-lg font-bold text-orange-700">{yen(totalExpense)}</div>
+              <div className="text-lg font-bold text-brand-700">{yen(totalExpense)}</div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {data.summary.map(s => (
-                <div key={s.category} className="border-l-4 border-orange-200 pl-2 py-1">
+                <div key={s.category} className="border-l-4 border-brand-200 pl-2 py-1">
                   <div className="text-[10px] text-slate-500">{s.category} ({s.count})</div>
                   <div className="font-bold text-sm">{yen(s.total)}</div>
                 </div>
@@ -274,8 +274,8 @@ export default function ExpensesPage() {
           {!loading && data && (
             <TabsContent value="pending">
               {/* 一括確定バー (T-167) */}
-              <div className="mb-2 flex items-center gap-2 flex-wrap rounded-lg border bg-orange-50 border-orange-200 px-3 py-2">
-                <span className="text-xs font-semibold text-orange-800">
+              <div className="mb-2 flex items-center gap-2 flex-wrap rounded-lg border bg-brand-50 border-brand-200 px-3 py-2">
+                <span className="text-xs font-semibold text-brand-800">
                   {selectedTxns.size > 0 ? `${selectedTxns.size}件選択中` : 'チェックして一括確定'}
                 </span>
                 <select
@@ -324,7 +324,7 @@ export default function ExpensesPage() {
                   </TableHeader>
                   <TableBody>
                     {data.pendingBankTxns.map(t => (
-                      <TableRow key={t.id} className={selectedTxns.has(t.id) ? 'bg-orange-50' : ''}>
+                      <TableRow key={t.id} className={selectedTxns.has(t.id) ? 'bg-brand-50' : ''}>
                         <TableCell className="text-xs">
                           {t.amount < 0 && (
                             <input type="checkbox" checked={selectedTxns.has(t.id)} onChange={() => toggleTxn(t.id)} />

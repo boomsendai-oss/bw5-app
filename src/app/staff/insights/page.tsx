@@ -62,7 +62,7 @@ function TrendChart({ title, values, months, suffix, isPct, lowerIsBetter }: {
           <div className="text-[10px] font-mono text-neutral-400">{delta}</div>
         </div>
         <div className="flex items-baseline gap-2 mb-1">
-          <span className="text-lg font-bold text-orange-700">{latest}</span>
+          <span className="text-lg font-bold text-brand-700">{latest}</span>
           <span className={`text-[10px] font-semibold ${good ? 'text-green-600' : 'text-red-600'}`}>
             {delta !== '—' ? (positive ? <TrendingUp className="inline h-3 w-3" /> : <TrendingDown className="inline h-3 w-3" />) : ''}
           </span>
@@ -222,7 +222,7 @@ type KpiCardProps = {
 
 function KpiCard({ label, value, sub, target, current, unit, accent = 'orange', warn }: KpiCardProps) {
   const palette: Record<string, string> = {
-    orange: 'text-orange-700',
+    orange: 'text-brand-700',
     blue: 'text-blue-700',
     green: 'text-green-700',
     red: 'text-red-700',
@@ -243,7 +243,7 @@ function KpiCard({ label, value, sub, target, current, unit, accent = 'orange', 
               <span>{pct(progress, 0)}</span>
             </div>
             <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
-              <div className={`h-full ${progress >= 100 ? 'bg-green-500' : progress >= 70 ? 'bg-orange-500' : 'bg-amber-500'}`} style={{ width: `${progress}%` }} />
+              <div className={`h-full ${progress >= 100 ? 'bg-green-500' : progress >= 70 ? 'bg-brand-500' : 'bg-amber-500'}`} style={{ width: `${progress}%` }} />
             </div>
           </div>
         )}
@@ -459,7 +459,7 @@ export default function InsightsPage() {
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h1 className="text-lg font-bold text-neutral-800 flex items-center gap-1.5">
-              <BarChart3 className="h-5 w-5 text-orange-500" />
+              <BarChart3 className="h-5 w-5 text-brand-500" />
               経営インサイト
             </h1>
             <p className="text-xs text-neutral-500">月次KPI自動集計ダッシュボード</p>
@@ -517,14 +517,14 @@ export default function InsightsPage() {
               <FileText className="h-3 w-3 mr-1" />
               {reportBusy ? '生成中...' : '月次レポート生成'}
             </Button>
-            <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white" asChild>
+            <Button size="sm" className="bg-brand-500 hover:bg-brand-600 text-white" asChild>
               <Link href="/staff/insights/input">
                 <Plus className="h-3 w-3 mr-1" />
                 月次データを追加
               </Link>
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setYm(shiftYM(ym, -1))}><ChevronLeft className="h-4 w-4" /></Button>
-            <span className="text-sm font-bold text-orange-700 px-2">{ym}</span>
+            <span className="text-sm font-bold text-brand-700 px-2">{ym}</span>
             <Button variant="ghost" size="sm" onClick={() => setYm(shiftYM(ym, 1))}><ChevronRight className="h-4 w-4" /></Button>
             <Button variant="outline" size="sm" className="text-xs" onClick={() => setYm(currentYM())}>今月</Button>
             <Button variant="outline" size="sm" className="text-xs" onClick={openTargets}>
@@ -548,7 +548,7 @@ export default function InsightsPage() {
         {data && (
           <>
             {/* ===== B: 顧客動態 ===== */}
-            <Section title="顧客動態" icon={<Users className="h-4 w-4 text-orange-500" />} hint="在籍はHACOMONO会員 / LINEはLstep友だち">
+            <Section title="顧客動態" icon={<Users className="h-4 w-4 text-brand-500" />} hint="在籍はHACOMONO会員 / LINEはLstep友だち">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
                 <KpiCard
                   label="在籍数(月末)"
@@ -649,7 +649,7 @@ export default function InsightsPage() {
             </Section>
 
             {/* ===== 体験→入会ファネル (T-157/T-160) ===== */}
-            <Section title="体験→入会ファネル" icon={<Sprout className="h-4 w-4 text-orange-500" />} hint="HACOMONO会員登録=体験来店とみなした累計CVR">
+            <Section title="体験→入会ファネル" icon={<Sprout className="h-4 w-4 text-brand-500" />} hint="HACOMONO会員登録=体験来店とみなした累計CVR">
               {!funnel || funnel.empty || !funnel.ok ? (
                 <p className="text-xs text-neutral-400">
                   全メンバー(ML001)未取込のため未表示。日次同期(次回)で自動取込されます。
@@ -703,7 +703,7 @@ export default function InsightsPage() {
             </Section>
 
             {/* ===== A: 売上系 ===== */}
-            <Section title="売上" icon={<DollarSign className="h-4 w-4 text-orange-500" />} hint="スクール本業 (プラン + 単発 + 入会金)">
+            <Section title="売上" icon={<DollarSign className="h-4 w-4 text-brand-500" />} hint="スクール本業 (プラン + 単発 + 入会金)">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                 <KpiCard
                   label="本業売上 (税込)"
@@ -754,7 +754,7 @@ export default function InsightsPage() {
             </Section>
 
             {/* ===== C: オペレーション ===== */}
-            <Section title={`${ymJp(ym)}の稼働率`} icon={<Crosshair className="h-4 w-4 text-orange-500" />} hint="予約数/定員 (HACOMONO RS002)">
+            <Section title={`${ymJp(ym)}の稼働率`} icon={<Crosshair className="h-4 w-4 text-brand-500" />} hint="予約数/定員 (HACOMONO RS002)">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-3">
                 <KpiCard
                   label={`平均稼働率 (${ymJp(ym)})`}
@@ -811,11 +811,11 @@ export default function InsightsPage() {
 
                   {/* 別枠: 立ち上げ期 / 要対策 */}
                   <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Card className="bg-orange-50 border-orange-200">
+                    <Card className="bg-brand-50 border-brand-200">
                       <CardContent className="p-3">
-                        <div className="text-xs font-bold text-orange-700 mb-2 flex items-center gap-1">
+                        <div className="text-xs font-bold text-brand-700 mb-2 flex items-center gap-1">
                           <Sprout className="h-3.5 w-3.5" /> 立ち上げ期クラス
-                          <span className="font-normal text-orange-400"> (直近{data.utilization.grace_months ?? 6}ヶ月)</span>
+                          <span className="font-normal text-brand-400"> (直近{data.utilization.grace_months ?? 6}ヶ月)</span>
                         </div>
                         {(data.utilization.new_classes?.length ?? 0) === 0 ? (
                           <div className="text-[11px] text-slate-400">該当なし</div>
@@ -825,9 +825,9 @@ export default function InsightsPage() {
                               <li key={i} className="flex justify-between gap-2">
                                 <span className="truncate">
                                   {c.program_name} <span className="text-slate-400">/ {c.staff_name}</span>
-                                  {c.launched_at && <span className="text-orange-400"> /{c.launched_at}~</span>}
+                                  {c.launched_at && <span className="text-brand-400"> /{c.launched_at}~</span>}
                                 </span>
-                                <Badge variant="outline" className="text-orange-700 font-mono">{pct(c.avg_rate * 100, 0)}</Badge>
+                                <Badge variant="outline" className="text-brand-700 font-mono">{pct(c.avg_rate * 100, 0)}</Badge>
                               </li>
                             ))}
                           </ul>
@@ -869,7 +869,7 @@ export default function InsightsPage() {
             </Section>
 
             {/* ===== D: 収益性 ===== */}
-            <Section title="収益性" icon={<Gem className="h-4 w-4 text-orange-500" />} hint="営業利益 = 本業売上 - 給与 - スタジオ料 - 経費">
+            <Section title="収益性" icon={<Gem className="h-4 w-4 text-brand-500" />} hint="営業利益 = 本業売上 - 給与 - スタジオ料 - 経費">
               {/* 締め確定ガード(T-158): 4財源が揃っていない月は黒字赤字を確定表示しない */}
               {data.profitability.profit_confirmed === false && (
                 <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -907,7 +907,7 @@ export default function InsightsPage() {
                   <div className="text-xs font-bold text-neutral-600 mb-2">経費内訳</div>
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                     {Object.entries(data.profitability.expense_breakdown).map(([k, v]) => (
-                      <div key={k} className="border-l-2 border-orange-200 pl-2">
+                      <div key={k} className="border-l-2 border-brand-200 pl-2">
                         <div className="text-neutral-500 text-[10px]">{k}</div>
                         <div className="font-bold">{yen(v)}</div>
                       </div>
@@ -918,7 +918,7 @@ export default function InsightsPage() {
             </Section>
 
             {trends && trends.months.length > 0 && (
-              <Section title="トレンド (過去6ヶ月)" icon={<BarChart3 className="h-4 w-4 text-orange-500" />} hint="月次推移">
+              <Section title="トレンド (過去6ヶ月)" icon={<BarChart3 className="h-4 w-4 text-brand-500" />} hint="月次推移">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <TrendChart
                     title="本業売上 (円)"
@@ -989,7 +989,7 @@ export default function InsightsPage() {
                 </div>
               </div>
             ))}
-            <Button onClick={saveTargets} className="w-full bg-orange-500 hover:bg-orange-600">
+            <Button onClick={saveTargets} className="w-full bg-brand-500 hover:bg-brand-600">
               保存
             </Button>
             <p className="text-[10px] text-slate-400">空欄にすると目標値が削除されない点に注意。値を0にして無効化してください</p>

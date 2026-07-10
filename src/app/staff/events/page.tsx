@@ -76,8 +76,8 @@ export default function EventsListPage() {
       <div className="max-w-3xl mx-auto p-6 space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <CalendarDays className="size-5 text-orange-600" />
-            <h1 className="text-lg font-bold text-orange-600">イベント管理</h1>
+            <CalendarDays className="size-5 text-brand-600" />
+            <h1 className="text-lg font-bold text-brand-600">イベント管理</h1>
             <span className="text-xs text-muted-foreground hidden sm:inline">BW5・発表会等のイベント設定・タスク</span>
           </div>
           <Button
@@ -160,14 +160,14 @@ export default function EventsListPage() {
                     <CardContent className="py-3">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-xs text-orange-600 font-mono">{ev.code}</div>
+                          <div className="text-xs text-brand-600 font-mono">{ev.code}</div>
                           <div className="font-semibold">{ev.name}</div>
                           <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
                             <span>{ev.event_date ?? '日付未定'}</span>
                             <Badge variant="secondary" className="text-[10px]">{ev.status}</Badge>
                           </div>
                         </div>
-                        <ChevronRight className="size-4 text-orange-500" />
+                        <ChevronRight className="size-4 text-brand-500" />
                       </div>
                     </CardContent>
                   </Card>

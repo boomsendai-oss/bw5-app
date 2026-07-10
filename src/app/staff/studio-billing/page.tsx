@@ -254,7 +254,7 @@ export default function StudioBillingPage() {
               <Input type="month" value={ym} onChange={e => setYm(e.target.value)} className="inline-block w-auto h-7 text-sm" />
             </div>
             <span><span className="text-slate-500">対象スタジオ:</span> <span className="font-bold">{runs.length}</span></span>
-            <span><span className="text-slate-500">合計:</span> <span className="font-bold text-orange-700">{yen(grandTotal)}</span></span>
+            <span><span className="text-slate-500">合計:</span> <span className="font-bold text-brand-700">{yen(grandTotal)}</span></span>
           </div>
           <div className="flex gap-2 flex-wrap">
             <Button onClick={calculate} disabled={busy} size="sm">
@@ -296,13 +296,13 @@ export default function StudioBillingPage() {
               </TableHeader>
               <TableBody>
                 {runs.map(r => (
-                  <TableRow key={r.id} onClick={() => openDetail(r.id)} className="hover:bg-orange-50/50 cursor-pointer">
+                  <TableRow key={r.id} onClick={() => openDetail(r.id)} className="hover:bg-brand-50/50 cursor-pointer">
                     <TableCell className="font-semibold">{r.studio_name}</TableCell>
                     <TableCell className="text-center"><Badge variant="outline" className="text-[10px]">{PAYMENT_TYPE_LABELS[r.payment_type] ?? r.payment_type}</Badge></TableCell>
                     <TableCell className="text-right font-mono">{hrs(r.total_hours)}</TableCell>
                     <TableCell className="text-right font-mono">{yen(r.total_lesson_amount)}</TableCell>
                     <TableCell className="text-right font-mono">{r.total_adjustment_amount !== 0 ? yen(r.total_adjustment_amount) : '--'}</TableCell>
-                    <TableCell className="text-right font-mono font-bold text-orange-700">{yen(r.total_amount)}</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-brand-700">{yen(r.total_amount)}</TableCell>
                     <TableCell className="text-center text-xs font-mono text-slate-500">{r.payment_date ?? '--'}</TableCell>
                     <TableCell className="text-center">{statusBadge(r.status)}</TableCell>
                   </TableRow>
@@ -315,7 +315,7 @@ export default function StudioBillingPage() {
                   <TableCell className="text-right font-mono">{hrs(runs.reduce((s, r) => s + Number(r.total_hours ?? 0), 0))}</TableCell>
                   <TableCell className="text-right font-mono">{yen(runs.reduce((s, r) => s + r.total_lesson_amount, 0))}</TableCell>
                   <TableCell className="text-right font-mono">{yen(runs.reduce((s, r) => s + r.total_adjustment_amount, 0))}</TableCell>
-                  <TableCell className="text-right font-mono text-orange-700">{yen(grandTotal)}</TableCell>
+                  <TableCell className="text-right font-mono text-brand-700">{yen(grandTotal)}</TableCell>
                   <TableCell colSpan={2}></TableCell>
                 </TableRow>
               </TableFooter>
@@ -339,7 +339,7 @@ export default function StudioBillingPage() {
                 <div className="bg-slate-50 rounded p-2"><div className="text-[10px] text-slate-500">使用時間</div><div className="font-bold">{hrs(detail.run.total_hours)}</div></div>
                 <div className="bg-slate-50 rounded p-2"><div className="text-[10px] text-slate-500">レンタル料</div><div className="font-bold">{yen(detail.run.total_lesson_amount)}</div></div>
                 <div className="bg-slate-50 rounded p-2"><div className="text-[10px] text-slate-500">調整</div><div className="font-bold">{yen(detail.run.total_adjustment_amount)}</div></div>
-                <div className="bg-orange-50 rounded p-2"><div className="text-[10px] text-orange-600">合計</div><div className="font-bold text-orange-700">{yen(detail.run.total_amount)}</div></div>
+                <div className="bg-brand-50 rounded p-2"><div className="text-[10px] text-brand-600">合計</div><div className="font-bold text-brand-700">{yen(detail.run.total_amount)}</div></div>
               </div>
 
               <div>
@@ -387,7 +387,7 @@ export default function StudioBillingPage() {
                     ))}
                   </div>
                 )}
-                <div className="bg-orange-50 border border-orange-200 rounded p-2 grid grid-cols-1 sm:grid-cols-4 gap-2">
+                <div className="bg-brand-50 border border-brand-200 rounded p-2 grid grid-cols-1 sm:grid-cols-4 gap-2">
                   <Select value={adjForm.type} onValueChange={v => setAdjForm({ ...adjForm, type: v })}>
                     <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
                     <SelectContent>

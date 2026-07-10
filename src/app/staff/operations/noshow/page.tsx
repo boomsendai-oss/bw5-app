@@ -56,7 +56,7 @@ export default function NoshowCandidatesPage() {
   return (
     <div className="p-4 max-w-3xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
-        <UserX className="size-5 text-orange-500" />
+        <UserX className="size-5 text-brand-500" />
         <h1 className="text-lg font-bold">体験ノーショー候補</h1>
       </div>
 

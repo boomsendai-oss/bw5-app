@@ -43,12 +43,12 @@ export default function PayrollPrintPage({ params }: { params: Promise<{ id: str
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
       `}</style>
       <div className="no-print mb-4 print:hidden">
-        <button onClick={() => window.print()} className="px-4 py-2 bg-orange-500 text-white rounded font-semibold">🖨️ 印刷 / PDF保存 (Cmd+P)</button>
+        <button onClick={() => window.print()} className="px-4 py-2 bg-brand-500 text-white rounded font-semibold">🖨️ 印刷 / PDF保存 (Cmd+P)</button>
         <p className="text-xs text-slate-500 mt-1">「PDFとして保存」を選ぶとPDF化できます</p>
       </div>
 
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-2xl font-bold text-center border-b-2 border-orange-500 pb-3">給与明細書</h1>
+        <h1 className="text-2xl font-bold text-center border-b-2 border-brand-500 pb-3">給与明細書</h1>
         <p className="text-center text-sm mt-1">{r.year_month} 分</p>
 
         <div className="grid-2 mt-6 text-sm">
@@ -62,10 +62,10 @@ export default function PayrollPrintPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
 
-        <div className="mt-6 p-4 border-2 border-orange-500 rounded">
+        <div className="mt-6 p-4 border-2 border-brand-500 rounded">
           <div className="flex justify-between items-baseline">
             <span className="text-sm">お支払い合計</span>
-            <span className="text-3xl font-bold text-orange-700">{yen(r.total_amount)}</span>
+            <span className="text-3xl font-bold text-brand-700">{yen(r.total_amount)}</span>
           </div>
           <div className="grid grid-cols-3 gap-3 mt-3 text-xs">
             <div><div className="text-slate-500">レッスン</div><div className="font-bold">{yen(r.total_lesson_amount)}</div></div>

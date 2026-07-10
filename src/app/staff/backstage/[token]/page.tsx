@@ -80,7 +80,7 @@ export default function BackstageUploadPage() {
     <div className="min-h-screen p-4 sm:p-6" style={{ background: 'linear-gradient(135deg, #1f2937 0%, #111827 100%)' }}>
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-3 mb-4">
-          <Camera size={28} className="text-orange-400" />
+          <Camera size={28} className="text-brand-400" />
           <h1 className="text-2xl font-black text-white">舞台裏写真アップロード</h1>
         </div>
 
@@ -109,8 +109,8 @@ export default function BackstageUploadPage() {
                 className="block py-10 rounded-xl text-center cursor-pointer transition-all"
                 style={{ background: 'rgba(242,122,26,0.18)', border: '2px dashed rgba(242,122,26,0.4)' }}
               >
-                <Camera size={28} className="mx-auto mb-2 text-orange-400" />
-                <p className="text-xs font-bold text-orange-200">📷 カメラで撮影</p>
+                <Camera size={28} className="mx-auto mb-2 text-brand-400" />
+                <p className="text-xs font-bold text-brand-200">📷 カメラで撮影</p>
               </label>
               <label
                 htmlFor="backstage-gallery"

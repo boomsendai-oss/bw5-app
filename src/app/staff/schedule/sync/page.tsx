@@ -158,10 +158,10 @@ export default function ScheduleSyncPage() {
         {/* ===== 連携状況サマリ ===== */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm text-orange-800">マスター = BW5レッスンカレンダー</CardTitle>
+            <CardTitle className="text-sm text-brand-800">マスター = BW5レッスンカレンダー</CardTitle>
             <CardDescription className="text-[11px]">
               すべての配信元は{' '}
-              <Link href="/staff/schedule/calendar" className="text-orange-600 underline font-semibold">
+              <Link href="/staff/schedule/calendar" className="text-brand-600 underline font-semibold">
                 レッスンカレンダー
               </Link>{' '}
               です。ここを編集すれば、下の3カレンダーへ反映できます（自動/手動は方式により異なる）。
@@ -203,7 +203,7 @@ export default function ScheduleSyncPage() {
 
         {/* ===== カード0: 公開Googleレッスンカレンダー (差分同期・本命) ===== */}
         <SyncCard
-          icon={<CalendarDays className="size-5 text-orange-600" />}
+          icon={<CalendarDays className="size-5 text-brand-600" />}
           title="公開Googleレッスンカレンダー"
           subtitle="生徒・スタッフ・関係者みんなで共有"
           statusLabel="1時間ごと自動 + 手動"
@@ -244,7 +244,7 @@ export default function ScheduleSyncPage() {
 
         {/* ===== カード1: Google ===== */}
         <SyncCard
-          icon={<CalendarDays className="size-5 text-orange-600" />}
+          icon={<CalendarDays className="size-5 text-brand-600" />}
           title="Googleカレンダー"
           subtitle="関係者の予定共有"
           statusLabel="自動同期"
@@ -272,7 +272,7 @@ export default function ScheduleSyncPage() {
 
         {/* ===== カード2: HACOMONO ===== */}
         <SyncCard
-          icon={<Building2 className="size-5 text-orange-600" />}
+          icon={<Building2 className="size-5 text-brand-600" />}
           title="HACOMONO 会員予約カレンダー"
           subtitle="会員の予約枠"
           statusLabel="半自動 (CSV)"
@@ -319,15 +319,15 @@ export default function ScheduleSyncPage() {
 
         {/* ===== カード3: Lstep ===== */}
         <SyncCard
-          icon={<MessageSquare className="size-5 text-orange-600" />}
+          icon={<MessageSquare className="size-5 text-brand-600" />}
           title="Lstep 体験予約カレンダー"
           subtitle="体験予約の開閉"
           statusLabel="層2自動 + 層1手動"
           statusVariant="default"
         >
           {/* 層2: Google所有カレンダー方式 */}
-          <div className="rounded-lg bg-orange-50 border border-orange-200 p-3 space-y-2">
-            <h4 className="text-xs font-bold text-orange-800 flex items-center gap-1">
+          <div className="rounded-lg bg-brand-50 border border-brand-200 p-3 space-y-2">
+            <h4 className="text-xs font-bold text-brand-800 flex items-center gap-1">
               <Badge variant="default" className="bg-green-600 text-[10px]">層2</Badge> 休講の開閉（自動）
             </h4>
             <p className="text-[11px] text-neutral-600 leading-relaxed">
@@ -444,7 +444,7 @@ function SyncCard({
       <CardHeader className="flex-row items-start gap-2">
         <div className="mt-0.5">{icon}</div>
         <div className="flex-1 min-w-0">
-          <CardTitle className="text-base text-orange-700">{title}</CardTitle>
+          <CardTitle className="text-base text-brand-700">{title}</CardTitle>
           <CardDescription className="text-[10px]">{subtitle}</CardDescription>
         </div>
         <Badge variant={statusVariant} className="text-[10px] shrink-0">{statusLabel}</Badge>

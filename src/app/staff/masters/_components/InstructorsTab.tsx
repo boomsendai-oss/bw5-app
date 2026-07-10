@@ -80,7 +80,7 @@ function SortableRow({
     <TableRow
       ref={setNodeRef}
       style={style}
-      className={`cursor-pointer ${isDragging ? 'bg-orange-50 shadow-md' : ''}`}
+      className={`cursor-pointer ${isDragging ? 'bg-brand-50 shadow-md' : ''}`}
       onClick={() => onClickRow(instructor)}
     >
       <TableCell className="w-8 px-1" onClick={e => e.stopPropagation()}>
@@ -501,8 +501,8 @@ export default function InstructorsTab({
               </div>
 
               {/* HP公開情報 */}
-              <div className="border-t-2 border-orange-200 pt-4 mt-4">
-                <h3 className="font-bold text-sm mb-3 text-orange-700 flex items-center gap-2">
+              <div className="border-t-2 border-brand-200 pt-4 mt-4">
+                <h3 className="font-bold text-sm mb-3 text-brand-700 flex items-center gap-2">
                   <Globe className="size-4" />
                   HP公開情報
                   <span className="text-xs font-normal text-muted-foreground">

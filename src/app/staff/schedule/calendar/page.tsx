@@ -468,7 +468,7 @@ export default function ScheduleCalendarPage() {
           <Button variant="secondary" size="sm" onClick={prevMonth}>
             <ChevronLeft className="size-4" />
           </Button>
-          <h2 className="text-lg sm:text-xl font-bold text-orange-700 flex items-center gap-2">
+          <h2 className="text-lg sm:text-xl font-bold text-brand-700 flex items-center gap-2">
             {year}年 {month}月
             {data?.confirmed && (
               <Badge variant="secondary" className="text-[10px]">
@@ -547,11 +547,11 @@ export default function ScheduleCalendarPage() {
                         setSelectedDay({ date: cell.date, day_of_week: cell.dow, lessons: cell.lessons });
                       }
                     }}
-                    className={`border-r border-b border-neutral-100 min-h-[80px] sm:min-h-[100px] p-1 text-left hover:bg-orange-50 transition-colors ${isToday ? 'bg-orange-50/60' : otherMonth ? 'bg-slate-50/50' : ''}`}
+                    className={`border-r border-b border-neutral-100 min-h-[80px] sm:min-h-[100px] p-1 text-left hover:bg-brand-50 transition-colors ${isToday ? 'bg-brand-50/60' : otherMonth ? 'bg-slate-50/50' : ''}`}
                   >
                     <div className={`text-xs font-bold mb-0.5 ${
                       otherMonth ? 'text-slate-300' :
-                      isToday ? 'text-orange-600' : dow === 0 ? 'text-red-600' : dow === 6 ? 'text-blue-600' : 'text-slate-700'
+                      isToday ? 'text-brand-600' : dow === 0 ? 'text-red-600' : dow === 6 ? 'text-blue-600' : 'text-slate-700'
                     }`}>
                       {cell.dateNum}
                       {isToday && <Badge variant="default" className="ml-1 text-[9px] px-1 py-0 h-auto">今日</Badge>}
@@ -634,7 +634,7 @@ export default function ScheduleCalendarPage() {
                       <div className="mt-1 flex gap-1 flex-wrap">
                         {isInst && l.instance_id && (
                           <>
-                            <Button size="xs" variant="ghost" className="text-orange-700 bg-orange-100 hover:bg-orange-200" onClick={() => openInstanceEdit(selectedDay.date, l)}>
+                            <Button size="xs" variant="ghost" className="text-brand-700 bg-brand-100 hover:bg-brand-200" onClick={() => openInstanceEdit(selectedDay.date, l)}>
                               <Pencil className="size-3" />
                               編集
                             </Button>
@@ -657,7 +657,7 @@ export default function ScheduleCalendarPage() {
                         )}
                         {!isInst && (
                           <>
-                            <Button size="xs" variant="ghost" className="text-orange-700 bg-orange-100 hover:bg-orange-200" onClick={() => editMasterLesson(selectedDay.date, l)}>
+                            <Button size="xs" variant="ghost" className="text-brand-700 bg-brand-100 hover:bg-brand-200" onClick={() => editMasterLesson(selectedDay.date, l)}>
                               <Pencil className="size-3" />
                               編集
                             </Button>
@@ -1069,7 +1069,7 @@ function ExportModalContent({ onClose }: { onClose: () => void }) {
       {/* 連携ハブ導線 */}
       <Link
         href="/staff/schedule/sync"
-        className="block p-2.5 rounded-lg bg-orange-100 border border-orange-200 text-[11px] text-orange-800 hover:bg-orange-200 font-semibold"
+        className="block p-2.5 rounded-lg bg-brand-100 border border-brand-200 text-[11px] text-brand-800 hover:bg-brand-200 font-semibold"
       >
         <RefreshCw className="inline size-3 mr-1" />
         カレンダー連携ハブを開く（3カレンダーの設定手順・接続状況をまとめて確認）→
@@ -1093,8 +1093,8 @@ function ExportModalContent({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* ICS購読 */}
-      <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 space-y-2">
-        <h4 className="text-sm font-bold text-orange-800 flex items-center gap-1">
+      <div className="p-3 rounded-lg bg-brand-50 border border-brand-200 space-y-2">
+        <h4 className="text-sm font-bold text-brand-800 flex items-center gap-1">
           <CalendarDays className="size-4" />
           Googleカレンダーに自動同期 (ICS購読)
         </h4>
@@ -1131,8 +1131,8 @@ function ExportModalContent({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* Lstep体験ブロック用 ICS購読 */}
-      <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 space-y-2">
-        <h4 className="text-sm font-bold text-orange-800 flex items-center gap-1">
+      <div className="p-3 rounded-lg bg-brand-50 border border-brand-200 space-y-2">
+        <h4 className="text-sm font-bold text-brand-800 flex items-center gap-1">
           <Ban className="size-4" />
           Lstep体験ブロック用 ICS購読
         </h4>
@@ -1180,8 +1180,8 @@ function ExportModalContent({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* HACOMONO形式CSV */}
-      <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 space-y-2">
-        <h4 className="text-sm font-bold text-orange-800 flex items-center gap-1">
+      <div className="p-3 rounded-lg bg-brand-50 border border-brand-200 space-y-2">
+        <h4 className="text-sm font-bold text-brand-800 flex items-center gap-1">
           <RefreshCw className="size-4" />
           HACOMONO形式CSV (スケジュールインポート用)
         </h4>

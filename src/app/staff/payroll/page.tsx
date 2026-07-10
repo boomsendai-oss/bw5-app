@@ -460,7 +460,7 @@ export default function PayrollPage() {
               <Input type="month" value={ym} onChange={e => setYm(e.target.value)} className="inline-block w-auto h-7 text-sm" />
             </div>
             <span><span className="text-slate-500">対象者:</span> <span className="font-bold">{runs.length}人</span></span>
-            <span><span className="text-slate-500">合計:</span> <span className="font-bold text-orange-700">{yen(grandTotal)}</span></span>
+            <span><span className="text-slate-500">合計:</span> <span className="font-bold text-brand-700">{yen(grandTotal)}</span></span>
           </div>
           <div className="flex gap-2 flex-wrap">
             <Button onClick={calculate} disabled={busy} size="sm">
@@ -512,7 +512,7 @@ export default function PayrollPage() {
                 </div>
 
                 {/* 合計金額 */}
-                <div className="text-2xl font-extrabold text-orange-700 mt-1">{yen(r.total_amount)}</div>
+                <div className="text-2xl font-extrabold text-brand-700 mt-1">{yen(r.total_amount)}</div>
 
                 {/* 内訳 */}
                 <div className="text-xs text-slate-500 mt-0.5">
@@ -567,7 +567,7 @@ export default function PayrollPage() {
               <div className="flex justify-between"><span className="text-slate-500">レッスン計</span><span className="font-mono">{yen(runs.reduce((s, r) => s + r.total_lesson_amount, 0))}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">交通計</span><span className="font-mono">{yen(runs.reduce((s, r) => s + r.total_transit_amount, 0))}</span></div>
               <div className="flex justify-between"><span className="text-slate-500">調整計</span><span className="font-mono">{yen(runs.reduce((s, r) => s + r.total_adjustment_amount, 0))}</span></div>
-              <div className="flex justify-between border-t mt-1 pt-1 font-bold"><span>合計</span><span className="font-mono text-orange-700">{yen(grandTotal)}</span></div>
+              <div className="flex justify-between border-t mt-1 pt-1 font-bold"><span>合計</span><span className="font-mono text-brand-700">{yen(grandTotal)}</span></div>
             </div>
           </div>
         )}
@@ -589,7 +589,7 @@ export default function PayrollPage() {
               </TableHeader>
               <TableBody>
                 {runs.map(r => (
-                  <TableRow key={r.id} className="hover:bg-orange-50/50 cursor-pointer" onClick={() => openDetail(r.id)}>
+                  <TableRow key={r.id} className="hover:bg-brand-50/50 cursor-pointer" onClick={() => openDetail(r.id)}>
                     <TableCell className="font-semibold whitespace-nowrap">
                       {r.instructor_name}
                       {r.salary_type === 'monthly_fixed' && <Badge variant="secondary" className="ml-1 text-[9px]">固定給</Badge>}
@@ -597,7 +597,7 @@ export default function PayrollPage() {
                     <TableCell className="text-right font-mono whitespace-nowrap">{yen(r.total_lesson_amount)}</TableCell>
                     <TableCell className="text-right font-mono whitespace-nowrap">{yen(r.total_transit_amount)}</TableCell>
                     <TableCell className="text-right font-mono whitespace-nowrap">{r.total_adjustment_amount !== 0 ? yen(r.total_adjustment_amount) : '--'}</TableCell>
-                    <TableCell className="text-right font-mono font-bold text-orange-700 whitespace-nowrap">{yen(r.total_amount)}</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-brand-700 whitespace-nowrap">{yen(r.total_amount)}</TableCell>
                     <TableCell className="text-center">
                       {statusBadge(r.status, !!r.payslip_uploaded_at)}
                     </TableCell>
@@ -630,7 +630,7 @@ export default function PayrollPage() {
                   <TableCell className="text-right font-mono whitespace-nowrap">{yen(runs.reduce((s, r) => s + r.total_lesson_amount, 0))}</TableCell>
                   <TableCell className="text-right font-mono whitespace-nowrap">{yen(runs.reduce((s, r) => s + r.total_transit_amount, 0))}</TableCell>
                   <TableCell className="text-right font-mono whitespace-nowrap">{yen(runs.reduce((s, r) => s + r.total_adjustment_amount, 0))}</TableCell>
-                  <TableCell className="text-right font-mono text-orange-700 whitespace-nowrap">{yen(grandTotal)}</TableCell>
+                  <TableCell className="text-right font-mono text-brand-700 whitespace-nowrap">{yen(grandTotal)}</TableCell>
                   <TableCell colSpan={2}></TableCell>
                 </TableRow>
               </TableFooter>
@@ -670,9 +670,9 @@ export default function PayrollPage() {
                   <div className="text-[10px] text-slate-500">調整</div>
                   <div className="font-bold">{yen(detail.run.total_adjustment_amount)}</div>
                 </div>
-                <div className="bg-orange-50 rounded p-2">
-                  <div className="text-[10px] text-orange-600">合計</div>
-                  <div className="font-bold text-orange-700">{yen(detail.run.total_amount)}</div>
+                <div className="bg-brand-50 rounded p-2">
+                  <div className="text-[10px] text-brand-600">合計</div>
+                  <div className="font-bold text-brand-700">{yen(detail.run.total_amount)}</div>
                 </div>
               </div>
 
@@ -726,7 +726,7 @@ export default function PayrollPage() {
                     ))}
                   </div>
                 )}
-                <div className="bg-orange-50 border border-orange-200 rounded p-2 grid grid-cols-1 sm:grid-cols-4 gap-2">
+                <div className="bg-brand-50 border border-brand-200 rounded p-2 grid grid-cols-1 sm:grid-cols-4 gap-2">
                   <Select value={adjForm.type} onValueChange={v => setAdjForm({ ...adjForm, type: v })}>
                     <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
                     <SelectContent>

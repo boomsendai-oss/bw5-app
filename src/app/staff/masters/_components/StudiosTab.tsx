@@ -295,8 +295,8 @@ export default function StudiosTab({ studios, setStudios, reload, setMsg }: Prop
               </div>
 
               {/* HP公開情報 */}
-              <div className="border-t-2 border-orange-200 pt-4 mt-4">
-                <h3 className="font-bold text-sm mb-3 text-orange-700 flex items-center gap-2">
+              <div className="border-t-2 border-brand-200 pt-4 mt-4">
+                <h3 className="font-bold text-sm mb-3 text-brand-700 flex items-center gap-2">
                   <Globe className="size-4" />
                   HP公開情報
                   <span className="text-xs font-normal text-muted-foreground">

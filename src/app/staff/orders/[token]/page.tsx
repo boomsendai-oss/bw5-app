@@ -118,7 +118,7 @@ export default function StaffOrdersPage() {
         {/* Summary cards */}
         <div className="grid grid-cols-4 gap-2 mb-3">
           <div className="rounded-xl px-2 py-3 text-center" style={{ background: 'rgba(255,255,255,0.95)' }}>
-            <div className="text-xl font-black text-orange-600">{data?.summary.total_orders ?? '-'}</div>
+            <div className="text-xl font-black text-brand-600">{data?.summary.total_orders ?? '-'}</div>
             <div className="text-[10px] text-gray-600">予約合計</div>
           </div>
           <div className="rounded-xl px-2 py-3 text-center" style={{ background: 'rgba(255,255,255,0.95)' }}>
@@ -248,7 +248,7 @@ export default function StaffOrdersPage() {
                         background: isJackpot ? 'linear-gradient(90deg, #fffbeb 0%, #fef3c7 100%)' : undefined,
                       }}
                     >
-                      <span className={`text-lg font-black w-8 shrink-0 ${isJackpot ? 'text-pink-600' : 'text-orange-600'}`}>#{i + 1}</span>
+                      <span className={`text-lg font-black w-8 shrink-0 ${isJackpot ? 'text-pink-600' : 'text-brand-600'}`}>#{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-bold text-gray-900">

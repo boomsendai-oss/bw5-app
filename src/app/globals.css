@@ -55,6 +55,40 @@
 }
 
 @theme inline {
+  /*
+    BOOMブランドパレット (2026-07-10 スタッフ画面リブランド)
+    ロゴ準拠3色: ティール#00A090(操作色) / ネイビー#101040(見出し) / ベージュ#E0D0C0(淡い面)
+    スタッフ画面では旧 orange-* を brand-* に置換して使用する。
+    BW5イベントページ(写真/動画/一般向け)はオレンジのまま(イベント色として維持)。
+  */
+  --color-brand-50: #e6f6f4;
+  --color-brand-100: #c4ebe6;
+  --color-brand-200: #93dbd2;
+  --color-brand-300: #5cc7ba;
+  --color-brand-400: #2bb3a4;
+  --color-brand-500: #00A090;
+  --color-brand-600: #00877a;
+  --color-brand-700: #006c62;
+  --color-brand-800: #00524b;
+  --color-brand-900: #003833;
+  --color-navy-50: #ececf5;
+  --color-navy-100: #cfcfe6;
+  --color-navy-200: #a3a3cc;
+  --color-navy-300: #7676b0;
+  --color-navy-400: #4d4d8f;
+  --color-navy-500: #2e2e6e;
+  --color-navy-600: #1d1d55;
+  --color-navy-700: #101040;
+  --color-navy-800: #0b0b30;
+  --color-navy-900: #070720;
+  --color-sand-50: #faf6f1;
+  --color-sand-100: #f0e8de;
+  --color-sand-200: #e0d0c0;
+  --color-sand-300: #cdb8a3;
+  --color-sand-400: #b39a80;
+  --color-sand-700: #6f5a42;
+  --color-sand-800: #52422f;
+
   /* Legacy admin/public theme tokens (use as bg-boom-bg, text-boom-fg, etc.) */
   --color-boom-bg: var(--bg-primary);
   --color-boom-fg: var(--text-primary);
@@ -445,4 +479,26 @@ body {
   html {
     @apply font-sans;
   }
+}
+
+/*
+  スタッフ画面テーマ (2026-07-10 ブランドリブランド)
+  StaffLayoutClient のルート要素に .staff-theme を付与し、shadcn系トークンを
+  ここでだけブランド色(ティール/ネイビー)に上書きする。
+  お客さん向けページ(BW5イベント)は :root のオレンジのまま影響を受けない。
+*/
+.staff-theme {
+  --primary: #00A090;
+  --primary-foreground: #ffffff;
+  --ring: #00A090;
+  --chart-1: #00A090;
+  --chart-2: #2bb3a4;
+  --chart-3: #5cc7ba;
+  --chart-4: #93dbd2;
+  --chart-5: #e6f6f4;
+  --sidebar-primary: #00A090;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6f6f4;
+  --sidebar-accent-foreground: #003833;
+  --sidebar-ring: #00A090;
 }

@@ -154,7 +154,7 @@ function InputForm() {
   return (
     <main className="text-neutral-900">
       <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-orange-600">
+        <h1 className="text-xl font-bold text-brand-600">
           {isEdit ? '月次データ編集' : '月次データ追加'}
         </h1>
         <Button variant="ghost" size="sm" asChild>
@@ -211,7 +211,7 @@ function InputForm() {
                   variant="link"
                   size="sm"
                   onClick={recalcProfit}
-                  className="mt-2 text-xs text-orange-600 px-0"
+                  className="mt-2 text-xs text-brand-600 px-0"
                 >
                   <Calculator className="h-3 w-3 mr-1" />
                   利益 = 売上 - 支出 で再計算
@@ -234,7 +234,7 @@ function InputForm() {
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 bg-orange-500 hover:bg-orange-600"
+                  className="flex-1 bg-brand-500 hover:bg-brand-600"
                 >
                   {loading ? '保存中...' : isEdit ? '更新' : '追加'}
                 </Button>
