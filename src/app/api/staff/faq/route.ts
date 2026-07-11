@@ -14,6 +14,18 @@ function parseId(raw: unknown): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+// 文字数上限 (POST/PATCH共通): ボットのプロンプトに直接入るため事故的な巨大テキストを防ぐ
+const MAX_LEN = { category: 50, question: 200, answer: 2000 } as const;
+const TEXT_FIELDS = ['category', 'question', 'answer'] as const;
+type TextField = (typeof TEXT_FIELDS)[number];
+
+/** trim済みテキストの共通検証。OKなら null、NGなら400用エラーメッセージ。 */
+function validateText(field: TextField, value: string): string | null {
+  if (!value) return `${field} must not be empty`;
+  if (value.length > MAX_LEN[field]) return `${field} too long (max ${MAX_LEN[field]})`;
+  return null;
+}
+
 // GET /api/staff/faq → 管理用: 全件(下書き含む)。カテゴリ→表示順
 export async function GET(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
@@ -33,9 +45,16 @@ export async function POST(req: NextRequest) {
       !body.answer || !String(body.answer).trim()) {
     return NextResponse.json({ error: 'category, question, answer required' }, { status: 400 });
   }
-  const category = String(body.category).trim();
-  const question = String(body.question).trim();
-  const answer = String(body.answer).trim();
+  const texts: Record<TextField, string> = {
+    category: String(body.category).trim(),
+    question: String(body.question).trim(),
+    answer: String(body.answer).trim(),
+  };
+  for (const f of TEXT_FIELDS) {
+    const err = validateText(f, texts[f]);
+    if (err) return NextResponse.json({ error: err }, { status: 400 });
+  }
+  const { category, question, answer } = texts;
   const isPublic = body.is_public ? 1 : 0;
   const sortOrderNum = Number(body.sort_order ?? 0);
   const sortOrder = Number.isFinite(sortOrderNum) ? sortOrderNum : 0;
@@ -67,18 +86,16 @@ export async function PATCH(req: NextRequest) {
   const sets: string[] = [];
   const vals: unknown[] = [];
 
-  if (body.category !== undefined && String(body.category).trim()) {
-    sets.push('category = ?');
-    vals.push(String(body.category).trim());
+  // 文字列フィールド: キー未指定はスキップ可だが、指定されてtrim後空なら黙殺せず400を返す
+  for (const f of TEXT_FIELDS) {
+    if (body[f] === undefined) continue;
+    const v = String(body[f] ?? '').trim();
+    const err = validateText(f, v);
+    if (err) return NextResponse.json({ error: err }, { status: 400 });
+    sets.push(`${f} = ?`);
+    vals.push(v);
   }
-  if (body.question !== undefined && String(body.question).trim()) {
-    sets.push('question = ?');
-    vals.push(String(body.question).trim());
-  }
-  if (body.answer !== undefined && String(body.answer).trim()) {
-    sets.push('answer = ?');
-    vals.push(String(body.answer).trim());
-  }
+  // 公開反映は /api/public/knowledge のTTLキャッシュ(600s)+CDN(600s)で最大20分遅延(スタッフ画面の説明文と整合)
   if (body.is_public !== undefined) {
     sets.push('is_public = ?');
     vals.push(body.is_public ? 1 : 0);
