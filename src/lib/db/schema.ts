@@ -785,5 +785,22 @@ export function getSchemaStatements(): InStatement[] {
     { sql: `CREATE INDEX IF NOT EXISTS idx_staff_notif_ack ON staff_notifications(acknowledged_at)`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_staff_notif_type ON staff_notifications(type)`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_staff_notif_created ON staff_notifications(created_at)`, args: [] },
+
+    {
+      // === WS O: FAQ AIチャットボット「BOOMくんに質問」の正本テーブル ===
+      // HP FAQ・料金・入会情報の一元管理。is_public=1 のみ公開抽出(/api/public/knowledge)へ流れる
+      sql: `CREATE TABLE IF NOT EXISTS faq_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      question TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      is_public INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )`,
+      args: [],
+    },
+    { sql: `CREATE INDEX IF NOT EXISTS idx_faq_entries_public ON faq_entries(is_public, category, sort_order)`, args: [] },
   ];
 }
