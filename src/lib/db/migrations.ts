@@ -26,6 +26,9 @@ export async function runMigrations(c: Client): Promise<void> {
   await addColumnIfMissing(c, 'studios', 'bank_account_type', 'TEXT');
   await addColumnIfMissing(c, 'studios', 'bank_account_number', 'TEXT');
   await addColumnIfMissing(c, 'studios', 'bank_account_holder', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'is_public', 'INTEGER DEFAULT 0');
+  await addColumnIfMissing(c, 'studios', 'access_text', 'TEXT');
+  await addColumnIfMissing(c, 'studios', 'map_embed_url', 'TEXT');
   // 月の確定(凍結)時に master から自動実体化した instance かどうか (1=自動)。
   await addColumnIfMissing(c, 'lesson_instances', 'auto_materialized', 'INTEGER DEFAULT 0');
   // HACOMONO スケジュールマッピング: program行に持たせる実物準拠の既定属性

@@ -802,5 +802,31 @@ export function getSchemaStatements(): InStatement[] {
       args: [],
     },
     { sql: `CREATE INDEX IF NOT EXISTS idx_faq_entries_public ON faq_entries(is_public, category, sort_order)`, args: [] },
+
+    {
+      // === WS O: スタジオ (/api/public/knowledge が studios を読むためローカルにも定義) ===
+      // 本番では scripts/migrations/20260518_master_data_schedule.sql 由来のテーブルに
+      // is_public/access_text/map_embed_url 列が既に存在する(boom-hpが本番でWHERE active=1 AND
+      // is_public=1として使用中)が、その3列はリポジトリのマイグレーション台帳には未反映。
+      // 本番は列既存のため台帳SQLは追加せず、ローカルinitDb()経路のみで揃える。
+      sql: `CREATE TABLE IF NOT EXISTS studios (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      address TEXT,
+      google_map_url TEXT,
+      pricing_model TEXT NOT NULL DEFAULT 'hourly',
+      hourly_rate INTEGER DEFAULT 0,
+      block_pricing TEXT,
+      daily_buffer_minutes INTEGER DEFAULT 0,
+      notes TEXT,
+      active INTEGER DEFAULT 1,
+      is_public INTEGER DEFAULT 0,
+      access_text TEXT,
+      map_embed_url TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+      args: [],
+    },
   ];
 }
