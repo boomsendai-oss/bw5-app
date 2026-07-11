@@ -264,6 +264,26 @@ describe('classify: SBI', () => {
     expect(r).toMatchObject({ action: 'drop' });
   });
 
+  it('SBIのAPPLE COM BILL → drop (#2はGMO歴史行対応・私用Appleサブスクを経費化しない)', () => {
+    const r = classify({ date: '2026-04-17', description: 'APPLE COM BILL', withdraw: 1500, deposit: 0 }, MASTERS, 'sbi-debit');
+    expect(r).toMatchObject({ action: 'drop' });
+  });
+
+  it('SBIのANTHROPIC* CLAUDE SUB → drop (BOOMのClaude MaxはGMO側・SBI側は私用アカウント)', () => {
+    const r = classify({ date: '2026-06-22', description: 'ANTHROPIC* CLAUDE SUB', withdraw: 3560, deposit: 0 }, MASTERS, 'sbi-debit');
+    expect(r).toMatchObject({ action: 'drop' });
+  });
+
+  it('SBIのﾌﾘｰ → drop (BOOMのfreeeはGMO側・SBI側の同月行は別アカウント)', () => {
+    const r = classify({ date: '2026-06-09', description: 'ﾌﾘｰ', withdraw: 1958, deposit: 0 }, MASTERS, 'sbi-debit');
+    expect(r).toMatchObject({ action: 'drop' });
+  });
+
+  it('GMOのAPPLE COM BILL → expense #2 (GMO側は従来どおり到達)', () => {
+    const r = classify(gmoRow('Visaデビット利用 APPLE COM BILL 承認番号：500011 TID：400000000000011', 21400), MASTERS, 'gmo');
+    expect(r).toMatchObject({ action: 'expense', category: 'システム費', masterId: 2 });
+  });
+
   it('SBI入出金の skip:true 行 (デビット/楽天カードサービス) → drop', () => {
     const r = classify({ date: '2026-06-30', description: 'デビット　９４０２１３', withdraw: 4434, deposit: 0, skip: true }, MASTERS, 'sbi-bank');
     expect(r).toMatchObject({ action: 'drop' });
@@ -315,6 +335,11 @@ describe('classify: 楽天カード', () => {
 
   it('楽天のAMAZON.CO.JP → queue (#19 amazonはGMOのみ到達・自動登録しない)', () => {
     const r = classify(rakutenRow('AMAZON.CO.JP', 3980), MASTERS, 'rakuten');
+    expect(r).toEqual({ action: 'queue' });
+  });
+
+  it('楽天のAPPLE COM BILL → queue (GMOのみ到達・TARO判断に回す)', () => {
+    const r = classify(rakutenRow('APPLE COM BILL', 990), MASTERS, 'rakuten');
     expect(r).toEqual({ action: 'queue' });
   });
 });

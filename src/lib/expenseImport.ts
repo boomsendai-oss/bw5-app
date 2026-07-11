@@ -325,15 +325,28 @@ export const DEPOSIT_LABEL = '経費外(入金)';
 export const TRANSFER_LABEL = '経費外(振込=給与/その他・payroll側)';
 
 /**
+ * GMO(事業口座)のみ到達させるパターン。私用口座(SBI)・楽天カードの同名行は
+ * 私費の可能性があるため自動登録しない(SBIはdrop・楽天はqueueでTARO判断)。
+ * 原則: 固定費マスタv1でSBI側と明記されているのは#13リベシティのみ。
+ * BOOM側の支払いが同月GMOに存在するサブスクがSBI(私用口座)にも現れる場合、
+ * それは別アカウント(私用)の可能性が高い＝「私費はアプリDBに入れない」を優先する。
+ * - amazon: シード#19の備考「GMOのみ到達(SBIは許可リスト外)」どおり
+ * - apple com bill: シード#2はGMOの3〜5月Claude(Apple請求)の歴史行対応。
+ *   SBIデビットに私用Appleサブスク行(実データで¥590〜1,594)があり、誤経費化を防ぐ
+ * - anthropic* claude sub / anthropic: BOOMのClaude Max・APIチャージはGMO側(¥36,365/¥908〜)。
+ *   SBI側の¥3,560(Pro相当)は私用アカウント。#1を除外しても#3(anthropic)が拾うため両方除外
+ * - フリー: BOOMのfreeeはGMO側(¥1,958/6月7日)。SBI側の同月同額行(6月9日)は別アカウント(私用)
+ */
+const GMO_ONLY_PATTERNS: ReadonlySet<string> = new Set(['amazon', 'apple com bill', 'anthropic* claude sub', 'anthropic', 'フリー']);
+
+/**
  * recurringマスタ照合: 正規化文字列への includes 部分一致・配列順(=id昇順)で最初勝ち。
- * ⚠️ `amazon` パターン(#19 備品/Amazon(事業口座))はGMOのみ到達
- *    (SBI・楽天のAmazonは私費の可能性があるため自動登録しない。シード#19の備考どおり)。
  */
 function matchMaster(all: string, masters: Master[], source: ImportSource): Master | null {
   for (const m of masters) {
     const pat = normalizeDesc(m.match_pattern ?? '');
     if (!pat) continue;
-    if (source !== 'gmo' && pat === 'amazon') continue;
+    if (source !== 'gmo' && GMO_ONLY_PATTERNS.has(pat)) continue;
     if (all.includes(pat)) return m;
   }
   return null;
