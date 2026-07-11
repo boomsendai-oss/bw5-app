@@ -828,5 +828,76 @@ export function getSchemaStatements(): InStatement[] {
     )`,
       args: [],
     },
+
+    {
+      // === WS O: インストラクター (/api/public/knowledge が instructors を読むためローカルにも定義) ===
+      // 本番では scripts/migrations/20260518_master_data_schedule.sql 由来のテーブルに
+      // slug/genre/crews/career_text/video_url/public_display_order 列が既に存在する
+      // (boom-hpが本番でSELECT対象として使用中・WHERE active=1 AND slug IS NOT NULL AND slug!=''で絞込)が、
+      // その6列はリポジトリのマイグレーション台帳には未反映。
+      // 本番は列既存のため台帳SQLは追加せず、ローカルinitDb()経路のみで揃える(studiosと同じ思想)。
+      // ※ id/name/name_kana〜notes/active/created_at/updated_at は台帳(20260518_master_data_schedule.sql)と同一。
+      sql: `CREATE TABLE IF NOT EXISTS instructors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      name_kana TEXT,
+      contact_email TEXT,
+      contact_phone TEXT,
+      instagram_handle TEXT,
+      profile_text TEXT,
+      profile_photo_url TEXT,
+      shared_folder_url TEXT,
+      bank_name TEXT,
+      bank_branch TEXT,
+      bank_account_type TEXT,
+      bank_account_number TEXT,
+      bank_account_holder TEXT,
+      notes TEXT,
+      active INTEGER DEFAULT 1,
+      slug TEXT,
+      genre TEXT,
+      crews TEXT,
+      career_text TEXT,
+      video_url TEXT,
+      public_display_order INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+      args: [],
+    },
+
+    {
+      // === WS O: レッスンマスター (/api/public/knowledge が lesson_master を読むためローカルにも定義) ===
+      // 本番では scripts/migrations/20260518_master_data_schedule.sql 由来のテーブルに
+      // slug/description_text/is_public/video_url 列が既に存在する
+      // (boom-hpが本番でWHERE active=1 AND is_public=1として使用中)が、その4列はリポジトリのマイグレーション台帳には未反映。
+      // 本番は列既存のため台帳SQLは追加せず、ローカルinitDb()経路のみで揃える(studiosと同じ思想)。
+      // ※ id〜notes/created_at/updated_at は台帳(20260518_master_data_schedule.sql)と同一
+      //   (start_date/end_dateは20260603_lesson_master_date_range.sqlで追加済みだが本機能では未使用のためここでは省略)。
+      sql: `CREATE TABLE IF NOT EXISTS lesson_master (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      class_name TEXT NOT NULL,
+      target TEXT,
+      level TEXT,
+      default_studio_id INTEGER,
+      default_instructor_id INTEGER,
+      default_day_of_week INTEGER,
+      default_start_time TEXT,
+      default_end_time TEXT,
+      duration_minutes INTEGER,
+      frequency_type TEXT,
+      rrule TEXT,
+      override_rate INTEGER,
+      active INTEGER DEFAULT 1,
+      notes TEXT,
+      slug TEXT,
+      description_text TEXT,
+      is_public INTEGER DEFAULT 0,
+      video_url TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+      args: [],
+    },
   ];
 }
