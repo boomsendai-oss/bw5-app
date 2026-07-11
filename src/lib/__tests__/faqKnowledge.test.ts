@@ -9,15 +9,20 @@ const productRows = [
 ];
 const studioRows = [
   { name: '仙台本店', address: '仙台市青葉区…', google_map_url: 'https://maps.google.com/x', active: 1,
+    is_public: 1, access_text: '仙台駅から徒歩5分',
     hourly_rate: 3000, pricing_model: 'hourly', block_pricing: null, notes: '内部メモ' },
 ];
+
+const publicStudio = {
+  name: '仙台本店', address: '仙台市青葉区…', access: '仙台駅から徒歩5分', map_url: 'https://maps.google.com/x',
+};
 
 describe('buildKnowledge', () => {
   it('公開フィールドだけを含むJSONを組み立てる', () => {
     const k = buildKnowledge({ faqRows, productRows, studioRows });
     expect(k.faqs).toEqual([{ category: '体験', question: '体験したい', answer: 'LINEでご連絡ください' }]);
     expect(k.prices).toEqual([{ type: 'plan', category: '月謝', name: 'マンスリー4', price: 8800 }]);
-    expect(k.studios).toEqual([{ name: '仙台本店', address: '仙台市青葉区…', map_url: 'https://maps.google.com/x' }]);
+    expect(k.studios).toEqual([publicStudio]);
   });
 
   it('内部情報フィールドがJSON文字列のどこにも漏れない', () => {
@@ -52,10 +57,20 @@ describe('buildKnowledge', () => {
   it('active=0のスタジオは除外される', () => {
     const rows = [
       ...studioRows,
-      { name: '閉店した店舗', address: '旧住所', google_map_url: null, active: 0,
+      { name: '閉店した店舗', address: '旧住所', google_map_url: null, active: 0, is_public: 1, access_text: null,
         hourly_rate: 2000, pricing_model: 'hourly', block_pricing: null, notes: null },
     ];
     const k = buildKnowledge({ faqRows: [], productRows: [], studioRows: rows });
-    expect(k.studios).toEqual([{ name: '仙台本店', address: '仙台市青葉区…', map_url: 'https://maps.google.com/x' }]);
+    expect(k.studios).toEqual([publicStudio]);
+  });
+
+  it('active=1でもis_public=0のスタジオは除外される(HPと同じ公開条件)', () => {
+    const rows = [
+      ...studioRows,
+      { name: '非公開スタジオ', address: '非公開住所', google_map_url: null, active: 1, is_public: 0, access_text: null,
+        hourly_rate: 2500, pricing_model: 'hourly', block_pricing: null, notes: null },
+    ];
+    const k = buildKnowledge({ faqRows: [], productRows: [], studioRows: rows });
+    expect(k.studios).toEqual([publicStudio]);
   });
 });
