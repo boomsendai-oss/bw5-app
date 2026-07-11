@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getAll } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { isIsoDate } from '@/lib/dateJst';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 // 「給与」「スタジオ料」は payroll_runs / studio_billing_runs で別管理のため
 // 経費カテゴリから除外(T-166: expensesに入れると利益集計で二重計上になる)
-const CATEGORIES = ['広告費', 'システム費', '通信費', '備品', 'その他'];
+// 「会場費」= studio_billing対象外のスポット会場費(エル・パーク系/インスタベース/宮城野など)
+const CATEGORIES = ['広告費', 'システム費', '通信費', '会場費', '備品', 'その他'];
 
 // GET /api/staff/expenses?year_month=YYYY-MM
 export async function GET(req: NextRequest) {
@@ -45,6 +47,14 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   if (!body.expense_date || !body.category || typeof body.amount !== 'number') {
     return NextResponse.json({ error: 'expense_date, category, amount required' }, { status: 400 });
+  }
+  // 金額は正の整数のみ (負数・小数・NaNを弾く)
+  if (!Number.isInteger(body.amount) || body.amount <= 0) {
+    return NextResponse.json({ error: 'amount must be a positive integer' }, { status: 400 });
+  }
+  // 実在日チェック込みの厳格 YYYY-MM-DD 検証
+  if (!isIsoDate(body.expense_date)) {
+    return NextResponse.json({ error: 'expense_date must be a valid YYYY-MM-DD' }, { status: 400 });
   }
   if (!CATEGORIES.includes(body.category)) {
     return NextResponse.json({ error: `category must be one of ${CATEGORIES.join(', ')}` }, { status: 400 });
