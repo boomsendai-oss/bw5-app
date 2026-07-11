@@ -5,6 +5,10 @@ import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+// 給与・スタジオ料は payroll_runs / studio_billing_runs で別管理(T-166)。
+// confirm-bank と同値のブロックリスト。歴史的にマスタへ入っていても一括計上しない。
+const BLOCKED_CATEGORIES = ['給与', '人件費', 'スタジオ料', 'スタジオ使用料', 'スタジオ代'];
+
 // POST /api/staff/expenses/apply-recurring
 // body: { year_month: 'YYYY-MM', dry_run?: boolean }
 //
@@ -24,6 +28,11 @@ export async function POST(req: NextRequest) {
   const items: Array<{ category: string; subcategory: string | null; amount: number; skipped: boolean; reason?: string }> = [];
 
   for (const r of recurring) {
+    // 二重計上ブロック (INSERT前にチェックしskip扱い)
+    if (BLOCKED_CATEGORIES.includes(r.category)) {
+      items.push({ category: r.category, subcategory: r.subcategory, amount: r.amount, skipped: true, reason: 'blocked_category' });
+      continue;
+    }
     // 重複チェック
     const dup = await getAll(
       `SELECT id FROM expenses WHERE expense_date = ? AND category = ? AND COALESCE(subcategory, '') = COALESCE(?, '') AND source = 'recurring'`,

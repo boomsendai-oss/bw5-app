@@ -5,7 +5,8 @@ import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const CATEGORIES = ['広告費', 'システム費', '通信費', '備品', '給与', 'スタジオ料', 'その他'];
+// 「会場費」= studio_billing対象外のスポット会場費(エル・パーク系/インスタベース/宮城野など)
+const CATEGORIES = ['広告費', 'システム費', '通信費', '会場費', '備品', '給与', 'スタジオ料', 'その他'];
 
 export async function GET(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
