@@ -20,6 +20,7 @@ import {
   Search,
   Star,
   UserX,
+  HelpCircle,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -75,6 +76,7 @@ const mainNavItems: NavItem[] = [
 
 const opsNavItems: NavItem[] = [
   { title: 'ブログ', href: '/staff/blog', icon: FileText },
+  { title: 'FAQ管理', href: '/staff/faq', icon: HelpCircle },
   { title: 'オペレーション', href: '/staff/operations', icon: Settings2 },
   { title: 'ノーショー候補', href: '/staff/operations/noshow', icon: UserX },
   { title: 'LINE連携', href: '/staff/operations/lstep-update', icon: MessageCircle },
