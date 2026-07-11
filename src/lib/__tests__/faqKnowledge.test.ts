@@ -73,4 +73,12 @@ describe('buildKnowledge', () => {
     const k = buildKnowledge({ faqRows: [], productRows: [], studioRows: rows });
     expect(k.studios).toEqual([publicStudio]);
   });
+
+  it('公開スタジオのaddress/access_text/google_map_urlがnullならそれぞれnullを出力する', () => {
+    const rows = [
+      { name: '新規スタジオ', address: null, access_text: null, google_map_url: null, active: 1, is_public: 1 },
+    ];
+    const k = buildKnowledge({ faqRows: [], productRows: [], studioRows: rows });
+    expect(k.studios).toEqual([{ name: '新規スタジオ', address: null, access: null, map_url: null }]);
+  });
 });
