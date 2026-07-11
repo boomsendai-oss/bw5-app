@@ -10,7 +10,8 @@ const productRows = [
 const studioRows = [
   { name: '仙台本店', address: '仙台市青葉区…', google_map_url: 'https://maps.google.com/x', active: 1,
     is_public: 1, access_text: '仙台駅から徒歩5分',
-    hourly_rate: 3000, pricing_model: 'hourly', block_pricing: null, notes: '内部メモ' },
+    hourly_rate: 3000, pricing_model: 'hourly', block_pricing: null, notes: '内部メモ',
+    bank_account_number: '1234567' }, // bank_*は実DBのstudiosに実在する内部列(漏洩保険テスト用)
 ];
 
 const publicStudio = {
@@ -30,6 +31,8 @@ describe('buildKnowledge', () => {
     expect(s).not.toContain('hourly_rate');
     expect(s).not.toContain('3000');
     expect(s).not.toContain('内部メモ');
+    expect(s).not.toContain('1234567');
+    expect(s).not.toContain('bank');
   });
 
   it('generated_atを持つ', () => {

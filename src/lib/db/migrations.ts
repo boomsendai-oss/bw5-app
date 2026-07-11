@@ -26,6 +26,9 @@ export async function runMigrations(c: Client): Promise<void> {
   await addColumnIfMissing(c, 'studios', 'bank_account_type', 'TEXT');
   await addColumnIfMissing(c, 'studios', 'bank_account_number', 'TEXT');
   await addColumnIfMissing(c, 'studios', 'bank_account_holder', 'TEXT');
+  // 【既知の乖離】studiosのis_public/access_text/map_embed_urlは本番DBに手動追加済みだが
+  // マイグレーション台帳(scripts/migrations/)には存在しない(素のALTERを足すと本番で列重複エラーになるため)。
+  // 台帳のみから新規DBを作る場合はこのinitDb経路(冪等)を必ず一度通すこと。
   await addColumnIfMissing(c, 'studios', 'is_public', 'INTEGER DEFAULT 0');
   await addColumnIfMissing(c, 'studios', 'access_text', 'TEXT');
   await addColumnIfMissing(c, 'studios', 'map_embed_url', 'TEXT');
