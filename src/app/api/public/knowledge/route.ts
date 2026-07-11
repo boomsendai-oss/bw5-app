@@ -19,7 +19,9 @@ export async function GET() {
   try {
     const [faqs, products, studios] = await Promise.all([
       getAll('SELECT category, question, answer, is_public FROM faq_entries WHERE is_public = 1 ORDER BY category, sort_order'),
-      getAll("SELECT product_type, name, price, category, active FROM hacomono_products WHERE active = 1"),
+      getAll(
+        "SELECT product_type, name, price, category, active FROM hacomono_products WHERE active = 1 AND (category IS NULL OR category NOT IN ('admin','instructor','pause'))"
+      ),
       getAll('SELECT name, address, access_text, google_map_url, active, is_public FROM studios WHERE active = 1 AND is_public = 1'),
     ]);
     const knowledge = buildKnowledge({

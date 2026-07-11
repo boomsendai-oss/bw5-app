@@ -84,4 +84,40 @@ describe('buildKnowledge', () => {
     const k = buildKnowledge({ faqRows: [], productRows: [], studioRows: rows });
     expect(k.studios).toEqual([{ name: '新規スタジオ', address: null, access: null, map_url: null }]);
   });
+
+  it('category=adminの内部運用SKUはpricesから除外される', () => {
+    const rows = [
+      ...productRows,
+      { product_type: 'plan', name: '🔑管理者プラン🔑', price: 0, category: 'admin', active: 1, notes: null },
+    ];
+    const k = buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] });
+    expect(k.prices).toEqual([{ type: 'plan', category: '月謝', name: 'マンスリー4', price: 8800 }]);
+  });
+
+  it('内部運用SKU(admin/instructor/pause)の名称がJSON文字列のどこにも漏れない', () => {
+    const rows = [
+      ...productRows,
+      { product_type: 'plan', name: '🔑管理者プラン🔑', price: 0, category: 'admin', active: 1, notes: null },
+      { product_type: 'plan', name: '👨‍🏫BOOMインストラクター', price: 0, category: 'instructor', active: 1, notes: null },
+      { product_type: 'plan', name: '💤休会', price: 0, category: 'pause', active: 1, notes: null },
+    ];
+    const s = JSON.stringify(buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] }));
+    expect(s).not.toContain('管理者');
+    expect(s).not.toContain('インストラクター');
+    expect(s).not.toContain('休会');
+  });
+
+  it('trial/event/ticket_memberの内部運用でないカテゴリはpricesに残る', () => {
+    const rows = [
+      { product_type: 'plan', name: '体験レッスン', price: 0, category: 'trial', active: 1, notes: null },
+      { product_type: 'plan', name: '発表会イベント', price: 0, category: 'event', active: 1, notes: null },
+      { product_type: 'plan', name: 'チケット会員', price: 0, category: 'ticket_member', active: 1, notes: null },
+    ];
+    const k = buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] });
+    expect(k.prices).toEqual([
+      { type: 'plan', category: 'trial', name: '体験レッスン', price: 0 },
+      { type: 'plan', category: 'event', name: '発表会イベント', price: 0 },
+      { type: 'plan', category: 'ticket_member', name: 'チケット会員', price: 0 },
+    ]);
+  });
 });

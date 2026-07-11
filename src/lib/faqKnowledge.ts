@@ -16,6 +16,11 @@ export type StudioRow = { name: string; address: string | null; access_text: str
 
 type Rows = { faqRows: FaqRow[]; productRows: ProductRow[]; studioRows: StudioRow[] };
 
+// hacomono_products.category の内部運用カテゴリ(管理者プラン/インストラクター用/休会)はお客さん向けボットに不要・不適切なため除外。
+// SELECT側(src/app/api/public/knowledge/route.ts)のWHERE句と二重防御(studiosのactive+is_public二重フィルタと同じ思想)。
+// trial(体験)/event(イベント)/ticket_member(チケット会員)はお客さん向けに意味のある情報のため残す。
+const INTERNAL_PRODUCT_CATEGORIES = new Set(['admin', 'instructor', 'pause']);
+
 export function buildKnowledge({ faqRows, productRows, studioRows }: Rows): PublicKnowledge {
   return {
     generated_at: new Date().toISOString(),
@@ -24,7 +29,7 @@ export function buildKnowledge({ faqRows, productRows, studioRows }: Rows): Publ
       .filter((r) => Number(r.is_public) === 1)
       .map((r) => ({ category: String(r.category), question: String(r.question), answer: String(r.answer) })),
     prices: productRows
-      .filter((r) => Number(r.active) === 1)
+      .filter((r) => Number(r.active) === 1 && !INTERNAL_PRODUCT_CATEGORIES.has(String(r.category ?? '')))
       .map((r) => ({
         type: String(r.product_type),
         category: r.category == null ? null : String(r.category),
