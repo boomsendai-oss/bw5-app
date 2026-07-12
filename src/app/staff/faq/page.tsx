@@ -20,7 +20,7 @@ import StaffPageHeader from '@/components/StaffPageHeader';
 // WS O: FAQ AIチャットボット「BOOMくんに質問」の正本データをスタッフが管理するCRUD画面。
 // カテゴリは /api/staff/faq (= faq_entries テーブル) と揃える。公開ONの行だけが
 // /api/public/knowledge 経由でBOOMくんチャット・HPに出る (buildKnowledge 参照)。
-const CATEGORIES = ['体験', '入会', '料金・支払い', 'レッスン', 'その他'];
+const CATEGORIES = ['体験', '入会', '料金・支払い', 'BOOMポータル', 'レッスン', 'その他'];
 
 type Entry = {
   id: number;
@@ -190,7 +190,15 @@ export default function FaqAdminPage() {
     <div>
       <StaffPageHeader
         title="FAQ管理"
-        description="BOOMくんチャットとHPに公開するよくある質問。公開ONの項目だけが外に出ます（反映まで最大20分ほど）"
+        description="AIチャット(BOOMに質問)とHPに公開するよくある質問。公開ONの項目だけが外に出ます（反映まで最大20分ほど）"
+        rightExtra={
+          <a
+            href="/staff/faq/stats"
+            className="rounded-lg border border-sand-200 bg-white px-3 py-1.5 text-sm text-navy-800 hover:bg-sand-50"
+          >
+            📊 質問ログ集計
+          </a>
+        }
       />
 
       <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
