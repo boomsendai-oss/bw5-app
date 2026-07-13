@@ -21,6 +21,7 @@ import {
   Star,
   UserX,
   HelpCircle,
+  Megaphone,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -83,6 +84,7 @@ const opsNavItems: NavItem[] = [
   { title: '映像予約', href: '/staff/video-preorders', icon: Video },
   { title: '休講申請', href: '/staff/cancel-requests', icon: XCircle },
   { title: 'クチコミ返信', href: '/staff/gbp-reviews', icon: Star },
+  { title: 'クチコミ声がけ', href: '/staff/review-outreach', icon: Megaphone },
   { title: 'イベント', href: '/staff/events', icon: PartyPopper },
 ];
 

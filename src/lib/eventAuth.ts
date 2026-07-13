@@ -59,6 +59,16 @@ export async function isAuthorized(req: NextRequest): Promise<boolean> {
 
 export { verifyPassword };
 
+// Server Component / Server Action 用 (NextRequest が無い文脈)。
+// 既存のセッションcookie検証をそのまま流用する。
+export async function isAuthorizedServer(): Promise<boolean> {
+  const { cookies } = await import('next/headers');
+  const store = await cookies();
+  const token = store.get(EVENTS_AUTH_COOKIE)?.value;
+  if (!token) return false;
+  return verifySessionToken(token);
+}
+
 export function unauthorized(): NextResponse {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 }
