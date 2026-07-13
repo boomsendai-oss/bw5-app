@@ -15,6 +15,7 @@ type MemberRow = {
   id: number;
   full_name: string;
   member_type: string;
+  full_name_kana: string | null;
   fam_name: string;
   has_line: number;
 };
@@ -36,7 +37,7 @@ export default async function ReviewOutreachPage() {
 
   // 在籍会員(月謝/学割/チケット/休会)を取得。family = rep_name(保護者)単位、無ければ本人。
   const rows = (await getAll(
-    `SELECT bm.id, bm.full_name, bm.member_type,
+    `SELECT bm.id, bm.full_name, bm.member_type, bm.full_name_kana,
             COALESCE(NULLIF(TRIM(bm.rep_name), ''), bm.full_name) AS fam_name,
             EXISTS(SELECT 1 FROM member_lstep_links l WHERE l.member_id = bm.id) AS has_line
      FROM boom_members bm
@@ -52,6 +53,7 @@ export default async function ReviewOutreachPage() {
   const keyByFam = new Map(allIds.map((r) => [r.fam_name, r.min_id]));
 
   const famMap = new Map<string, Family>();
+  const kanaByFam = new Map<string, string>();
   for (const m of rows) {
     let fam = famMap.get(m.fam_name);
     if (!fam) {
@@ -68,6 +70,12 @@ export default async function ReviewOutreachPage() {
     // 保護者名=本人名(大人会員)のときは会員名の重複表示を避ける
     fam.members.push({ name: m.full_name, type: m.member_type });
     if (m.has_line) fam.hasLine = true;
+    // 家族の読み仮名 = メンバーのフリガナの最小値(姓は保護者と共通が前提)
+    const kana = (m.full_name_kana ?? '').trim();
+    if (kana) {
+      const cur = kanaByFam.get(m.fam_name);
+      if (!cur || kana.localeCompare(cur, 'ja') < 0) kanaByFam.set(m.fam_name, kana);
+    }
   }
 
   // 進捗を結合
@@ -83,16 +91,12 @@ export default async function ReviewOutreachPage() {
     }
   }
 
-  // 並び: 月謝(regular/college)家族 → チケット → 休会。同区分は名前順。
-  const typeRank = (f: Family) => {
-    const types = new Set(f.members.map((m) => m.type));
-    if (types.has('regular') || types.has('college')) return 0;
-    if (types.has('ticket')) return 1;
-    return 2;
-  };
-  const families = [...famMap.values()].sort(
-    (a, b) => typeRank(a) - typeRank(b) || a.name.localeCompare(b.name, 'ja')
-  );
+  // 並び: あ〜ん順(家族の読み仮名 = メンバーのフリガナ・2026-07-13 TARO指定)
+  const families = [...famMap.values()].sort((a, b) => {
+    const ka = kanaByFam.get(a.name) ?? a.name;
+    const kb = kanaByFam.get(b.name) ?? b.name;
+    return ka.localeCompare(kb, 'ja');
+  });
 
   const reviewTotal = Number(
     (await getOne('SELECT COUNT(*) AS n FROM gbp_reviews'))?.n ?? 0

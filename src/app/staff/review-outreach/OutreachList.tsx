@@ -46,7 +46,10 @@ export default function OutreachList({
 
   const askedTodayCount = useMemo(() => {
     const today = new Date().toDateString();
-    return families.filter((f) => f.asked && new Date(f.asked).toDateString() === today).length;
+    // 投稿済みは除外: 既存投稿者のバックフィル(声がけした→投稿あり)が1日5件ペースを汚さないように
+    return families.filter(
+      (f) => f.asked && !f.posted && new Date(f.asked).toDateString() === today
+    ).length;
   }, [families]);
 
   const run = (key: number, fn: () => Promise<{ ok: boolean; error?: string }>) => {
@@ -155,13 +158,24 @@ export default function OutreachList({
               </div>
               <div className="flex gap-1.5 shrink-0">
                 {tab === 'todo' && (
-                  <Button
-                    size="sm"
-                    disabled={rowPending}
-                    onClick={() => run(f.key, () => setAsked(f.key, true))}
-                  >
-                    <Check className="size-3.5" /> 声がけした
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      disabled={rowPending}
+                      onClick={() => run(f.key, () => setAsked(f.key, true))}
+                    >
+                      <Check className="size-3.5" /> 声がけした
+                    </Button>
+                    {/* 既に投稿済みの人のバックフィル用。声がけカウント(1日5件)には乗らない */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={rowPending}
+                      onClick={() => run(f.key, () => setPosted(f.key, true))}
+                    >
+                      <Star className="size-3.5" /> 投稿あり
+                    </Button>
+                  </>
                 )}
                 {tab === 'asked' && (
                   <>
