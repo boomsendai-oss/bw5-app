@@ -1,0 +1,24 @@
+# インスタストーリーズ 日次自動投稿cron
+# JST 12:00 = UTC 3:00
+name: instagram-story-cron
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/post-story
+        run: |
+          set -e
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/post-story)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1
