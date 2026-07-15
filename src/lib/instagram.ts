@@ -1,38 +1,43 @@
 // src/lib/instagram.ts — Node.js runtime 専用。
 //
-// インスタストーリーズ(動画)の自動投稿。Meta Graph API を使う。
-// 認証は Facebook Login for Business (OAuth) → 長期ユーザートークンを
-// settings('instagram_long_lived_token') に保存、Instagram Business Account ID を
-// settings('instagram_ig_user_id') に保存。googleCalendar.ts と同じ settings キー方式。
+// インスタストーリーズ(動画)の自動投稿。
+// **Instagram API with Instagram Login** 方式を使う(Facebookページ不要・直接Instagramに繋ぐ)。
+//   - OAuth認可: https://www.instagram.com/oauth/authorize (Instagram App ID)
+//   - 短期トークン交換: POST https://api.instagram.com/oauth/access_token
+//   - 長期トークン(60日): GET https://graph.instagram.com/access_token?grant_type=ig_exchange_token
+//   - 更新: GET https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token
+//   - 投稿: graph.instagram.com/{ig-user-id}/media (media_type=STORIES) → media_publish
 //
-// 前提 (TARO側の一度きりの手動セットアップが必要):
-//   1. Meta for Developers でアプリ作成 (種類=Business)
-//   2. アプリに「Instagram」プロダクトを追加
-//   3. BOOMのFacebookページ ⇄ InstagramビジネスアカウントをMeta Business Suiteで連携済みにする
-//   4. env に META_APP_ID / META_APP_SECRET を設定 (Vercel環境変数)
-//   5. /api/staff/instagram/connect にアクセスしてOAuth同意 (一度きり)
+// 認証情報は settings テーブルに保存(googleCalendar.ts と同じ方式):
+//   instagram_access_token / instagram_token_issued_at / instagram_ig_user_id
 //
-// 未設定の間は configured()=false で全処理をno-op化する (gbp.ts と同じ設計)。
+// 前提(TAROの一度きりの手動セットアップ):
+//   1. Meta for Developers でアプリ作成 + Instagram製品追加(済: App ID 1039461798599574)
+//   2. Instagramログイン設定でリダイレクトURI登録(済)
+//   3. env に INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET を設定(Vercel環境変数)
+//   4. BOOMのInstagramを**プロアカウント(ビジネス/クリエイター)**にしておく(投稿APIの必須要件)
+//   5. /staff/instagram の「連携する」でOAuth同意(一度きり)
+//
+// 未設定の間は configured()=false で全処理をno-op化する。
 
 import { getOne, execute } from './db';
 
-const TOKEN_KEY = 'instagram_long_lived_token';
+const TOKEN_KEY = 'instagram_access_token';
 const TOKEN_ISSUED_AT_KEY = 'instagram_token_issued_at';
 const IG_USER_ID_KEY = 'instagram_ig_user_id';
-const PAGE_ID_KEY = 'instagram_page_id';
+const GRAPH = 'https://graph.instagram.com';
 const GRAPH_VERSION = 'v21.0';
-const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
-// Facebook Login for Business のスコープ。ページ一覧取得+紐づくIGアカウント取得+投稿。
-const SCOPES = ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_read_engagement'];
+// Instagramログインで投稿に必要な最小スコープ
+const SCOPES = ['instagram_business_basic', 'instagram_business_content_publish'];
 
 function getEnv() {
-  const appId = process.env.META_APP_ID;
-  const appSecret = process.env.META_APP_SECRET;
+  const appId = process.env.INSTAGRAM_APP_ID;
+  const appSecret = process.env.INSTAGRAM_APP_SECRET;
   return { appId, appSecret };
 }
 
-/** Meta App の env が設定済みか (未設定ならcronは全部no-op) */
+/** env が設定済みか (未設定ならcronは全部no-op) */
 export function configured(): boolean {
   const { appId, appSecret } = getEnv();
   return !!(appId && appSecret);
@@ -41,7 +46,7 @@ export function configured(): boolean {
 function requireEnv() {
   const { appId, appSecret } = getEnv();
   if (!appId || !appSecret) {
-    throw new Error('META_APP_ID / META_APP_SECRET が未設定です');
+    throw new Error('INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET が未設定です');
   }
   return { appId, appSecret };
 }
@@ -56,61 +61,10 @@ export function buildConsentUrl(origin: string): string {
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: getRedirectUri(origin),
-    scope: SCOPES.join(','),
     response_type: 'code',
+    scope: SCOPES.join(','),
   });
-  return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params.toString()}`;
-}
-
-async function fetchJson(url: string): Promise<any> {
-  const res = await fetch(url);
-  const json = await res.json();
-  if (!res.ok || json.error) {
-    throw new Error(`Graph API error: ${JSON.stringify(json.error ?? json)}`);
-  }
-  return json;
-}
-
-/**
- * 同意後のcodeを処理:
- *  1. code → 短期ユーザートークン
- *  2. 短期 → 長期ユーザートークン(60日)
- *  3. /me/accounts でページ一覧取得 → BOOMのページを含むFacebookページ管理権限から
- *     instagram_business_account を持つページを探す
- *  4. settingsに保存
- */
-export async function exchangeAndStoreToken(code: string, origin: string): Promise<{ igUserId: string; pageId: string }> {
-  const { appId, appSecret } = requireEnv();
-  const redirectUri = getRedirectUri(origin);
-
-  const shortLived = await fetchJson(
-    `${GRAPH_BASE}/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`
-  );
-  const shortToken = shortLived.access_token as string;
-  if (!shortToken) throw new Error('短期アクセストークンの取得に失敗しました');
-
-  const longLived = await fetchJson(
-    `${GRAPH_BASE}/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortToken}`
-  );
-  const longToken = longLived.access_token as string;
-  if (!longToken) throw new Error('長期アクセストークンの取得に失敗しました');
-
-  const pages = await fetchJson(`${GRAPH_BASE}/me/accounts?fields=id,name,instagram_business_account&access_token=${longToken}`);
-  const withIg = (pages.data ?? []).find((p: any) => p.instagram_business_account?.id);
-  if (!withIg) {
-    throw new Error('Instagramビジネスアカウントが紐づいたFacebookページが見つかりません。Meta Business SuiteでFacebookページとInstagramアカウントの連携を確認してください');
-  }
-  const igUserId = withIg.instagram_business_account.id as string;
-  const pageId = withIg.id as string;
-
-  await Promise.all([
-    upsertSetting(TOKEN_KEY, longToken),
-    upsertSetting(TOKEN_ISSUED_AT_KEY, new Date().toISOString()),
-    upsertSetting(IG_USER_ID_KEY, igUserId),
-    upsertSetting(PAGE_ID_KEY, pageId),
-  ]);
-
-  return { igUserId, pageId };
+  return `https://www.instagram.com/oauth/authorize?${params.toString()}`;
 }
 
 async function upsertSetting(key: string, value: string): Promise<void> {
@@ -125,10 +79,68 @@ async function getSetting(key: string): Promise<string | undefined> {
   return (row?.value as string | undefined) || undefined;
 }
 
+/**
+ * 同意後のcodeを処理:
+ *  1. code → 短期トークン(+ user_id)   POST api.instagram.com/oauth/access_token
+ *  2. 短期 → 長期トークン(60日)          GET graph.instagram.com/access_token?grant_type=ig_exchange_token
+ *  3. settingsに保存
+ */
+export async function exchangeAndStoreToken(code: string, origin: string): Promise<{ igUserId: string }> {
+  const { appId, appSecret } = requireEnv();
+
+  // 1. 短期トークン (form-urlencoded)
+  const form = new URLSearchParams({
+    client_id: appId,
+    client_secret: appSecret,
+    grant_type: 'authorization_code',
+    redirect_uri: getRedirectUri(origin),
+    code: code.replace(/#_$/, ''), // Instagramは末尾に "#_" を付けることがある
+  });
+  const shortRes = await fetch('https://api.instagram.com/oauth/access_token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+  });
+  const shortJson = await shortRes.json();
+  if (!shortRes.ok || shortJson.error_type || shortJson.error) {
+    throw new Error(`短期トークン取得失敗: ${JSON.stringify(shortJson)}`);
+  }
+  const shortToken = shortJson.access_token as string;
+  // user_id は data 配列 or トップレベルで返る(APIバージョン差異に両対応)
+  const igUserId = String(shortJson.user_id ?? shortJson.data?.[0]?.user_id ?? '');
+  if (!shortToken) throw new Error('短期アクセストークンが取得できませんでした');
+
+  // 2. 長期トークン(60日)
+  const longRes = await fetch(
+    `${GRAPH}/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${shortToken}`
+  );
+  const longJson = await longRes.json();
+  if (!longRes.ok || longJson.error) {
+    throw new Error(`長期トークン取得失敗: ${JSON.stringify(longJson.error ?? longJson)}`);
+  }
+  const longToken = longJson.access_token as string;
+  if (!longToken) throw new Error('長期アクセストークンが取得できませんでした');
+
+  // user_id が空なら /me で補完
+  let finalUserId = igUserId;
+  if (!finalUserId) {
+    const meRes = await fetch(`${GRAPH}/me?fields=user_id&access_token=${longToken}`);
+    const meJson = await meRes.json();
+    finalUserId = String(meJson.user_id ?? meJson.id ?? '');
+  }
+
+  await Promise.all([
+    upsertSetting(TOKEN_KEY, longToken),
+    upsertSetting(TOKEN_ISSUED_AT_KEY, new Date().toISOString()),
+    upsertSetting(IG_USER_ID_KEY, finalUserId),
+  ]);
+
+  return { igUserId: finalUserId };
+}
+
 export async function isConnected(): Promise<boolean> {
   const tok = await getSetting(TOKEN_KEY);
-  const igUserId = await getSetting(IG_USER_ID_KEY);
-  return !!(tok && igUserId);
+  return !!tok;
 }
 
 export async function connectionStatus(): Promise<{
@@ -142,35 +154,34 @@ export async function connectionStatus(): Promise<{
     getSetting(IG_USER_ID_KEY),
     getSetting(TOKEN_ISSUED_AT_KEY),
   ]);
-  if (!tok || !igUserId) return { connected: false };
+  if (!tok) return { connected: false };
   const tokenAgeDays = issuedAt ? Math.floor((Date.now() - new Date(issuedAt).getTime()) / 86400000) : undefined;
   return { connected: true, igUserId, tokenIssuedAt: issuedAt, tokenAgeDays };
 }
 
 /**
- * 長期トークンは60日で失効する。まだ有効なうちに再交換(fb_exchange_token)すると
- * 有効期限がさらに60日延びる。45日を超えたら更新する運用(cron経由で呼ぶ想定)。
+ * 長期トークンは60日で失効。まだ有効なうち(発行から24時間以上経過が更新の必須条件)に
+ * refresh_access_token で延長する。45日を超えたら更新する運用(cron経由で呼ぶ)。
  */
 export async function refreshTokenIfStale(): Promise<{ refreshed: boolean; ageDays?: number }> {
-  const { appId, appSecret } = requireEnv();
   const status = await connectionStatus();
   if (!status.connected) return { refreshed: false };
   if ((status.tokenAgeDays ?? 0) < 45) return { refreshed: false, ageDays: status.tokenAgeDays };
 
   const currentToken = await getSetting(TOKEN_KEY);
-  const refreshed = await fetchJson(
-    `${GRAPH_BASE}/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${currentToken}`
-  );
-  const newToken = refreshed.access_token as string;
-  if (!newToken) throw new Error('トークン更新に失敗しました');
+  const res = await fetch(`${GRAPH}/refresh_access_token?grant_type=ig_refresh_token&access_token=${currentToken}`);
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(`トークン更新失敗: ${JSON.stringify(json.error ?? json)}`);
+  const newToken = json.access_token as string;
+  if (!newToken) throw new Error('更新後トークンが取得できませんでした');
   await Promise.all([upsertSetting(TOKEN_KEY, newToken), upsertSetting(TOKEN_ISSUED_AT_KEY, new Date().toISOString())]);
   return { refreshed: true, ageDays: 0 };
 }
 
 async function requireConnection(): Promise<{ token: string; igUserId: string }> {
   const token = await getSetting(TOKEN_KEY);
-  const igUserId = await getSetting(IG_USER_ID_KEY);
-  if (!token || !igUserId) {
+  const igUserId = (await getSetting(IG_USER_ID_KEY)) || 'me';
+  if (!token) {
     throw new Error('Instagram未連携です。/staff/instagram の「連携する」ボタンから連携してください');
   }
   return { token, igUserId };
@@ -179,15 +190,16 @@ async function requireConnection(): Promise<{ token: string; igUserId: string }>
 /**
  * 動画ストーリーズを投稿する。
  *  1. POST /{ig-user-id}/media (video_url, media_type=STORIES) → creation_id
- *  2. コンテナのステータスがFINISHEDになるまでポーリング(動画処理に数秒〜数十秒かかる)
- *  3. POST /{ig-user-id}/media_publish (creation_id) → media_id
+ *  2. コンテナのstatus_codeがFINISHEDになるまでポーリング(動画処理に数秒〜数十秒)
+ *  3. POST /{ig-user-id}/media_publish (creation_id) → media id
  *
  * videoUrl は公開URL必須(Metaサーバーがサーバー側で取得しにいく)。
  */
 export async function publishStoryVideo(videoUrl: string): Promise<{ mediaId: string }> {
   const { token, igUserId } = await requireConnection();
+  const base = `${GRAPH}/${GRAPH_VERSION}/${igUserId}`;
 
-  const createRes = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
+  const createRes = await fetch(`${base}/media`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ video_url: videoUrl, media_type: 'STORIES', access_token: token }),
@@ -202,8 +214,10 @@ export async function publishStoryVideo(videoUrl: string): Promise<{ mediaId: st
   const deadline = Date.now() + 60_000;
   let statusCode = 'IN_PROGRESS';
   while (Date.now() < deadline) {
-    const statusJson = await fetchJson(`${GRAPH_BASE}/${creationId}?fields=status_code&access_token=${token}`);
-    statusCode = statusJson.status_code;
+    const sres = await fetch(`${GRAPH}/${GRAPH_VERSION}/${creationId}?fields=status_code&access_token=${token}`);
+    const sjson = await sres.json();
+    if (sjson.error) throw new Error(`コンテナ状態取得失敗: ${JSON.stringify(sjson.error)}`);
+    statusCode = sjson.status_code;
     if (statusCode === 'FINISHED') break;
     if (statusCode === 'ERROR') throw new Error('動画コンテナの処理でエラーが発生しました');
     await new Promise((r) => setTimeout(r, 3000));
@@ -212,14 +226,14 @@ export async function publishStoryVideo(videoUrl: string): Promise<{ mediaId: st
     throw new Error(`動画処理がタイムアウトしました(status=${statusCode})`);
   }
 
-  const publishRes = await fetch(`${GRAPH_BASE}/${igUserId}/media_publish`, {
+  const pubRes = await fetch(`${base}/media_publish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ creation_id: creationId, access_token: token }),
   });
-  const publishJson = await publishRes.json();
-  if (!publishRes.ok || publishJson.error) {
-    throw new Error(`公開失敗: ${JSON.stringify(publishJson.error ?? publishJson)}`);
+  const pubJson = await pubRes.json();
+  if (!pubRes.ok || pubJson.error) {
+    throw new Error(`公開失敗: ${JSON.stringify(pubJson.error ?? pubJson)}`);
   }
-  return { mediaId: publishJson.id as string };
+  return { mediaId: pubJson.id as string };
 }
