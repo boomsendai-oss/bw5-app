@@ -57,30 +57,50 @@ export async function POST(req: NextRequest) {
   const origin = new URL(req.url).origin;
 
   // 素材の選択(作り置きをTAROが用意・Claudeは選んで出すだけ。無ければ出さない=ブレーキ):
-  //   1. 日付指定オーバーライド {YYYY-MM-DD}.mp4 (土日の変動・講師交代・特別な日用) を最優先
-  //   2. 無ければ曜日デフォルト {曜日}.mp4 (毎週固定ラインナップの日用)
+  //   1. 日付指定オーバーライド {YYYY-MM-DD}.(mp4|jpg) (土日の変動・講師交代・特別な日用) を最優先
+  //   2. 無ければ曜日デフォルト {曜日}.(mp4|jpg) (毎週固定ラインナップの日用)
   //   3. 無ければ承認済み「埋め草」キューから1本(レッスンが無い日用・TARO事前承認済みのみ)
   //   4. どれも無ければ投稿しない(間違った素材を出すより出さない方がマシ)
-  const candidates = [`${date}.mp4`, fileName];
-  let videoUrl: string | null = null;
-  for (const f of candidates) {
-    const url = `${origin}/stories/${f}`;
-    const head = await fetch(url, { method: 'HEAD' }).catch(() => null);
-    if (head?.ok) {
-      videoUrl = url;
-      break;
+  // 同一優先度内では動画>画像。「まず静止画フライヤーを置き、動画が完成したら同名.mp4を
+  // 置くだけで自動的に動画へ格上げ」という二段構えができる。
+  const bases = [date, WEEKDAY_FILES[weekday]];
+  const exts: Array<{ ext: string; type: 'video' | 'image' }> = [
+    { ext: 'mp4', type: 'video' },
+    { ext: 'jpg', type: 'image' },
+  ];
+  let picked: { url: string; type: 'video' | 'image'; base: string } | null = null;
+  outer: for (const base of bases) {
+    for (const { ext, type } of exts) {
+      const url = `${origin}/stories/${base}.${ext}`;
+      const head = await fetch(url, { method: 'HEAD' }).catch(() => null);
+      if (head?.ok) {
+        picked = { url, type, base };
+        break outer;
+      }
     }
   }
 
-  if (videoUrl) {
+  if (picked) {
+    // メンション(任意): 素材と同名の {base}.json に {"mentions":["ig_username",...]} を置くと
+    // その公開アカウントをストーリーにタグ付けする(通知が飛び相手がリポスト可能)。無ければメンション無し。
+    let mentions: string[] | undefined;
+    const sidecar = await fetch(`${origin}/stories/${picked.base}.json`).catch(() => null);
+    if (sidecar?.ok) {
+      const j = await sidecar.json().catch(() => null);
+      if (Array.isArray(j?.mentions)) mentions = j.mentions.filter((m: unknown) => typeof m === 'string');
+    }
+
     try {
       await refreshTokenIfStale();
-      const { mediaId } = await publishStoryVideo(videoUrl);
-      await logResult(date, weekday, videoUrl, 'posted', mediaId);
-      return NextResponse.json({ ok: true, posted: true, mediaId });
+      const { mediaId } =
+        picked.type === 'image'
+          ? await publishStoryImage(picked.url, mentions)
+          : await publishStoryVideo(picked.url, mentions);
+      await logResult(date, weekday, picked.url, 'posted', mediaId);
+      return NextResponse.json({ ok: true, posted: true, mediaId, mentions: mentions ?? [] });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      await logResult(date, weekday, videoUrl, 'error', undefined, msg);
+      await logResult(date, weekday, picked.url, 'error', undefined, msg);
       return NextResponse.json({ ok: false, error: msg }, { status: 500 });
     }
   }
@@ -109,10 +129,11 @@ export async function POST(req: NextRequest) {
   }
 
   // 4. ブレーキ: 出せる素材が何も無い
-  await logResult(date, weekday, `${origin}/stories/{${candidates.join('|')}}`, 'skipped_no_video');
+  const tried = bases.map((b) => `${b}.(mp4|jpg)`).join(' / ');
+  await logResult(date, weekday, `${origin}/stories/{${bases.join('|')}}`, 'skipped_no_video');
   return NextResponse.json({
     ok: true,
     posted: false,
-    note: `今日の素材(${candidates.join(' / ')})も承認済みキューも無いためスキップ`,
+    note: `今日の素材(${tried})も承認済みキューも無いためスキップ`,
   });
 }

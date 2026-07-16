@@ -195,13 +195,23 @@ async function requireConnection(): Promise<{ token: string; igUserId: string }>
  *
  * mediaUrl は公開URL必須(Metaサーバーがサーバー側で取得しにいく)。
  */
-async function publishStory(mediaUrl: string, mediaType: 'video' | 'image'): Promise<{ mediaId: string }> {
+async function publishStory(
+  mediaUrl: string,
+  mediaType: 'video' | 'image',
+  mentionUsernames?: string[]
+): Promise<{ mediaId: string }> {
   const { token, igUserId } = await requireConnection();
   const base = `${GRAPH}/${GRAPH_VERSION}/${igUserId}`;
 
-  const payload: Record<string, string> = { media_type: 'STORIES', access_token: token };
+  const payload: Record<string, unknown> = { media_type: 'STORIES', access_token: token };
   if (mediaType === 'video') payload.video_url = mediaUrl;
   else payload.image_url = mediaUrl;
+  // ストーリーへのメンション(通知が飛び、相手がリポスト可能になる)。
+  // 公式仕様: ステッカー(リンク/アンケート等)は不可だが「ステッカー無しのメンション」はuser_tagsで可能。
+  // 対象は公開アカウントのみ。非公開や存在しないユーザー名だと投稿自体が失敗しうるので運用注意。
+  if (mentionUsernames && mentionUsernames.length > 0) {
+    payload.user_tags = mentionUsernames.map((username) => ({ username }));
+  }
 
   const createRes = await fetch(`${base}/media`, {
     method: 'POST',
@@ -242,10 +252,10 @@ async function publishStory(mediaUrl: string, mediaType: 'video' | 'image'): Pro
   return { mediaId: pubJson.id as string };
 }
 
-export async function publishStoryVideo(videoUrl: string): Promise<{ mediaId: string }> {
-  return publishStory(videoUrl, 'video');
+export async function publishStoryVideo(videoUrl: string, mentions?: string[]): Promise<{ mediaId: string }> {
+  return publishStory(videoUrl, 'video', mentions);
 }
 
-export async function publishStoryImage(imageUrl: string): Promise<{ mediaId: string }> {
-  return publishStory(imageUrl, 'image');
+export async function publishStoryImage(imageUrl: string, mentions?: string[]): Promise<{ mediaId: string }> {
+  return publishStory(imageUrl, 'image', mentions);
 }
