@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { todayJst } from '@/lib/dateJst';
+import { todayJst, weekdayJst } from '@/lib/dateJst';
 import { configured as igConfigured, publishStoryVideo, refreshTokenIfStale } from '@/lib/instagram';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   const date = todayJst();
-  const weekday = new Date(`${date}T00:00:00+09:00`).getDay();
+  const weekday = weekdayJst(date); // TZ安全(サーバーUTCでも1日ズレない)
   const fileName = `${WEEKDAY_FILES[weekday]}.mp4`;
 
   if (!igConfigured()) {

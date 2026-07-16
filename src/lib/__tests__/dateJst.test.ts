@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  todayJst, nowUtcIso, shiftMonthsClamped, shiftDays, isIsoDate, isYearMonth, isHhmm,
+  todayJst, nowUtcIso, weekdayJst, shiftMonthsClamped, shiftDays, isIsoDate, isYearMonth, isHhmm,
 } from '../dateJst';
 
 describe('todayJst', () => {
@@ -18,6 +18,24 @@ describe('todayJst', () => {
 describe('nowUtcIso', () => {
   it('UTC ISO(Z付き)を返す', () => {
     expect(nowUtcIso(new Date('2026-07-06T12:00:00Z'))).toBe('2026-07-06T12:00:00.000Z');
+  });
+});
+
+describe('weekdayJst', () => {
+  // 2026-07-16 は木曜(4)。旧 `new Date('...T00:00:00+09:00').getDay()` は
+  // サーバーUTCだと前日(水=3)を返す1日ズレの温床だった(実際にcronが wed.mp4 を探した)。
+  it('文字列の曜日を正しく返す(木曜=4)', () => {
+    expect(weekdayJst('2026-07-16')).toBe(4);
+  });
+  it('日曜=0 / 土曜=6 の両端', () => {
+    expect(weekdayJst('2026-07-19')).toBe(0); // 日
+    expect(weekdayJst('2026-07-18')).toBe(6); // 土
+  });
+  it('Dateを渡すとJST日付の曜日(UTC 15:00=JST翌日00:00で曜日も繰り上がる)', () => {
+    // UTC 2026-07-15T15:00 = JST 2026-07-16T00:00 → 木曜
+    expect(weekdayJst(new Date('2026-07-15T15:00:00Z'))).toBe(4);
+    // UTC 2026-07-15T14:59 = JST 2026-07-15T23:59 → 水曜
+    expect(weekdayJst(new Date('2026-07-15T14:59:00Z'))).toBe(3);
   });
 });
 

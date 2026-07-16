@@ -23,6 +23,18 @@ export function nowUtcIso(now: Date = new Date()): string {
 }
 
 /**
+ * JST日付の曜日(0=日〜6=土)。'YYYY-MM-DD' または now(Date) を受ける。
+ * ⚠️ `new Date('...T00:00:00+09:00').getDay()` はサーバーローカルTZ(Vercel=UTC)で
+ * 曜日を返すため、JST深夜〜朝はUTCだと前日扱いになり1日ズレる。
+ * カレンダー日付の各成分をUTCアンカーで解釈して曜日を出す(TZ非依存)。
+ */
+export function weekdayJst(dateOrNow: string | Date = new Date()): number {
+  const iso = typeof dateOrNow === 'string' ? dateOrNow : todayJst(dateOrNow);
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/**
  * 'YYYY-MM-DD' を N ヶ月ずらす（月末クランプ版）。
  * 1/31 +1M → 2/28、8/31 +6M → 2/28。膨張ロールオーバー(3/3等)しない。
  */
