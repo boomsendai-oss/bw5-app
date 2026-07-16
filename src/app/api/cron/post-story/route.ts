@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute } from '@/lib/db';
+import { execute, getOne } from '@/lib/db';
 import { todayJst, weekdayJst } from '@/lib/dateJst';
 import { configured as igConfigured, publishStoryVideo, refreshTokenIfStale } from '@/lib/instagram';
 
@@ -40,6 +40,16 @@ export async function POST(req: NextRequest) {
     // Meta App env未設定の間はno-opで成功扱い (cron自体は先に稼働させておく)
     await logResult(date, weekday, null, 'skipped_not_configured');
     return NextResponse.json({ ok: true, configured: false, note: 'Instagram連携env未設定のためスキップ' });
+  }
+
+  // 冪等性: 同じ日に既に投稿済みなら再投稿しない。
+  // (手動テストと定時cronの重複、GH Actionsのリトライ、二重発火から二重ストーリーを防ぐ)
+  const already = await getOne(
+    "SELECT 1 AS hit FROM story_post_log WHERE date = ? AND status = 'posted' LIMIT 1",
+    [date]
+  );
+  if (already) {
+    return NextResponse.json({ ok: true, posted: false, note: `${date} は投稿済みのためスキップ(冪等)` });
   }
 
   const origin = new URL(req.url).origin;
