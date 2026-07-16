@@ -54,13 +54,28 @@ export async function POST(req: NextRequest) {
   }
 
   const origin = new URL(req.url).origin;
-  const videoUrl = `${origin}/stories/${fileName}`;
 
-  // 動画が用意されているか確認 (未生成の曜日はまだ多い→静かにスキップ)
-  const head = await fetch(videoUrl, { method: 'HEAD' }).catch(() => null);
-  if (!head || !head.ok) {
-    await logResult(date, weekday, videoUrl, 'skipped_no_video');
-    return NextResponse.json({ ok: true, posted: false, note: `${fileName} が未生成のためスキップ` });
+  // 素材の選択(作り置きをTAROが用意・Claudeは選んで出すだけ。無ければ出さない=ブレーキ):
+  //   1. 日付指定オーバーライド {YYYY-MM-DD}.mp4 (土日の変動・講師交代・特別な日用) を最優先
+  //   2. 無ければ曜日デフォルト {曜日}.mp4 (毎週固定ラインナップの日用)
+  //   3. どちらも無ければ投稿しない(間違った素材を出すより出さない方がマシ)
+  const candidates = [`${date}.mp4`, fileName];
+  let videoUrl: string | null = null;
+  for (const f of candidates) {
+    const url = `${origin}/stories/${f}`;
+    const head = await fetch(url, { method: 'HEAD' }).catch(() => null);
+    if (head?.ok) {
+      videoUrl = url;
+      break;
+    }
+  }
+  if (!videoUrl) {
+    await logResult(date, weekday, `${origin}/stories/{${candidates.join('|')}}`, 'skipped_no_video');
+    return NextResponse.json({
+      ok: true,
+      posted: false,
+      note: `今日の素材(${candidates.join(' / ')})が未配置のためスキップ`,
+    });
   }
 
   try {
