@@ -7,7 +7,10 @@ name: instagram-story-cron
 
 on:
   schedule:
+    # 8:00 JST 本命 + GH Actionsのcron遅延/スキップ対策のリトライ2本(投稿済みなら冪等ガードでno-op)
     - cron: '0 23 * * *'
+    - cron: '20 23 * * *'
+    - cron: '40 23 * * *'
   workflow_dispatch: {}
 
 jobs:
