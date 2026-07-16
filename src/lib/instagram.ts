@@ -28,8 +28,14 @@ const IG_USER_ID_KEY = 'instagram_ig_user_id';
 const GRAPH = 'https://graph.instagram.com';
 const GRAPH_VERSION = 'v21.0';
 
-// Instagramログインで投稿に必要な最小スコープ
-const SCOPES = ['instagram_business_basic', 'instagram_business_content_publish'];
+// Instagramログインで投稿+インサイト取得に必要なスコープ
+// manage_insights = リーチ/プロフィールアクセス/フォロワー属性/ストーリー成績の取得用
+// (追加後は再認可が必要。旧トークンのままだとインサイトAPIは403)
+const SCOPES = [
+  'instagram_business_basic',
+  'instagram_business_content_publish',
+  'instagram_business_manage_insights',
+];
 
 function getEnv() {
   const appId = process.env.INSTAGRAM_APP_ID;
