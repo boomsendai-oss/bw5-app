@@ -1,0 +1,9 @@
+{
+  "mentions": ["m55keiko", "taro_bsb"],
+  "lessons": [
+    { "start": "11:00", "instructor": "KEIKO" },
+    { "start": "12:15", "instructor": "TARO" },
+    { "start": "13:30", "instructor": "TARO" },
+    { "start": "15:00", "instructor": "KEIKO" }
+  ]
+}
