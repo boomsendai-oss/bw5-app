@@ -90,14 +90,26 @@ export async function POST(req: NextRequest) {
       if (Array.isArray(j?.mentions)) mentions = j.mentions.filter((m: unknown) => typeof m === 'string');
     }
 
+    const publish = (m?: string[]) =>
+      picked.type === 'image' ? publishStoryImage(picked.url, m) : publishStoryVideo(picked.url, m);
+
     try {
       await refreshTokenIfStale();
-      const { mediaId } =
-        picked.type === 'image'
-          ? await publishStoryImage(picked.url, mentions)
-          : await publishStoryVideo(picked.url, mentions);
+      let mediaId: string;
+      let mentionsApplied = mentions ?? [];
+      try {
+        ({ mediaId } = await publish(mentions));
+      } catch (e) {
+        // メンション起因の失敗(非公開アカ・ユーザー名変更等)で投稿自体を落とさない:
+        // メンション付きで失敗したらメンション無しで1回だけ再試行する。
+        if (!mentions?.length) throw e;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn(`メンション付き投稿に失敗→メンション無しで再試行: ${msg}`);
+        ({ mediaId } = await publish(undefined));
+        mentionsApplied = [];
+      }
       await logResult(date, weekday, picked.url, 'posted', mediaId);
-      return NextResponse.json({ ok: true, posted: true, mediaId, mentions: mentions ?? [] });
+      return NextResponse.json({ ok: true, posted: true, mediaId, mentions: mentionsApplied });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       await logResult(date, weekday, picked.url, 'error', undefined, msg);
