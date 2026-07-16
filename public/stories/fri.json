@@ -1,3 +1,7 @@
 {
-  "mentions": ["aoi.w_0530", "taro_bsb"]
+  "mentions": ["aoi.w_0530", "taro_bsb"],
+  "lessons": [
+    { "start": "18:30", "instructor": "AOI" },
+    { "start": "19:30", "instructor": "TARO" }
+  ]
 }

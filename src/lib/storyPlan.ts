@@ -32,15 +32,65 @@ export async function findChainMedia(origin: string, date: string, weekday: numb
   return null;
 }
 
+/** 素材の宣言内容。「この素材は 18:30 AOI / 19:30 TARO の告知」をsidecarに書く */
+export type DeclaredLesson = { start: string; instructor: string };
+
+export type Sidecar = {
+  mentions?: string[];
+  lessons?: DeclaredLesson[];
+};
+
 /**
- * メンションsidecar {base}.json ({"mentions":["ig_username",...]}) を読む。無ければundefined。
- * タグ付けは公開アカウントのみ有効(非公開だと投稿失敗→cron側でメンション無し再試行の保険あり)。
+ * sidecar {base}.json を読む。無ければ空オブジェクト。
+ *   mentions: ストーリーにタグ付けするIGユーザー名(公開アカのみ。失敗時はcron側でメンション無し再試行)
+ *   lessons:  素材が告知しているレッスン内容の宣言。あれば投稿前に正本スケジュールと照合される
  */
-export async function loadMentions(origin: string, base: string): Promise<string[] | undefined> {
+export async function loadSidecar(origin: string, base: string): Promise<Sidecar> {
   const res = await fetch(`${origin}/stories/${base}.json`).catch(() => null);
-  if (!res?.ok) return undefined;
+  if (!res?.ok) return {};
   const j = await res.json().catch(() => null);
-  if (!Array.isArray(j?.mentions)) return undefined;
-  const mentions = j.mentions.filter((m: unknown) => typeof m === 'string');
-  return mentions.length > 0 ? mentions : undefined;
+  const out: Sidecar = {};
+  if (Array.isArray(j?.mentions)) {
+    const mentions = j.mentions.filter((m: unknown) => typeof m === 'string');
+    if (mentions.length > 0) out.mentions = mentions;
+  }
+  if (Array.isArray(j?.lessons)) {
+    const lessons = j.lessons.filter(
+      (l: unknown): l is DeclaredLesson =>
+        typeof l === 'object' && l !== null &&
+        typeof (l as DeclaredLesson).start === 'string' &&
+        typeof (l as DeclaredLesson).instructor === 'string'
+    );
+    if (lessons.length > 0) out.lessons = lessons;
+  }
+  return out;
+}
+
+export type ScheduleCheck =
+  | { result: 'no-declaration' } // 素材にlessons宣言なし=照合せずそのまま信頼
+  | { result: 'match'; actual: string[] }
+  | { result: 'mismatch'; actual: string[]; declared: string[] };
+
+const lessonKey = (start: string, instructor: string) =>
+  `${start.slice(0, 5)} ${instructor.trim().toUpperCase()}`;
+
+/**
+ * 素材の宣言内容を正本スケジュール(lesson_master+lesson_instances=Gカレの生成元)と照合する。
+ * 休講・代講・時間変更が正本に入っていれば不一致になり、間違った告知の自動投稿を防ぐ。
+ * 比較キーは (開始時刻, 講師名) の完全一致セット。
+ */
+export async function checkSchedule(date: string, declared: DeclaredLesson[] | undefined): Promise<ScheduleCheck> {
+  if (!declared || declared.length === 0) return { result: 'no-declaration' };
+
+  // その日を含む月の正本を展開して当日分に絞る(cronは1日1回なのでコストは許容)
+  const { buildLessonsForMonths } = await import('./scheduleExport');
+  const monthLessons = await buildLessonsForMonths(1, date.slice(0, 7));
+  const actual = monthLessons
+    .filter((l) => l.date === date && l.status === 'scheduled')
+    .map((l) => lessonKey(l.start_time, l.instructor_name ?? '?'))
+    .sort();
+
+  const declaredKeys = declared.map((d) => lessonKey(d.start, d.instructor)).sort();
+  const same = actual.length === declaredKeys.length && actual.every((k, i) => k === declaredKeys[i]);
+  return same ? { result: 'match', actual } : { result: 'mismatch', actual, declared: declaredKeys };
 }

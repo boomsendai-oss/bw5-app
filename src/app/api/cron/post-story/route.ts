@@ -3,7 +3,7 @@ import { execute, getOne } from '@/lib/db';
 import { todayJst, weekdayJst, nowUtcIso } from '@/lib/dateJst';
 import { configured as igConfigured, publishStoryVideo, publishStoryImage, refreshTokenIfStale } from '@/lib/instagram';
 import { pickNextQueueItem, markQueueItemPosted } from '@/lib/storyQueue';
-import { WEEKDAY_FILES, findChainMedia, loadMentions } from '@/lib/storyPlan';
+import { WEEKDAY_FILES, findChainMedia, loadSidecar, checkSchedule } from '@/lib/storyPlan';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -59,8 +59,21 @@ export async function POST(req: NextRequest) {
   // 選択ロジック本体は storyPlan.ts (「明日の投稿予定」プレビューと共用)。
   const picked = await findChainMedia(origin, date, weekday);
 
+  // 正本スケジュール照合: 素材がlessons宣言を持つ場合、今日の実スケジュール
+  // (lesson_master+lesson_instances=Gカレンダーの生成元)と一致するか確認する。
+  // 休講・代講で食い違う日は間違った告知を出さず、埋め草キューへフォールバック(2026-07-16 TARO決定)。
+  const sidecar = picked ? await loadSidecar(origin, picked.base) : {};
+  let scheduleMismatch: string | null = null;
   if (picked) {
-    const mentions = await loadMentions(origin, picked.base);
+    const check = await checkSchedule(date, sidecar.lessons);
+    if (check.result === 'mismatch') {
+      scheduleMismatch = `素材の宣言[${check.declared.join(', ')}] ≠ 今日の正本[${check.actual.join(', ')}]`;
+      await logResult(date, weekday, picked.url, 'skipped_schedule_mismatch', undefined, scheduleMismatch);
+    }
+  }
+
+  if (picked && !scheduleMismatch) {
+    const mentions = sidecar.mentions;
 
     const publish = (m?: string[]) =>
       picked.type === 'image' ? publishStoryImage(picked.url, m) : publishStoryVideo(picked.url, m);
@@ -104,7 +117,13 @@ export async function POST(req: NextRequest) {
         item.media_type === 'image' ? await publishStoryImage(mediaUrl) : await publishStoryVideo(mediaUrl);
       await markQueueItemPosted(item, nowUtcIso());
       await logResult(date, weekday, mediaUrl, 'posted_queue', mediaId);
-      return NextResponse.json({ ok: true, posted: true, source: `queue#${item.id}`, mediaId });
+      return NextResponse.json({
+        ok: true,
+        posted: true,
+        source: `queue#${item.id}`,
+        mediaId,
+        ...(scheduleMismatch ? { note: `スケジュール不一致のため埋め草に切替: ${scheduleMismatch}` } : {}),
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       await logResult(date, weekday, mediaUrl, 'error', undefined, msg);
@@ -113,6 +132,14 @@ export async function POST(req: NextRequest) {
   }
 
   // 4. ブレーキ: 出せる素材が何も無い
+  if (scheduleMismatch) {
+    // 不一致ログは記録済み。埋め草も無かったので今日は何も出さない。
+    return NextResponse.json({
+      ok: true,
+      posted: false,
+      note: `スケジュール不一致で通常素材をスキップ・埋め草も無いため投稿なし (${scheduleMismatch})`,
+    });
+  }
   const tried = `${date}.(mp4|jpg) / ${WEEKDAY_FILES[weekday]}.(mp4|jpg)`;
   await logResult(date, weekday, `${origin}/stories/{${date}|${WEEKDAY_FILES[weekday]}}`, 'skipped_no_video');
   return NextResponse.json({

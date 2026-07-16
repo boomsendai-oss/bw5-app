@@ -34,6 +34,8 @@ type Plan = {
   mediaType?: 'video' | 'image';
   mentions?: string[];
   queueTitle?: string | null;
+  scheduleCheck?: { result: 'no-declaration' | 'match'; actual?: string[] } | null;
+  mismatch?: { skippedMediaPath: string | null; declared: string[]; actual: string[] };
 };
 
 type StatusResp = {
@@ -60,6 +62,7 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   posted: { label: '投稿済み', cls: 'bg-green-100 text-green-700' },
   posted_queue: { label: '埋め草を投稿', cls: 'bg-green-100 text-green-700' },
   skipped_no_video: { label: '素材なしでスキップ', cls: 'bg-gray-100 text-gray-500' },
+  skipped_schedule_mismatch: { label: 'スケジュール不一致でスキップ', cls: 'bg-amber-100 text-amber-700' },
   skipped_not_configured: { label: '未連携でスキップ', cls: 'bg-gray-100 text-gray-500' },
   error: { label: 'エラー', cls: 'bg-red-100 text-red-700' },
 };
@@ -172,9 +175,23 @@ export default function InstagramStoryPage() {
                 {data.plan.date}（{WEEKDAY_JA[data.plan.weekday]}）8:00
               </span>
             </h2>
+            {data.plan.mismatch && (
+              <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 space-y-1">
+                <p className="font-semibold">⚠️ 明日は通常と違うスケジュールです（休講・代講など）</p>
+                <p className="text-xs">
+                  いつもの素材: {data.plan.mismatch.declared.join(' / ')}
+                  <br />
+                  明日の正本: {data.plan.mismatch.actual.length > 0 ? data.plan.mismatch.actual.join(' / ') : 'レッスンなし'}
+                </p>
+                <p className="text-xs">
+                  間違った告知を防ぐため通常素材は投稿しません。正しい内容の素材があれば{' '}
+                  <code className="bg-amber-100 px-1 rounded">{data.plan.date}.jpg</code> の名前で配置してください
+                </p>
+              </div>
+            )}
             {data.plan.source === 'none' ? (
               <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                ⚠️ 明日の素材がありません。このままだと明日は投稿されません（素材を配置するか、埋め草を承認してください）
+                ⚠️ 明日出せる素材がありません。このままだと明日は投稿されません（素材を配置するか、埋め草を承認してください）
               </p>
             ) : (
               <div className="flex items-center gap-4">
@@ -198,6 +215,12 @@ export default function InstagramStoryPage() {
                       ? data.plan.mentions.map((m) => `@${m}`).join(' ')
                       : 'なし'}
                   </p>
+                  {data.plan.scheduleCheck?.result === 'match' && (
+                    <p className="text-xs text-green-700">✓ スケジュール正本と一致（{data.plan.scheduleCheck.actual?.join(' / ')}）</p>
+                  )}
+                  {data.plan.scheduleCheck?.result === 'no-declaration' && (
+                    <p className="text-xs text-neutral-400">スケジュール照合なし（素材に内容の宣言が未設定）</p>
+                  )}
                   {data.plan.mediaType === 'image' && data.plan.source !== 'queue' && (
                     <p className="text-xs text-neutral-400">同名の .mp4 を置けば自動で動画に切り替わります</p>
                   )}

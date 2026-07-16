@@ -3,7 +3,7 @@ import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { getAll } from '@/lib/db';
 import { configured, connectionStatus } from '@/lib/instagram';
 import { todayJst, weekdayJst, shiftDays } from '@/lib/dateJst';
-import { findChainMedia, loadMentions } from '@/lib/storyPlan';
+import { findChainMedia, loadSidecar, checkSchedule } from '@/lib/storyPlan';
 import { peekNextQueueItem } from '@/lib/storyQueue';
 
 export const dynamic = 'force-dynamic';
@@ -31,19 +31,27 @@ export async function GET(req: NextRequest) {
   const tomorrowWeekday = weekdayJst(tomorrow);
   const origin = new URL(req.url).origin;
   const chain = await findChainMedia(origin, tomorrow, tomorrowWeekday);
+  const sidecar = chain ? await loadSidecar(origin, chain.base) : {};
+  const check = chain ? await checkSchedule(tomorrow, sidecar.lessons) : null;
+
   let plan;
-  if (chain) {
-    const mentions = await loadMentions(origin, chain.base);
+  if (chain && check?.result !== 'mismatch') {
     plan = {
       date: tomorrow,
       weekday: tomorrowWeekday,
       source: chain.source,
       mediaPath: new URL(chain.url).pathname,
       mediaType: chain.type,
-      mentions: mentions ?? [],
+      mentions: sidecar.mentions ?? [],
+      scheduleCheck: check, // no-declaration | match
     };
   } else {
+    // 素材なし、またはスケジュール不一致 → 埋め草キューへフォールバック
     const queueItem = await peekNextQueueItem(tomorrow);
+    const mismatch =
+      check?.result === 'mismatch'
+        ? { skippedMediaPath: chain ? new URL(chain.url).pathname : null, declared: check.declared, actual: check.actual }
+        : undefined;
     plan = queueItem
       ? {
           date: tomorrow,
@@ -53,8 +61,9 @@ export async function GET(req: NextRequest) {
           mediaType: queueItem.media_type,
           mentions: [] as string[],
           queueTitle: queueItem.title,
+          mismatch,
         }
-      : { date: tomorrow, weekday: tomorrowWeekday, source: 'none' as const };
+      : { date: tomorrow, weekday: tomorrowWeekday, source: 'none' as const, mismatch };
   }
 
   return NextResponse.json({
