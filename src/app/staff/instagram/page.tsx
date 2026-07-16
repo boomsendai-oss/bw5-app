@@ -26,6 +26,16 @@ type QueueRow = {
   times_posted: number;
 };
 
+type Plan = {
+  date: string;
+  weekday: number;
+  source: 'date-file' | 'weekday-file' | 'queue' | 'none';
+  mediaPath?: string;
+  mediaType?: 'video' | 'image';
+  mentions?: string[];
+  queueTitle?: string | null;
+};
+
 type StatusResp = {
   envConfigured: boolean;
   connected: boolean;
@@ -34,6 +44,14 @@ type StatusResp = {
   tokenAgeDays?: number;
   logs: LogRow[];
   queue: QueueRow[];
+  plan?: Plan;
+};
+
+const PLAN_SOURCE_JA: Record<Plan['source'], string> = {
+  'date-file': '日付指定の素材',
+  'weekday-file': '曜日の素材',
+  queue: '埋め草キュー',
+  none: '',
 };
 
 const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'];
@@ -141,6 +159,49 @@ export default function InstagramStoryPage() {
                 >
                   連携する
                 </a>
+              </div>
+            )}
+          </div>
+        )}
+
+        {data?.plan && (
+          <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
+            <h2 className="font-bold text-navy-800 mb-2">
+              明日の投稿予定
+              <span className="ml-2 text-sm font-normal text-neutral-400">
+                {data.plan.date}（{WEEKDAY_JA[data.plan.weekday]}）8:00
+              </span>
+            </h2>
+            {data.plan.source === 'none' ? (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                ⚠️ 明日の素材がありません。このままだと明日は投稿されません（素材を配置するか、埋め草を承認してください）
+              </p>
+            ) : (
+              <div className="flex items-center gap-4">
+                <a href={data.plan.mediaPath} target="_blank" rel="noreferrer" className="shrink-0">
+                  {data.plan.mediaType === 'image' ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={data.plan.mediaPath} alt="明日の素材" className="w-20 h-36 object-cover rounded-lg bg-neutral-100 border border-sand-200" />
+                  ) : (
+                    <video src={data.plan.mediaPath} muted className="w-20 h-36 object-cover rounded-lg bg-neutral-100 border border-sand-200" />
+                  )}
+                </a>
+                <div className="text-sm space-y-1">
+                  <p className="font-semibold text-navy-800">
+                    {PLAN_SOURCE_JA[data.plan.source]}
+                    {data.plan.queueTitle ? `「${data.plan.queueTitle}」` : ''}を
+                    {data.plan.mediaType === 'image' ? '画像' : '動画'}で投稿予定
+                  </p>
+                  <p className="text-neutral-500">
+                    メンション:{' '}
+                    {data.plan.mentions && data.plan.mentions.length > 0
+                      ? data.plan.mentions.map((m) => `@${m}`).join(' ')
+                      : 'なし'}
+                  </p>
+                  {data.plan.mediaType === 'image' && data.plan.source !== 'queue' && (
+                    <p className="text-xs text-neutral-400">同名の .mp4 を置けば自動で動画に切り替わります</p>
+                  )}
+                </div>
               </div>
             )}
           </div>

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { getAll } from '@/lib/db';
 import { configured, connectionStatus } from '@/lib/instagram';
+import { todayJst, weekdayJst, shiftDays } from '@/lib/dateJst';
+import { findChainMedia, loadMentions } from '@/lib/storyPlan';
+import { peekNextQueueItem } from '@/lib/storyQueue';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -22,10 +25,43 @@ export async function GET(req: NextRequest) {
     ),
   ]);
 
+  // 明日の投稿予定: cronと同じ優先チェーンを明日の日付で評価する(読み取りのみ・投稿はしない)。
+  // 「寝る前に明日何が出るか確認できる」ためのプレビュー。
+  const tomorrow = shiftDays(todayJst(), 1);
+  const tomorrowWeekday = weekdayJst(tomorrow);
+  const origin = new URL(req.url).origin;
+  const chain = await findChainMedia(origin, tomorrow, tomorrowWeekday);
+  let plan;
+  if (chain) {
+    const mentions = await loadMentions(origin, chain.base);
+    plan = {
+      date: tomorrow,
+      weekday: tomorrowWeekday,
+      source: chain.source,
+      mediaPath: new URL(chain.url).pathname,
+      mediaType: chain.type,
+      mentions: mentions ?? [],
+    };
+  } else {
+    const queueItem = await peekNextQueueItem(tomorrow);
+    plan = queueItem
+      ? {
+          date: tomorrow,
+          weekday: tomorrowWeekday,
+          source: 'queue' as const,
+          mediaPath: queueItem.media_path,
+          mediaType: queueItem.media_type,
+          mentions: [] as string[],
+          queueTitle: queueItem.title,
+        }
+      : { date: tomorrow, weekday: tomorrowWeekday, source: 'none' as const };
+  }
+
   return NextResponse.json({
     envConfigured: configured(),
     ...status,
     logs,
     queue,
+    plan,
   });
 }

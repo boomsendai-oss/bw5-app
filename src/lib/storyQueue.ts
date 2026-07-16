@@ -28,7 +28,14 @@ export async function pickNextQueueItem(date: string): Promise<QueueItem | null>
     "UPDATE story_queue SET status = 'expired', updated_at = CURRENT_TIMESTAMP WHERE status IN ('pending','approved') AND valid_until IS NOT NULL AND valid_until < ?",
     [date]
   );
+  return peekNextQueueItem(date);
+}
 
+/**
+ * pickNextQueueItemの読み取り専用版(期限切れ掃除をしない)。
+ * 「明日の投稿予定」プレビュー用 — 明日の日付で掃除すると今日まだ使える素材をexpiredにしてしまうため。
+ */
+export async function peekNextQueueItem(date: string): Promise<QueueItem | null> {
   const row = await getOne(
     `SELECT * FROM story_queue
      WHERE status = 'approved'
