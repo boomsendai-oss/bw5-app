@@ -25,20 +25,32 @@ export async function GET(req: NextRequest) {
     ),
   ]);
 
-  // 明日の投稿予定: cronと同じ優先チェーンを明日の日付で評価する(読み取りのみ・投稿はしない)。
-  // 「寝る前に明日何が出るか確認できる」ためのプレビュー。
-  const tomorrow = shiftDays(todayJst(), 1);
-  const tomorrowWeekday = weekdayJst(tomorrow);
+  // 向こう1週間の投稿予定: cronと同じ優先チェーンを明日〜7日後で評価する(読み取りのみ・投稿はしない)。
   const origin = new URL(req.url).origin;
-  const chainList = await findChainMediaList(origin, tomorrow, tomorrowWeekday);
+  const today = todayJst();
+  const plans = await Promise.all(
+    Array.from({ length: 7 }, (_, i) => buildPlanForDate(origin, shiftDays(today, i + 1)))
+  );
 
-  let plan;
+  return NextResponse.json({
+    envConfigured: configured(),
+    ...status,
+    logs,
+    queue,
+    plans,
+  });
+}
+
+/** 1日分の投稿予定を評価(cronと同じ選択・照合ロジックを読み取り専用で) */
+async function buildPlanForDate(origin: string, date: string) {
+  const weekday = weekdayJst(date);
+  const chainList = await findChainMediaList(origin, date, weekday);
+
   if (chainList.length > 0) {
-    // 通常素材あり(複数スロット対応): 各スロットを正本カレンダーと照合した結果を返す
     const items = [];
     for (const media of chainList) {
       const sidecar = await loadSidecar(origin, media.base);
-      const check = await checkSchedule(tomorrow, sidecar.lessons);
+      const check = await checkSchedule(date, sidecar.lessons);
       items.push({
         base: media.base,
         mediaPath: new URL(media.url).pathname,
@@ -47,34 +59,25 @@ export async function GET(req: NextRequest) {
         scheduleCheck: check,
       });
     }
-    plan = { date: tomorrow, weekday: tomorrowWeekday, source: chainList[0].source, items };
-  } else {
-    // 素材なし → 埋め草キューのプレビュー
-    const queueItem = await peekNextQueueItem(tomorrow);
-    plan = queueItem
-      ? {
-          date: tomorrow,
-          weekday: tomorrowWeekday,
-          source: 'queue' as const,
-          items: [
-            {
-              base: `queue#${queueItem.id}`,
-              mediaPath: queueItem.media_path,
-              mediaType: queueItem.media_type,
-              mentions: [] as string[],
-              scheduleCheck: null,
-              queueTitle: queueItem.title,
-            },
-          ],
-        }
-      : { date: tomorrow, weekday: tomorrowWeekday, source: 'none' as const, items: [] };
+    return { date, weekday, source: chainList[0].source, items };
   }
-
-  return NextResponse.json({
-    envConfigured: configured(),
-    ...status,
-    logs,
-    queue,
-    plan,
-  });
+  // 素材なし → 埋め草キューのプレビュー(キュー消化は日々変わるため先の日付ほど参考値)
+  const queueItem = await peekNextQueueItem(date);
+  return queueItem
+    ? {
+        date,
+        weekday,
+        source: 'queue' as const,
+        items: [
+          {
+            base: `queue#${queueItem.id}`,
+            mediaPath: queueItem.media_path,
+            mediaType: queueItem.media_type,
+            mentions: [] as string[],
+            scheduleCheck: null,
+            queueTitle: queueItem.title,
+          },
+        ],
+      }
+    : { date, weekday, source: 'none' as const, items: [] };
 }

@@ -63,10 +63,30 @@ async function fetchViaApi(date: string): Promise<CalendarLesson[] | null> {
 
 // ---- ICSフォールバック(簡易展開) ----
 
+// 週間プレビューが7日分を並列評価するため、ICS本文(約2MB)は短期キャッシュする
+let icsCache: { text: string; fetchedAt: number } | null = null;
+let icsFetching: Promise<string> | null = null;
+
+async function getIcsText(): Promise<string> {
+  if (icsCache && Date.now() - icsCache.fetchedAt < 5 * 60 * 1000) return icsCache.text;
+  if (!icsFetching) {
+    icsFetching = (async () => {
+      try {
+        const res = await fetch(PUBLIC_ICS_URL);
+        if (!res.ok) throw new Error(`公開ICS取得失敗: HTTP ${res.status}`);
+        const text = await res.text();
+        icsCache = { text, fetchedAt: Date.now() };
+        return text;
+      } finally {
+        icsFetching = null;
+      }
+    })();
+  }
+  return icsFetching;
+}
+
 async function fetchViaIcs(date: string): Promise<CalendarLesson[]> {
-  const res = await fetch(PUBLIC_ICS_URL);
-  if (!res.ok) throw new Error(`公開ICS取得失敗: HTTP ${res.status}`);
-  const ics = (await res.text()).replace(/\r?\n[ \t]/g, ''); // 行折返しを展開
+  const ics = (await getIcsText()).replace(/\r?\n[ \t]/g, ''); // 行折返しを展開
   const target = date.replace(/-/g, '');
   const targetDow = new Date(`${date}T00:00:00Z`).getUTCDay(); // 0=日
   const events = ics.split('BEGIN:VEVENT').slice(1).map((s) => s.split('END:VEVENT')[0]);

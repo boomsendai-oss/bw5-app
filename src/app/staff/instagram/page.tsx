@@ -45,6 +45,66 @@ type Plan = {
   items: PlanItem[];
 };
 
+function PlanDayRow({ plan }: { plan: Plan }) {
+  return (
+    <div className="border-t border-sand-100 pt-3 first:border-t-0 first:pt-0">
+      <p className="text-sm font-semibold text-navy-800 mb-1.5">
+        {plan.date.slice(5).replace('-', '/')}（{WEEKDAY_JA[plan.weekday]}）
+        {plan.items.length > 1 && (
+          <span className="ml-2 text-xs font-normal text-neutral-400">{plan.items.length}本連続投稿</span>
+        )}
+      </p>
+      {plan.source === 'none' ? (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+          ⚠️ 素材なし — このままだと投稿されません
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {plan.items.map((item) => (
+            <div key={item.base} className="flex items-center gap-3">
+              <a href={item.mediaPath} target="_blank" rel="noreferrer" className="shrink-0">
+                {item.mediaType === 'image' ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.mediaPath} alt="" className="w-11 h-[70px] object-cover rounded-md bg-neutral-100 border border-sand-200" />
+                ) : (
+                  <video src={item.mediaPath} muted className="w-11 h-[70px] object-cover rounded-md bg-neutral-100 border border-sand-200" />
+                )}
+              </a>
+              <div className="text-xs space-y-0.5 min-w-0">
+                <p className="text-navy-800 font-medium">
+                  {PLAN_SOURCE_JA[plan.source]}
+                  {item.queueTitle ? `「${item.queueTitle}」` : ''}・{item.mediaType === 'image' ? '画像' : '動画'}
+                </p>
+                <p className="text-neutral-500 truncate">
+                  {item.mentions.length > 0 ? item.mentions.map((m) => `@${m}`).join(' ') : 'メンションなし'}
+                </p>
+                {item.scheduleCheck?.result === 'match' && <p className="text-green-700">✓ カレンダーと一致</p>}
+                {item.scheduleCheck?.result === 'no-declaration' && (
+                  <p className="text-neutral-400">カレンダー照合なし</p>
+                )}
+                {item.scheduleCheck?.result === 'check-error' && (
+                  <p className="text-amber-700">⚠️ カレンダーが読めず照合不可（投稿は行われます）</p>
+                )}
+                {item.scheduleCheck?.result === 'mismatch' && (
+                  <div className="text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-1">
+                    <p className="font-semibold">⚠️ カレンダーと不一致 — 投稿されません</p>
+                    {item.scheduleCheck.problems.map((p) => (
+                      <p key={p}>{p}</p>
+                    ))}
+                    <p>
+                      正しい素材を <code className="bg-amber-100 px-1 rounded">{plan.date}.jpg</code> で置くと差し替え
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type StatusResp = {
   envConfigured: boolean;
   connected: boolean;
@@ -53,7 +113,7 @@ type StatusResp = {
   tokenAgeDays?: number;
   logs: LogRow[];
   queue: QueueRow[];
-  plan?: Plan;
+  plans?: Plan[];
 };
 
 const PLAN_SOURCE_JA: Record<Plan['source'], string> = {
@@ -174,71 +234,15 @@ export default function InstagramStoryPage() {
           </div>
         )}
 
-        {data?.plan && (
+        {data?.plans && (
           <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
-            <h2 className="font-bold text-navy-800 mb-2">
-              明日の投稿予定
-              <span className="ml-2 text-sm font-normal text-neutral-400">
-                {data.plan.date}（{WEEKDAY_JA[data.plan.weekday]}）8:00
-              </span>
-            </h2>
-            {data.plan.source === 'none' ? (
-              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                ⚠️ 明日出せる素材がありません。このままだと明日は投稿されません（素材を配置するか、埋め草を承認してください）
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {data.plan.items.length > 1 && (
-                  <p className="text-xs text-neutral-400">{data.plan.items.length}本を8:00に連続投稿します</p>
-                )}
-                {data.plan.items.map((item, i) => (
-                  <div key={item.base} className="border-t border-sand-100 pt-3 first:border-t-0 first:pt-0">
-                    <div className="flex items-center gap-4">
-                      <a href={item.mediaPath} target="_blank" rel="noreferrer" className="shrink-0">
-                        {item.mediaType === 'image' ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={item.mediaPath} alt={`素材${i + 1}`} className="w-20 h-36 object-cover rounded-lg bg-neutral-100 border border-sand-200" />
-                        ) : (
-                          <video src={item.mediaPath} muted className="w-20 h-36 object-cover rounded-lg bg-neutral-100 border border-sand-200" />
-                        )}
-                      </a>
-                      <div className="text-sm space-y-1 min-w-0">
-                        <p className="font-semibold text-navy-800">
-                          {data.plan!.items.length > 1 ? `${i + 1}本目: ` : ''}
-                          {PLAN_SOURCE_JA[data.plan!.source]}
-                          {item.queueTitle ? `「${item.queueTitle}」` : ''}を
-                          {item.mediaType === 'image' ? '画像' : '動画'}で投稿予定
-                        </p>
-                        <p className="text-neutral-500">
-                          メンション: {item.mentions.length > 0 ? item.mentions.map((m) => `@${m}`).join(' ') : 'なし'}
-                        </p>
-                        {item.scheduleCheck?.result === 'match' && (
-                          <p className="text-xs text-green-700">✓ Googleカレンダーの正本と一致</p>
-                        )}
-                        {item.scheduleCheck?.result === 'no-declaration' && (
-                          <p className="text-xs text-neutral-400">カレンダー照合なし（素材に内容の宣言が未設定）</p>
-                        )}
-                        {item.scheduleCheck?.result === 'check-error' && (
-                          <p className="text-xs text-amber-700">⚠️ カレンダーが読めず照合できません（投稿自体は行われます）</p>
-                        )}
-                        {item.scheduleCheck?.result === 'mismatch' && (
-                          <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 space-y-0.5">
-                            <p className="font-semibold">⚠️ カレンダーと不一致 — この素材は投稿されません</p>
-                            {item.scheduleCheck.problems.map((p) => (
-                              <p key={p}>{p}</p>
-                            ))}
-                            <p>
-                              正しい素材を <code className="bg-amber-100 px-1 rounded">{data.plan?.date}.jpg</code>{' '}
-                              の名前で置くと差し替えられます
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <h2 className="font-bold text-navy-800 mb-1">向こう1週間の投稿予定</h2>
+            <p className="text-xs text-neutral-400 mb-3">毎朝8:00に自動投稿。素材の配置状況とGoogleカレンダー照合の結果です</p>
+            <div className="space-y-3">
+              {data.plans.map((p) => (
+                <PlanDayRow key={p.date} plan={p} />
+              ))}
+            </div>
           </div>
         )}
 
