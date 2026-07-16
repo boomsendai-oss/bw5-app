@@ -45,11 +45,16 @@ type Plan = {
   items: PlanItem[];
 };
 
-function PlanDayRow({ plan }: { plan: Plan }) {
+function PlanDayRow({ plan, isToday, logs }: { plan: Plan; isToday: boolean; logs: LogRow[] }) {
+  const postedFor = (mediaPath: string) =>
+    logs.some((l) => l.date === plan.date && l.status.startsWith('posted') && l.video_path?.endsWith(mediaPath));
   return (
     <div className="border-t border-sand-100 pt-3 first:border-t-0 first:pt-0">
       <p className="text-sm font-semibold text-navy-800 mb-1.5">
         {plan.date.slice(5).replace('-', '/')}（{WEEKDAY_JA[plan.weekday]}）
+        {isToday && (
+          <span className="ml-1.5 rounded-full bg-brand-100 text-brand-700 px-2 py-0.5 text-[11px] font-semibold">本日</span>
+        )}
         {plan.items.length > 1 && (
           <span className="ml-2 text-xs font-normal text-neutral-400">{plan.items.length}本連続投稿</span>
         )}
@@ -78,6 +83,7 @@ function PlanDayRow({ plan }: { plan: Plan }) {
                 <p className="text-neutral-500 truncate">
                   {item.mentions.length > 0 ? item.mentions.map((m) => `@${m}`).join(' ') : 'メンションなし'}
                 </p>
+                {postedFor(item.mediaPath) && <p className="text-green-700 font-semibold">✅ 投稿済み</p>}
                 {item.scheduleCheck?.result === 'match' && <p className="text-green-700">✓ カレンダーと一致</p>}
                 {item.scheduleCheck?.result === 'no-declaration' && (
                   <p className="text-neutral-400">カレンダー照合なし</p>
@@ -239,8 +245,8 @@ export default function InstagramStoryPage() {
             <h2 className="font-bold text-navy-800 mb-1">向こう1週間の投稿予定</h2>
             <p className="text-xs text-neutral-400 mb-3">毎朝8:00に自動投稿。素材の配置状況とGoogleカレンダー照合の結果です</p>
             <div className="space-y-3">
-              {data.plans.map((p) => (
-                <PlanDayRow key={p.date} plan={p} />
+              {data.plans.map((p, i) => (
+                <PlanDayRow key={p.date} plan={p} isToday={i === 0} logs={data.logs} />
               ))}
             </div>
           </div>

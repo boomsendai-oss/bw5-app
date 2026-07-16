@@ -25,11 +25,12 @@ export async function GET(req: NextRequest) {
     ),
   ]);
 
-  // 向こう1週間の投稿予定: cronと同じ優先チェーンを明日〜7日後で評価する(読み取りのみ・投稿はしない)。
+  // 向こう1週間の投稿予定: cronと同じ優先チェーンを今日〜6日後で評価する(読み取りのみ・投稿はしない)。
+  // 今日分は投稿済みかどうかを画面側でログと突き合わせて表示する。
   const origin = new URL(req.url).origin;
   const today = todayJst();
   const plans = await Promise.all(
-    Array.from({ length: 7 }, (_, i) => buildPlanForDate(origin, shiftDays(today, i + 1)))
+    Array.from({ length: 7 }, (_, i) => buildPlanForDate(origin, shiftDays(today, i)))
   );
 
   return NextResponse.json({
