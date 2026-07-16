@@ -61,7 +61,7 @@ export default function InstagramStoryPage() {
     <div>
       <StaffPageHeader
         title="インスタストーリーズ自動投稿"
-        description="曜日別レッスン告知動画を毎日12:00にストーリーズへ自動投稿します"
+        description="曜日別レッスン告知動画を毎朝8:00にストーリーズへ自動投稿します（動画のある曜日のみ）"
         backHref="/staff"
       />
       <div className="max-w-2xl mx-auto p-4 space-y-4">
