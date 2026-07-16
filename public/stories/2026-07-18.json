@@ -1,0 +1,7 @@
+{
+  "mentions": ["kattsu_ziel", "taro_bsb"],
+  "lessons": [
+    { "start": "10:00", "instructor": "K@TTSU" },
+    { "start": "13:00", "instructor": "TARO" }
+  ]
+}

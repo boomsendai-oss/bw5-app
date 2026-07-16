@@ -3,7 +3,7 @@ import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { getAll } from '@/lib/db';
 import { configured, connectionStatus } from '@/lib/instagram';
 import { todayJst, weekdayJst, shiftDays } from '@/lib/dateJst';
-import { findChainMedia, loadSidecar, checkSchedule } from '@/lib/storyPlan';
+import { findChainMediaList, loadSidecar, checkSchedule } from '@/lib/storyPlan';
 import { peekNextQueueItem } from '@/lib/storyQueue';
 
 export const dynamic = 'force-dynamic';
@@ -30,40 +30,44 @@ export async function GET(req: NextRequest) {
   const tomorrow = shiftDays(todayJst(), 1);
   const tomorrowWeekday = weekdayJst(tomorrow);
   const origin = new URL(req.url).origin;
-  const chain = await findChainMedia(origin, tomorrow, tomorrowWeekday);
-  const sidecar = chain ? await loadSidecar(origin, chain.base) : {};
-  const check = chain ? await checkSchedule(tomorrow, sidecar.lessons) : null;
+  const chainList = await findChainMediaList(origin, tomorrow, tomorrowWeekday);
 
   let plan;
-  if (chain && check?.result !== 'mismatch') {
-    plan = {
-      date: tomorrow,
-      weekday: tomorrowWeekday,
-      source: chain.source,
-      mediaPath: new URL(chain.url).pathname,
-      mediaType: chain.type,
-      mentions: sidecar.mentions ?? [],
-      scheduleCheck: check, // no-declaration | match
-    };
+  if (chainList.length > 0) {
+    // 通常素材あり(複数スロット対応): 各スロットを正本カレンダーと照合した結果を返す
+    const items = [];
+    for (const media of chainList) {
+      const sidecar = await loadSidecar(origin, media.base);
+      const check = await checkSchedule(tomorrow, sidecar.lessons);
+      items.push({
+        base: media.base,
+        mediaPath: new URL(media.url).pathname,
+        mediaType: media.type,
+        mentions: sidecar.mentions ?? [],
+        scheduleCheck: check,
+      });
+    }
+    plan = { date: tomorrow, weekday: tomorrowWeekday, source: chainList[0].source, items };
   } else {
-    // 素材なし、またはスケジュール不一致 → 埋め草キューへフォールバック
+    // 素材なし → 埋め草キューのプレビュー
     const queueItem = await peekNextQueueItem(tomorrow);
-    const mismatch =
-      check?.result === 'mismatch'
-        ? { skippedMediaPath: chain ? new URL(chain.url).pathname : null, declared: check.declared, actual: check.actual }
-        : undefined;
     plan = queueItem
       ? {
           date: tomorrow,
           weekday: tomorrowWeekday,
           source: 'queue' as const,
-          mediaPath: queueItem.media_path,
-          mediaType: queueItem.media_type,
-          mentions: [] as string[],
-          queueTitle: queueItem.title,
-          mismatch,
+          items: [
+            {
+              base: `queue#${queueItem.id}`,
+              mediaPath: queueItem.media_path,
+              mediaType: queueItem.media_type,
+              mentions: [] as string[],
+              scheduleCheck: null,
+              queueTitle: queueItem.title,
+            },
+          ],
         }
-      : { date: tomorrow, weekday: tomorrowWeekday, source: 'none' as const, mismatch };
+      : { date: tomorrow, weekday: tomorrowWeekday, source: 'none' as const, items: [] };
   }
 
   return NextResponse.json({

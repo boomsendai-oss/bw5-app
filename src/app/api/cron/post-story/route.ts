@@ -3,7 +3,7 @@ import { execute, getOne } from '@/lib/db';
 import { todayJst, weekdayJst, nowUtcIso } from '@/lib/dateJst';
 import { configured as igConfigured, publishStoryVideo, publishStoryImage, refreshTokenIfStale } from '@/lib/instagram';
 import { pickNextQueueItem, markQueueItemPosted } from '@/lib/storyQueue';
-import { WEEKDAY_FILES, findChainMedia, loadSidecar, checkSchedule } from '@/lib/storyPlan';
+import { WEEKDAY_FILES, findChainMediaList, loadSidecar, checkSchedule } from '@/lib/storyPlan';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -42,64 +42,93 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, configured: false, note: 'Instagram連携env未設定のためスキップ' });
   }
 
-  // 冪等性: 同じ日に既に投稿済みなら再投稿しない。
-  // (手動テストと定時cronの重複、GH Actionsのリトライ、二重発火から二重ストーリーを防ぐ)
-  const already = await getOne(
-    "SELECT 1 AS hit FROM story_post_log WHERE date = ? AND status = 'posted' LIMIT 1",
-    [date]
-  );
-  if (already) {
-    return NextResponse.json({ ok: true, posted: false, note: `${date} は投稿済みのためスキップ(冪等)` });
-  }
-
   const origin = new URL(req.url).origin;
 
   // 素材の選択(作り置きをTAROが用意・Claudeは選んで出すだけ。無ければ出さない=ブレーキ):
   //   ①日付指定 → ②曜日デフォルト → ③承認済み埋め草キュー → ④出さない。
+  // 1日複数本対応: {base}-2.jpg 等の連番があれば朝8:00に順番に連続投稿する(例: 土曜の朝の部+午後の部)。
   // 選択ロジック本体は storyPlan.ts (「明日の投稿予定」プレビューと共用)。
-  const picked = await findChainMedia(origin, date, weekday);
+  const mediaList = await findChainMediaList(origin, date, weekday);
 
-  // 正本スケジュール照合: 素材がlessons宣言を持つ場合、今日の実スケジュール
-  // (lesson_master+lesson_instances=Gカレンダーの生成元)と一致するか確認する。
-  // 休講・代講で食い違う日は間違った告知を出さず、埋め草キューへフォールバック(2026-07-16 TARO決定)。
-  const sidecar = picked ? await loadSidecar(origin, picked.base) : {};
-  let scheduleMismatch: string | null = null;
-  if (picked) {
-    const check = await checkSchedule(date, sidecar.lessons);
-    if (check.result === 'mismatch') {
-      scheduleMismatch = `素材の宣言[${check.declared.join(', ')}] ≠ 今日の正本[${check.actual.join(', ')}]`;
-      await logResult(date, weekday, picked.url, 'skipped_schedule_mismatch', undefined, scheduleMismatch);
-    }
-  }
-
-  if (picked && !scheduleMismatch) {
-    const mentions = sidecar.mentions;
-
-    const publish = (m?: string[]) =>
-      picked.type === 'image' ? publishStoryImage(picked.url, m) : publishStoryVideo(picked.url, m);
+  if (mediaList.length > 0) {
+    const results: Array<Record<string, unknown>> = [];
+    let postedCount = 0;
+    let errorCount = 0;
 
     try {
       await refreshTokenIfStale();
-      let mediaId: string;
-      let mentionsApplied = mentions ?? [];
-      try {
-        ({ mediaId } = await publish(mentions));
-      } catch (e) {
-        // メンション起因の失敗(非公開アカ・ユーザー名変更等)で投稿自体を落とさない:
-        // メンション付きで失敗したらメンション無しで1回だけ再試行する。
-        if (!mentions?.length) throw e;
-        const msg = e instanceof Error ? e.message : String(e);
-        console.warn(`メンション付き投稿に失敗→メンション無しで再試行: ${msg}`);
-        ({ mediaId } = await publish(undefined));
-        mentionsApplied = [];
-      }
-      await logResult(date, weekday, picked.url, 'posted', mediaId);
-      return NextResponse.json({ ok: true, posted: true, mediaId, mentions: mentionsApplied });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      await logResult(date, weekday, picked.url, 'error', undefined, msg);
-      return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+      console.warn(`トークン更新失敗(投稿は続行): ${e instanceof Error ? e.message : e}`);
     }
+
+    for (const media of mediaList) {
+      // 冪等性: 同じ素材を同じ日に二度投稿しない(スロット単位。手動テストや二重発火対策)
+      const already = await getOne(
+        "SELECT 1 AS hit FROM story_post_log WHERE date = ? AND video_path = ? AND status = 'posted' LIMIT 1",
+        [date, media.url]
+      );
+      if (already) {
+        results.push({ media: media.base, skipped: '投稿済み(冪等)' });
+        continue;
+      }
+
+      const sidecar = await loadSidecar(origin, media.base);
+
+      // 正本スケジュール照合: 正本=BOOMのGoogleカレンダー(TAROが直接編集)。
+      // 宣言レッスンがカレンダーに揃っていなければ(休講・代講・時間変更)このスロットは出さない。
+      const check = await checkSchedule(date, sidecar.lessons);
+      if (check.result === 'mismatch') {
+        const detail = check.problems.join(' / ');
+        await logResult(date, weekday, media.url, 'skipped_schedule_mismatch', undefined, detail);
+        results.push({ media: media.base, skipped: `スケジュール不一致: ${detail}` });
+        continue;
+      }
+      if (check.result === 'check-error') {
+        // 正本が読めない時は投稿は止めない(止めると全停止事故になる)が、ログに残す
+        console.warn(`スケジュール照合不可(投稿は続行): ${check.error}`);
+      }
+
+      const publish = (m?: string[]) =>
+        media.type === 'image' ? publishStoryImage(media.url, m) : publishStoryVideo(media.url, m);
+
+      try {
+        let mediaId: string;
+        let mentionsApplied = sidecar.mentions ?? [];
+        try {
+          ({ mediaId } = await publish(sidecar.mentions));
+        } catch (e) {
+          // メンション起因の失敗(非公開アカ・ユーザー名変更等)で投稿自体を落とさない:
+          // メンション付きで失敗したらメンション無しで1回だけ再試行する。
+          if (!sidecar.mentions?.length) throw e;
+          console.warn(`メンション付き投稿に失敗→メンション無しで再試行: ${e instanceof Error ? e.message : e}`);
+          ({ mediaId } = await publish(undefined));
+          mentionsApplied = [];
+        }
+        await logResult(date, weekday, media.url, 'posted', mediaId);
+        postedCount++;
+        results.push({ media: media.base, posted: true, mediaId, mentions: mentionsApplied });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        await logResult(date, weekday, media.url, 'error', undefined, msg);
+        errorCount++;
+        results.push({ media: media.base, error: msg });
+        // 1本失敗しても残りのスロットは投稿を試みる
+      }
+    }
+
+    return NextResponse.json(
+      { ok: errorCount === 0, posted: postedCount > 0, slots: mediaList.length, results },
+      { status: errorCount === 0 ? 200 : 500 }
+    );
+  }
+
+  // 通常素材が1本も無い日のみ埋め草へ。既に今日何か投稿済みなら重複させない(1日1本)。
+  const alreadyToday = await getOne(
+    "SELECT 1 AS hit FROM story_post_log WHERE date = ? AND status IN ('posted', 'posted_queue') LIMIT 1",
+    [date]
+  );
+  if (alreadyToday) {
+    return NextResponse.json({ ok: true, posted: false, note: `${date} は投稿済みのためスキップ(冪等)` });
   }
 
   // 3. 埋め草キュー(承認済みのみ・素材ファイルが実在しなければブレーキ)
@@ -117,13 +146,7 @@ export async function POST(req: NextRequest) {
         item.media_type === 'image' ? await publishStoryImage(mediaUrl) : await publishStoryVideo(mediaUrl);
       await markQueueItemPosted(item, nowUtcIso());
       await logResult(date, weekday, mediaUrl, 'posted_queue', mediaId);
-      return NextResponse.json({
-        ok: true,
-        posted: true,
-        source: `queue#${item.id}`,
-        mediaId,
-        ...(scheduleMismatch ? { note: `スケジュール不一致のため埋め草に切替: ${scheduleMismatch}` } : {}),
-      });
+      return NextResponse.json({ ok: true, posted: true, source: `queue#${item.id}`, mediaId });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       await logResult(date, weekday, mediaUrl, 'error', undefined, msg);
@@ -132,14 +155,6 @@ export async function POST(req: NextRequest) {
   }
 
   // 4. ブレーキ: 出せる素材が何も無い
-  if (scheduleMismatch) {
-    // 不一致ログは記録済み。埋め草も無かったので今日は何も出さない。
-    return NextResponse.json({
-      ok: true,
-      posted: false,
-      note: `スケジュール不一致で通常素材をスキップ・埋め草も無いため投稿なし (${scheduleMismatch})`,
-    });
-  }
   const tried = `${date}.(mp4|jpg) / ${WEEKDAY_FILES[weekday]}.(mp4|jpg)`;
   await logResult(date, weekday, `${origin}/stories/{${date}|${WEEKDAY_FILES[weekday]}}`, 'skipped_no_video');
   return NextResponse.json({
