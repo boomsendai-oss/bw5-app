@@ -188,21 +188,25 @@ async function requireConnection(): Promise<{ token: string; igUserId: string }>
 }
 
 /**
- * 動画ストーリーズを投稿する。
- *  1. POST /{ig-user-id}/media (video_url, media_type=STORIES) → creation_id
- *  2. コンテナのstatus_codeがFINISHEDになるまでポーリング(動画処理に数秒〜数十秒)
+ * ストーリーズを投稿する(動画/画像共通)。
+ *  1. POST /{ig-user-id}/media (video_url|image_url, media_type=STORIES) → creation_id
+ *  2. コンテナのstatus_codeがFINISHEDになるまでポーリング(動画処理に数秒〜数十秒。画像はほぼ即時)
  *  3. POST /{ig-user-id}/media_publish (creation_id) → media id
  *
- * videoUrl は公開URL必須(Metaサーバーがサーバー側で取得しにいく)。
+ * mediaUrl は公開URL必須(Metaサーバーがサーバー側で取得しにいく)。
  */
-export async function publishStoryVideo(videoUrl: string): Promise<{ mediaId: string }> {
+async function publishStory(mediaUrl: string, mediaType: 'video' | 'image'): Promise<{ mediaId: string }> {
   const { token, igUserId } = await requireConnection();
   const base = `${GRAPH}/${GRAPH_VERSION}/${igUserId}`;
+
+  const payload: Record<string, string> = { media_type: 'STORIES', access_token: token };
+  if (mediaType === 'video') payload.video_url = mediaUrl;
+  else payload.image_url = mediaUrl;
 
   const createRes = await fetch(`${base}/media`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ video_url: videoUrl, media_type: 'STORIES', access_token: token }),
+    body: JSON.stringify(payload),
   });
   const createJson = await createRes.json();
   if (!createRes.ok || createJson.error) {
@@ -236,4 +240,12 @@ export async function publishStoryVideo(videoUrl: string): Promise<{ mediaId: st
     throw new Error(`公開失敗: ${JSON.stringify(pubJson.error ?? pubJson)}`);
   }
   return { mediaId: pubJson.id as string };
+}
+
+export async function publishStoryVideo(videoUrl: string): Promise<{ mediaId: string }> {
+  return publishStory(videoUrl, 'video');
+}
+
+export async function publishStoryImage(imageUrl: string): Promise<{ mediaId: string }> {
+  return publishStory(imageUrl, 'image');
 }

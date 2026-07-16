@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getOne } from '@/lib/db';
-import { todayJst, weekdayJst } from '@/lib/dateJst';
-import { configured as igConfigured, publishStoryVideo, refreshTokenIfStale } from '@/lib/instagram';
+import { todayJst, weekdayJst, nowUtcIso } from '@/lib/dateJst';
+import { configured as igConfigured, publishStoryVideo, publishStoryImage, refreshTokenIfStale } from '@/lib/instagram';
+import { pickNextQueueItem, markQueueItemPosted } from '@/lib/storyQueue';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -58,7 +59,8 @@ export async function POST(req: NextRequest) {
   // 素材の選択(作り置きをTAROが用意・Claudeは選んで出すだけ。無ければ出さない=ブレーキ):
   //   1. 日付指定オーバーライド {YYYY-MM-DD}.mp4 (土日の変動・講師交代・特別な日用) を最優先
   //   2. 無ければ曜日デフォルト {曜日}.mp4 (毎週固定ラインナップの日用)
-  //   3. どちらも無ければ投稿しない(間違った素材を出すより出さない方がマシ)
+  //   3. 無ければ承認済み「埋め草」キューから1本(レッスンが無い日用・TARO事前承認済みのみ)
+  //   4. どれも無ければ投稿しない(間違った素材を出すより出さない方がマシ)
   const candidates = [`${date}.mp4`, fileName];
   let videoUrl: string | null = null;
   for (const f of candidates) {
@@ -69,23 +71,48 @@ export async function POST(req: NextRequest) {
       break;
     }
   }
-  if (!videoUrl) {
-    await logResult(date, weekday, `${origin}/stories/{${candidates.join('|')}}`, 'skipped_no_video');
-    return NextResponse.json({
-      ok: true,
-      posted: false,
-      note: `今日の素材(${candidates.join(' / ')})が未配置のためスキップ`,
-    });
+
+  if (videoUrl) {
+    try {
+      await refreshTokenIfStale();
+      const { mediaId } = await publishStoryVideo(videoUrl);
+      await logResult(date, weekday, videoUrl, 'posted', mediaId);
+      return NextResponse.json({ ok: true, posted: true, mediaId });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await logResult(date, weekday, videoUrl, 'error', undefined, msg);
+      return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    }
   }
 
-  try {
-    await refreshTokenIfStale();
-    const { mediaId } = await publishStoryVideo(videoUrl);
-    await logResult(date, weekday, videoUrl, 'posted', mediaId);
-    return NextResponse.json({ ok: true, posted: true, mediaId });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    await logResult(date, weekday, videoUrl, 'error', undefined, msg);
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  // 3. 埋め草キュー(承認済みのみ・素材ファイルが実在しなければブレーキ)
+  const item = await pickNextQueueItem(date);
+  if (item) {
+    const mediaUrl = `${origin}${item.media_path}`;
+    const head = await fetch(mediaUrl, { method: 'HEAD' }).catch(() => null);
+    if (!head?.ok) {
+      await logResult(date, weekday, mediaUrl, 'error', undefined, `埋め草素材(queue#${item.id})のファイルが見つかりません`);
+      return NextResponse.json({ ok: false, error: `queue#${item.id} の素材ファイルが未配置` }, { status: 500 });
+    }
+    try {
+      await refreshTokenIfStale();
+      const { mediaId } =
+        item.media_type === 'image' ? await publishStoryImage(mediaUrl) : await publishStoryVideo(mediaUrl);
+      await markQueueItemPosted(item, nowUtcIso());
+      await logResult(date, weekday, mediaUrl, 'posted_queue', mediaId);
+      return NextResponse.json({ ok: true, posted: true, source: `queue#${item.id}`, mediaId });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await logResult(date, weekday, mediaUrl, 'error', undefined, msg);
+      return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    }
   }
+
+  // 4. ブレーキ: 出せる素材が何も無い
+  await logResult(date, weekday, `${origin}/stories/{${candidates.join('|')}}`, 'skipped_no_video');
+  return NextResponse.json({
+    ok: true,
+    posted: false,
+    note: `今日の素材(${candidates.join(' / ')})も承認済みキューも無いためスキップ`,
+  });
 }
