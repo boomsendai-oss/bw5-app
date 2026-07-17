@@ -122,6 +122,40 @@ type StatusResp = {
   plans?: Plan[];
 };
 
+type ReelRow = {
+  id: number;
+  title: string;
+  video_path: string;
+  cover_path: string | null;
+  caption: string;
+  scheduled_at: string;
+  status: 'scheduled' | 'posting' | 'posted' | 'failed' | 'canceled';
+  ig_media_id: string | null;
+  permalink: string | null;
+  error: string | null;
+  posted_at: string | null;
+};
+
+const REEL_STATUS: Record<ReelRow['status'], { label: string; cls: string }> = {
+  scheduled: { label: '予約中', cls: 'bg-brand-100 text-brand-700' },
+  posting: { label: '投稿処理中', cls: 'bg-amber-100 text-amber-700' },
+  posted: { label: '公開済み', cls: 'bg-green-100 text-green-700' },
+  failed: { label: '失敗', cls: 'bg-red-100 text-red-700' },
+  canceled: { label: 'キャンセル', cls: 'bg-gray-100 text-gray-500' },
+};
+
+function jstLabel(utcIso: string): string {
+  const d = new Date(utcIso.endsWith('Z') || utcIso.includes('+') ? utcIso : `${utcIso}Z`);
+  return d.toLocaleString('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    month: 'numeric',
+    day: 'numeric',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 const PLAN_SOURCE_JA: Record<Plan['source'], string> = {
   'date-file': '日付指定の素材',
   'weekday-file': '曜日の素材',
@@ -149,19 +183,27 @@ const KIND_JA: Record<string, string> = {
 
 export default function InstagramStoryPage() {
   const [data, setData] = useState<StatusResp | null>(null);
+  const [reels, setReels] = useState<ReelRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/staff/instagram/status', { credentials: 'include' });
+      const [res, reelRes] = await Promise.all([
+        fetch('/api/staff/instagram/status', { credentials: 'include' }),
+        fetch('/api/staff/instagram/reels', { credentials: 'include' }),
+      ]);
       if (res.status === 401) {
         window.location.href = '/staff/events/login?next=/staff/instagram';
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setData(await res.json());
+      if (reelRes.ok) {
+        const rj = await reelRes.json();
+        setReels(rj.reels ?? []);
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -172,6 +214,32 @@ export default function InstagramStoryPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const [busyReelId, setBusyReelId] = useState<number | null>(null);
+  const cancelReel = useCallback(
+    async (id: number) => {
+      if (!window.confirm('このリールの予約をキャンセルしますか？')) return;
+      setBusyReelId(id);
+      try {
+        const res = await fetch('/api/staff/instagram/reels', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ id, action: 'cancel' }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => null);
+          throw new Error(j?.error ?? `HTTP ${res.status}`);
+        }
+        await load();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusyReelId(null);
+      }
+    },
+    [load]
+  );
 
   const [busyId, setBusyId] = useState<number | null>(null);
   const act = useCallback(
@@ -201,8 +269,8 @@ export default function InstagramStoryPage() {
   return (
     <div>
       <StaffPageHeader
-        title="インスタストーリーズ自動投稿"
-        description="毎朝8:00に今日の素材（日付指定 YYYY-MM-DD.mp4 優先→曜日デフォルト）をストーリーズへ自動投稿。素材が無い日は投稿しません"
+        title="インスタ自動投稿"
+        description="ストーリーズ=毎朝8:00に今日の素材を自動投稿。リール=予約日時（基本 毎日19:00枠）にサーバー側cronが自動公開"
         backHref="/staff"
       />
       <div className="max-w-2xl mx-auto p-4 space-y-4">
@@ -240,9 +308,61 @@ export default function InstagramStoryPage() {
           </div>
         )}
 
+        {data && (
+          <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
+            <h2 className="font-bold text-navy-800 mb-1">リール投稿予定</h2>
+            <p className="text-xs text-neutral-400 mb-3">
+              予約日時になるとサーバー側で自動公開されます（毎日19:00 JSTに実行・Macの起動状態に無関係）
+            </p>
+            {reels.length === 0 ? (
+              <p className="text-sm text-neutral-400">リールの予定・履歴はまだありません</p>
+            ) : (
+              <div className="space-y-3">
+                {reels.map((r) => {
+                  const s = REEL_STATUS[r.status] ?? { label: r.status, cls: 'bg-gray-100 text-gray-500' };
+                  return (
+                    <div key={r.id} className="flex items-center gap-3 border-t border-sand-100 pt-3 first:border-t-0 first:pt-0">
+                      <a href={r.permalink ?? r.video_path} target="_blank" rel="noreferrer" className="shrink-0">
+                        {r.cover_path ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={r.cover_path} alt="" className="w-12 h-20 object-cover rounded-md bg-neutral-100 border border-sand-200" />
+                        ) : (
+                          <video src={r.video_path} muted className="w-12 h-20 object-cover rounded-md bg-neutral-100 border border-sand-200" />
+                        )}
+                      </a>
+                      <div className="flex-1 min-w-0 text-sm">
+                        <p className="font-semibold text-navy-800 truncate">{r.title}</p>
+                        <p className="text-xs text-neutral-500">
+                          {r.status === 'posted' && r.posted_at ? `${jstLabel(r.posted_at)} 公開` : `${jstLabel(r.scheduled_at)} 予定`}
+                        </p>
+                        {r.error && <p className="text-xs text-red-600 truncate">{r.error}</p>}
+                        {r.permalink && (
+                          <a href={r.permalink} target="_blank" rel="noreferrer" className="text-xs text-brand-700 underline">
+                            投稿を見る
+                          </a>
+                        )}
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${s.cls}`}>{s.label}</span>
+                      {r.status === 'scheduled' && (
+                        <button
+                          onClick={() => cancelReel(r.id)}
+                          disabled={busyReelId === r.id}
+                          className="shrink-0 rounded-lg bg-neutral-100 text-neutral-600 text-xs font-semibold px-3 py-1.5 disabled:opacity-50"
+                        >
+                          キャンセル
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {data?.plans && (
           <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
-            <h2 className="font-bold text-navy-800 mb-1">向こう1週間の投稿予定</h2>
+            <h2 className="font-bold text-navy-800 mb-1">向こう1週間のストーリー予定</h2>
             <p className="text-xs text-neutral-400 mb-3">毎朝8:00に自動投稿。素材の配置状況とGoogleカレンダー照合の結果です</p>
             <div className="space-y-3">
               {data.plans.map((p, i) => (

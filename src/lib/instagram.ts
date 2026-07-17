@@ -265,3 +265,75 @@ export async function publishStoryVideo(videoUrl: string, mentions?: string[]): 
 export async function publishStoryImage(imageUrl: string, mentions?: string[]): Promise<{ mediaId: string }> {
   return publishStory(imageUrl, 'image', mentions);
 }
+
+/**
+ * リール公開 (media_type=REELS)。
+ *  1. POST /{ig-user-id}/media (video_url, caption, cover_url, share_to_feed)
+ *  2. status_code=FINISHED までポーリング(リールはストーリーより処理が長いので最大4分)
+ *  3. media_publish → permalink取得
+ * 実証済みフロー: scripts/post_reel_once.mjs (2026-07-17 初投稿で検証)
+ */
+export async function publishReel(
+  videoUrl: string,
+  caption: string,
+  coverUrl?: string
+): Promise<{ mediaId: string; permalink?: string }> {
+  const { token, igUserId } = await requireConnection();
+  const base = `${GRAPH}/${GRAPH_VERSION}/${igUserId}`;
+
+  const payload: Record<string, unknown> = {
+    media_type: 'REELS',
+    video_url: videoUrl,
+    caption,
+    share_to_feed: 'true',
+    access_token: token,
+  };
+  if (coverUrl) payload.cover_url = coverUrl;
+
+  const createRes = await fetch(`${base}/media`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const createJson = await createRes.json();
+  if (!createRes.ok || createJson.error) {
+    throw new Error(`リールコンテナ作成失敗: ${JSON.stringify(createJson.error ?? createJson)}`);
+  }
+  const creationId = createJson.id as string;
+
+  const deadline = Date.now() + 240_000;
+  let statusCode = 'IN_PROGRESS';
+  while (Date.now() < deadline) {
+    const sres = await fetch(`${GRAPH}/${GRAPH_VERSION}/${creationId}?fields=status_code&access_token=${token}`);
+    const sjson = await sres.json();
+    if (sjson.error) throw new Error(`リールコンテナ状態取得失敗: ${JSON.stringify(sjson.error)}`);
+    statusCode = sjson.status_code;
+    if (statusCode === 'FINISHED') break;
+    if (statusCode === 'ERROR') throw new Error('リール動画の処理でエラーが発生しました');
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+  if (statusCode !== 'FINISHED') {
+    throw new Error(`リール動画処理がタイムアウトしました(status=${statusCode})`);
+  }
+
+  const pubRes = await fetch(`${base}/media_publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ creation_id: creationId, access_token: token }),
+  });
+  const pubJson = await pubRes.json();
+  if (!pubRes.ok || pubJson.error) {
+    throw new Error(`リール公開失敗: ${JSON.stringify(pubJson.error ?? pubJson)}`);
+  }
+  const mediaId = pubJson.id as string;
+
+  let permalink: string | undefined;
+  try {
+    const pres = await fetch(`${GRAPH}/${GRAPH_VERSION}/${mediaId}?fields=permalink&access_token=${token}`);
+    const pjson = await pres.json();
+    if (!pjson.error) permalink = pjson.permalink as string;
+  } catch {
+    // permalinkは表示用なので失敗しても公開自体は成功扱い
+  }
+  return { mediaId, permalink };
+}
