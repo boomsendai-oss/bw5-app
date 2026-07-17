@@ -19,6 +19,7 @@ import {
   Radio,
   Rocket,
   RefreshCw,
+  Hash,
 } from 'lucide-react';
 import {
   CommandDialog,
@@ -51,6 +52,7 @@ const pages: PageEntry[] = [
   { title: 'ブログ', href: '/staff/blog', icon: FileText },
   { title: 'オペレーション', href: '/staff/operations', icon: Settings2 },
   { title: 'Instagram投稿', href: '/staff/instagram', icon: AtSign },
+  { title: 'X投稿', href: '/staff/x-posts', icon: Hash },
   { title: '映像予約', href: '/staff/video-preorders', icon: Video },
   { title: '休講申請', href: '/staff/cancel-requests', icon: XCircle },
   { title: 'イベント', href: '/staff/events', icon: PartyPopper },

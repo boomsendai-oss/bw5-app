@@ -23,6 +23,7 @@ import {
   UserX,
   HelpCircle,
   Megaphone,
+  Hash,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -83,6 +84,7 @@ const opsNavItems: NavItem[] = [
   { title: 'ノーショー候補', href: '/staff/operations/noshow', icon: UserX },
   { title: 'LINE連携', href: '/staff/operations/lstep-update', icon: MessageCircle },
   { title: 'Instagram投稿', href: '/staff/instagram', icon: AtSign },
+  { title: 'X投稿', href: '/staff/x-posts', icon: Hash },
   { title: '映像予約', href: '/staff/video-preorders', icon: Video },
   { title: '休講申請', href: '/staff/cancel-requests', icon: XCircle },
   { title: 'クチコミ返信', href: '/staff/gbp-reviews', icon: Star },

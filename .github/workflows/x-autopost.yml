@@ -1,0 +1,26 @@
+# X投稿 自動ポストcron (2026-07-17)
+# 15分おきに /api/cron/x-autopost を叩く。
+# エンドポイント側で status='approved' かつ scheduled_at<=now のものだけを最大5件投稿するので
+# 対象が無ければ即no-op・X APIキー未設定の間は dormant を返すだけ(安全)。
+name: x-autopost
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/x-autopost
+        run: |
+          set -e
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/x-autopost)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1
