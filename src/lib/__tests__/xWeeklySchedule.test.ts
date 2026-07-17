@@ -73,8 +73,26 @@ describe('buildWeeklyPostParts', () => {
     const parts = buildWeeklyPostParts(events, { month: 7, day: 20 }, { month: 7, day: 26 })!;
     expect(parts.length).toBeGreaterThan(1);
     expect(parts[0]).toContain('【今週のレッスン】7/20(月)〜7/26(日)');
-    for (const p of parts) expect(p.length).toBeLessThanOrEqual(150);
+    for (const p of parts) expect(p.length).toBeLessThanOrEqual(140);
     expect(parts[parts.length - 1]).toContain('公式LINE');
+  });
+
+  it('1日に9クラスある日も1ツイート140字以内に分割される', () => {
+    const events: WeeklyCalEvent[] = [];
+    const names = [
+      '多賀城 HIPHOP 初級', 'はじめてのHIPHOP', 'キッズHIPHOP入門', '多賀城 HIPHOP 入門', 'キッズHIPHOP初級',
+      'ちゃんなつ HIPHOP', 'おっちゃん NEW JACK SWING', 'SAYUKI FREESTYLE', 'ベーシックダンスクラス',
+    ];
+    names.forEach((n, i) => {
+      const hh = String(9 + i).padStart(2, '0');
+      events.push(ev(`【講師${i}】${n}`, `2026-07-26T${hh}:00:00+09:00`, i % 2 ? 'GOATスタジオ' : 'AZUMA'));
+    });
+    const parts = buildWeeklyPostParts(events, { month: 7, day: 20 }, { month: 7, day: 26 })!;
+    for (const p of parts) expect(p.length).toBeLessThanOrEqual(140);
+    // 分割2行目以降は「…」付きラベルで日付が分かる
+    expect(parts.join('\n')).toContain('▫7/26(日)…');
+    // 全クラスがどこかのpartに含まれる
+    for (const n of names) expect(parts.join('\n')).toContain(n);
   });
 
   it('少ない週は1〜2partに収まりCTAが結合される', () => {

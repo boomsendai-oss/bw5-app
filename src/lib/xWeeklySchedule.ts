@@ -42,10 +42,14 @@ export function shortVenue(location: string | null | undefined): string {
 
 export type WeeklyDayLine = { ymd: string; line: string };
 
+/** 1行(1日分チャンク)の文字数上限。ツイート予算(130)より小さくして行単位の詰め込みを保証する */
+const LINE_CHAR_BUDGET = 110;
+
 /**
  * カレンダーイベント → 曜日ごとの行に整形。
  * - 【休講】イベントは除外
  * - 同名クラスの重複(同日)は1つに
+ * - クラス数が多く1行がLINE_CHAR_BUDGETを超える日は複数行に分割 (2行目以降のラベルは `▫7/26(日)…`)
  * 例: `▫7/20(月) キッズHIPHOP(長町コナスポ)・HOUSE(GOAT)`
  */
 export function buildDayLines(events: WeeklyCalEvent[]): WeeklyDayLine[] {
@@ -65,9 +69,24 @@ export function buildDayLines(events: WeeklyCalEvent[]): WeeklyDayLine[] {
     }
     if (!entry.items.includes(item)) entry.items.push(item);
   }
-  return [...byDay.entries()]
-    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([ymd, e]) => ({ ymd, line: `${e.label} ${e.items.join('・')}` }));
+
+  const lines: WeeklyDayLine[] = [];
+  for (const [ymd, e] of [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    let label = e.label;
+    let current = '';
+    for (const item of e.items) {
+      const candidate = current ? `${current}・${item}` : `${label} ${item}`;
+      if (candidate.length > LINE_CHAR_BUDGET && current) {
+        lines.push({ ymd, line: current });
+        label = `${e.label}…`;
+        current = `${label} ${item}`;
+      } else {
+        current = candidate;
+      }
+    }
+    if (current) lines.push({ ymd, line: current });
+  }
+  return lines;
 }
 
 /**
