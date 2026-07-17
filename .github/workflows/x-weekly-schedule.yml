@@ -1,0 +1,26 @@
+# 「今週のレッスン」X下書き生成cron (2026-07-17)
+# 毎週日曜 21:00 JST (12:00 UTC) に /api/cron/x-weekly-schedule-draft を叩く。
+# 公開Googleカレンダー(BOOMレッスンスケジュール=予定の正)から翌週分を読み、
+# x_posts に draft を1件積むだけ。投稿にはTAROの承認(/staff/x-posts)が必要。
+name: x-weekly-schedule
+
+on:
+  schedule:
+    - cron: '0 12 * * 0'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/x-weekly-schedule-draft
+        run: |
+          set -e
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/x-weekly-schedule-draft)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1

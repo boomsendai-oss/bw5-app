@@ -241,6 +241,41 @@ export async function ensureLessonCalendar(): Promise<string> {
   return id;
 }
 
+export type LessonCalendarEvent = { summary: string; location: string | null; startIso: string };
+
+/**
+ * 公開レッスンカレンダーのイベントを期間指定で読み取る (読み取り専用)。
+ * 予定の「正」はこのカレンダー (手動変更・代講の最終反映先) — X週次投稿等はここから読む。
+ * カレンダー未作成/未連携なら null (作成はしない)。
+ */
+export async function listLessonEvents(timeMinIso: string, timeMaxIso: string): Promise<LessonCalendarEvent[] | null> {
+  const cached = await getOne('SELECT value FROM settings WHERE key = ?', [LESSON_CALENDAR_ID_KEY]);
+  const calendarId = (cached?.value as string | undefined) ?? '';
+  if (!calendarId) return null;
+  const cal = await getCalendarClient();
+  const items: LessonCalendarEvent[] = [];
+  let pageToken: string | undefined;
+  do {
+    const res = await cal.events.list({
+      calendarId,
+      timeMin: timeMinIso,
+      timeMax: timeMaxIso,
+      singleEvents: true,
+      orderBy: 'startTime',
+      maxResults: 2500,
+      pageToken,
+    });
+    for (const ev of res.data.items ?? []) {
+      if (ev.status === 'cancelled') continue;
+      const startIso = ev.start?.dateTime ?? (ev.start?.date ? `${ev.start.date}T00:00:00+09:00` : null);
+      if (!startIso || !ev.summary) continue;
+      items.push({ summary: ev.summary, location: ev.location ?? null, startIso });
+    }
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return items;
+}
+
 export type LessonSyncResult = { calendarId: string; created: number; updated: number; deleted: number; kept: number; total: number; embedUrl: string };
 
 /**

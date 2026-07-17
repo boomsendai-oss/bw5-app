@@ -1,0 +1,140 @@
+// 「今週のレッスン」X投稿の下書き生成ロジック (2026-07-17設計・WS S)。
+// 予定の正 = 生徒に公開しているGoogleカレンダー「BOOMレッスンスケジュール」
+// (アプリDBを直接読まない。手動変更・代講の最終反映先がカレンダーであるため)。
+// イベント形式は googleCalendar.ts の syncLessons が書き込む
+//   summary: `【休講】?【講師名】クラス名` / location: スタジオ名
+// を前提とする。純関数のみ — カレンダー読取とDB挿入は route 側。
+
+export type WeeklyCalEvent = {
+  summary: string;
+  location?: string | null;
+  /** イベント開始 (ISO8601・UTCでもオフセット付きでも可) */
+  startIso: string;
+};
+
+const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'] as const;
+
+/** ツイート1本の本文上限の目安 (全角換算で140字だが余裕を持たせる) */
+const PART_CHAR_BUDGET = 130;
+
+/** ISO日時をJSTの {month, day, weekday} に変換 */
+function jstParts(iso: string): { month: number; day: number; weekday: number; ymd: string } {
+  const d = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000);
+  return {
+    month: d.getUTCMonth() + 1,
+    day: d.getUTCDate(),
+    weekday: d.getUTCDay(),
+    ymd: d.toISOString().slice(0, 10),
+  };
+}
+
+/** `【講師】クラス名` からクラス名だけを取り出す (休講プレフィックスは呼び出し前に除外済み想定) */
+export function classNameFromSummary(summary: string): string {
+  return summary.replace(/^【[^】]*】/, '').trim();
+}
+
+/** スタジオ名を投稿向けに短縮 (最初の空白まで。7文字を超える場合は6文字に丸める) */
+export function shortVenue(location: string | null | undefined): string {
+  if (!location) return '';
+  const head = location.trim().split(/\s+/)[0] ?? '';
+  return head.length > 7 ? head.slice(0, 6) : head;
+}
+
+export type WeeklyDayLine = { ymd: string; line: string };
+
+/**
+ * カレンダーイベント → 曜日ごとの行に整形。
+ * - 【休講】イベントは除外
+ * - 同名クラスの重複(同日)は1つに
+ * 例: `▫7/20(月) キッズHIPHOP(長町コナスポ)・HOUSE(GOAT)`
+ */
+export function buildDayLines(events: WeeklyCalEvent[]): WeeklyDayLine[] {
+  const byDay = new Map<string, { label: string; items: string[] }>();
+  const sorted = [...events].sort((a, b) => (a.startIso < b.startIso ? -1 : 1));
+  for (const ev of sorted) {
+    if (ev.summary.includes('【休講】')) continue;
+    const { month, day, weekday, ymd } = jstParts(ev.startIso);
+    const name = classNameFromSummary(ev.summary);
+    if (!name) continue;
+    const venue = shortVenue(ev.location);
+    const item = venue ? `${name}(${venue})` : name;
+    let entry = byDay.get(ymd);
+    if (!entry) {
+      entry = { label: `▫${month}/${day}(${WEEKDAY_JA[weekday]})`, items: [] };
+      byDay.set(ymd, entry);
+    }
+    if (!entry.items.includes(item)) entry.items.push(item);
+  }
+  return [...byDay.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([ymd, e]) => ({ ymd, line: `${e.label} ${e.items.join('・')}` }));
+}
+
+/**
+ * 週次投稿のツリー本文を組み立てる。
+ * part1 = ヘッダー + 前半の曜日 / 中間 = 続きの曜日 / 最終 = CTA。
+ * イベント0件なら null (下書きを作らない)。
+ */
+export function buildWeeklyPostParts(
+  events: WeeklyCalEvent[],
+  weekStart: { month: number; day: number },
+  weekEnd: { month: number; day: number }
+): string[] | null {
+  const dayLines = buildDayLines(events);
+  if (dayLines.length === 0) return null;
+
+  const header = `【今週のレッスン】${weekStart.month}/${weekStart.day}(月)〜${weekEnd.month}/${weekEnd.day}(日)`;
+  const cta = '体験レッスンのお申し込みは公式LINEからどうぞ。最新の予定・変更はレッスンカレンダーをご確認ください🗓';
+
+  const parts: string[] = [];
+  let current = header;
+  for (const { line } of dayLines) {
+    const candidate = `${current}\n${line}`;
+    if (candidate.length > PART_CHAR_BUDGET && current !== header) {
+      parts.push(current);
+      current = line;
+    } else if (candidate.length > PART_CHAR_BUDGET) {
+      // ヘッダー直後の1行で予算超過 — 行が長すぎてもそのまま積む(次から分割)
+      parts.push(candidate);
+      current = '';
+      continue;
+    } else {
+      current = candidate;
+      continue;
+    }
+  }
+  if (current) parts.push(current);
+
+  // CTAは最後のpartに収まるなら結合、無理なら独立part
+  const last = parts[parts.length - 1];
+  if (last && `${last}\n\n${cta}`.length <= PART_CHAR_BUDGET + 20) {
+    parts[parts.length - 1] = `${last}\n\n${cta}`;
+  } else {
+    parts.push(cta);
+  }
+  return parts;
+}
+
+/**
+ * 「次の月曜」のJST日付(YYYY-MM-DD)を返す。日曜夜に実行する前提。
+ * 今日が月曜なら今日ではなく翌週の月曜 (日曜21時実行なら常に翌日=月曜になる)。
+ */
+export function nextMondayJst(now: Date = new Date()): string {
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const wd = jst.getUTCDay(); // 0=日
+  const add = wd === 0 ? 1 : 8 - wd; // 日曜→+1、月曜→+7、火曜→+6…
+  jst.setUTCDate(jst.getUTCDate() + add);
+  return jst.toISOString().slice(0, 10);
+}
+
+/** YYYY-MM-DD (JST) の 00:00 JST をUTC ISOで返す */
+export function jstMidnightUtcIso(ymd: string): string {
+  return new Date(`${ymd}T00:00:00+09:00`).toISOString();
+}
+
+/** YYYY-MM-DD に日数を足す */
+export function addDaysYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
