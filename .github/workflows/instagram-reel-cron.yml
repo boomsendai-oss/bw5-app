@@ -7,10 +7,11 @@ name: instagram-reel-cron
 
 on:
   schedule:
-    # 19:00 JST 本命 + GH Actionsのcron遅延/スキップ対策のリトライ2本(claimによる冪等ガードでno-op)
-    - cron: '0 10 * * *'
-    - cron: '20 10 * * *'
-    - cron: '40 10 * * *'
+    # 19:00 JST目標。GH Actionsは毎時0/20/40分など人気の分に大遅延する(実測60-90分)ため、
+    # 空いている分(52/12/32)に設定。claimによる冪等ガードでリトライ2本は安全。
+    - cron: '52 9 * * *'
+    - cron: '12 10 * * *'
+    - cron: '32 10 * * *'
   workflow_dispatch: {}
 
 jobs:

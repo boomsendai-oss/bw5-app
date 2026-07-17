@@ -7,10 +7,11 @@ name: instagram-story-cron
 
 on:
   schedule:
-    # 8:00 JST 本命 + GH Actionsのcron遅延/スキップ対策のリトライ2本(投稿済みなら冪等ガードでno-op)
-    - cron: '0 23 * * *'
-    - cron: '20 23 * * *'
-    - cron: '40 23 * * *'
+    # 8:00 JST目標。GH Actionsは毎時0/20/40分など人気の分に大遅延する(実測60-90分)ため、
+    # 空いている分(52/12/32)に設定。冪等ガードがあるのでリトライ2本は安全。
+    - cron: '52 22 * * *'
+    - cron: '12 23 * * *'
+    - cron: '32 23 * * *'
   workflow_dispatch: {}
 
 jobs:
