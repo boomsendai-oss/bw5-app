@@ -71,19 +71,20 @@ export function formatDateLabel(ymd: string): string {
 }
 
 /**
- * 体験者1名の周知ブロック(1〜2行)を組み立てる。
+ * 体験者1名の周知ブロックを組み立てる。項目は1行ずつ「→」区切り。
  *   ・なまえ（8歳）【見学】
- *   　経験:未経験／きっかけ:インスタ
- * 経験・きっかけが両方無ければ2行目は省略。
+ *   　経験 → 未経験
+ *   　きっかけ → インスタ
+ * 経験・きっかけは値がある行だけ出す。
  */
 export function buildVisitorBlock(v: TrialVisitor): string {
   const head =
     (v.age != null ? `・${v.name}（${v.age}歳）` : `・${v.name}`) +
     (v.isObservation ? '【見学】' : '');
-  const detail: string[] = [];
-  if (v.experience) detail.push(`経験:${v.experience}`);
-  if (v.referral) detail.push(`きっかけ:${v.referral}`);
-  return detail.length ? `${head}\n　${detail.join('／')}` : head;
+  const lines = [head];
+  if (v.experience) lines.push(`　経験 → ${v.experience}`);
+  if (v.referral) lines.push(`　きっかけ → ${v.referral}`);
+  return lines.join('\n');
 }
 
 function toVisitor(row: TrialRow): TrialVisitor {
@@ -134,7 +135,6 @@ export function buildTrialGroups(rows: TrialRow[]): TrialGroup[] {
 
 /** 1レッスン枠ぶんの周知メッセージ(コピー対象)を組み立てる。1人ずつ空行区切り。 */
 export function buildCopyText(g: TrialGroup): string {
-  const header = `【体験のお知らせ】${g.dateLabel} ${g.time}〜`;
   const blocks = g.visitors.map(buildVisitorBlock);
-  return `${header}\n${g.lessonName}\n\n${blocks.join('\n\n')}`;
+  return `【体験さん情報のお知らせ】\n\n${g.dateLabel} ${g.time}〜\n${g.lessonName}\n\n${blocks.join('\n\n')}`;
 }

@@ -46,17 +46,17 @@ describe('buildVisitorBlock', () => {
   const v = (o: Partial<TrialVisitor>): TrialVisitor => ({
     name: 'はな', age: 8, course: '体験レッスン', experience: '未経験', referral: 'インスタ', isObservation: false, ...o,
   });
-  it('名前(年齢)＋詳細の2行', () => {
-    expect(buildVisitorBlock(v({}))).toBe('・はな（8歳）\n　経験:未経験／きっかけ:インスタ');
+  it('名前(年齢)＋項目ごとに→で改行', () => {
+    expect(buildVisitorBlock(v({}))).toBe('・はな（8歳）\n　経験 → 未経験\n　きっかけ → インスタ');
   });
   it('見学は【見学】を付ける', () => {
-    expect(buildVisitorBlock(v({ isObservation: true }))).toBe('・はな（8歳）【見学】\n　経験:未経験／きっかけ:インスタ');
+    expect(buildVisitorBlock(v({ isObservation: true }))).toBe('・はな（8歳）【見学】\n　経験 → 未経験\n　きっかけ → インスタ');
   });
-  it('経験・きっかけが無ければ2行目を省略', () => {
+  it('経験・きっかけが無ければ本人行だけ', () => {
     expect(buildVisitorBlock(v({ experience: null, referral: null }))).toBe('・はな（8歳）');
   });
   it('年齢が無ければ（歳）を省略', () => {
-    expect(buildVisitorBlock(v({ age: null, referral: null }))).toBe('・はな\n　経験:未経験');
+    expect(buildVisitorBlock(v({ age: null, referral: null }))).toBe('・はな\n　経験 → 未経験');
   });
 });
 
@@ -82,14 +82,18 @@ describe('buildTrialGroups', () => {
     expect(groups[0].lessonName).toBe('TARO HIPHOP 初級');
     expect(groups[0].copyText).toBe(
       [
-        '【体験のお知らせ】7/18(土) 18:30〜',
+        '【体験さん情報のお知らせ】',
+        '',
+        '7/18(土) 18:30〜',
         'TARO HIPHOP 初級',
         '',
         '・やまだはな（8歳）',
-        '　経験:未経験／きっかけ:インスタ',
+        '　経験 → 未経験',
+        '　きっかけ → インスタ',
         '',
         '・さとうそうた（10歳）',
-        '　経験:経験者／きっかけ:紹介',
+        '　経験 → 経験者',
+        '　きっかけ → 紹介',
       ].join('\n'),
     );
   });
