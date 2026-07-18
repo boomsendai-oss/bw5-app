@@ -91,19 +91,95 @@ export function buildOAuthHeader(
 }
 
 const TWEETS_URL = 'https://api.x.com/2/tweets';
+const MEDIA_UPLOAD_URL = 'https://api.x.com/2/media/upload';
+
+/** 添付画像の上限 5MB (docs.x.com/x-api/media/introduction: "Image: 5 MB") */
+export const MEDIA_MAX_BYTES = 5 * 1024 * 1024;
+/** 許可する画像MIMEタイプ */
+export const MEDIA_ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
+
+/**
+ * 画像1枚をXへアップロードして media id (文字列) を返す。ツイートは作らない。
+ *
+ * 採用API: X API v2 simple upload — POST https://api.x.com/2/media/upload
+ *   出典: https://docs.x.com/x-api/media/upload-media (multipart/form-data、
+ *         フィールド media=バイナリ(必須) / media_category / media_type、
+ *         OAuth 1.0a user context 可、レスポンス data.id が media id)
+ *   チャンク版(INIT/APPEND/FINALIZE)もあるが5MB以下の画像は simple で足りる:
+ *   https://docs.x.com/x-api/media/quickstart/media-upload-chunked
+ *
+ * OAuth 1.0a 署名: multipart/form-data ボディは署名対象パラメータに含めない
+ * (OAuth 1.0a仕様 — application/x-www-form-urlencoded 以外のボディは署名に入れない)。
+ * よって buildOAuthHeader には extraParams を渡さず oauth_* のみで署名する。
+ *
+ * 失敗は throw (呼び出し側で status='failed' + error 保存)。
+ * アップロード済みメディアは未使用なら expires_after_secs (約24h) で自然失効する。
+ */
+export async function uploadMedia(
+  bytes: Buffer | Uint8Array,
+  mimeType: string,
+  creds: XCredentials = getXCredentials()
+): Promise<string> {
+  if (!(MEDIA_ALLOWED_MIME as readonly string[]).includes(mimeType)) {
+    throw new Error(`未対応の画像形式: ${mimeType} (許可: ${MEDIA_ALLOWED_MIME.join(', ')})`);
+  }
+  if (bytes.byteLength === 0) throw new Error('画像データが空です');
+  if (bytes.byteLength > MEDIA_MAX_BYTES) {
+    throw new Error(`画像が5MB上限を超過 (${bytes.byteLength} bytes)`);
+  }
+
+  // Buffer はプールされたオフセット付きビューの場合があるため、新しい ArrayBuffer に
+  // コピーして Blob 化する (new Uint8Array(view) はデータコピー。5MB以下なので許容)
+  const u8 = new Uint8Array(bytes);
+  const form = new FormData();
+  form.append('media', new Blob([u8], { type: mimeType }), 'media');
+  form.append('media_category', 'tweet_image');
+  form.append('media_type', mimeType);
+
+  const res = await fetch(MEDIA_UPLOAD_URL, {
+    method: 'POST',
+    // Content-Type は fetch が boundary 付きで自動設定する(手動指定しない)
+    headers: { Authorization: buildOAuthHeader('POST', MEDIA_UPLOAD_URL, creds) },
+    body: form,
+  });
+
+  const raw = await res.text();
+  let json: unknown = null;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    /* 非JSONレスポンスは raw のまま扱う */
+  }
+  if (!res.ok) {
+    const detail = json ? JSON.stringify(json) : raw;
+    throw new Error(`X media upload ${res.status}: ${detail.slice(0, 300)}`);
+  }
+  const id = (json as { data?: { id?: string | number } } | null)?.data?.id;
+  if (!id) {
+    throw new Error(`X media upload: レスポンスにmedia idが無い: ${raw.slice(0, 200)}`);
+  }
+  return String(id);
+}
 
 /**
  * ツイート1本を投稿してツイートIDを返す。
  * inReplyTo を渡すとそのツイートへのリプライ(=ツリー連結)になる。
+ * mediaIds を渡すと画像添付 (uploadMedia で取得した media id、最大4つ)。
  * 失敗は throw (呼び出し側で status='failed' + error 保存)。
  */
 export async function postTweet(
   text: string,
   inReplyTo?: string,
-  creds: XCredentials = getXCredentials()
+  creds: XCredentials = getXCredentials(),
+  mediaIds?: string[]
 ): Promise<string> {
-  const body: { text: string; reply?: { in_reply_to_tweet_id: string } } = { text };
+  const body: {
+    text: string;
+    reply?: { in_reply_to_tweet_id: string };
+    media?: { media_ids: string[] };
+  } = { text };
   if (inReplyTo) body.reply = { in_reply_to_tweet_id: inReplyTo };
+  if (mediaIds && mediaIds.length > 0) body.media = { media_ids: mediaIds };
 
   const res = await fetch(TWEETS_URL, {
     method: 'POST',

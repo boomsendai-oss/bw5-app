@@ -4,7 +4,7 @@
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { getAll } from '@/lib/db';
 import { isAuthorizedServer } from '@/lib/eventAuth';
-import { parsePartsJson, parseTweetIdsJson, type XPostRow, type XPostStatus } from '@/lib/xPosts';
+import { parseMediaJson, parsePartsJson, parseTweetIdsJson, type XPostRow, type XPostStatus } from '@/lib/xPosts';
 import XPostsList, { type XPostView } from './XPostsList';
 
 export const dynamic = 'force-dynamic';
@@ -41,6 +41,7 @@ export default async function XPostsPage() {
     account: r.account,
     parts: parsePartsJson(r.parts),
     scheduledAt: r.scheduled_at,
+    media: parseMediaJson(r.media),
     status: (KNOWN_STATUSES as string[]).includes(r.status) ? (r.status as XPostStatus) : 'failed',
     postedTweetIds: parseTweetIdsJson(r.posted_tweet_ids),
     error: r.error,

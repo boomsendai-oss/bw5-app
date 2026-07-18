@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getAll } from '@/lib/db';
 import { nowUtcIso } from '@/lib/dateJst';
-import { postTweet, xConfigured } from '@/lib/xApi';
+import { MEDIA_ALLOWED_MIME, MEDIA_MAX_BYTES, postTweet, uploadMedia, xConfigured } from '@/lib/xApi';
 import {
   MAX_POSTS_PER_RUN,
+  buildTweetPayloads,
+  parseMediaJson,
   parsePartsJson,
   pickDuePosts,
+  type XPostMedia,
   type XPostRow,
 } from '@/lib/xPosts';
 
@@ -18,6 +21,41 @@ export const maxDuration = 60;
 // X API v2 でポストする(ツリーは reply.in_reply_to_tweet_id で連結)。
 // 失敗しても自動リトライしない — /staff/x-posts から差し戻し→再承認で再試行する。
 // 認証: Authorization: Bearer <CRON_SECRET> または x-cron-secret ヘッダ (gbp-reviewsと同パターン)
+/** URL末尾の拡張子からMIMEを推測する(Content-Typeヘッダが無い/汎用の場合のフォールバック) */
+function guessImageMime(url: string): string | null {
+  const path = url.split(/[?#]/)[0].toLowerCase();
+  if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
+  if (path.endsWith('.png')) return 'image/png';
+  if (path.endsWith('.webp')) return 'image/webp';
+  if (path.endsWith('.gif')) return 'image/gif';
+  return null;
+}
+
+/**
+ * 添付画像を全てXへアップロードして media id 配列を返す。1枚でも失敗したら throw
+ * (呼び出し側の既存フローで status='failed' + error 保存)。
+ * url はVercel Blob等の絶対URLを想定。ローカルdev(/images/…)は origin で絶対化する。
+ */
+async function uploadPostMedia(media: XPostMedia[], origin: string): Promise<string[]> {
+  const ids: string[] = [];
+  for (const m of media) {
+    const url = m.url.startsWith('/') ? new URL(m.url, origin).toString() : m.url;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`画像の取得に失敗 (HTTP ${res.status}): ${m.url.slice(0, 120)}`);
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.byteLength > MEDIA_MAX_BYTES) {
+      throw new Error(`画像が5MB上限を超過 (${buf.byteLength} bytes): ${m.url.slice(0, 120)}`);
+    }
+    const headerMime = res.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? '';
+    const mime = (MEDIA_ALLOWED_MIME as readonly string[]).includes(headerMime)
+      ? headerMime
+      : guessImageMime(m.url);
+    if (!mime) throw new Error(`画像のMIMEタイプを判定できない: ${m.url.slice(0, 120)}`);
+    ids.push(await uploadMedia(buf, mime));
+  }
+  return ids;
+}
+
 function cronAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false; // 未設定なら拒否 (無認証公開を防ぐ)
@@ -61,11 +99,22 @@ async function run(req: NextRequest): Promise<NextResponse> {
     }
 
     const parts = parsePartsJson(post.parts);
+    const media = parseMediaJson(post.media);
     const postedIds: string[] = [];
     try {
       if (parts.length === 0) throw new Error('partsが空(JSON不正または0要素)');
-      for (let i = 0; i < parts.length; i++) {
-        const id = await postTweet(parts[i], i > 0 ? postedIds[i - 1] : undefined);
+      // 画像添付: 先に全枚数をXへアップロードする。1枚でも失敗したら投稿せず failed へ
+      // (ツイートを1本も作っていない段階なのでX上に公開物は生まれない)
+      const mediaIds = media.length > 0 ? await uploadPostMedia(media, req.nextUrl.origin) : [];
+      // 画像はツリーの1本目のツイートにのみ添付する(2本目以降はテキストのみ)
+      const payloads = buildTweetPayloads(parts, mediaIds);
+      for (let i = 0; i < payloads.length; i++) {
+        const id = await postTweet(
+          payloads[i].text,
+          i > 0 ? postedIds[i - 1] : undefined,
+          undefined,
+          payloads[i].mediaIds
+        );
         postedIds.push(id);
       }
       await execute(

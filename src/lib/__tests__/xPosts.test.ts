@@ -9,6 +9,10 @@ import {
   formatJst,
   tweetWeightedLength,
   MAX_POSTS_PER_RUN,
+  MAX_MEDIA_PER_POST,
+  parseMediaJson,
+  validateMediaList,
+  buildTweetPayloads,
 } from '../xPosts';
 
 describe('splitThreadText (空行2つ区切りのツリー分割)', () => {
@@ -129,5 +133,100 @@ describe('tweetWeightedLength (文字数目安)', () => {
   });
   it('サロゲートペア(絵文字)を1文字=2としてカウントする', () => {
     expect(tweetWeightedLength('🔥')).toBe(2);
+  });
+});
+
+// ---- 画像添付 (20260718_x_posts_media.sql) ----
+
+describe('parseMediaJson (mediaカラムの寛容パース)', () => {
+  it('NULL・空文字は []', () => {
+    expect(parseMediaJson(null)).toEqual([]);
+    expect(parseMediaJson('')).toEqual([]);
+  });
+
+  it('不正JSONは []', () => {
+    expect(parseMediaJson('{oops')).toEqual([]);
+    expect(parseMediaJson('"文字列"')).toEqual([]);
+    expect(parseMediaJson('{"url":"https://a.example/x.png"}')).toEqual([]); // 配列でない
+  });
+
+  it('url を持つ要素だけ残し alt(文字列)を保持する', () => {
+    const json = JSON.stringify([
+      { url: 'https://blob.example/a.png', alt: 'A' },
+      { url: '  https://blob.example/b.jpg  ' },
+      { alt: 'urlなし' },
+      'ただの文字列',
+      null,
+      { url: 42 },
+    ]);
+    expect(parseMediaJson(json)).toEqual([
+      { url: 'https://blob.example/a.png', alt: 'A' },
+      { url: 'https://blob.example/b.jpg' },
+    ]);
+  });
+
+  it('5枚以上は4枚に切り詰める', () => {
+    const json = JSON.stringify(
+      [1, 2, 3, 4, 5, 6].map((n) => ({ url: `https://blob.example/${n}.png` }))
+    );
+    expect(parseMediaJson(json)).toHaveLength(MAX_MEDIA_PER_POST);
+  });
+});
+
+describe('validateMediaList (保存前の厳格検証)', () => {
+  it('空配列・4枚以内の妥当なURLは OK (null)', () => {
+    expect(validateMediaList([])).toBeNull();
+    expect(
+      validateMediaList([
+        { url: 'https://blob.example/a.png' },
+        { url: '/images/upload_1.png' },
+        { url: 'http://localhost:3000/images/b.jpg', alt: 'ロゴ' },
+        { url: 'https://blob.example/d.webp' },
+      ])
+    ).toBeNull();
+  });
+
+  it('配列以外・要素の形式不正はエラー', () => {
+    expect(validateMediaList('x')).not.toBeNull();
+    expect(validateMediaList([null])).not.toBeNull();
+    expect(validateMediaList([{ alt: 'urlなし' }])).not.toBeNull();
+    expect(validateMediaList([{ url: 42 }])).not.toBeNull();
+    expect(validateMediaList([{ url: 'https://a.example/x.png', alt: 1 }])).not.toBeNull();
+  });
+
+  it('5枚以上はエラー', () => {
+    const five = [1, 2, 3, 4, 5].map((n) => ({ url: `https://blob.example/${n}.png` }));
+    expect(validateMediaList(five)).toMatch(/最大4枚/);
+  });
+
+  it('不正URL(スキーム・プロトコル相対・非URL)は拒否する', () => {
+    expect(validateMediaList([{ url: 'javascript:alert(1)' }])).not.toBeNull();
+    expect(validateMediaList([{ url: 'data:image/png;base64,AAAA' }])).not.toBeNull();
+    expect(validateMediaList([{ url: '//evil.example/x.png' }])).not.toBeNull();
+    expect(validateMediaList([{ url: 'ただのテキスト' }])).not.toBeNull();
+    expect(validateMediaList([{ url: 'ftp://a.example/x.png' }])).not.toBeNull();
+  });
+});
+
+describe('buildTweetPayloads (media_idsは1本目のみ)', () => {
+  it('ツリーでは1本目にだけ mediaIds が付く', () => {
+    const p = buildTweetPayloads(['1本目', '2本目', '3本目'], ['m1', 'm2']);
+    expect(p).toEqual([
+      { text: '1本目', mediaIds: ['m1', 'm2'] },
+      { text: '2本目' },
+      { text: '3本目' },
+    ]);
+    expect(p[1]).not.toHaveProperty('mediaIds');
+    expect(p[2]).not.toHaveProperty('mediaIds');
+  });
+
+  it('単発ツイート + 画像', () => {
+    expect(buildTweetPayloads(['単発'], ['m1'])).toEqual([{ text: '単発', mediaIds: ['m1'] }]);
+  });
+
+  it('画像なしなら mediaIds プロパティ自体を付けない', () => {
+    const p = buildTweetPayloads(['A', 'B'], []);
+    expect(p).toEqual([{ text: 'A' }, { text: 'B' }]);
+    expect(p[0]).not.toHaveProperty('mediaIds');
   });
 });

@@ -2,13 +2,13 @@
 
 // X投稿 承認キューの操作UI。スマホ片手操作前提(TAROが月2回まとめてタップする)。
 // 色はBOOMブランド(brand=ティール操作色 / navy=見出し / sand=淡い背景)。
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useRef, useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { Check, X, Undo2, Plus, ExternalLink, Clock } from 'lucide-react';
+import { Check, X, Undo2, Plus, ExternalLink, Clock, ImagePlus, Loader2 } from 'lucide-react';
 import {
   splitThreadText,
   joinThreadParts,
@@ -16,6 +16,8 @@ import {
   formatJst,
   tweetWeightedLength,
   TWEET_MAX_WEIGHTED,
+  MAX_MEDIA_PER_POST,
+  type XPostMedia,
   type XPostStatus,
 } from '@/lib/xPosts';
 import { approvePost, createDraft, rejectPost, revertToDraft, updateDraft } from './actions';
@@ -25,6 +27,7 @@ export type XPostView = {
   account: string;
   parts: string[];
   scheduledAt: string | null;
+  media: XPostMedia[];
   status: XPostStatus;
   postedTweetIds: string[];
   error: string | null;
@@ -66,20 +69,146 @@ function PartsPreview({ parts }: { parts: string[] }) {
   );
 }
 
-/** 下書きカード: 本文インライン編集 + 予約日時編集 + 承認/ボツ */
+/** 添付画像のサムネイル表示(読み取り専用: 承認済み/投稿済み/失敗カード用) */
+function MediaThumbs({ media }: { media: XPostMedia[] }) {
+  if (media.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {media.map((m, i) => (
+        // eslint-disable-next-line @next/next/no-img-element -- Blob URL等の外部画像。最適化不要のサムネイル
+        <img
+          key={`${m.url}-${i}`}
+          src={m.url}
+          alt={m.alt ?? `添付画像 ${i + 1}`}
+          className="h-20 w-20 rounded-md border border-sand-200 object-cover bg-sand-50"
+        />
+      ))}
+    </div>
+  );
+}
+
+/** ファイル選択→/api/upload→URL取得までを行う共通アップロード処理 */
+async function uploadImageFile(file: File): Promise<{ url: string } | { error: string }> {
+  if (file.size > 5 * 1024 * 1024) return { error: `5MBを超えています: ${file.name}` };
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    const json = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+    if (!res.ok || !json?.url) return { error: json?.error ?? `アップロード失敗 (HTTP ${res.status})` };
+    return { url: json.url };
+  } catch {
+    return { error: '通信エラーでアップロードに失敗しました' };
+  }
+}
+
+/** 添付画像の編集UI: サムネイル+個別削除 + 追加ボタン(ファイル選択→/api/upload) */
+function MediaEditor({
+  media,
+  onChange,
+  disabled,
+}: {
+  media: XPostMedia[];
+  onChange: (next: XPostMedia[]) => void;
+  disabled: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const onFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const picked = Array.from(files);
+    if (media.length + picked.length > MAX_MEDIA_PER_POST) {
+      toast.error(`画像は最大${MAX_MEDIA_PER_POST}枚までです`);
+      return;
+    }
+    setUploading(true);
+    const added: XPostMedia[] = [];
+    for (const f of picked) {
+      const r = await uploadImageFile(f);
+      if ('error' in r) {
+        toast.error(`画像の追加に失敗: ${r.error}`);
+        setUploading(false);
+        return;
+      }
+      added.push({ url: r.url });
+    }
+    onChange([...media, ...added]);
+    setUploading(false);
+  };
+
+  return (
+    <div className="space-y-2">
+      {media.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {media.map((m, i) => (
+            <div key={`${m.url}-${i}`} className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Blob URL等の外部画像サムネイル */}
+              <img
+                src={m.url}
+                alt={m.alt ?? `添付画像 ${i + 1}`}
+                className="h-20 w-20 rounded-md border border-sand-200 object-cover bg-sand-50"
+              />
+              <button
+                type="button"
+                aria-label={`添付画像 ${i + 1} を削除`}
+                disabled={disabled}
+                onClick={() => onChange(media.filter((_, j) => j !== i))}
+                className="absolute -top-1.5 -right-1.5 rounded-full bg-navy-700 text-white p-0.5 shadow disabled:opacity-50"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          void onFiles(e.target.files);
+          e.target.value = ''; // 同じファイルの再選択を可能にする
+        }}
+      />
+      {media.length < MAX_MEDIA_PER_POST && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-9 text-neutral-600"
+          disabled={disabled || uploading}
+          onClick={() => inputRef.current?.click()}
+        >
+          {uploading ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+          {uploading ? 'アップロード中…' : `画像を追加 (${media.length}/${MAX_MEDIA_PER_POST})`}
+        </Button>
+      )}
+      {media.length > 0 && (
+        <p className="text-[11px] text-neutral-400">画像はツリーの1本目のツイートに添付されます</p>
+      )}
+    </div>
+  );
+}
+
+/** 下書きカード: 本文インライン編集 + 予約日時編集 + 画像添付 + 承認/ボツ */
 function DraftCard({ post, run, busy }: { post: XPostView; run: Runner; busy: boolean }) {
   const [text, setText] = useState(() => joinThreadParts(post.parts));
   const [sched, setSched] = useState(() => (post.scheduledAt ? utcIsoToJstInput(post.scheduledAt) : ''));
+  const [media, setMedia] = useState<XPostMedia[]>(() => post.media);
   const dirty =
     text !== joinThreadParts(post.parts) ||
-    sched !== (post.scheduledAt ? utcIsoToJstInput(post.scheduledAt) : '');
+    sched !== (post.scheduledAt ? utcIsoToJstInput(post.scheduledAt) : '') ||
+    JSON.stringify(media) !== JSON.stringify(post.media);
   const parts = useMemo(() => splitThreadText(text), [text]);
 
   // 承認: 編集中なら保存してから承認する(片手操作でタップ数を減らす)
   const approve = () =>
     run(post.id, async () => {
       if (dirty) {
-        const r = await updateDraft(post.id, text, sched);
+        const r = await updateDraft(post.id, text, sched, media);
         if (!r.ok) return r;
       }
       return approvePost(post.id);
@@ -117,6 +246,7 @@ function DraftCard({ post, run, busy }: { post: XPostView; run: Runner; busy: bo
           );
         })}
       </div>
+      <MediaEditor media={media} onChange={setMedia} disabled={busy} />
       <div className="flex items-center gap-2">
         <Clock className="size-4 shrink-0 text-neutral-400" />
         <Input
@@ -149,7 +279,7 @@ function DraftCard({ post, run, busy }: { post: XPostView; run: Runner; busy: bo
             variant="outline"
             className="h-11"
             disabled={busy}
-            onClick={() => run(post.id, () => updateDraft(post.id, text, sched))}
+            onClick={() => run(post.id, () => updateDraft(post.id, text, sched, media))}
           >
             保存
           </Button>
@@ -178,6 +308,7 @@ export default function XPostsList({ posts }: { posts: XPostView[] }) {
   const [formOpen, setFormOpen] = useState(false);
   const [newText, setNewText] = useState('');
   const [newSched, setNewSched] = useState('');
+  const [newMedia, setNewMedia] = useState<XPostMedia[]>([]);
 
   const buckets = useMemo(() => {
     const b: Record<Tab, XPostView[]> = { draft: [], approved: [], posted: [], failed: [], rejected: [] };
@@ -203,11 +334,12 @@ export default function XPostsList({ posts }: { posts: XPostView[] }) {
   const submitNew = () => {
     setPendingId(-1);
     startTransition(async () => {
-      const r = await createDraft(newText, newSched);
+      const r = await createDraft(newText, newSched, newMedia);
       if (r.ok) {
         toast.success('下書きを追加しました');
         setNewText('');
         setNewSched('');
+        setNewMedia([]);
         setFormOpen(false);
       } else {
         toast.error(`追加に失敗: ${r.error ?? ''}`);
@@ -239,6 +371,7 @@ export default function XPostsList({ posts }: { posts: XPostView[] }) {
               className="text-sm"
               placeholder={'本文を入力。空行2つ(Enter 3回)でツリー分割\n\n\n2本目のツイート…'}
             />
+            <MediaEditor media={newMedia} onChange={setNewMedia} disabled={pendingId !== null} />
             <div className="flex items-center gap-2">
               <Clock className="size-4 shrink-0 text-neutral-400" />
               <Input
@@ -305,6 +438,9 @@ export default function XPostsList({ posts }: { posts: XPostView[] }) {
               </div>
 
               <PartsPreview parts={post.parts} />
+
+              {/* 承認済み/投稿済み等でも添付画像は確認できる(読み取り専用) */}
+              <MediaThumbs media={post.media} />
 
               {(post.status === 'approved' || post.status === 'posting') && (
                 <p className="text-xs font-medium text-brand-700 flex items-center gap-1">

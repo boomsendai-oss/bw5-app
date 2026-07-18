@@ -7,7 +7,7 @@
 import { revalidatePath } from 'next/cache';
 import { execute } from '@/lib/db';
 import { isAuthorizedServer } from '@/lib/eventAuth';
-import { jstInputToUtcIso, splitThreadText } from '@/lib/xPosts';
+import { jstInputToUtcIso, splitThreadText, validateMediaList, type XPostMedia } from '@/lib/xPosts';
 
 type ActionResult = { ok: boolean; error?: string };
 
@@ -22,8 +22,15 @@ async function guard(): Promise<ActionResult | null> {
   return null;
 }
 
-/** 本文テキスト+予約日時(JST datetime-local) を検証して {partsJson, scheduledAt} に変換 */
-function parseInput(text: string, scheduledAtLocal: string): { partsJson: string; scheduledAt: string | null } | string {
+/**
+ * 本文テキスト+予約日時(JST datetime-local)+添付画像 を検証して
+ * {partsJson, scheduledAt, mediaJson} に変換。NGなら日本語エラーメッセージ(string)。
+ */
+function parseInput(
+  text: string,
+  scheduledAtLocal: string,
+  media: XPostMedia[]
+): { partsJson: string; scheduledAt: string | null; mediaJson: string | null } | string {
   const parts = splitThreadText(text);
   if (parts.length === 0) return '本文が空です';
   let scheduledAt: string | null = null;
@@ -31,33 +38,49 @@ function parseInput(text: string, scheduledAtLocal: string): { partsJson: string
     scheduledAt = jstInputToUtcIso(scheduledAtLocal);
     if (!scheduledAt) return '予約日時の形式が不正です';
   }
-  return { partsJson: JSON.stringify(parts), scheduledAt };
+  // クライアントから直接POSTされ得るため、画像リストはサーバー側で毎回検証する
+  const mediaError = validateMediaList(media);
+  if (mediaError) return mediaError;
+  const mediaJson =
+    media.length > 0
+      ? JSON.stringify(media.map((m) => ({ url: m.url, ...(m.alt ? { alt: m.alt } : {}) })))
+      : null;
+  return { partsJson: JSON.stringify(parts), scheduledAt, mediaJson };
 }
 
-/** 新規下書きの手動追加。本文は空行2つ区切りでツリー分割する */
-export async function createDraft(text: string, scheduledAtLocal: string): Promise<ActionResult> {
+/** 新規下書きの手動追加。本文は空行2つ区切りでツリー分割する。media = 添付画像(最大4枚) */
+export async function createDraft(
+  text: string,
+  scheduledAtLocal: string,
+  media: XPostMedia[] = []
+): Promise<ActionResult> {
   const denied = await guard();
   if (denied) return denied;
-  const parsed = parseInput(text, scheduledAtLocal);
+  const parsed = parseInput(text, scheduledAtLocal, media);
   if (typeof parsed === 'string') return bad(parsed);
   await execute(
-    "INSERT INTO x_posts (account, parts, scheduled_at, status) VALUES ('boom', ?, ?, 'draft')",
-    [parsed.partsJson, parsed.scheduledAt]
+    "INSERT INTO x_posts (account, parts, scheduled_at, media, status) VALUES ('boom', ?, ?, ?, 'draft')",
+    [parsed.partsJson, parsed.scheduledAt, parsed.mediaJson]
   );
   revalidatePath(PATH);
   return { ok: true };
 }
 
-/** 下書きの本文・予約日時を更新 (draft のみ編集可) */
-export async function updateDraft(id: number, text: string, scheduledAtLocal: string): Promise<ActionResult> {
+/** 下書きの本文・予約日時・添付画像を更新 (draft のみ編集可) */
+export async function updateDraft(
+  id: number,
+  text: string,
+  scheduledAtLocal: string,
+  media: XPostMedia[] = []
+): Promise<ActionResult> {
   const denied = await guard();
   if (denied) return denied;
   if (!Number.isInteger(id) || id <= 0) return bad('bad id');
-  const parsed = parseInput(text, scheduledAtLocal);
+  const parsed = parseInput(text, scheduledAtLocal, media);
   if (typeof parsed === 'string') return bad(parsed);
   const r = await execute(
-    "UPDATE x_posts SET parts = ?, scheduled_at = ?, updated_at = datetime('now') WHERE id = ? AND status = 'draft'",
-    [parsed.partsJson, parsed.scheduledAt, id]
+    "UPDATE x_posts SET parts = ?, scheduled_at = ?, media = ?, updated_at = datetime('now') WHERE id = ? AND status = 'draft'",
+    [parsed.partsJson, parsed.scheduledAt, parsed.mediaJson, id]
   );
   if (Number(r.rowsAffected) === 0) return bad('下書き状態ではないため更新できません(画面を更新してください)');
   revalidatePath(PATH);
