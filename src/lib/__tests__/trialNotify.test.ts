@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   toHiragana,
+  cleanLessonName,
   formatDateLabel,
-  buildVisitorLine,
+  buildVisitorBlock,
   buildTrialGroups,
   type TrialRow,
+  type TrialVisitor,
 } from '../trialNotify';
 
 describe('toHiragana', () => {
@@ -19,6 +21,20 @@ describe('toHiragana', () => {
   });
 });
 
+describe('cleanLessonName', () => {
+  it('装飾・曜日・時刻の接頭辞を落として実クラス名を取り出す', () => {
+    expect(cleanLessonName('?(土) 16:30～ 長町 キッズガールズ 入門')).toBe('長町 キッズガールズ 入門');
+    expect(cleanLessonName('大人メンバー募集中???(日) 15:00～ ベーシッククラス')).toBe('ベーシッククラス');
+    expect(cleanLessonName('リニューアル?? (日) 11:00～ はじめてのヒップホップ (キッズ向け)')).toBe('はじめてのヒップホップ (キッズ向け)');
+    expect(cleanLessonName('(水) 20:00～ K@TTSU HOUSE')).toBe('K@TTSU HOUSE');
+  });
+  it('時刻が無ければ先頭の装飾だけ落とす / 空はプレースホルダ', () => {
+    expect(cleanLessonName('・特別クラス')).toBe('特別クラス');
+    expect(cleanLessonName('')).toBe('（枠未指定）');
+    expect(cleanLessonName(null)).toBe('（枠未指定）');
+  });
+});
+
 describe('formatDateLabel', () => {
   it('曜日つきの日付ラベルを作る', () => {
     expect(formatDateLabel('2026-07-18')).toBe('7/18(土)');
@@ -26,47 +42,54 @@ describe('formatDateLabel', () => {
   });
 });
 
-describe('buildVisitorLine', () => {
-  it('全項目そろっている行', () => {
-    expect(
-      buildVisitorLine({ name: 'はな', age: 8, course: '体験レッスン', experience: '未経験', referral: 'インスタグラム' }),
-    ).toBe('・はな（8歳）／体験レッスン／未経験／きっかけ: インスタグラム');
+describe('buildVisitorBlock', () => {
+  const v = (o: Partial<TrialVisitor>): TrialVisitor => ({
+    name: 'はな', age: 8, course: '体験レッスン', experience: '未経験', referral: 'インスタ', isObservation: false, ...o,
   });
-  it('欠損項目は省略する', () => {
-    expect(buildVisitorLine({ name: 'そうた', age: null, course: null, experience: null, referral: null })).toBe('・そうた');
-    expect(
-      buildVisitorLine({ name: 'みく', age: 10, course: '見学', experience: null, referral: null }),
-    ).toBe('・みく（10歳）／見学');
+  it('名前(年齢)＋詳細の2行', () => {
+    expect(buildVisitorBlock(v({}))).toBe('・はな（8歳）\n　経験:未経験／きっかけ:インスタ');
+  });
+  it('見学は【見学】を付ける', () => {
+    expect(buildVisitorBlock(v({ isObservation: true }))).toBe('・はな（8歳）【見学】\n　経験:未経験／きっかけ:インスタ');
+  });
+  it('経験・きっかけが無ければ2行目を省略', () => {
+    expect(buildVisitorBlock(v({ experience: null, referral: null }))).toBe('・はな（8歳）');
+  });
+  it('年齢が無ければ（歳）を省略', () => {
+    expect(buildVisitorBlock(v({ age: null, referral: null }))).toBe('・はな\n　経験:未経験');
   });
 });
 
 describe('buildTrialGroups', () => {
   const base: TrialRow = {
     reserved_at: '2026-07-18 18:30:00',
-    lesson_name: 'AOI 七ヶ浜 入門',
+    lesson_name: '?(土) 18:30～ TARO HIPHOP 初級',
     status: '予約済',
     applicant_name: '山田花',
     applicant_name_kana: 'ヤマダハナ',
     applicant_age: 8,
     course_type: '体験レッスン',
     dance_experience: '未経験',
-    referral_source: 'インスタグラム',
+    referral_source: 'インスタ',
   };
 
-  it('日付×レッスンでまとめ、コピーテキストを組み立てる', () => {
+  it('日付×レッスンでまとめ、ゆったり形式のコピーテキストを組み立てる', () => {
     const groups = buildTrialGroups([
       base,
-      { ...base, applicant_name: '佐藤颯', applicant_name_kana: 'サトウソウタ', applicant_age: 10, dance_experience: '経験者', referral_source: '知り合いからのご紹介' },
+      { ...base, applicant_name_kana: 'サトウソウタ', applicant_age: 10, dance_experience: '経験者', referral_source: '紹介' },
     ]);
     expect(groups).toHaveLength(1);
-    expect(groups[0].visitors).toHaveLength(2);
+    expect(groups[0].lessonName).toBe('TARO HIPHOP 初級');
     expect(groups[0].copyText).toBe(
       [
         '【体験のお知らせ】7/18(土) 18:30〜',
-        'AOI 七ヶ浜 入門',
-        '──────────',
-        '・やまだはな（8歳）／体験レッスン／未経験／きっかけ: インスタグラム',
-        '・さとうそうた（10歳）／体験レッスン／経験者／きっかけ: 知り合いからのご紹介',
+        'TARO HIPHOP 初級',
+        '',
+        '・やまだはな（8歳）',
+        '　経験:未経験／きっかけ:インスタ',
+        '',
+        '・さとうそうた（10歳）',
+        '　経験:経験者／きっかけ:紹介',
       ].join('\n'),
     );
   });
@@ -79,13 +102,19 @@ describe('buildTrialGroups', () => {
     expect(groups).toHaveLength(0);
   });
 
-  it('別の枠は別グループになる', () => {
+  it('装飾違いでも同じ実クラス名なら同一グループにまとまる', () => {
     const groups = buildTrialGroups([
-      base,
-      { ...base, reserved_at: '2026-07-19 15:00:00', lesson_name: 'ベーシッククラス' },
+      { ...base, reserved_at: '2026-07-19 15:00:00', lesson_name: '大人募集中(日) 15:00～ ベーシッククラス' },
+      { ...base, reserved_at: '2026-07-19 15:00:00', lesson_name: '?(日) 15:00～ ベーシッククラス', applicant_name_kana: 'スズキミク' },
     ]);
-    expect(groups).toHaveLength(2);
-    expect(groups.map((g) => g.lessonName)).toEqual(['AOI 七ヶ浜 入門', 'ベーシッククラス']);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].lessonName).toBe('ベーシッククラス');
+    expect(groups[0].visitors).toHaveLength(2);
+  });
+
+  it('見学は【見学】付きで出る', () => {
+    const groups = buildTrialGroups([{ ...base, course_type: '見学' }]);
+    expect(groups[0].copyText).toContain('【見学】');
   });
 
   it('カナが無ければ漢字名にフォールバック', () => {

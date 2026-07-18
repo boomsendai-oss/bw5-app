@@ -69,19 +69,25 @@ export default function TrialCopyList({ groups, todayLabel }: Props) {
                   {copied ? 'コピー済' : 'コピー'}
                 </Button>
               </div>
-              <ul className="text-sm bg-muted rounded p-2 space-y-1">
-                {g.visitors.map((v, i) => (
-                  <li key={i}>
-                    {v.name}
-                    {v.age != null && <span className="text-muted-foreground">（{v.age}歳）</span>}
-                    {(v.course || v.experience || v.referral) && (
-                      <span className="text-xs text-muted-foreground">
-                        {' '}
-                        {[v.course, v.experience, v.referral && `きっかけ: ${v.referral}`].filter(Boolean).join(' / ')}
-                      </span>
-                    )}
-                  </li>
-                ))}
+              <ul className="text-sm bg-muted rounded p-2 space-y-2">
+                {g.visitors.map((v, i) => {
+                  const detail = [
+                    v.experience && `経験: ${v.experience}`,
+                    v.referral && `きっかけ: ${v.referral}`,
+                  ].filter(Boolean).join(' ／ ');
+                  return (
+                    <li key={i}>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-medium text-navy-800">{v.name}</span>
+                        {v.age != null && <span className="text-muted-foreground text-xs">{v.age}歳</span>}
+                        {v.isObservation && (
+                          <Badge className="bg-amber-100 text-amber-700 border-amber-200" variant="outline">見学</Badge>
+                        )}
+                      </div>
+                      {detail && <div className="text-xs text-muted-foreground mt-0.5">{detail}</div>}
+                    </li>
+                  );
+                })}
               </ul>
             </CardContent>
           </Card>
