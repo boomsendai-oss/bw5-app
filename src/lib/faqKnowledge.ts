@@ -8,7 +8,7 @@ export type PublicKnowledge = {
   faqs: { category: string; question: string; answer: string }[];
   prices: { type: string; category: string | null; name: string; price: number }[];
   studios: { name: string; address: string | null; access: string | null; map_url: string | null }[];
-  instructors: { name: string; genre: string | null }[];
+  instructors: { name: string; genre: string | null; bio: string | null; career: string | null; crews: string | null }[];
   classes: {
     name: string;
     day: string | null;
@@ -17,6 +17,8 @@ export type PublicKnowledge = {
     level: string | null;
     instructor: string | null;
     studio: string | null;
+    target: string | null;
+    description: string | null;
   }[];
 };
 
@@ -27,11 +29,21 @@ export type ProductRow = { product_type: string; name: string; price: number | b
 export type StudioRow = { name: string; address: string | null; access_text: string | null; google_map_url: string | null; active: number | bigint; is_public: number | bigint };
 
 // boom-hp/src/lib/instructors.ts と同一の公開条件(active=1 AND slug IS NOT NULL AND slug!='')で絞り込むための列のみ。
-// role相当の列はinstructorsテーブルに存在しないため型に含めない(無い属性を追加しない方針)。
-export type InstructorRow = { name: string; genre: string | null; active: number | bigint; slug: string | null };
+// profile_text(bio)/career_text(経歴)/crewsはHP boom-hp/src/lib/instructors.ts が公開表示している列なのでボットにも開示する。
+// contact_email/contact_phone/bank_*/salary_type/monthly_fixed_amount/pin_hash等の内部列は選択しない(SELECT側でも二重防御)。
+export type InstructorRow = {
+  name: string;
+  genre: string | null;
+  active: number | bigint;
+  slug: string | null;
+  profile_text: string | null;
+  career_text: string | null;
+  crews: string | null;
+};
 
 // boom-hp/src/lib/classes.ts と同一の公開条件(active=1 AND is_public=1)で絞り込むための列のみ。
-// notes(内部メモ)・description_text・video_url・target・slugはHPのLesson型定義上も非公開/非表示のため取得しない。
+// target(対象)/description_text(説明)はHP boom-hp/src/lib/classes.ts が公開表示している列なのでボットにも開示する。
+// notes(内部メモ・HP自身も非表示)・video_url・slugは非公開/非表示のため取得しない。
 // classにgenre相当の列は無い(genreはinstructor側のみ)ため型に含めない。
 export type ClassRow = {
   class_name: string;
@@ -43,6 +55,8 @@ export type ClassRow = {
   studio_name: string | null;
   active: number | bigint;
   is_public: number | bigint;
+  target: string | null;
+  description_text: string | null;
 };
 
 type Rows = {
@@ -65,6 +79,14 @@ const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'] as const;
 function dayName(dow: number | bigint | null): string | null {
   if (dow == null) return null;
   return DAY_NAMES[Number(dow)] ?? null;
+}
+
+// テキスト列の正規化: null と空文字(HP側の ?? "" フォールバック相当の未入力)はどちらも null に寄せ、
+// ボットの知識JSONに空文字ノイズを載せない(未入力の属性は「無い」として透過する)。
+function nz(v: string | null | undefined): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s === '' ? null : s;
 }
 
 export function buildKnowledge({ faqRows, productRows, studioRows, instructorRows = [], classRows = [] }: Rows): PublicKnowledge {
@@ -97,7 +119,10 @@ export function buildKnowledge({ faqRows, productRows, studioRows, instructorRow
       .filter((r) => Number(r.active) === 1 && r.slug != null && String(r.slug) !== '')
       .map((r) => ({
         name: String(r.name),
-        genre: r.genre == null ? null : String(r.genre),
+        genre: nz(r.genre),
+        bio: nz(r.profile_text),
+        career: nz(r.career_text),
+        crews: nz(r.crews),
       })),
     // 公開条件は active=1 かつ is_public=1(本番HP boom-hp/src/lib/classes.ts と同一条件)。
     // dayはdefault_day_of_week(0=日〜6=土)を日本語表記へ変換。未設定はnullのまま出力し、
@@ -110,9 +135,11 @@ export function buildKnowledge({ faqRows, productRows, studioRows, instructorRow
         day: dayName(r.default_day_of_week),
         start_time: r.default_start_time == null ? null : String(r.default_start_time),
         end_time: r.default_end_time == null ? null : String(r.default_end_time),
-        level: r.level == null ? null : String(r.level),
-        instructor: r.instructor_name == null ? null : String(r.instructor_name),
-        studio: r.studio_name == null ? null : String(r.studio_name),
+        level: nz(r.level),
+        instructor: nz(r.instructor_name),
+        studio: nz(r.studio_name),
+        target: nz(r.target),
+        description: nz(r.description_text),
       })),
   };
 }

@@ -15,22 +15,28 @@ const studioRows = [
 ];
 const instructorRows = [
   { name: 'TARO', genre: 'HIPHOP', active: 1, slug: 'taro',
+    profile_text: 'ダンス歴15年、初心者に寄り添う指導が得意', career_text: '全国大会入賞多数', crews: 'BOOM CREW',
     contact_email: 'taro@example.com', contact_phone: '090-1234-5678', bank_account_number: '9876543',
     salary_type: 'monthly_fixed', monthly_fixed_amount: 300000, pin_hash: 'HASHEDPIN123' },
+    // profile_text/career_text/crewsはHPが公開表示している列(ボットにも開示する)。
     // contact_*/bank_*/salary_*/monthly_fixed_amount/pin_hashは実DBのinstructorsに実在する内部列(漏洩保険テスト用)
 ];
 const classRows = [
   { class_name: 'キッズ 強化', level: '初級', default_day_of_week: 1, default_start_time: '17:00', default_end_time: '18:00',
     active: 1, is_public: 1, studio_name: '仙台本店', instructor_name: 'TARO',
-    notes: '時給計算用の内部メモ' }, // notesはHP自身が「HPには表示しない」と明記する内部メモ列(漏洩保険テスト用)
+    target: '小学生', description_text: 'リズム感と基礎を楽しく身につけるクラス',
+    notes: '時給計算用の内部メモ' },
+    // target/description_textはHPが公開表示している列(ボットにも開示する)。
+    // notesはHP自身が「HPには表示しない」と明記する内部メモ列(漏洩保険テスト用)
 ];
 
 const publicStudio = {
   name: '仙台本店', address: '仙台市青葉区…', access: '仙台駅から徒歩5分', map_url: 'https://maps.google.com/x',
 };
-const publicInstructor = { name: 'TARO', genre: 'HIPHOP' };
+const publicInstructor = { name: 'TARO', genre: 'HIPHOP', bio: 'ダンス歴15年、初心者に寄り添う指導が得意', career: '全国大会入賞多数', crews: 'BOOM CREW' };
 const publicClass = {
   name: 'キッズ 強化', day: '月', start_time: '17:00', end_time: '18:00', level: '初級', instructor: 'TARO', studio: '仙台本店',
+  target: '小学生', description: 'リズム感と基礎を楽しく身につけるクラス',
 };
 
 describe('buildKnowledge', () => {
@@ -169,10 +175,20 @@ describe('buildKnowledge', () => {
     expect(k.instructors).toEqual([publicInstructor]);
   });
 
-  it('genreが未設定(null)のインストラクターはnullで出力する', () => {
-    const rows = [{ name: 'ゲスト講師', genre: null, active: 1, slug: 'guest' }];
+  it('genre/bio/career/crewsが未設定(null)のインストラクターはnullで出力する', () => {
+    const rows = [{ name: 'ゲスト講師', genre: null, active: 1, slug: 'guest', profile_text: null, career_text: null, crews: null }];
     const k = buildKnowledge({ faqRows: [], productRows: [], studioRows: [], instructorRows: rows, classRows: [] });
-    expect(k.instructors).toEqual([{ name: 'ゲスト講師', genre: null }]);
+    expect(k.instructors).toEqual([{ name: 'ゲスト講師', genre: null, bio: null, career: null, crews: null }]);
+  });
+
+  it('bio/career/crews/target/descriptionが空文字なら空文字ノイズを載せずnullに正規化する', () => {
+    const iRows = [{ name: '空欄講師', genre: 'HOUSE', active: 1, slug: 'empty', profile_text: '', career_text: '   ', crews: '' }];
+    const cRows = [{ class_name: '空欄クラス', level: '初級', default_day_of_week: 1, default_start_time: '17:00', default_end_time: '18:00',
+      active: 1, is_public: 1, studio_name: '仙台本店', instructor_name: 'TARO', target: '', description_text: '  ' }];
+    const k = buildKnowledge({ faqRows: [], productRows: [], studioRows: [], instructorRows: iRows, classRows: cRows });
+    expect(k.instructors[0]).toEqual({ name: '空欄講師', genre: 'HOUSE', bio: null, career: null, crews: null });
+    expect(k.classes[0].target).toBeNull();
+    expect(k.classes[0].description).toBeNull();
   });
 
   it('is_public=0のクラスは除外される', () => {
@@ -218,7 +234,7 @@ describe('buildKnowledge', () => {
     ];
     const k = buildKnowledge({ faqRows: [], productRows: [], studioRows: [], instructorRows: [], classRows: rows });
     expect(k.classes).toEqual([
-      { name: '未設定クラス', day: null, start_time: null, end_time: null, level: null, instructor: null, studio: null },
+      { name: '未設定クラス', day: null, start_time: null, end_time: null, level: null, instructor: null, studio: null, target: null, description: null },
     ]);
   });
 });

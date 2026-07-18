@@ -31,13 +31,16 @@ export async function GET() {
         "SELECT product_type, name, price, category, active FROM hacomono_products WHERE active = 1 AND (category IS NULL OR category NOT IN ('admin','instructor','pause'))"
       ),
       getAll('SELECT name, address, access_text, google_map_url, active, is_public FROM studios WHERE active = 1 AND is_public = 1'),
-      // boom-hp/src/lib/instructors.ts と同一の公開条件・ソート順。給与/連絡先/銀行口座系の列は選択しない。
+      // boom-hp/src/lib/instructors.ts と同一の公開条件・ソート順。profile_text/career_text/crewsはHPが公開表示している列。
+      // 給与/連絡先/銀行口座系(contact_*/bank_*/salary_*/pin_hash)の内部列は選択しない。
       getAll(
-        "SELECT name, genre, active, slug FROM instructors WHERE active = 1 AND slug IS NOT NULL AND slug != '' ORDER BY COALESCE(public_display_order, 999), id"
+        "SELECT name, genre, active, slug, profile_text, career_text, crews FROM instructors WHERE active = 1 AND slug IS NOT NULL AND slug != '' ORDER BY COALESCE(public_display_order, 999), id"
       ),
-      // boom-hp/src/lib/classes.ts と同一の公開条件・JOIN・ソート順。notesは内部メモ(HP自身も非表示)のため選択しない。
+      // boom-hp/src/lib/classes.ts と同一の公開条件・JOIN・ソート順。target/description_textはHPが公開表示している列。
+      // notes(内部メモ・HP自身も非表示)は選択しない。
       getAll(`
         SELECT lm.class_name, lm.level, lm.default_day_of_week, lm.default_start_time, lm.default_end_time,
+               lm.target, lm.description_text,
                lm.active, lm.is_public, s.name AS studio_name, i.name AS instructor_name
         FROM lesson_master lm
         LEFT JOIN studios s ON s.id = lm.default_studio_id
