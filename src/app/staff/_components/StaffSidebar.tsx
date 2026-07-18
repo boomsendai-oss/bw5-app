@@ -24,6 +24,7 @@ import {
   HelpCircle,
   Megaphone,
   Hash,
+  Sparkles,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -81,6 +82,7 @@ const opsNavItems: NavItem[] = [
   { title: 'ブログ', href: '/staff/blog', icon: FileText },
   { title: 'FAQ管理', href: '/staff/faq', icon: HelpCircle },
   { title: 'オペレーション', href: '/staff/operations', icon: Settings2 },
+  { title: '体験予約', href: '/staff/trials', icon: Sparkles },
   { title: 'ノーショー候補', href: '/staff/operations/noshow', icon: UserX },
   { title: 'LINE連携', href: '/staff/operations/lstep-update', icon: MessageCircle },
   { title: 'Instagram投稿', href: '/staff/instagram', icon: AtSign },
