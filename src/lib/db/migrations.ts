@@ -41,11 +41,9 @@ export async function runMigrations(c: Client): Promise<void> {
   await addColumnIfMissing(c, 'hacomono_schedule_map', 'space_selectable', 'INTEGER');
   await addColumnIfMissing(c, 'hacomono_schedule_map', 'space_movable', 'INTEGER');
   await addColumnIfMissing(c, 'hacomono_schedule_map', 'publish_fixed', 'INTEGER');
-  // 体験予約 担当周知(WS T / 2026-07-18): 周知メッセージに使う項目を保存。
-  // 台帳(scripts/migrations/)には置かず冪等ALTERに一本化(既存studios列と同方針・列重複回避)。
-  await addColumnIfMissing(c, 'trial_records', 'course_type', 'TEXT');       // CSV「コース」(体験レッスン/見学)
-  await addColumnIfMissing(c, 'trial_records', 'dance_experience', 'TEXT');  // CSV「ダンス経験」
-  await addColumnIfMissing(c, 'trial_records', 'referral_source', 'TEXT');   // CSV「何でBOOMを知りましたか？」
+  // 体験予約 担当周知(WS T / 2026-07-18)の trial_records 列(course_type/dance_experience/
+  // referral_source)は台帳 scripts/migrations/20260718_trial_notify_fields.sql で追加する。
+  // 本番は SKIP_DB_INIT=1 でこの runMigrations 自体が走らないため、ここに書いても本番へ届かない。
 }
 
 async function addColumnIfMissing(c: Client, table: string, column: string, columnDef: string): Promise<void> {
