@@ -82,12 +82,67 @@ async function evaluatePlan(origin: string, date: string, weekday: number): Prom
   return { expectedCount: expected.length, postedCount, missing, tagDegraded, attemptedAny };
 }
 
+type ReelEval = {
+  overdueHealable: Array<{ id: number; title: string; hours: number }>;
+  other: string[]; // 自動修復に回さない異常(超過しすぎ/詰まり/失敗)
+};
+
+// リールの見張り。reel_queue は post-reel が1回1件だけ出す設計なので、
+// 「予約時刻を過ぎたのに scheduled のまま」= 未投稿。
+//   - 超過12時間以内 → 自己修復(post-reelをその件数だけ叩く)
+//   - 超過12時間超   → 鮮度の判断が要るので自動投稿せず通知のみ
+//   - posting で停止  → 二重投稿の恐れがあるため自動リセットせず通知のみ(IG側の確認が先)
+//   - failed(24h以内) → 通知
+//   - 1週間以上放置の scheduled は手動整理待ちとみなし鳴らさない(恒久ノイズ回避)
+async function evaluateReels(): Promise<ReelEval> {
+  const rows = await getAll(
+    "SELECT id, title, scheduled_at, status, error, updated_at FROM reel_queue WHERE status IN ('scheduled','posting','failed')"
+  );
+  const now = Date.now();
+  const out: ReelEval = { overdueHealable: [], other: [] };
+
+  for (const r of rows) {
+    const status = String(r.status);
+    const id = Number(r.id);
+    const title = String(r.title ?? `#${id}`);
+
+    if (status === 'scheduled') {
+      const at = Date.parse(String(r.scheduled_at));
+      if (!Number.isFinite(at) || at > now) continue; // まだ予約時刻前=正常
+      const hours = (now - at) / 3600000;
+      if (hours > 24 * 7) continue;
+      if (hours <= 12) out.overdueHealable.push({ id, title, hours });
+      else
+        out.other.push(
+          `⏰ リール「${title}」(#${id}): 予約時刻を${Math.floor(hours)}時間超過。鮮度の判断が要るため自動投稿は見送りました(手動で公開 or 予約し直しを)。`
+        );
+    } else if (status === 'posting') {
+      const upd = Date.parse(String(r.updated_at ?? ''));
+      if (Number.isFinite(upd) && now - upd > 30 * 60 * 1000) {
+        out.other.push(
+          `🧊 リール「${title}」(#${id}): 「処理中」のまま止まっています。Instagram側に既に出ていないか確認してから手動で再開してください(自動リセットは二重投稿の恐れがあるため行いません)。`
+        );
+      }
+    } else if (status === 'failed') {
+      const upd = Date.parse(String(r.updated_at ?? ''));
+      if (!Number.isFinite(upd) || now - upd < 24 * 3600 * 1000) {
+        out.other.push(`❌ リール「${title}」(#${id}): 投稿失敗 — ${r.error ?? ''}`);
+      }
+    }
+  }
+  return out;
+}
+
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
     return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 });
   }
-  if (req.headers.get('authorization') !== `Bearer ${secret}`) {
+  // Vercel Cron(Bearer)と GitHub Actions(x-cron-secret)の両方から叩けるようにする。
+  // 朝=Vercel Cron(ストーリー中心)/夜=GH Actions(リール中心)の2回運用。
+  const bearerOk = req.headers.get('authorization') === `Bearer ${secret}`;
+  const xcronOk = req.headers.get('x-cron-secret') === secret;
+  if (!bearerOk && !xcronOk) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
@@ -116,20 +171,22 @@ export async function GET(req: NextRequest) {
 
   const date = todayJst();
   const weekday = weekdayJst(date);
+  const origin = new URL(req.url).origin;
   const jstHour = new Date(Date.now() + 9 * 3600 * 1000).getUTCHours();
-  const deadmanActive = jstHour >= 9;
+  const deadmanActive = jstHour >= 9; // JST9時前は「未投稿」を判定しない(朝のcron着地待ち)
+  // ストーリーの自己修復は朝のうちだけ。夜のwatchdogが「今日のレッスン」を夜に出してしまう事故を防ぐ。
+  const storyHealAllowed = jstHour >= 9 && jstHour < 12;
 
   let expectedCount = 0;
   let postedCount = 0;
   let selfHealAttempted = false;
 
   if (deadmanActive) {
-    const origin = new URL(req.url).origin;
     let ev = await evaluatePlan(origin, date, weekday);
     expectedCount = ev.expectedCount;
 
     // (2) 自己修復: 未投稿があれば post-story を1回叩いて埋める(claimで二重投稿防止)
-    if (ev.missing.length > 0) {
+    if (ev.missing.length > 0 && storyHealAllowed) {
       selfHealAttempted = true;
       const before = ev.missing.length;
       try {
@@ -142,11 +199,44 @@ export async function GET(req: NextRequest) {
       if (recovered > 0) {
         notes.push(`ℹ️ 朝のGH Actions cronが未達でしたが、watchdogが自動投稿で${recovered}本を復旧しました。`);
       }
+    } else if (ev.missing.length > 0) {
+      notes.push('（時間帯が朝を過ぎているため、ストーリーの自動投稿は見送り通知のみにしています）');
     }
 
     postedCount = ev.postedCount;
     // 自己修復後もなお残る欠落(=mismatch等の要人手)・タグ劣化を通知対象へ
     anomalies.push(...ev.missing, ...ev.tagDegraded);
+  }
+
+  // (2b) リールの見張り: 予約時刻を過ぎたのに未投稿なら自己修復、その他の異常は通知
+  let reelRecovered = 0;
+  try {
+    let rev = await evaluateReels();
+    if (rev.overdueHealable.length > 0) {
+      const before = rev.overdueHealable.length;
+      // post-reel は1回1件しか出さないので、期限切れの件数ぶん(最大3回)叩く
+      for (let i = 0; i < Math.min(before, 3); i++) {
+        try {
+          await fetch(`${origin}/api/cron/post-reel`, { method: 'POST', headers: { 'x-cron-secret': secret } });
+        } catch (e) {
+          anomalies.push(`⚠️ リール自己修復の呼び出しに失敗: ${e instanceof Error ? e.message : e}`);
+          break;
+        }
+      }
+      rev = await evaluateReels();
+      reelRecovered = before - rev.overdueHealable.length;
+      if (reelRecovered > 0) {
+        notes.push(`ℹ️ 予約時刻を過ぎていたリール${reelRecovered}本を、watchdogが自動投稿で復旧しました。`);
+      }
+    }
+    anomalies.push(
+      ...rev.overdueHealable.map(
+        (o) => `❌ リール「${o.title}」(#${o.id}): 予約から${Math.floor(o.hours)}時間経過しても未投稿(自動投稿を試みましたが復旧できず)。`
+      ),
+      ...rev.other
+    );
+  } catch (e) {
+    console.warn(`リール監視に失敗(ストーリー側は継続): ${e instanceof Error ? e.message : e}`);
   }
 
   // (3) 通知
@@ -171,6 +261,7 @@ export async function GET(req: NextRequest) {
     expected: expectedCount,
     posted: postedCount,
     selfHealAttempted,
+    reelRecovered,
     anomalies,
     notes,
     notified: needNotify ? notifySucceeded : undefined,

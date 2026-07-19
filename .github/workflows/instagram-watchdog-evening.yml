@@ -1,0 +1,29 @@
+# インスタ自動投稿 夜のwatchdog(リール中心)
+# 毎晩 JST 19:45 = UTC 10:45。リール投稿cron(JST19:00枠)の直後に見張る。
+# 朝の watchdog は Vercel Cron(JST9:10)で動くが、リールは夜に出るため夜も見る必要がある。
+# 同じ /api/cron/story-watchdog を叩く(エンドポイント側が時間帯を見て、
+# ストーリーの自動再投稿は朝のみ・リールは常時、と切り分ける)。
+# GH Actions側に置く理由: Vercel Hobbyのcron枠(2/2)を消費しないため。
+name: instagram-watchdog-evening
+
+on:
+  schedule:
+    # 19:45 JST目標。GH Actionsは遅延しうるが、遅れても未投稿は検知できる。
+    - cron: '45 10 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/story-watchdog
+        run: |
+          set -e
+          RESP=$(curl -s --max-time 60 -w '\n%{http_code}' \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/story-watchdog)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1
