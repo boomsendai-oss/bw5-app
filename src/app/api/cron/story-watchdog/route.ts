@@ -10,16 +10,78 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 // GET /api/cron/story-watchdog
-// GitHub Actions とは別の故障ドメイン(Vercel Cron)で毎朝 JST~9:10 に走る監視役。
-// 役割は3つ、いずれも「投稿はしない(notify-only)」:
-//   (1) トークン延命: refreshTokenIfStale を無条件で呼ぶ(投稿が起きない日でも60日失効を防ぐ)。
-//   (2) dead-man: 「素材はあるのに未投稿」を検知して TARO に1通だけ通知(自己修復・再投稿はしない)。
-//        →トリガー不発(#1)・mismatchスキップ・タグ劣化・投稿エラーを1つの網で拾う。
-//   (3) ハートビート: HEALTHCHECKS_URL 設定時、watchdog自身の生存を外部へ通知。
-//        通知が必要なのに送れなかった場合は success ping を打たない(=外部が沈黙を検知)。
-// 全て正常なら無音。素材が無い日(火曜など)も無音。
-//
+// GitHub Actions とは別の故障ドメイン(Vercel Cron)で毎朝 JST~9:10 に走る監視+自己修復役。
+//   (1) トークン延命(無条件): refreshTokenIfStale(投稿が無い日でも60日失効を防ぐ)。
+//   (2) 自己修復: 「素材はあるのに未投稿」を検知したら post-story を1回叩いて欠落を埋める
+//        (GH cron不発の自動復旧)。二重投稿は post-story 側の claim ロックで構造的に防止。
+//   (3) 通知: 自己修復後もなお残る異常(mismatch/エラー/タグ劣化/トークン)だけを1通。
+//        GH不発を自動復旧した場合は低刺激の情報通知(GHの不調をTAROが把握できるように)。
+//   (4) ハートビート: HEALTHCHECKS_URL 設定時、通知が必要なのに送れた時だけ success ping。
+// 全て正常なら無音。素材が無い日(火曜など)も無音。壁時計JST9時前は投稿判定しない。
 // 認証: sync-lesson-calendar と同じ CRON_SECRET(Vercelが Authorization: Bearer で送る)。
+
+type PlanEval = {
+  expectedCount: number;
+  postedCount: number;
+  missing: string[]; // 未投稿スロットの理由文
+  tagDegraded: string[];
+  attemptedAny: boolean;
+};
+
+async function evaluatePlan(origin: string, date: string, weekday: number): Promise<PlanEval> {
+  const expected = await findChainMediaList(origin, date, weekday);
+  if (expected.length === 0) {
+    return { expectedCount: 0, postedCount: 0, missing: [], tagDegraded: [], attemptedAny: false };
+  }
+
+  const rows = await getAll('SELECT video_path, status, error FROM story_post_log WHERE date = ?', [date]);
+  const byPath = new Map<string, Array<{ status: string; error: string | null }>>();
+  for (const r of rows) {
+    const p = String(r.video_path);
+    if (!byPath.has(p)) byPath.set(p, []);
+    byPath.get(p)!.push({ status: String(r.status), error: r.error ? String(r.error) : null });
+  }
+
+  const missing: string[] = [];
+  let postedCount = 0;
+  let attemptedAny = false;
+
+  for (const media of expected) {
+    const logs = byPath.get(media.url) ?? [];
+    if (logs.length > 0) attemptedAny = true;
+    if (logs.some((l) => l.status === 'posted')) {
+      postedCount++;
+      continue;
+    }
+    const mismatch = logs.find((l) => l.status === 'skipped_schedule_mismatch');
+    const errored = logs.find((l) => l.status === 'error');
+    if (mismatch) {
+      missing.push(`❌ ${media.base}: スケジュール不一致で未投稿 — ${mismatch.error ?? ''}`);
+    } else if (errored) {
+      missing.push(`❌ ${media.base}: 投稿エラー — ${errored.error ?? ''}`);
+    } else {
+      const sc = await checkSchedule(date, (await loadSidecar(origin, media.base)).lessons).catch(() => null);
+      const hint = sc && sc.result === 'mismatch' ? `(照合: ${sc.problems.join(' / ')})` : '(未起動→自己修復対象)';
+      missing.push(`❌ ${media.base}: 未投稿 ${hint}`);
+    }
+  }
+
+  const tagDegraded: string[] = [];
+  try {
+    const tagRows = await getAll(
+      "SELECT video_path, mentions_failed FROM story_post_log WHERE date = ? AND status = 'posted' AND mentions_failed IS NOT NULL AND mentions_failed != '' AND mentions_failed != '[]'",
+      [date]
+    );
+    for (const t of tagRows) {
+      tagDegraded.push(`△ ${String(t.video_path).split('/').pop()}: タグ付け一部失敗 — ${t.mentions_failed}`);
+    }
+  } catch {
+    // mentions_failed列が未適用なら無視
+  }
+
+  return { expectedCount: expected.length, postedCount, missing, tagDegraded, attemptedAny };
+}
+
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
@@ -29,9 +91,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const anomalies: string[] = [];
+  const anomalies: string[] = []; // 要対応
+  const notes: string[] = []; // 情報(自己修復の報告など)
 
-  // (1) トークン延命(無条件)。投稿が走らない日でも呼ばれるのが肝。
+  // (1) トークン延命(無条件)
   try {
     await refreshTokenIfStale();
   } catch (e) {
@@ -43,96 +106,61 @@ export async function GET(req: NextRequest) {
       anomalies.push(`⚠️ Instagramトークンが${cs.tokenAgeDays}日経過(60日で失効)。更新が繰り返し失敗している可能性。`);
     }
   } catch {
-    // connectionStatus失敗は致命ではない
+    // 非致命
   }
 
   if (!configured()) {
-    // env未設定(投稿系がno-op)の間はdead-man対象外。トークン警告だけ出す。
     if (anomalies.length > 0) await safeNotify('設定未完了', anomalies);
     return NextResponse.json({ ok: true, configured: false, anomalies });
   }
 
   const date = todayJst();
   const weekday = weekdayJst(date);
-
-  // 壁時計ガード: JST 9時前は「未投稿」を判定しない(GH cron 7:52-8:32 の着地待ち+Hobby cronの早発ゆらぎ対策)。
   const jstHour = new Date(Date.now() + 9 * 3600 * 1000).getUTCHours();
   const deadmanActive = jstHour >= 9;
 
   let expectedCount = 0;
   let postedCount = 0;
+  let selfHealAttempted = false;
 
   if (deadmanActive) {
     const origin = new URL(req.url).origin;
-    const expected = await findChainMediaList(origin, date, weekday);
-    expectedCount = expected.length;
+    let ev = await evaluatePlan(origin, date, weekday);
+    expectedCount = ev.expectedCount;
 
-    if (expected.length > 0) {
-      const rows = await getAll(
-        'SELECT video_path, status, error FROM story_post_log WHERE date = ?',
-        [date]
-      );
-      const byPath = new Map<string, Array<{ status: string; error: string | null }>>();
-      for (const r of rows) {
-        const p = String(r.video_path);
-        if (!byPath.has(p)) byPath.set(p, []);
-        byPath.get(p)!.push({ status: String(r.status), error: r.error ? String(r.error) : null });
-      }
-
-      let attemptedAny = false;
-      for (const media of expected) {
-        const logs = byPath.get(media.url) ?? [];
-        if (logs.length > 0) attemptedAny = true;
-        const posted = logs.some((l) => l.status === 'posted');
-        if (posted) {
-          postedCount++;
-          continue;
-        }
-        const mismatch = logs.find((l) => l.status === 'skipped_schedule_mismatch');
-        const errored = logs.find((l) => l.status === 'error');
-        if (mismatch) {
-          anomalies.push(`❌ ${media.base}: スケジュール不一致で未投稿 — ${mismatch.error ?? ''}`);
-        } else if (errored) {
-          anomalies.push(`❌ ${media.base}: 投稿エラー — ${errored.error ?? ''}`);
-        } else {
-          // ログ行が無い=cronがこの素材を一度も処理していない
-          const sc = await checkSchedule(date, (await loadSidecar(origin, media.base)).lessons).catch(() => null);
-          const hint =
-            sc && sc.result === 'mismatch'
-              ? `(照合: ${sc.problems.join(' / ')})`
-              : '(cronが起動していない疑い)';
-          anomalies.push(`❌ ${media.base}: 未投稿 ${hint}`);
-        }
-      }
-
-      // タグ劣化(mentions_failed列がある場合のみ・防御的)
+    // (2) 自己修復: 未投稿があれば post-story を1回叩いて埋める(claimで二重投稿防止)
+    if (ev.missing.length > 0) {
+      selfHealAttempted = true;
+      const before = ev.missing.length;
       try {
-        const tagRows = await getAll(
-          "SELECT video_path, mentions_failed FROM story_post_log WHERE date = ? AND status = 'posted' AND mentions_failed IS NOT NULL AND mentions_failed != '' AND mentions_failed != '[]'",
-          [date]
-        );
-        for (const t of tagRows) {
-          anomalies.push(`△ ${String(t.video_path).split('/').pop()}: タグ付け一部失敗 — ${t.mentions_failed}`);
-        }
-      } catch {
-        // mentions_failed列が未適用(migration前)なら無視
+        await fetch(`${origin}/api/cron/post-story`, { method: 'POST', headers: { 'x-cron-secret': secret } });
+      } catch (e) {
+        anomalies.push(`⚠️ 自己修復の再投稿呼び出しに失敗: ${e instanceof Error ? e.message : e}`);
       }
-
-      if (!attemptedAny && postedCount === 0) {
-        anomalies.unshift(`🚨 本日 ${date}: 素材${expected.length}件があるのに投稿ログが1件も無い(GH Actions cron未発火の疑い)。`);
+      ev = await evaluatePlan(origin, date, weekday); // 再評価
+      const recovered = before - ev.missing.length;
+      if (recovered > 0) {
+        notes.push(`ℹ️ 朝のGH Actions cronが未達でしたが、watchdogが自動投稿で${recovered}本を復旧しました。`);
       }
     }
+
+    postedCount = ev.postedCount;
+    // 自己修復後もなお残る欠落(=mismatch等の要人手)・タグ劣化を通知対象へ
+    anomalies.push(...ev.missing, ...ev.tagDegraded);
   }
 
+  // (3) 通知
+  const needNotify = anomalies.length > 0 || notes.length > 0;
   let notifySucceeded = true;
   if (anomalies.length > 0) {
-    notifySucceeded = await safeNotify(`要対応 ${date}`, anomalies);
+    notifySucceeded = await safeNotify(`要対応 ${date}`, [...anomalies, ...notes]);
+  } else if (notes.length > 0) {
+    notifySucceeded = await safeNotify(`自動復旧 ${date}`, notes);
   }
 
-  // (3) ハートビート: 正常 or (異常ありかつ通知成功) の時だけ success ping。
-  //     通知が必要なのに送れなかった時は打たない=外部サービスが沈黙を検知。
+  // (4) ハートビート: 通知が要らない or 通知が成功した時だけ success ping
   const hc = process.env.HEALTHCHECKS_URL;
-  if (hc && (anomalies.length === 0 || notifySucceeded)) {
+  if (hc && (!needNotify || notifySucceeded)) {
     await fetch(hc, { method: 'GET' }).catch(() => null);
   }
 
@@ -142,14 +170,16 @@ export async function GET(req: NextRequest) {
     deadmanActive,
     expected: expectedCount,
     posted: postedCount,
+    selfHealAttempted,
     anomalies,
-    notified: anomalies.length > 0 ? notifySucceeded : undefined,
+    notes,
+    notified: needNotify ? notifySucceeded : undefined,
   });
 }
 
-async function safeNotify(subject: string, anomalies: string[]): Promise<boolean> {
+async function safeNotify(subject: string, lines: string[]): Promise<boolean> {
   try {
-    await notifyTaro({ subject, body: anomalies.join('\n') });
+    await notifyTaro({ subject, body: lines.join('\n') });
     return true;
   } catch (e) {
     console.error(`watchdog通知失敗: ${e instanceof Error ? e.message : e}`);

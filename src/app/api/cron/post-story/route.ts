@@ -52,6 +52,31 @@ async function logResult(
   }
 }
 
+// 二重投稿防止のスロットロック。GH cron(最大3本)とwatchdogの自己修復loopbackが
+// 同時に走っても、あるスロットを実際に publish するのは最初に claim できた1プロセスだけ。
+// UNIQUE(date, video_path) の INSERT が通れば所有権獲得、衝突(rowsAffected=0)なら他が処理中。
+// publish 失敗時は releaseClaim で解放し、次回の再投稿を可能にする。
+async function claimSlot(date: string, videoPath: string): Promise<boolean> {
+  try {
+    const res = await execute(
+      'INSERT INTO story_post_claim (date, video_path, created_at) VALUES (?, ?, ?) ON CONFLICT(date, video_path) DO NOTHING',
+      [date, videoPath, nowUtcIso()]
+    );
+    return (res.rowsAffected ?? 0) > 0;
+  } catch {
+    // claim表が未適用(migration前)なら可用性優先でロック無し投稿を続行する
+    return true;
+  }
+}
+
+async function releaseClaim(date: string, videoPath: string): Promise<void> {
+  try {
+    await execute('DELETE FROM story_post_claim WHERE date = ? AND video_path = ?', [date, videoPath]);
+  } catch {
+    // 解放失敗は次回の冪等ガード('posted'照合)で吸収されるため致命ではない
+  }
+}
+
 export async function POST(req: NextRequest) {
   if (!cronAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -126,6 +151,13 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // このスロットの投稿権を獲得(取れなければ他プロセスが処理中=スキップ)
+      const claimed = await claimSlot(date, media.url);
+      if (!claimed) {
+        results.push({ media: media.base, skipped: '別プロセスが投稿処理中(claim)' });
+        continue;
+      }
+
       try {
         // publishStory側が「載せられる最大の部分集合」を自動で選び、落ちたハンドルはmentionsFailedで返す
         const { mediaId, mentionsApplied, mentionsFailed } =
@@ -141,6 +173,8 @@ export async function POST(req: NextRequest) {
         results.push({ media: media.base, posted: true, mediaId, mentions: mentionsApplied, mentionsFailed });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+        // publish失敗: claimを解放して次回の再投稿を可能にする
+        await releaseClaim(date, media.url);
         await logResult(date, weekday, media.url, 'error', undefined, msg);
         errorCount++;
         results.push({ media: media.base, error: msg });
