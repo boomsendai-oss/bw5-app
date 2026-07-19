@@ -84,9 +84,10 @@ Lstep体験CSV ──(既存 daily_sync 6h毎)──▶ trial-import API ──�
 - 電話番号の保存・表示
 
 ## 実装単位
-1. 列追加は `src/lib/db/migrations.ts` の冪等 `addColumnIfMissing` に一本化
-   （生ALTERの台帳SQLは列重複エラーの恐れがあるため使わない。既存 `studios.is_public` と同方針。
-   デプロイ時 `initDb` で自動適用）
+1. 列追加は台帳 `scripts/migrations/20260718_trial_notify_fields.sql` + `migrate.mjs` で適用
+   （⚠️当初 `addColumnIfMissing` 一本化で実装したが**本番は `SKIP_DB_INIT=1` で `initDb`/`runMigrations`
+   が走らず列が追加されずページが500**。本番の列追加は必ず台帳SQL経由。台帳SQLは行内コメント禁止＝
+   `migrate.mjs` が行末 `;` で分割するため）
 2. `trial-import/route.ts` 取込拡張（列マッピング＋来店/来場→status）
 3. `/staff/trials/page.tsx`（サーバー） + コピー用クライアントコンポーネント
 4. サイドバー `StaffSidebar.tsx` / `CommandPalette.tsx` にリンク登録
