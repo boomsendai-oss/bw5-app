@@ -201,23 +201,24 @@ async function requireConnection(): Promise<{ token: string; igUserId: string }>
  *
  * mediaUrl は公開URL必須(Metaサーバーがサーバー側で取得しにいく)。
  */
-async function publishStory(
+export type PublishStoryResult = {
+  mediaId: string;
+  mentionsApplied: string[];
+  mentionsFailed: string[];
+};
+
+/** STORIESコンテナを1つ作成し creation_id を返す(失敗は throw)。指定メンションを user_tags で載せる。 */
+async function createStoryContainer(
+  base: string,
+  token: string,
   mediaUrl: string,
   mediaType: 'video' | 'image',
-  mentionUsernames?: string[]
-): Promise<{ mediaId: string }> {
-  const { token, igUserId } = await requireConnection();
-  const base = `${GRAPH}/${GRAPH_VERSION}/${igUserId}`;
-
+  mentions: string[]
+): Promise<string> {
   const payload: Record<string, unknown> = { media_type: 'STORIES', access_token: token };
   if (mediaType === 'video') payload.video_url = mediaUrl;
   else payload.image_url = mediaUrl;
-  // ストーリーへのメンション(通知が飛び、相手がリポスト可能になる)。
-  // 公式仕様: ステッカー(リンク/アンケート等)は不可だが「ステッカー無しのメンション」はuser_tagsで可能。
-  // 対象は公開アカウントのみ。非公開や存在しないユーザー名だと投稿自体が失敗しうるので運用注意。
-  if (mentionUsernames && mentionUsernames.length > 0) {
-    payload.user_tags = mentionUsernames.map((username) => ({ username }));
-  }
+  if (mentions.length > 0) payload.user_tags = mentions.map((username) => ({ username }));
 
   const createRes = await fetch(`${base}/media`, {
     method: 'POST',
@@ -228,9 +229,47 @@ async function publishStory(
   if (!createRes.ok || createJson.error) {
     throw new Error(`コンテナ作成失敗: ${JSON.stringify(createJson.error ?? createJson)}`);
   }
-  const creationId = createJson.id as string;
+  return createJson.id as string;
+}
 
-  // 動画処理待ち: 最大60秒、3秒間隔でポーリング
+async function publishStory(
+  mediaUrl: string,
+  mediaType: 'video' | 'image',
+  mentionUsernames?: string[]
+): Promise<PublishStoryResult> {
+  const { token, igUserId } = await requireConnection();
+  const base = `${GRAPH}/${GRAPH_VERSION}/${igUserId}`;
+  const requested = (mentionUsernames ?? []).filter((m) => typeof m === 'string' && m.length > 0);
+
+  // ストーリーへのメンション(user_tags)。載せられなかったハンドルで投稿全体を落とさない:
+  //   まず全件で試し、コンテナ作成が失敗したら1件ずつ足して「載せられる最大の部分集合」を求める。
+  //   これで「不正/非公開ハンドル1件」でも「STORIESのタグ数上限」でも、正当なタグは最大限残し、
+  //   落ちたハンドルは mentionsFailed として記録する(無言で全捨てにしない)。
+  let creationId: string | null = null;
+  let applied: string[] = [];
+  const failed: string[] = [];
+
+  try {
+    creationId = await createStoryContainer(base, token, mediaUrl, mediaType, requested);
+    applied = requested;
+  } catch (e) {
+    if (requested.length === 0) throw e; // メンション無しでも失敗=本当の障害
+    for (const m of requested) {
+      try {
+        creationId = await createStoryContainer(base, token, mediaUrl, mediaType, [...applied, m]);
+        applied.push(m);
+      } catch {
+        failed.push(m);
+      }
+    }
+    if (creationId === null) {
+      // 単独メンションも全滅→メンション無しで最終試行(ここで失敗すれば本当の障害としてthrow)
+      creationId = await createStoryContainer(base, token, mediaUrl, mediaType, []);
+      applied = [];
+    }
+  }
+
+  // 動画処理待ち: 最大60秒、3秒間隔でポーリング(画像はほぼ即時FINISHED)
   const deadline = Date.now() + 60_000;
   let statusCode = 'IN_PROGRESS';
   while (Date.now() < deadline) {
@@ -255,14 +294,14 @@ async function publishStory(
   if (!pubRes.ok || pubJson.error) {
     throw new Error(`公開失敗: ${JSON.stringify(pubJson.error ?? pubJson)}`);
   }
-  return { mediaId: pubJson.id as string };
+  return { mediaId: pubJson.id as string, mentionsApplied: applied, mentionsFailed: failed };
 }
 
-export async function publishStoryVideo(videoUrl: string, mentions?: string[]): Promise<{ mediaId: string }> {
+export async function publishStoryVideo(videoUrl: string, mentions?: string[]): Promise<PublishStoryResult> {
   return publishStory(videoUrl, 'video', mentions);
 }
 
-export async function publishStoryImage(imageUrl: string, mentions?: string[]): Promise<{ mediaId: string }> {
+export async function publishStoryImage(imageUrl: string, mentions?: string[]): Promise<PublishStoryResult> {
   return publishStory(imageUrl, 'image', mentions);
 }
 

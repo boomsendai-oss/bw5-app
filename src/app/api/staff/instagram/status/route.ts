@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const status = await connectionStatus();
   const [logs, queue] = await Promise.all([
     getAll(
-      'SELECT date, weekday, video_path, status, ig_media_id, error, created_at FROM story_post_log ORDER BY id DESC LIMIT 14'
+      'SELECT date, weekday, video_path, status, ig_media_id, error, created_at, mentions_applied, mentions_failed FROM story_post_log ORDER BY id DESC LIMIT 14'
     ),
     getAll(
       `SELECT id, media_path, media_type, kind, title, valid_from, valid_until, status, last_posted_at, times_posted

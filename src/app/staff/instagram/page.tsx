@@ -11,6 +11,8 @@ type LogRow = {
   ig_media_id: string | null;
   error: string | null;
   created_at: string;
+  mentions_applied?: string | null;
+  mentions_failed?: string | null;
 };
 
 type QueueRow = {
@@ -44,6 +46,17 @@ type Plan = {
   source: 'date-file' | 'weekday-file' | 'queue' | 'none';
   items: PlanItem[];
 };
+
+/** mentions_applied/failed は JSON文字列(配列)で保存されている。安全にパースして配列を返す。 */
+function parseHandles(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 function PlanDayRow({ plan, isToday, logs }: { plan: Plan; isToday: boolean; logs: LogRow[] }) {
   const postedFor = (mediaPath: string) =>
@@ -457,7 +470,17 @@ export default function InstagramStoryPage() {
                         <td className="py-2 pr-3">
                           <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${s.cls}`}>{s.label}</span>
                         </td>
-                        <td className="py-2 text-neutral-400 text-xs">{l.error ?? ''}</td>
+                        <td className="py-2 text-neutral-400 text-xs">
+                          {l.error ?? ''}
+                          {(() => {
+                            const failed = parseHandles(l.mentions_failed);
+                            return failed.length > 0 ? (
+                              <span className="text-red-600 font-semibold">
+                                {l.error ? ' / ' : ''}タグ失敗: {failed.map((h) => `@${h}`).join(' ')}
+                              </span>
+                            ) : null;
+                          })()}
+                        </td>
                       </tr>
                     );
                   })}

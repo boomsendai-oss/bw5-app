@@ -22,7 +22,7 @@ jobs:
       - name: Call /api/cron/post-story
         run: |
           set -e
-          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+          RESP=$(curl -s --max-time 60 -w '\n%{http_code}' -X POST \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             https://bw5-app.vercel.app/api/cron/post-story)
           BODY=$(echo "$RESP" | sed '$d')

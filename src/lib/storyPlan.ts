@@ -84,6 +84,41 @@ export async function loadSidecar(origin: string, base: string): Promise<Sidecar
   return out;
 }
 
+/**
+ * 講師名(宣言 or カレンダー由来) → IGハンドルを instructors マスタから解決する。
+ * ハンドルの正本は instructors.instagram_handle 列(UIで編集可)。代講講師も1行登録すれば恒久解決。
+ * これにより sidecar json の mentions を手管理する必要がなくなる(陳腐化の根絶)。
+ * 大文字化して部分一致で照合(checkSchedule と同じ語彙)。未解決の講師名は unresolved に返す。
+ */
+export async function resolveMentions(
+  instructorNames: string[]
+): Promise<{ handles: string[]; unresolved: string[] }> {
+  const { getAll } = await import('./db');
+  const rows = await getAll('SELECT name, instagram_handle FROM instructors');
+  const table = rows
+    .map((r) => ({ name: String(r.name).trim().toUpperCase(), handle: (r.instagram_handle ? String(r.instagram_handle).trim() : '') }))
+    .filter((r) => r.name.length > 0);
+
+  const handles: string[] = [];
+  const unresolved: string[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of instructorNames) {
+    const who = raw.trim().toUpperCase();
+    if (!who) continue;
+    const hit = table.find((t) => t.name === who) ?? table.find((t) => t.name.includes(who) || who.includes(t.name));
+    if (hit && hit.handle) {
+      if (!seen.has(hit.handle)) {
+        seen.add(hit.handle);
+        handles.push(hit.handle);
+      }
+    } else {
+      unresolved.push(raw);
+    }
+  }
+  return { handles, unresolved };
+}
+
 export type ScheduleCheck =
   | { result: 'no-declaration' } // 素材にlessons宣言なし=照合せずそのまま信頼
   | { result: 'check-error'; error: string } // 正本カレンダーが読めない(照合できないが投稿は止めない)

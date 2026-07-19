@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/sync-lesson-calendar",
       "schedule": "0 20 * * *"
+    },
+    {
+      "path": "/api/cron/story-watchdog",
+      "schedule": "10 0 * * *"
     }
   ]
 }
