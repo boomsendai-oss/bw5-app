@@ -1,0 +1,27 @@
+# インスタストーリー 前夜プリフライト
+# 毎晩 JST 21:00 = UTC 12:00 に発火。「明日」の投稿予定を先読みして、
+# 素材の置き忘れ・曜日テンプレの陳腐化(代講/時間変更)・IGハンドル未登録を前夜のうちに予告する。
+# Vercel Hobby cron枠(2/2使用済)を消費しないためGH Actions側に置く。問題なければ無音。
+name: story-preflight
+
+on:
+  schedule:
+    # 21:00 JST目標。GH Actionsは大遅延しうるが「前夜の予告」なので多少ずれてよい。
+    - cron: '0 12 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/story-preflight
+        run: |
+          set -e
+          RESP=$(curl -s --max-time 60 -w '\n%{http_code}' \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/story-preflight)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1
