@@ -27,8 +27,11 @@ export async function GET() {
   try {
     const [faqs, products, studios, instructors, classes] = await Promise.all([
       getAll('SELECT category, question, answer, is_public FROM faq_entries WHERE is_public = 1 ORDER BY category, sort_order'),
+      // 拒否リストではなく許可リスト方式(新規/未知カテゴリは既定で非公開=お客さん向けbotの安全側)。
+      // 公開=regular(月謝)/college(学生)/ticket_member(チケット)/visitor(ビジター)/trial(体験)。
+      // 非公開=dance_club(部活・活動停止)/addon(追加受講)/event(練習会等の単発)/special(HOUSEエキスパート等の選抜)/admin/instructor/pause。
       getAll(
-        "SELECT product_type, name, price, category, active FROM hacomono_products WHERE active = 1 AND (category IS NULL OR category NOT IN ('admin','instructor','pause'))"
+        "SELECT product_type, name, price, category, active FROM hacomono_products WHERE active = 1 AND category IN ('regular','college','ticket_member','visitor','trial')"
       ),
       getAll('SELECT name, address, access_text, google_map_url, active, is_public FROM studios WHERE active = 1 AND is_public = 1'),
       // boom-hp/src/lib/instructors.ts と同一の公開条件・ソート順。profile_text/career_text/crewsはHPが公開表示している列。
@@ -38,6 +41,7 @@ export async function GET() {
       ),
       // boom-hp/src/lib/classes.ts と同一の公開条件・JOIN・ソート順。target/description_textはHPが公開表示している列。
       // notes(内部メモ・HP自身も非表示)は選択しない。
+      // end_date除外もHPと同一(終了日を過ぎたクラスを非公開)=終了済みクラスがボットの知識に残らないように。
       getAll(`
         SELECT lm.class_name, lm.level, lm.default_day_of_week, lm.default_start_time, lm.default_end_time,
                lm.target, lm.description_text,
@@ -46,6 +50,7 @@ export async function GET() {
         LEFT JOIN studios s ON s.id = lm.default_studio_id
         LEFT JOIN instructors i ON i.id = lm.default_instructor_id
         WHERE lm.active = 1 AND lm.is_public = 1
+          AND (lm.end_date IS NULL OR lm.end_date = '' OR lm.end_date >= date('now'))
         ORDER BY lm.default_day_of_week, lm.default_start_time
       `),
     ]);

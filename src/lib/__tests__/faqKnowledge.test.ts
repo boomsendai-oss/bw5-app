@@ -5,7 +5,7 @@ const faqRows = [
   { category: '体験', question: '体験したい', answer: 'LINEでご連絡ください', is_public: 1, sort_order: 1 },
 ];
 const productRows = [
-  { product_type: 'plan', name: 'マンスリー4', price: 8800, category: '月謝', active: 1, notes: null },
+  { product_type: 'plan', name: 'マンスリー4', price: 8800, category: 'regular', active: 1, notes: null },
 ];
 const studioRows = [
   { name: '仙台本店', address: '仙台市青葉区…', google_map_url: 'https://maps.google.com/x', active: 1,
@@ -43,7 +43,7 @@ describe('buildKnowledge', () => {
   it('公開フィールドだけを含むJSONを組み立てる', () => {
     const k = buildKnowledge({ faqRows, productRows, studioRows, instructorRows, classRows });
     expect(k.faqs).toEqual([{ category: '体験', question: '体験したい', answer: 'LINEでご連絡ください' }]);
-    expect(k.prices).toEqual([{ type: 'plan', category: '月謝', name: 'マンスリー4', price: 8800 }]);
+    expect(k.prices).toEqual([{ type: 'plan', category: 'regular', name: 'マンスリー4', price: 8800 }]);
     expect(k.studios).toEqual([publicStudio]);
     expect(k.instructors).toEqual([publicInstructor]);
     expect(k.classes).toEqual([publicClass]);
@@ -87,10 +87,10 @@ describe('buildKnowledge', () => {
   it('active=0の商品は除外される', () => {
     const rows = [
       ...productRows,
-      { product_type: 'plan', name: '廃止プラン', price: 5000, category: '月謝', active: 0, notes: null },
+      { product_type: 'plan', name: '廃止プラン', price: 5000, category: 'regular', active: 0, notes: null },
     ];
     const k = buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] });
-    expect(k.prices).toEqual([{ type: 'plan', category: '月謝', name: 'マンスリー4', price: 8800 }]);
+    expect(k.prices).toEqual([{ type: 'plan', category: 'regular', name: 'マンスリー4', price: 8800 }]);
   });
 
   it('active=0のスタジオは除外される', () => {
@@ -127,7 +127,7 @@ describe('buildKnowledge', () => {
       { product_type: 'plan', name: '🔑管理者プラン🔑', price: 0, category: 'admin', active: 1, notes: null },
     ];
     const k = buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] });
-    expect(k.prices).toEqual([{ type: 'plan', category: '月謝', name: 'マンスリー4', price: 8800 }]);
+    expect(k.prices).toEqual([{ type: 'plan', category: 'regular', name: 'マンスリー4', price: 8800 }]);
   });
 
   it('内部運用SKU(admin/instructor/pause)の名称がJSON文字列のどこにも漏れない', () => {
@@ -143,18 +143,35 @@ describe('buildKnowledge', () => {
     expect(s).not.toContain('休会');
   });
 
-  it('trial/event/ticket_memberの内部運用でないカテゴリはpricesに残る', () => {
+  it('公開カテゴリ(trial/ticket_member/visitor)はpricesに残る', () => {
     const rows = [
       { product_type: 'plan', name: '体験レッスン', price: 0, category: 'trial', active: 1, notes: null },
-      { product_type: 'plan', name: '発表会イベント', price: 0, category: 'event', active: 1, notes: null },
       { product_type: 'plan', name: 'チケット会員', price: 0, category: 'ticket_member', active: 1, notes: null },
+      { product_type: 'plan', name: 'ビジター', price: 3000, category: 'visitor', active: 1, notes: null },
     ];
     const k = buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] });
     expect(k.prices).toEqual([
       { type: 'plan', category: 'trial', name: '体験レッスン', price: 0 },
-      { type: 'plan', category: 'event', name: '発表会イベント', price: 0 },
       { type: 'plan', category: 'ticket_member', name: 'チケット会員', price: 0 },
+      { type: 'plan', category: 'visitor', name: 'ビジター', price: 3000 },
     ]);
+  });
+
+  it('非公開カテゴリ(dance_club/addon/event/special)はpricesから除外される(許可リスト方式)', () => {
+    const rows = [
+      ...productRows,
+      { product_type: 'plan', name: '💪ダンス部 受け放題', price: 15490, category: 'dance_club', active: 1, notes: null },
+      { product_type: 'plan', name: '追加受講チケット', price: 1500, category: 'addon', active: 1, notes: null },
+      { product_type: 'plan', name: 'イベント練習会', price: 0, category: 'event', active: 1, notes: null },
+      { product_type: 'plan', name: 'HOUSEエキスパート', price: 2000, category: 'special', active: 1, notes: null },
+    ];
+    const s = JSON.stringify(buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] }));
+    expect(s).not.toContain('ダンス部');
+    expect(s).not.toContain('追加受講');
+    expect(s).not.toContain('イベント練習会');
+    expect(s).not.toContain('HOUSEエキスパート');
+    const k = buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] });
+    expect(k.prices).toEqual([{ type: 'plan', category: 'regular', name: 'マンスリー4', price: 8800 }]);
   });
 
   it('active=0のインストラクターは除外される', () => {

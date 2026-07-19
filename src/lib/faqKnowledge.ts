@@ -67,10 +67,11 @@ type Rows = {
   classRows?: ClassRow[];
 };
 
-// hacomono_products.category の内部運用カテゴリ(管理者プラン/インストラクター用/休会)はお客さん向けボットに不要・不適切なため除外。
+// お客さん向けに公開してよい商品カテゴリの「許可リスト」。ここに無いカテゴリ(新規/未知含む)は既定で非公開。
 // SELECT側(src/app/api/public/knowledge/route.ts)のWHERE句と二重防御(studiosのactive+is_public二重フィルタと同じ思想)。
-// trial(体験)/event(イベント)/ticket_member(チケット会員)はお客さん向けに意味のある情報のため残す。
-const INTERNAL_PRODUCT_CATEGORIES = new Set(['admin', 'instructor', 'pause']);
+// 公開=regular(月謝)/college(学生)/ticket_member(チケット会員)/visitor(ビジター)/trial(体験)。
+// 非公開=dance_club(部活・活動停止)/addon(追加受講)/event(練習会等の単発)/special(HOUSEエキスパート等の選抜)/admin/instructor/pause。
+const PUBLIC_PRODUCT_CATEGORIES = new Set(['regular', 'college', 'ticket_member', 'visitor', 'trial']);
 
 // 曜日番号(0=日〜6=土、boom-hp/src/lib/day-names.ts と同じ値)→日本語表記。
 // このアプリの他画面(staff/schedule等)の慣習と同じくローカル定数として持つ(共有libは意図的に作らない)。
@@ -97,7 +98,7 @@ export function buildKnowledge({ faqRows, productRows, studioRows, instructorRow
       .filter((r) => Number(r.is_public) === 1)
       .map((r) => ({ category: String(r.category), question: String(r.question), answer: String(r.answer) })),
     prices: productRows
-      .filter((r) => Number(r.active) === 1 && !INTERNAL_PRODUCT_CATEGORIES.has(String(r.category ?? '')))
+      .filter((r) => Number(r.active) === 1 && PUBLIC_PRODUCT_CATEGORIES.has(String(r.category ?? '')))
       .map((r) => ({
         type: String(r.product_type),
         category: r.category == null ? null : String(r.category),
