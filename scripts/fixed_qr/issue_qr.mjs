@@ -1,13 +1,20 @@
 // scripts/fixed_qr/issue_qr.mjs
-// 固定QR自動発行 (WS U): ML001から新規入会者を特定→固定コード発行→QR画像→bw5-appへPOST
+// 固定QR自動発行 (WS U): アンケート回答者を特定→固定コード発行→QR画像→bw5-appへPOST
+//
+// トリガー: 「新規入会者全員」ではなく、HACOMONOアンケート [ENQUETE0005]「固定QRコード発行」
+// (enquete_id既定10) への会員自身の回答を起点にする。理由: 固定QRは希望者のみに発行するため、
+// 入会日basisの全員一律発行は過剰配布になる (旧QR_CUTOFF方式は廃止)。
 //
 // 環境変数:
 //   HACOMONO_USERNAME / HACOMONO_PASSWORD / APP_ADMIN_PASSWORD (必須)
-//   QR_CUTOFF     稼働開始日 (既定 '2026-07-21')。これ以降の入会者のみ対象
-//   MAX_PER_RUN   1回の実行で処理する最大人数 (既定 10・安全弁)
-//   DRY_RUN=1     発行・POSTをせず対象一覧の件数だけ出して終了
-//   APP_BASE_URL  bw5-app のベースURL (既定 'https://bw5-app.vercel.app'・ローカル検証用に上書き可)
-//   ONLY_MEMBER_ID 指定時はそのメンバーIDだけを対象にする (E2Eテスト用ガード)
+//   ENQUETE_ID     アンケートID (既定 '10' = [ENQUETE0005]「固定QRコード発行」)
+//   ANSWER_CUTOFF  この日時(ISO8601, 例 '2026-07-21T00:00:00+09:00')以降に回答した会員のみ対象
+//                  (既定 '2026-07-21T00:00:00+09:00'。稼働開始前の既存回答への誤送信を防ぐ安全弁)
+//   MAX_PER_RUN    1回の実行で処理する最大人数 (既定 10・安全弁)
+//   DRY_RUN=1      発行・POSTをせず対象一覧の件数だけ出して終了
+//   APP_BASE_URL   bw5-app のベースURL (既定 'https://bw5-app.vercel.app'・ローカル検証用に上書き可)
+//   ONLY_MEMBER_ID 指定時は手動モードになり、アンケート回答の有無を問わずそのメンバーIDだけを対象にする
+//                  (LINE等アンケート外で依頼が来た時に即対応するための経路)
 //   FORCE_ISSUE=1  E2Eテスト専用。既存コードがあっても強制的に新規発行する (ONLY_MEMBER_ID併用必須)
 //   CODE_NAME      E2Eテスト用。新規発行時のコード名称を上書きする (既定 '固定メンバーコード用')
 //   REUSE_CODE_NAME E2Eテスト専用。新規発行せず、指定名称の既存コードを再利用してメール送信のみ行う
@@ -18,7 +25,7 @@
 // 確定したセレクタに基づいて書いているが、このタスクでは実行されない。
 //
 // ログにPIIは出さない (メンバーIDと件数・statusのみ。氏名・メールアドレスは出力しない)。
-import { launchAndLogin, downloadMl001Csv } from './hacomono.mjs';
+import { launchAndLogin, downloadMl001Csv, fetchEnqueteAnswers } from './hacomono.mjs';
 import { parseCsv, toDicts } from './csv.mjs';
 import { composeQrWithName } from './qrImage.mjs';
 
@@ -31,7 +38,9 @@ function requireEnv(names) {
 requireEnv(['HACOMONO_USERNAME', 'HACOMONO_PASSWORD', 'APP_ADMIN_PASSWORD']);
 
 const APP_BASE_URL = process.env.APP_BASE_URL || 'https://bw5-app.vercel.app';
-const CUTOFF = process.env.QR_CUTOFF || '2026-07-21'; // 稼働開始日: これ以降の入会者のみ対象
+const ENQUETE_ID = process.env.ENQUETE_ID || '10'; // [ENQUETE0005]「固定QRコード発行」
+// 稼働開始日時: これ以降にアンケート回答した会員のみ対象 (過去の既対応分への誤送信を防ぐ安全弁)
+const ANSWER_CUTOFF = process.env.ANSWER_CUTOFF || '2026-07-21T00:00:00+09:00';
 const MAX_PER_RUN = Number(process.env.MAX_PER_RUN || 10); // 安全弁: 1回の実行で処理する最大人数
 const DRY = process.env.DRY_RUN === '1';
 const ONLY_MEMBER_ID = process.env.ONLY_MEMBER_ID || null; // E2Eテスト用: 単一メンバーに限定するガード
@@ -192,17 +201,48 @@ try {
     console.log(`column-mismatch skipped: ${skippedCount}行`); // PIIは出さない(件数のみ)
   }
   const members = toDicts([hdr, ...validRows]);
+  const memberById = new Map(members.filter((m) => m['メンバーID']).map((m) => [m['メンバーID'], m]));
   const { issued } = await appGet('/api/staff/qr-issues');
   const done = new Set(issued.map((x) => x.hacomono_member_id));
 
-  // ML001の「入会日時」は 'YYYY/MM/DD HH:MM:SS' (スラッシュ区切り)。CUTOFF('YYYY-MM-DD')と
-  // 文字列比較するには区切り文字を揃える必要がある(揃えないと '/' > '-' の順序でズレる)
-  const pending = members
-    .filter((m) => (m['入会日時'] || '').slice(0, 10).replace(/\//g, '-') >= CUTOFF)
-    .filter((m) => m['メンバーID'] && !done.has(m['メンバーID']))
-    .filter((m) => !ONLY_MEMBER_ID || m['メンバーID'] === ONLY_MEMBER_ID)
-    .slice(0, MAX_PER_RUN);
-  console.log(`pending: ${pending.length}名 (cutoff=${CUTOFF})`);
+  // 対象メンバーIDの決定: ONLY_MEMBER_ID指定時は手動モード(アンケート回答を問わない)、
+  // 未指定ならアンケートモード(ANSWER_CUTOFF以降の回答者のみ)
+  let mode, targetMemberIds;
+  if (ONLY_MEMBER_ID) {
+    mode = 'manual';
+    targetMemberIds = [ONLY_MEMBER_ID];
+  } else {
+    mode = 'enquete';
+    const cutoffMs = new Date(ANSWER_CUTOFF).getTime();
+    if (Number.isNaN(cutoffMs)) {
+      throw new Error(`ANSWER_CUTOFFのパースに失敗しました: ${ANSWER_CUTOFF}`);
+    }
+    const answers = await fetchEnqueteAnswers(context, ENQUETE_ID);
+    // answered_atはISO8601(+09:00)。タイムゾーン表記揺れで壊れる文字列比較ではなく数値比較する
+    const idSet = new Set();
+    for (const a of answers) {
+      const answeredMs = new Date(a.answered_at).getTime();
+      if (Number.isNaN(answeredMs)) {
+        console.log(`warn: answered_atのパースに失敗、安全側でスキップ (id=${a.id})`); // PIIなし
+        continue;
+      }
+      if (answeredMs >= cutoffMs) idSet.add(String(a.member_id));
+    }
+    targetMemberIds = [...idSet];
+  }
+
+  const pending = targetMemberIds
+    .filter((id) => {
+      if (!memberById.has(id)) {
+        console.log(`member ${id}: ML001に見つからずスキップ`); // PIIなし(退会等でML001に居ないケース)
+        return false;
+      }
+      return true;
+    })
+    .filter((id) => !done.has(id))
+    .slice(0, MAX_PER_RUN)
+    .map((id) => memberById.get(id));
+  console.log(`pending: ${pending.length}名 (mode=${mode}, cutoff=${mode === 'enquete' ? ANSWER_CUTOFF : 'n/a'})`);
 
   if (DRY) {
     console.log('DRY_RUN: 終了');

@@ -53,3 +53,28 @@ export async function downloadMl001Csv(context) {
   }
   return text;
 }
+
+// アンケート([ENQUETE0005]「固定QRコード発行」等)の回答一覧を取得する。
+// discover_enquete.mjsでの実測で動作確認済みのクエリ形式 { enquete_id, limit, offset } を使用する。
+export async function fetchEnqueteAnswers(context, enqueteId, limit = 100) {
+  const query = encodeURIComponent(JSON.stringify({ enquete_id: String(enqueteId), limit, offset: 0 }));
+  const url = `https://boom-admin.hacomono.jp/api/enquete/enquete-answers?query=${query}`;
+  const res = await context.request.get(url, { timeout: 60_000 });
+  if (res.status() !== 200) throw new Error(`enquete-answers fetch failed: HTTP ${res.status()}`);
+  // ML001と同様、セッション切れ等でHTTP 200のままログインページ(HTML)が返る偽陽性を弾く。
+  // 本文はログに出さず、種別情報のみでエラー化する。
+  const contentType = res.headers()['content-type'] || '';
+  if (!contentType.toLowerCase().includes('json')) {
+    throw new Error(`enquete-answers fetch failed: unexpected content-type=${contentType || '(none)'}`);
+  }
+  const json = await res.json();
+  const list = json?.data?.enquete_answers?.list;
+  if (!Array.isArray(list)) {
+    throw new Error('enquete-answers fetch failed: unexpected response shape (data.enquete_answers.list not found)');
+  }
+  if (list.length >= limit) {
+    // 取得漏れの可能性があるが、PIIは出さず件数比較の事実だけログにする
+    console.log('warn: 回答が上限に達しました(取得漏れの可能性)');
+  }
+  return list;
+}
