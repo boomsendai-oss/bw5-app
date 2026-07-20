@@ -63,6 +63,12 @@ async function handle(req: NextRequest) {
        VALUES (?, 'skipped_existing', ?, 'HACOMONO側に既存の固定コードあり(手動発行済み)')`,
       [memberId, nowIso]
     );
+    // 「発行済み扱いだがメールは飛んでいない」を必ず人間に見えるようにする(品質レビュー指摘)
+    await execute(
+      `INSERT INTO staff_notifications (type, title, detail, severity)
+       VALUES ('qr_issue_skipped', '固定QR: 既存コードありのためメール未送信', ?, 'warning')`,
+      [`hacomono_member_id=${memberId} 既存の有効な固定コードを検知。手動発行済みか、前回実行の作りかけの可能性。必要ならHACOMONO画面からQRを送付してください`]
+    );
     return NextResponse.json({ ok: true, status: 'skipped_existing' });
   }
 

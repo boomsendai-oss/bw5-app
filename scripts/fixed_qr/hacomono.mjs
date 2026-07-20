@@ -45,8 +45,11 @@ export async function downloadMl001Csv(context) {
   const text = body.toString('utf-8').replace(/^﻿/, '');
   const lines = text.split('\n').filter((l) => l.trim());
   if (lines.length < 2) throw new Error(`ML001 export: ${lines.length} lines (期待: ヘッダー+会員行)`);
-  if (!lines[0].includes('メンバーID')) {
-    throw new Error('ML001 export failed: header row missing expected column (メンバーID)');
+  // 列リネーム等で必須列が静かに消え、pendingが0のまま検知されない事故を防ぐ(品質レビュー指摘)
+  const REQUIRED_COLUMNS = ['メンバーID', '氏名', 'メールアドレス', '代表メールアドレス', '入会日時'];
+  const missingColumns = REQUIRED_COLUMNS.filter((col) => !lines[0].includes(col));
+  if (missingColumns.length > 0) {
+    throw new Error(`ML001 export failed: header row missing expected column(s): ${missingColumns.join(', ')}`);
   }
   return text;
 }

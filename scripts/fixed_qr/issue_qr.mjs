@@ -102,11 +102,9 @@ async function issueNewFixedCode(context, page, memberId) {
   await page.locator(SELECTORS.newRegisterLink).click();
   await page.waitForTimeout(1500); // SPAのルート遷移 (モーダルではない)
 
-  const nameInput = page.locator(SELECTORS.nameInputGroup);
-  const currentName = await nameInput.inputValue();
-  if (!currentName) {
-    await nameInput.fill(SELECTORS.defaultCodeName);
-  }
+  // 既存値の有無を条件分岐せず常に明示fillする(品質レビュー指摘: 既存値検知の前提を排除し、
+  // 「デフォルト値が入っているはず」という仮定が崩れた場合の名称増殖/空欄事故の根を断つ)
+  await page.locator(SELECTORS.nameInputGroup).fill(SELECTORS.defaultCodeName);
 
   await page.locator(SELECTORS.saveButton).click();
   await page.waitForTimeout(1500);
@@ -134,7 +132,16 @@ const { browser, context, page } = await launchAndLogin();
 console.log('login ok');
 
 try {
-  const members = toDicts(parseCsv(await downloadMl001Csv(context)));
+  // CSV行長ガード: ヘッダーと列数が一致しない行は列ズレのおそれがあるため除外する
+  // (toDictsに渡すと値が隣の列にずれ、宛先が別人にシフトして誤送信する事故につながるため・品質レビュー指摘)
+  const rawRows = parseCsv(await downloadMl001Csv(context));
+  const [hdr, ...dataRows] = rawRows;
+  const validRows = dataRows.filter((r) => r.length === hdr.length);
+  const skippedCount = dataRows.length - validRows.length;
+  if (skippedCount > 0) {
+    console.log(`column-mismatch skipped: ${skippedCount}行`); // PIIは出さない(件数のみ)
+  }
+  const members = toDicts([hdr, ...validRows]);
   const { issued } = await appGet('/api/staff/qr-issues');
   const done = new Set(issued.map((x) => x.hacomono_member_id));
 
@@ -190,7 +197,8 @@ try {
   }
   console.log(`done: ok=${okCount} fail=${failCount}`);
   await browser.close();
-  if (failCount > 0 && okCount === 0) process.exit(1);
+  // 部分失敗でも非ゼロexit (GH Actionsで失敗が赤く見えるように・品質レビュー指摘)
+  if (failCount > 0) process.exit(1);
 } catch (e) {
   await browser.close();
   throw e;
