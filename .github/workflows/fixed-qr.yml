@@ -1,0 +1,38 @@
+# 固定QRコード 自動発行&メール送信 (WS U)
+#
+# トリガー: HACOMONOアンケート [ENQUETE0005]「固定QRコード発行」への会員の回答。
+# 15分おきに新規回答をチェックし、未処理の会員に固定コードを発行してQR添付メールを送る。
+# 二重送信は member_qr_issues 台帳(bw5-app側)で防止。ANSWER_CUTOFF より前の回答は対象外。
+#
+# 手動での単発送信(LINE等アンケート外の依頼)はローカルから:
+#   ONLY_MEMBER_ID=<メンバーID> node issue_qr.mjs
+name: fixed-qr-issue
+on:
+  schedule:
+    # 15分おき (UTC指定だが間隔なのでJSTでも同じ15分刻み)
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+concurrency:
+  group: fixed-qr
+  cancel-in-progress: false
+jobs:
+  issue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Japanese fonts
+        run: sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
+      - name: Install deps
+        working-directory: scripts/fixed_qr
+        run: npm install && npx playwright install --with-deps chromium
+      - name: Issue fixed QR codes
+        working-directory: scripts/fixed_qr
+        env:
+          HACOMONO_USERNAME: ${{ secrets.HACOMONO_USERNAME }}
+          HACOMONO_PASSWORD: ${{ secrets.HACOMONO_PASSWORD }}
+          APP_ADMIN_PASSWORD: ${{ secrets.APP_ADMIN_PASSWORD }}
+        run: node issue_qr.mjs
