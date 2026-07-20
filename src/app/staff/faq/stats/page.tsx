@@ -19,17 +19,27 @@ const PERIODS = [
   { key: 'all', label: '全期間' },
 ] as const;
 
+// 実ユーザー(保護者・インストラクターのベータ利用)とClaudeの品質テストを分けて見るための切替。
+// 判定はボット側: 実UIはcrypto.randomUUID()のsessionIdを発行し、テストスクリプトは任意文字列を使うため
+// 「UUID形式でない=テスト」で自動的にis_testが立つ。
+const AUDIENCES = [
+  { key: 'real', label: '👥 実ユーザー' },
+  { key: 'test', label: '🧪 テスト' },
+  { key: 'all', label: 'すべて' },
+] as const;
+
 export default function FaqStatsPage() {
   const [period, setPeriod] = useState<string>('30');
+  const [audience, setAudience] = useState<string>('real');
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async (p: string) => {
+  const load = useCallback(async (p: string, a: string) => {
     setLoading(true);
     setError('');
     try {
-      const r = await fetch(`/api/staff/faq/stats?period=${p}`, { cache: 'no-store' });
+      const r = await fetch(`/api/staff/faq/stats?period=${p}&audience=${a}`, { cache: 'no-store' });
       if (!r.ok) {
         const e = (await r.json().catch(() => ({}))) as { error?: string };
         throw new Error(e.error || `HTTP ${r.status}`);
@@ -44,8 +54,8 @@ export default function FaqStatsPage() {
   }, []);
 
   useEffect(() => {
-    void load(period);
-  }, [load, period]);
+    void load(period, audience);
+  }, [load, period, audience]);
 
   const maxCat = Math.max(1, ...(stats?.byCategory ?? []).map((r) => Number(r.n) || 0));
 
@@ -58,7 +68,7 @@ export default function FaqStatsPage() {
         backLabel="FAQ管理へ"
       />
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {PERIODS.map((p) => (
           <button
             key={p.key}
@@ -70,7 +80,22 @@ export default function FaqStatsPage() {
             {p.label}
           </button>
         ))}
+        <span className="mx-1 h-5 w-px bg-sand-300" aria-hidden />
+        {AUDIENCES.map((a) => (
+          <button
+            key={a.key}
+            onClick={() => setAudience(a.key)}
+            className={`rounded-full px-4 py-1.5 text-sm border ${
+              audience === a.key ? 'bg-brand-600 text-white' : 'bg-white text-slate-700'
+            }`}
+          >
+            {a.label}
+          </button>
+        ))}
       </div>
+      <p className="-mt-4 text-xs text-slate-400">
+        「実ユーザー」は保護者・インストラクターのベータ利用分。「テスト」はClaudeの品質テスト投入分（自動判定）
+      </p>
 
       {loading && <p className="text-sm text-slate-500">読み込み中…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}

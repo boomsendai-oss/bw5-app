@@ -24,7 +24,13 @@ export async function GET(req: NextRequest) {
   }
   const periodKey = req.nextUrl.searchParams.get('period') ?? '30';
   const mod = PERIODS[periodKey] ?? PERIODS['30'];
-  const where = mod ? `AND created_at >= datetime('now', '${mod}')` : '';
+  // audience: real=実ユーザーのみ(既定) / test=Claudeの品質テストのみ / all=両方。
+  // is_test は「sessionIdがUUID形式でない=テストスクリプト投入」で自動判定してボット側が保存する。
+  // 自由文字列をSQLに混ぜないよう、この表引きでしか式に入れない。
+  const AUDIENCES: Record<string, string> = { real: 'AND is_test = 0', test: 'AND is_test = 1', all: '' };
+  const audKey = req.nextUrl.searchParams.get('audience') ?? 'real';
+  const aud = AUDIENCES[audKey] ?? AUDIENCES.real;
+  const where = `${mod ? `AND created_at >= datetime('now', '${mod}')` : ''} ${aud}`;
   try {
     const [byCategory, byDay, recent, totals] = await Promise.all([
       db.execute(
