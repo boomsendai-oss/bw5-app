@@ -2,7 +2,7 @@
 // 報告はボット専用DB(FAQBOT_LOG_DB_*)のerror_reportsにあり、会員DB(bw5)とは別系のまま。
 // ここは読み取りに加えてstatusの更新だけ行う(報告本文は書き換えない)。
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { withAuth } from '@/lib/eventAuth';
 import { faqLogDb } from '@/lib/faqLogDb';
 
 export const dynamic = 'force-dynamic';
@@ -15,8 +15,7 @@ const FILTERS: Record<string, string> = {
   all: '',
 };
 
-export async function GET(req: NextRequest) {
-  if (!(await isAuthorized(req))) return unauthorized();
+export const GET = withAuth(async (req: NextRequest) => {
   const db = faqLogDb();
   if (!db) return NextResponse.json({ error: 'FAQBOT_LOG_DB_URLが未設定です' }, { status: 503 });
 
@@ -44,10 +43,9 @@ export async function GET(req: NextRequest) {
     console.error('[faq/reports GET]', e);
     return NextResponse.json({ error: 'ログDBに接続できませんでした' }, { status: 502 });
   }
-}
+});
 
-export async function PATCH(req: NextRequest) {
-  if (!(await isAuthorized(req))) return unauthorized();
+export const PATCH = withAuth(async (req: NextRequest) => {
   const db = faqLogDb();
   if (!db) return NextResponse.json({ error: 'FAQBOT_LOG_DB_URLが未設定です' }, { status: 503 });
 
@@ -65,4 +63,4 @@ export async function PATCH(req: NextRequest) {
     console.error('[faq/reports PATCH]', e);
     return NextResponse.json({ error: '更新できませんでした' }, { status: 502 });
   }
-}
+});
