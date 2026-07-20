@@ -201,23 +201,24 @@ async function requireConnection(): Promise<{ token: string; igUserId: string }>
  *
  * mediaUrl は公開URL必須(Metaサーバーがサーバー側で取得しにいく)。
  */
-async function publishStory(
+export type PublishStoryResult = {
+  mediaId: string;
+  mentionsApplied: string[];
+  mentionsFailed: string[];
+};
+
+/** STORIESコンテナを1つ作成し creation_id を返す(失敗は throw)。指定メンションを user_tags で載せる。 */
+async function createStoryContainer(
+  base: string,
+  token: string,
   mediaUrl: string,
   mediaType: 'video' | 'image',
-  mentionUsernames?: string[]
-): Promise<{ mediaId: string }> {
-  const { token, igUserId } = await requireConnection();
-  const base = `${GRAPH}/${GRAPH_VERSION}/${igUserId}`;
-
+  mentions: string[]
+): Promise<string> {
   const payload: Record<string, unknown> = { media_type: 'STORIES', access_token: token };
   if (mediaType === 'video') payload.video_url = mediaUrl;
   else payload.image_url = mediaUrl;
-  // ストーリーへのメンション(通知が飛び、相手がリポスト可能になる)。
-  // 公式仕様: ステッカー(リンク/アンケート等)は不可だが「ステッカー無しのメンション」はuser_tagsで可能。
-  // 対象は公開アカウントのみ。非公開や存在しないユーザー名だと投稿自体が失敗しうるので運用注意。
-  if (mentionUsernames && mentionUsernames.length > 0) {
-    payload.user_tags = mentionUsernames.map((username) => ({ username }));
-  }
+  if (mentions.length > 0) payload.user_tags = mentions.map((username) => ({ username }));
 
   const createRes = await fetch(`${base}/media`, {
     method: 'POST',
@@ -228,9 +229,47 @@ async function publishStory(
   if (!createRes.ok || createJson.error) {
     throw new Error(`コンテナ作成失敗: ${JSON.stringify(createJson.error ?? createJson)}`);
   }
-  const creationId = createJson.id as string;
+  return createJson.id as string;
+}
 
-  // 動画処理待ち: 最大60秒、3秒間隔でポーリング
+async function publishStory(
+  mediaUrl: string,
+  mediaType: 'video' | 'image',
+  mentionUsernames?: string[]
+): Promise<PublishStoryResult> {
+  const { token, igUserId } = await requireConnection();
+  const base = `${GRAPH}/${GRAPH_VERSION}/${igUserId}`;
+  const requested = (mentionUsernames ?? []).filter((m) => typeof m === 'string' && m.length > 0);
+
+  // ストーリーへのメンション(user_tags)。載せられなかったハンドルで投稿全体を落とさない:
+  //   まず全件で試し、コンテナ作成が失敗したら1件ずつ足して「載せられる最大の部分集合」を求める。
+  //   これで「不正/非公開ハンドル1件」でも「STORIESのタグ数上限」でも、正当なタグは最大限残し、
+  //   落ちたハンドルは mentionsFailed として記録する(無言で全捨てにしない)。
+  let creationId: string | null = null;
+  let applied: string[] = [];
+  const failed: string[] = [];
+
+  try {
+    creationId = await createStoryContainer(base, token, mediaUrl, mediaType, requested);
+    applied = requested;
+  } catch (e) {
+    if (requested.length === 0) throw e; // メンション無しでも失敗=本当の障害
+    for (const m of requested) {
+      try {
+        creationId = await createStoryContainer(base, token, mediaUrl, mediaType, [...applied, m]);
+        applied.push(m);
+      } catch {
+        failed.push(m);
+      }
+    }
+    if (creationId === null) {
+      // 単独メンションも全滅→メンション無しで最終試行(ここで失敗すれば本当の障害としてthrow)
+      creationId = await createStoryContainer(base, token, mediaUrl, mediaType, []);
+      applied = [];
+    }
+  }
+
+  // 動画処理待ち: 最大60秒、3秒間隔でポーリング(画像はほぼ即時FINISHED)
   const deadline = Date.now() + 60_000;
   let statusCode = 'IN_PROGRESS';
   while (Date.now() < deadline) {
@@ -255,15 +294,66 @@ async function publishStory(
   if (!pubRes.ok || pubJson.error) {
     throw new Error(`公開失敗: ${JSON.stringify(pubJson.error ?? pubJson)}`);
   }
-  return { mediaId: pubJson.id as string };
+  return { mediaId: pubJson.id as string, mentionsApplied: applied, mentionsFailed: failed };
 }
 
-export async function publishStoryVideo(videoUrl: string, mentions?: string[]): Promise<{ mediaId: string }> {
+export async function publishStoryVideo(videoUrl: string, mentions?: string[]): Promise<PublishStoryResult> {
   return publishStory(videoUrl, 'video', mentions);
 }
 
-export async function publishStoryImage(imageUrl: string, mentions?: string[]): Promise<{ mediaId: string }> {
+export async function publishStoryImage(imageUrl: string, mentions?: string[]): Promise<PublishStoryResult> {
   return publishStory(imageUrl, 'image', mentions);
+}
+
+export type MediaInsights = {
+  reach?: number;
+  views?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  saved?: number;
+  replies?: number;
+  total_interactions?: number;
+  raw: string;
+};
+
+// メトリクス名はAPIバージョンで変わる(plays→views 等)ため候補セットを順に試し、
+// 最初に通ったものを採用する。全滅= 投稿直後で未集計 or 権限不足 → null。
+// 2026-07-20 実測: リールは1本目、ストーリーは2本目のセットが通る。
+const INSIGHT_METRIC_SETS: Record<'reel' | 'story', string[]> = {
+  reel: [
+    'reach,views,likes,comments,shares,saved,total_interactions',
+    'reach,plays,likes,comments,shares,saved',
+    'reach',
+  ],
+  story: ['reach,replies,total_interactions', 'reach,replies', 'reach'],
+};
+
+/** 投稿1件のインサイトを取得(読み取りのみ)。scope=instagram_business_manage_insights が必要。 */
+export async function fetchMediaInsights(mediaId: string, kind: 'reel' | 'story'): Promise<MediaInsights | null> {
+  const { token } = await requireConnection();
+  for (const metric of INSIGHT_METRIC_SETS[kind]) {
+    const res = await fetch(
+      `${GRAPH}/${GRAPH_VERSION}/${mediaId}/insights?metric=${metric}&access_token=${token}`
+    );
+    const json = await res.json();
+    if (json.error) continue;
+    const data: Array<{ name?: string; values?: Array<{ value?: unknown }> }> = json.data ?? [];
+    const out: MediaInsights = { raw: JSON.stringify(data) };
+    for (const d of data) {
+      const v = d.values?.[0]?.value;
+      if (typeof v !== 'number' || !d.name) continue;
+      const key = d.name === 'plays' ? 'views' : d.name;
+      if (
+        key === 'reach' || key === 'views' || key === 'likes' || key === 'comments' ||
+        key === 'shares' || key === 'saved' || key === 'replies' || key === 'total_interactions'
+      ) {
+        out[key] = v;
+      }
+    }
+    return out;
+  }
+  return null;
 }
 
 /**

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const status = await connectionStatus();
   const [logs, queue] = await Promise.all([
     getAll(
-      'SELECT date, weekday, video_path, status, ig_media_id, error, created_at FROM story_post_log ORDER BY id DESC LIMIT 14'
+      'SELECT date, weekday, video_path, status, ig_media_id, error, created_at, mentions_applied, mentions_failed FROM story_post_log ORDER BY id DESC LIMIT 14'
     ),
     getAll(
       `SELECT id, media_path, media_type, kind, title, valid_from, valid_until, status, last_posted_at, times_posted
@@ -24,6 +24,15 @@ export async function GET(req: NextRequest) {
        ORDER BY status DESC, id ASC` // pending を先に(承認待ちが上)
     ),
   ]);
+
+  // 投稿パフォーマンス: media_insights の各投稿の最新スナップショット(collect-insights cronが毎日貯める)。
+  // SQLiteのmax()+bare column規則で、MAX(collected_date)の行の値がそのまま返る。
+  // テーブル未適用(migration前)でも画面を落とさないため catch で空配列にフォールバック。
+  const insights = await getAll(
+    `SELECT media_id, kind, title, posted_at, MAX(collected_date) AS collected_date,
+            reach, views, likes, comments, shares, saved, total_interactions
+     FROM media_insights GROUP BY media_id ORDER BY posted_at DESC LIMIT 20`
+  ).catch(() => []);
 
   // 向こう1週間の投稿予定: cronと同じ優先チェーンを今日〜6日後で評価する(読み取りのみ・投稿はしない)。
   // 今日分は投稿済みかどうかを画面側でログと突き合わせて表示する。
@@ -39,6 +48,7 @@ export async function GET(req: NextRequest) {
     logs,
     queue,
     plans,
+    insights,
   });
 }
 

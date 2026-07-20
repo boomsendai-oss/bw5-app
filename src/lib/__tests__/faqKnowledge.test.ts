@@ -5,7 +5,7 @@ const faqRows = [
   { category: '体験', question: '体験したい', answer: 'LINEでご連絡ください', is_public: 1, sort_order: 1 },
 ];
 const productRows = [
-  { product_type: 'plan', name: 'マンスリー4', price: 8800, category: '月謝', active: 1, notes: null },
+  { product_type: 'plan', name: 'マンスリー4', price: 8800, category: 'regular', active: 1, notes: null },
 ];
 const studioRows = [
   { name: '仙台本店', address: '仙台市青葉区…', google_map_url: 'https://maps.google.com/x', active: 1,
@@ -15,29 +15,35 @@ const studioRows = [
 ];
 const instructorRows = [
   { name: 'TARO', genre: 'HIPHOP', active: 1, slug: 'taro',
+    profile_text: 'ダンス歴15年、初心者に寄り添う指導が得意', career_text: '全国大会入賞多数', crews: 'BOOM CREW',
     contact_email: 'taro@example.com', contact_phone: '090-1234-5678', bank_account_number: '9876543',
     salary_type: 'monthly_fixed', monthly_fixed_amount: 300000, pin_hash: 'HASHEDPIN123' },
+    // profile_text/career_text/crewsはHPが公開表示している列(ボットにも開示する)。
     // contact_*/bank_*/salary_*/monthly_fixed_amount/pin_hashは実DBのinstructorsに実在する内部列(漏洩保険テスト用)
 ];
 const classRows = [
   { class_name: 'キッズ 強化', level: '初級', default_day_of_week: 1, default_start_time: '17:00', default_end_time: '18:00',
     active: 1, is_public: 1, studio_name: '仙台本店', instructor_name: 'TARO',
-    notes: '時給計算用の内部メモ' }, // notesはHP自身が「HPには表示しない」と明記する内部メモ列(漏洩保険テスト用)
+    target: '小学生', description_text: 'リズム感と基礎を楽しく身につけるクラス',
+    notes: '時給計算用の内部メモ' },
+    // target/description_textはHPが公開表示している列(ボットにも開示する)。
+    // notesはHP自身が「HPには表示しない」と明記する内部メモ列(漏洩保険テスト用)
 ];
 
 const publicStudio = {
   name: '仙台本店', address: '仙台市青葉区…', access: '仙台駅から徒歩5分', map_url: 'https://maps.google.com/x',
 };
-const publicInstructor = { name: 'TARO', genre: 'HIPHOP' };
+const publicInstructor = { name: 'TARO', genre: 'HIPHOP', bio: 'ダンス歴15年、初心者に寄り添う指導が得意', career: '全国大会入賞多数', crews: 'BOOM CREW' };
 const publicClass = {
   name: 'キッズ 強化', day: '月', start_time: '17:00', end_time: '18:00', level: '初級', instructor: 'TARO', studio: '仙台本店',
+  target: '小学生', description: 'リズム感と基礎を楽しく身につけるクラス',
 };
 
 describe('buildKnowledge', () => {
   it('公開フィールドだけを含むJSONを組み立てる', () => {
     const k = buildKnowledge({ faqRows, productRows, studioRows, instructorRows, classRows });
     expect(k.faqs).toEqual([{ category: '体験', question: '体験したい', answer: 'LINEでご連絡ください' }]);
-    expect(k.prices).toEqual([{ type: 'plan', category: '月謝', name: 'マンスリー4', price: 8800 }]);
+    expect(k.prices).toEqual([{ type: 'plan', category: 'regular', name: 'マンスリー4', price: 8800 }]);
     expect(k.studios).toEqual([publicStudio]);
     expect(k.instructors).toEqual([publicInstructor]);
     expect(k.classes).toEqual([publicClass]);
@@ -81,10 +87,10 @@ describe('buildKnowledge', () => {
   it('active=0の商品は除外される', () => {
     const rows = [
       ...productRows,
-      { product_type: 'plan', name: '廃止プラン', price: 5000, category: '月謝', active: 0, notes: null },
+      { product_type: 'plan', name: '廃止プラン', price: 5000, category: 'regular', active: 0, notes: null },
     ];
     const k = buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] });
-    expect(k.prices).toEqual([{ type: 'plan', category: '月謝', name: 'マンスリー4', price: 8800 }]);
+    expect(k.prices).toEqual([{ type: 'plan', category: 'regular', name: 'マンスリー4', price: 8800 }]);
   });
 
   it('active=0のスタジオは除外される', () => {
@@ -121,7 +127,7 @@ describe('buildKnowledge', () => {
       { product_type: 'plan', name: '🔑管理者プラン🔑', price: 0, category: 'admin', active: 1, notes: null },
     ];
     const k = buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] });
-    expect(k.prices).toEqual([{ type: 'plan', category: '月謝', name: 'マンスリー4', price: 8800 }]);
+    expect(k.prices).toEqual([{ type: 'plan', category: 'regular', name: 'マンスリー4', price: 8800 }]);
   });
 
   it('内部運用SKU(admin/instructor/pause)の名称がJSON文字列のどこにも漏れない', () => {
@@ -137,18 +143,35 @@ describe('buildKnowledge', () => {
     expect(s).not.toContain('休会');
   });
 
-  it('trial/event/ticket_memberの内部運用でないカテゴリはpricesに残る', () => {
+  it('公開カテゴリ(trial/ticket_member/visitor)はpricesに残る', () => {
     const rows = [
       { product_type: 'plan', name: '体験レッスン', price: 0, category: 'trial', active: 1, notes: null },
-      { product_type: 'plan', name: '発表会イベント', price: 0, category: 'event', active: 1, notes: null },
       { product_type: 'plan', name: 'チケット会員', price: 0, category: 'ticket_member', active: 1, notes: null },
+      { product_type: 'plan', name: 'ビジター', price: 3000, category: 'visitor', active: 1, notes: null },
     ];
     const k = buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] });
     expect(k.prices).toEqual([
       { type: 'plan', category: 'trial', name: '体験レッスン', price: 0 },
-      { type: 'plan', category: 'event', name: '発表会イベント', price: 0 },
       { type: 'plan', category: 'ticket_member', name: 'チケット会員', price: 0 },
+      { type: 'plan', category: 'visitor', name: 'ビジター', price: 3000 },
     ]);
+  });
+
+  it('非公開カテゴリ(dance_club/addon/event/special)はpricesから除外される(許可リスト方式)', () => {
+    const rows = [
+      ...productRows,
+      { product_type: 'plan', name: '💪ダンス部 受け放題', price: 15490, category: 'dance_club', active: 1, notes: null },
+      { product_type: 'plan', name: '追加受講チケット', price: 1500, category: 'addon', active: 1, notes: null },
+      { product_type: 'plan', name: 'イベント練習会', price: 0, category: 'event', active: 1, notes: null },
+      { product_type: 'plan', name: 'HOUSEエキスパート', price: 2000, category: 'special', active: 1, notes: null },
+    ];
+    const s = JSON.stringify(buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] }));
+    expect(s).not.toContain('ダンス部');
+    expect(s).not.toContain('追加受講');
+    expect(s).not.toContain('イベント練習会');
+    expect(s).not.toContain('HOUSEエキスパート');
+    const k = buildKnowledge({ faqRows: [], productRows: rows, studioRows: [] });
+    expect(k.prices).toEqual([{ type: 'plan', category: 'regular', name: 'マンスリー4', price: 8800 }]);
   });
 
   it('active=0のインストラクターは除外される', () => {
@@ -169,10 +192,20 @@ describe('buildKnowledge', () => {
     expect(k.instructors).toEqual([publicInstructor]);
   });
 
-  it('genreが未設定(null)のインストラクターはnullで出力する', () => {
-    const rows = [{ name: 'ゲスト講師', genre: null, active: 1, slug: 'guest' }];
+  it('genre/bio/career/crewsが未設定(null)のインストラクターはnullで出力する', () => {
+    const rows = [{ name: 'ゲスト講師', genre: null, active: 1, slug: 'guest', profile_text: null, career_text: null, crews: null }];
     const k = buildKnowledge({ faqRows: [], productRows: [], studioRows: [], instructorRows: rows, classRows: [] });
-    expect(k.instructors).toEqual([{ name: 'ゲスト講師', genre: null }]);
+    expect(k.instructors).toEqual([{ name: 'ゲスト講師', genre: null, bio: null, career: null, crews: null }]);
+  });
+
+  it('bio/career/crews/target/descriptionが空文字なら空文字ノイズを載せずnullに正規化する', () => {
+    const iRows = [{ name: '空欄講師', genre: 'HOUSE', active: 1, slug: 'empty', profile_text: '', career_text: '   ', crews: '' }];
+    const cRows = [{ class_name: '空欄クラス', level: '初級', default_day_of_week: 1, default_start_time: '17:00', default_end_time: '18:00',
+      active: 1, is_public: 1, studio_name: '仙台本店', instructor_name: 'TARO', target: '', description_text: '  ' }];
+    const k = buildKnowledge({ faqRows: [], productRows: [], studioRows: [], instructorRows: iRows, classRows: cRows });
+    expect(k.instructors[0]).toEqual({ name: '空欄講師', genre: 'HOUSE', bio: null, career: null, crews: null });
+    expect(k.classes[0].target).toBeNull();
+    expect(k.classes[0].description).toBeNull();
   });
 
   it('is_public=0のクラスは除外される', () => {
@@ -218,7 +251,7 @@ describe('buildKnowledge', () => {
     ];
     const k = buildKnowledge({ faqRows: [], productRows: [], studioRows: [], instructorRows: [], classRows: rows });
     expect(k.classes).toEqual([
-      { name: '未設定クラス', day: null, start_time: null, end_time: null, level: null, instructor: null, studio: null },
+      { name: '未設定クラス', day: null, start_time: null, end_time: null, level: null, instructor: null, studio: null, target: null, description: null },
     ]);
   });
 });

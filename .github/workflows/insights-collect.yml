@@ -1,0 +1,27 @@
+# 投稿インサイト自動収集
+# 毎日 JST 4:00 = UTC 19:00。リール(投稿後30日)とストーリー(投稿後3日)の
+# リーチ/再生/保存などを1日1スナップショット貯める。
+# 目的=「一定期間運用してデータを見て再計画」を人手の目視に頼らないための土台。
+# Vercel Hobby cron枠(2/2使用済)を消費しないためGH Actions側に置く。
+name: insights-collect
+
+on:
+  schedule:
+    - cron: '0 19 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/collect-insights
+        run: |
+          set -e
+          RESP=$(curl -s --max-time 60 -w '\n%{http_code}' \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/collect-insights)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1

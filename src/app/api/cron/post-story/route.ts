@@ -3,7 +3,7 @@ import { execute, getOne } from '@/lib/db';
 import { todayJst, weekdayJst, nowUtcIso } from '@/lib/dateJst';
 import { configured as igConfigured, publishStoryVideo, publishStoryImage, refreshTokenIfStale } from '@/lib/instagram';
 import { pickNextQueueItem, markQueueItemPosted } from '@/lib/storyQueue';
-import { WEEKDAY_FILES, findChainMediaList, loadSidecar, checkSchedule } from '@/lib/storyPlan';
+import { WEEKDAY_FILES, findChainMediaList, loadSidecar, checkSchedule, resolveMentions } from '@/lib/storyPlan';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,11 +21,60 @@ function cronAuthorized(req: NextRequest): boolean {
   return false;
 }
 
-async function logResult(date: string, weekday: number, videoPath: string | null, status: string, igMediaId?: string, error?: string) {
-  await execute(
+async function logResult(
+  date: string,
+  weekday: number,
+  videoPath: string | null,
+  status: string,
+  igMediaId?: string,
+  error?: string,
+  mentions?: { requested: string[]; applied: string[]; failed: string[] }
+) {
+  const res = await execute(
     'INSERT INTO story_post_log (date, weekday, video_path, status, ig_media_id, error) VALUES (?, ?, ?, ?, ?, ?)',
     [date, weekday, videoPath, status, igMediaId ?? null, error ?? null]
   );
+  if (mentions) {
+    // mentions_* 列は防御的に別UPDATEで書く(migration未適用でも本体INSERTは落とさない)
+    try {
+      await execute(
+        'UPDATE story_post_log SET mentions_requested = ?, mentions_applied = ?, mentions_failed = ? WHERE rowid = ?',
+        [
+          JSON.stringify(mentions.requested),
+          JSON.stringify(mentions.applied),
+          JSON.stringify(mentions.failed),
+          res.lastInsertRowid ?? null,
+        ]
+      );
+    } catch {
+      // 列未適用(migration前)なら無視
+    }
+  }
+}
+
+// 二重投稿防止のスロットロック。GH cron(最大3本)とwatchdogの自己修復loopbackが
+// 同時に走っても、あるスロットを実際に publish するのは最初に claim できた1プロセスだけ。
+// UNIQUE(date, video_path) の INSERT が通れば所有権獲得、衝突(rowsAffected=0)なら他が処理中。
+// publish 失敗時は releaseClaim で解放し、次回の再投稿を可能にする。
+async function claimSlot(date: string, videoPath: string): Promise<boolean> {
+  try {
+    const res = await execute(
+      'INSERT INTO story_post_claim (date, video_path, created_at) VALUES (?, ?, ?) ON CONFLICT(date, video_path) DO NOTHING',
+      [date, videoPath, nowUtcIso()]
+    );
+    return (res.rowsAffected ?? 0) > 0;
+  } catch {
+    // claim表が未適用(migration前)なら可用性優先でロック無し投稿を続行する
+    return true;
+  }
+}
+
+async function releaseClaim(date: string, videoPath: string): Promise<void> {
+  try {
+    await execute('DELETE FROM story_post_claim WHERE date = ? AND video_path = ?', [date, videoPath]);
+  } catch {
+    // 解放失敗は次回の冪等ガード('posted'照合)で吸収されるため致命ではない
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -88,27 +137,44 @@ export async function POST(req: NextRequest) {
         console.warn(`スケジュール照合不可(投稿は続行): ${check.error}`);
       }
 
-      const publish = (m?: string[]) =>
-        media.type === 'image' ? publishStoryImage(media.url, m) : publishStoryVideo(media.url, m);
+      // メンションは登録簿(instructors.instagram_handle)からの解決を優先し、
+      // sidecar.mentions は後方互換のフォールバックにする(json.mentions手管理の陳腐化を排除)。
+      // このスロットはcheckSchedule通過済み=宣言講師はカレンダーと一致しているので、
+      // 宣言講師名からハンドルを引けば代講(KOKEKO等)も正しく解決される。
+      let requestedMentions: string[] = sidecar.mentions ?? [];
+      if (sidecar.lessons && sidecar.lessons.length > 0) {
+        try {
+          const { handles } = await resolveMentions(sidecar.lessons.map((l) => l.instructor));
+          if (handles.length > 0) requestedMentions = handles;
+        } catch (e) {
+          console.warn(`メンション解決失敗(sidecar.mentionsにフォールバック): ${e instanceof Error ? e.message : e}`);
+        }
+      }
+
+      // このスロットの投稿権を獲得(取れなければ他プロセスが処理中=スキップ)
+      const claimed = await claimSlot(date, media.url);
+      if (!claimed) {
+        results.push({ media: media.base, skipped: '別プロセスが投稿処理中(claim)' });
+        continue;
+      }
 
       try {
-        let mediaId: string;
-        let mentionsApplied = sidecar.mentions ?? [];
-        try {
-          ({ mediaId } = await publish(sidecar.mentions));
-        } catch (e) {
-          // メンション起因の失敗(非公開アカ・ユーザー名変更等)で投稿自体を落とさない:
-          // メンション付きで失敗したらメンション無しで1回だけ再試行する。
-          if (!sidecar.mentions?.length) throw e;
-          console.warn(`メンション付き投稿に失敗→メンション無しで再試行: ${e instanceof Error ? e.message : e}`);
-          ({ mediaId } = await publish(undefined));
-          mentionsApplied = [];
-        }
-        await logResult(date, weekday, media.url, 'posted', mediaId);
+        // publishStory側が「載せられる最大の部分集合」を自動で選び、落ちたハンドルはmentionsFailedで返す
+        const { mediaId, mentionsApplied, mentionsFailed } =
+          media.type === 'image'
+            ? await publishStoryImage(media.url, requestedMentions)
+            : await publishStoryVideo(media.url, requestedMentions);
+        await logResult(date, weekday, media.url, 'posted', mediaId, undefined, {
+          requested: requestedMentions,
+          applied: mentionsApplied,
+          failed: mentionsFailed,
+        });
         postedCount++;
-        results.push({ media: media.base, posted: true, mediaId, mentions: mentionsApplied });
+        results.push({ media: media.base, posted: true, mediaId, mentions: mentionsApplied, mentionsFailed });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+        // publish失敗: claimを解放して次回の再投稿を可能にする
+        await releaseClaim(date, media.url);
         await logResult(date, weekday, media.url, 'error', undefined, msg);
         errorCount++;
         results.push({ media: media.base, error: msg });

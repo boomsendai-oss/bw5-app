@@ -8,7 +8,7 @@ export type PublicKnowledge = {
   faqs: { category: string; question: string; answer: string }[];
   prices: { type: string; category: string | null; name: string; price: number }[];
   studios: { name: string; address: string | null; access: string | null; map_url: string | null }[];
-  instructors: { name: string; genre: string | null }[];
+  instructors: { name: string; genre: string | null; bio: string | null; career: string | null; crews: string | null }[];
   classes: {
     name: string;
     day: string | null;
@@ -17,6 +17,8 @@ export type PublicKnowledge = {
     level: string | null;
     instructor: string | null;
     studio: string | null;
+    target: string | null;
+    description: string | null;
   }[];
 };
 
@@ -27,11 +29,23 @@ export type ProductRow = { product_type: string; name: string; price: number | b
 export type StudioRow = { name: string; address: string | null; access_text: string | null; google_map_url: string | null; active: number | bigint; is_public: number | bigint };
 
 // boom-hp/src/lib/instructors.ts と同一の公開条件(active=1 AND slug IS NOT NULL AND slug!='')で絞り込むための列のみ。
-// role相当の列はinstructorsテーブルに存在しないため型に含めない(無い属性を追加しない方針)。
-export type InstructorRow = { name: string; genre: string | null; active: number | bigint; slug: string | null };
+// profile_text(bio)/career_text(経歴)/crewsはHP boom-hp/src/lib/instructors.ts が公開表示している列なのでボットにも開示する。
+// contact_email/contact_phone/bank_*/salary_type/monthly_fixed_amount/pin_hash等の内部列は選択しない(SELECT側でも二重防御)。
+export type InstructorRow = {
+  name: string;
+  genre: string | null;
+  active: number | bigint;
+  slug: string | null;
+  // 本番SELECTでは常に返るが、古い/部分的な行(テストfixture・旧スナップショット)も受けられるようoptional。
+  // 未指定はnz()がnullへ正規化するため実行時挙動は同じ。
+  profile_text?: string | null;
+  career_text?: string | null;
+  crews?: string | null;
+};
 
 // boom-hp/src/lib/classes.ts と同一の公開条件(active=1 AND is_public=1)で絞り込むための列のみ。
-// notes(内部メモ)・description_text・video_url・target・slugはHPのLesson型定義上も非公開/非表示のため取得しない。
+// target(対象)/description_text(説明)はHP boom-hp/src/lib/classes.ts が公開表示している列なのでボットにも開示する。
+// notes(内部メモ・HP自身も非表示)・video_url・slugは非公開/非表示のため取得しない。
 // classにgenre相当の列は無い(genreはinstructor側のみ)ため型に含めない。
 export type ClassRow = {
   class_name: string;
@@ -43,6 +57,9 @@ export type ClassRow = {
   studio_name: string | null;
   active: number | bigint;
   is_public: number | bigint;
+  // InstructorRow同様、未指定を許容(nz()でnull正規化)。
+  target?: string | null;
+  description_text?: string | null;
 };
 
 type Rows = {
@@ -53,10 +70,11 @@ type Rows = {
   classRows?: ClassRow[];
 };
 
-// hacomono_products.category の内部運用カテゴリ(管理者プラン/インストラクター用/休会)はお客さん向けボットに不要・不適切なため除外。
+// お客さん向けに公開してよい商品カテゴリの「許可リスト」。ここに無いカテゴリ(新規/未知含む)は既定で非公開。
 // SELECT側(src/app/api/public/knowledge/route.ts)のWHERE句と二重防御(studiosのactive+is_public二重フィルタと同じ思想)。
-// trial(体験)/event(イベント)/ticket_member(チケット会員)はお客さん向けに意味のある情報のため残す。
-const INTERNAL_PRODUCT_CATEGORIES = new Set(['admin', 'instructor', 'pause']);
+// 公開=regular(月謝)/college(学生)/ticket_member(チケット会員)/visitor(ビジター)/trial(体験)。
+// 非公開=dance_club(部活・活動停止)/addon(追加受講)/event(練習会等の単発)/special(HOUSEエキスパート等の選抜)/admin/instructor/pause。
+const PUBLIC_PRODUCT_CATEGORIES = new Set(['regular', 'college', 'ticket_member', 'visitor', 'trial']);
 
 // 曜日番号(0=日〜6=土、boom-hp/src/lib/day-names.ts と同じ値)→日本語表記。
 // このアプリの他画面(staff/schedule等)の慣習と同じくローカル定数として持つ(共有libは意図的に作らない)。
@@ -67,6 +85,14 @@ function dayName(dow: number | bigint | null): string | null {
   return DAY_NAMES[Number(dow)] ?? null;
 }
 
+// テキスト列の正規化: null と空文字(HP側の ?? "" フォールバック相当の未入力)はどちらも null に寄せ、
+// ボットの知識JSONに空文字ノイズを載せない(未入力の属性は「無い」として透過する)。
+function nz(v: string | null | undefined): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s === '' ? null : s;
+}
+
 export function buildKnowledge({ faqRows, productRows, studioRows, instructorRows = [], classRows = [] }: Rows): PublicKnowledge {
   return {
     generated_at: new Date().toISOString(),
@@ -75,7 +101,7 @@ export function buildKnowledge({ faqRows, productRows, studioRows, instructorRow
       .filter((r) => Number(r.is_public) === 1)
       .map((r) => ({ category: String(r.category), question: String(r.question), answer: String(r.answer) })),
     prices: productRows
-      .filter((r) => Number(r.active) === 1 && !INTERNAL_PRODUCT_CATEGORIES.has(String(r.category ?? '')))
+      .filter((r) => Number(r.active) === 1 && PUBLIC_PRODUCT_CATEGORIES.has(String(r.category ?? '')))
       .map((r) => ({
         type: String(r.product_type),
         category: r.category == null ? null : String(r.category),
@@ -97,7 +123,10 @@ export function buildKnowledge({ faqRows, productRows, studioRows, instructorRow
       .filter((r) => Number(r.active) === 1 && r.slug != null && String(r.slug) !== '')
       .map((r) => ({
         name: String(r.name),
-        genre: r.genre == null ? null : String(r.genre),
+        genre: nz(r.genre),
+        bio: nz(r.profile_text),
+        career: nz(r.career_text),
+        crews: nz(r.crews),
       })),
     // 公開条件は active=1 かつ is_public=1(本番HP boom-hp/src/lib/classes.ts と同一条件)。
     // dayはdefault_day_of_week(0=日〜6=土)を日本語表記へ変換。未設定はnullのまま出力し、
@@ -110,9 +139,11 @@ export function buildKnowledge({ faqRows, productRows, studioRows, instructorRow
         day: dayName(r.default_day_of_week),
         start_time: r.default_start_time == null ? null : String(r.default_start_time),
         end_time: r.default_end_time == null ? null : String(r.default_end_time),
-        level: r.level == null ? null : String(r.level),
-        instructor: r.instructor_name == null ? null : String(r.instructor_name),
-        studio: r.studio_name == null ? null : String(r.studio_name),
+        level: nz(r.level),
+        instructor: nz(r.instructor_name),
+        studio: nz(r.studio_name),
+        target: nz(r.target),
+        description: nz(r.description_text),
       })),
   };
 }

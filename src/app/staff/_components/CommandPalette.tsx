@@ -20,6 +20,7 @@ import {
   Rocket,
   RefreshCw,
   Hash,
+  Sparkles,
 } from 'lucide-react';
 import {
   CommandDialog,
@@ -50,6 +51,7 @@ const pages: PageEntry[] = [
   { title: 'KPI・分析', href: '/staff/insights', icon: BarChart3 },
   { title: '会員管理', href: '/staff/members', icon: Users },
   { title: 'ブログ', href: '/staff/blog', icon: FileText },
+  { title: '体験予約', href: '/staff/trials', icon: Sparkles },
   { title: 'オペレーション', href: '/staff/operations', icon: Settings2 },
   { title: 'Instagram投稿', href: '/staff/instagram', icon: AtSign },
   { title: 'X投稿', href: '/staff/x-posts', icon: Hash },

@@ -118,15 +118,35 @@ export default function FaqStatsPage() {
           </section>
 
           <section className="rounded-lg border bg-white p-4">
-            <h2 className="mb-1 font-bold">最近の質問(最新50件・匿名)</h2>
+            <h2 className="mb-1 font-bold">最近のやりとり(最新50件・匿名)</h2>
             <p className="mb-3 text-xs text-slate-400">
-              よく聞かれて答えられていないものはFAQ管理へ追加を。個人情報を見つけたらPMへ削除依頼
+              質問とボットの回答をセットで表示。回答が的外れ/事実と違うものはFAQ管理へ追加・修正を。個人情報を見つけたらPMへ削除依頼
             </p>
-            <ul className="space-y-2 text-sm">
+            <ul className="space-y-3 text-sm">
               {stats.recent.map((r, i) => (
-                <li key={i} className="border-b pb-1.5">
-                  <span className="mr-2 text-xs text-slate-400 tabular-nums">{String(r.at)}</span>
-                  {String(r.content)}
+                <li key={i} className="border-b pb-2.5">
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-xs text-slate-400 tabular-nums">{String(r.at)}</span>
+                    {r.category ? (
+                      <span className="rounded bg-sand-100 px-1.5 py-0.5 text-[10px] text-navy-700">
+                        {String(r.category)}
+                      </span>
+                    ) : null}
+                  </div>
+                  {/* 質問 */}
+                  <div className="flex gap-1.5">
+                    <span className="shrink-0 font-bold text-navy-700">Q.</span>
+                    <span className="whitespace-pre-wrap">{String(r.content)}</span>
+                  </div>
+                  {/* 回答(カード/分類タグは表示用に除去)。未取得＝回答前に離脱した等 */}
+                  <div className="mt-1 flex gap-1.5 text-slate-600">
+                    <span className="shrink-0 font-bold text-brand-600">A.</span>
+                    <span className="whitespace-pre-wrap">
+                      {r.answer
+                        ? String(r.answer).replace(/\[\[(card|cat):[^\]]*\]\]/g, '').trim()
+                        : '(回答なし)'}
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>

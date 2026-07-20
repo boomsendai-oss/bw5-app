@@ -37,10 +37,21 @@ export async function GET(req: NextRequest) {
          FROM chat_logs WHERE role = 'user' ${where}
          GROUP BY 1 ORDER BY 1 DESC LIMIT 31`
       ),
+      // 質問と「その質問への回答」をセットで返す。
+      // 回答は同一セッション内で当該質問より後の最初のassistant行(=直接の返答)を相関サブクエリで引く。
+      // 分類(category)もassistant行に付くのでここで一緒に拾う(質問単位で分類が見える)。
       db.execute(
-        `SELECT substr(datetime(created_at, '+9 hours'), 1, 16) AS at, content
-         FROM chat_logs WHERE role = 'user' ${where}
-         ORDER BY id DESC LIMIT 50`
+        `SELECT substr(datetime(u.created_at, '+9 hours'), 1, 16) AS at,
+                u.content AS content,
+                (SELECT a.content  FROM chat_logs a
+                  WHERE a.session_id = u.session_id AND a.role = 'assistant' AND a.id > u.id
+                  ORDER BY a.id LIMIT 1) AS answer,
+                (SELECT a.category FROM chat_logs a
+                  WHERE a.session_id = u.session_id AND a.role = 'assistant' AND a.id > u.id
+                  ORDER BY a.id LIMIT 1) AS category
+         FROM chat_logs u
+         WHERE u.role = 'user' ${where}
+         ORDER BY u.id DESC LIMIT 50`
       ),
       db.execute(
         `SELECT COUNT(*) AS questions, COUNT(DISTINCT session_id) AS sessions
