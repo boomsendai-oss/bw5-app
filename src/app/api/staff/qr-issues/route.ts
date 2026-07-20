@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAll, getOne, execute } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { sendEmail } from '@/lib/email';
-import { resolveRecipient, maskEmail, buildQrEmail } from '@/lib/qrIssue';
+import { resolveRecipient, maskEmail, buildQrEmail, qrFileName } from '@/lib/qrIssue';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -92,12 +92,13 @@ async function handle(req: NextRequest) {
   if (!qr) return NextResponse.json({ error: 'qr ファイルが必要です' }, { status: 400 });
   const png = Buffer.from(await qr.arrayBuffer());
 
-  const mail = buildQrEmail(memberName || 'メンバー');
+  const resolvedName = memberName || 'メンバー';
+  const mail = buildQrEmail(resolvedName);
   await sendEmail({
     to: recipient.to,
     subject: mail.subject,
     text: mail.text,
-    attachments: [{ filename: 'boom_checkin_qr.png', content: png }],
+    attachments: [{ filename: qrFileName(resolvedName), content: png }],
   });
 
   await execute(

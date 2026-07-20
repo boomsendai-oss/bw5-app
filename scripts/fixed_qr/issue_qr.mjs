@@ -8,6 +8,10 @@
 //   DRY_RUN=1     発行・POSTをせず対象一覧の件数だけ出して終了
 //   APP_BASE_URL  bw5-app のベースURL (既定 'https://bw5-app.vercel.app'・ローカル検証用に上書き可)
 //   ONLY_MEMBER_ID 指定時はそのメンバーIDだけを対象にする (E2Eテスト用ガード)
+//   FORCE_ISSUE=1  E2Eテスト専用。既存コードがあっても強制的に新規発行する (ONLY_MEMBER_ID併用必須)
+//   CODE_NAME      E2Eテスト用。新規発行時のコード名称を上書きする (既定 '固定メンバーコード用')
+//   REUSE_CODE_NAME E2Eテスト専用。新規発行せず、指定名称の既存コードを再利用してメール送信のみ行う
+//                  (ONLY_MEMBER_ID併用必須。TAROのHACOMONOアカウントにテストコードを増やさないため)
 //
 // ⚠️ 絶対条件: DRY_RUN以外の実行はこのタスクでは行わない (本物の発行・メール送信は後続ゲートB)。
 // 発行部分 (保存クリック以降) は Task 5 (discover.mjs) の調査結果 (scripts/fixed_qr/discover_out/) で
@@ -16,6 +20,7 @@
 // ログにPIIは出さない (メンバーIDと件数・statusのみ。氏名・メールアドレスは出力しない)。
 import { launchAndLogin, downloadMl001Csv } from './hacomono.mjs';
 import { parseCsv, toDicts } from './csv.mjs';
+import { composeQrWithName } from './qrImage.mjs';
 
 function requireEnv(names) {
   const missing = names.filter((n) => !process.env[n]);
@@ -31,6 +36,24 @@ const MAX_PER_RUN = Number(process.env.MAX_PER_RUN || 10); // 安全弁: 1回の
 const DRY = process.env.DRY_RUN === '1';
 const ONLY_MEMBER_ID = process.env.ONLY_MEMBER_ID || null; // E2Eテスト用: 単一メンバーに限定するガード
 
+// ⚠️E2Eテスト専用の逃がし口。既に有効な固定コードを持つ会員でも強制的に新規発行する。
+// 本番cron(.github/workflows/fixed-qr.yml)では絶対に設定しないこと(コード増殖・二重送信の原因になる)。
+// 事故防止のため ONLY_MEMBER_ID との併用を必須にしている(全員に対する強制発行は不可能)。
+const FORCE_ISSUE = process.env.FORCE_ISSUE === '1';
+// テスト用コードを既存の「固定メンバーコード用」と区別するための名称上書き
+const CODE_NAME = process.env.CODE_NAME || null;
+if (FORCE_ISSUE && !ONLY_MEMBER_ID) {
+  throw new Error('FORCE_ISSUE=1 は ONLY_MEMBER_ID と併用必須です (全員への強制発行は禁止)');
+}
+
+// ⚠️E2Eテスト専用の逃がし口(その2)。TAROのHACOMONOアカウントにテストコードを増やしたくないため、
+// 新規発行をせず「既存の指定名称のコード」を再利用してメールだけ送り直す。
+// 事故防止のため ONLY_MEMBER_ID との併用を必須にしている(FORCE_ISSUEと同様のガード)。
+const REUSE_CODE_NAME = process.env.REUSE_CODE_NAME || null;
+if (REUSE_CODE_NAME && !ONLY_MEMBER_ID) {
+  throw new Error('REUSE_CODE_NAME は ONLY_MEMBER_ID と併用必須です (全員への適用は禁止)');
+}
+
 // Task 5 (discover.mjs・scripts/fixed_qr/discover_out/) の調査で確定したセレクタ。
 // - メンバー詳細: #/operation/members/{id} は404。#/member/members/{id}/ が正 (確認済み)
 // - セキュリティタブのリンク先href = #/member/members/{id}/security/keys/ (02_security_tab.html で確認)。
@@ -43,8 +66,9 @@ const ONLY_MEMBER_ID = process.env.ONLY_MEMBER_ID || null; // E2Eテスト用: �
 //   デフォルト値"固定メンバーコード用"が入っている前提。空なら明示的に入力する)
 // - 保存ボタン: button:has-text("保存する") (count=1・<button type="submit" class="m_button success">)
 // - 保存後のURLは #/member/members/{id}/security/keys/{keyId} になる。そこからkeyIdを取得し
-//   QRは https://boom-admin.hacomono.jp/api/member/members/{id}/keys/{keyId}/qr?size=400 を直DL
-//   (06_existing_code_view.html の <img src="https://boom-admin.hacomono.jp/api/member/members/13/keys/155/qr?size=400"> で確認済み)
+//   QRは https://boom-admin.hacomono.jp/api/member/members/{id}/keys/{keyId}/qr?size=NNN を直DL
+//   (06_existing_code_view.html の <img src="https://boom-admin.hacomono.jp/api/member/members/13/keys/155/qr?size=400"> で確認済み。
+//   size=600に変更済み: 印刷品質向上のため)
 const SELECTORS = {
   memberDetailUrl: (id) => `https://boom-admin.hacomono.jp/#/member/members/${id}/`,
   securityKeysUrl: (id) => `https://boom-admin.hacomono.jp/#/member/members/${id}/security/keys/`,
@@ -55,8 +79,12 @@ const SELECTORS = {
   nameInputGroup: '[aria-label="名称"] input[type="text"]',
   saveButton: 'button:has-text("保存する")',
   defaultCodeName: '固定メンバーコード用',
+  // REUSE_CODE_NAME用: コード一覧から指定名称のリンク行を探す (完全一致。部分一致だと
+  // 「固定メンバーコード用」等の類似名を誤って拾う事故につながるため)
+  codeLinkByExactName: (name) => `tr a:text-is("${name}")`,
+  // QRダウンロードサイズは印刷品質のため600 (元400)
   qrImageUrl: (memberId, keyId) =>
-    `https://boom-admin.hacomono.jp/api/member/members/${memberId}/keys/${keyId}/qr?size=400`,
+    `https://boom-admin.hacomono.jp/api/member/members/${memberId}/keys/${keyId}/qr?size=600`,
 };
 
 async function appGet(path) {
@@ -97,24 +125,8 @@ async function gotoSecurityKeys(page, memberId) {
   }
 }
 
-// 新規登録→(名称確認)→保存する→保存後URLからkeyId取得→QR PNGをAPIから直DL
-async function issueNewFixedCode(context, page, memberId) {
-  await page.locator(SELECTORS.newRegisterLink).click();
-  await page.waitForTimeout(1500); // SPAのルート遷移 (モーダルではない)
-
-  // 既存値の有無を条件分岐せず常に明示fillする(品質レビュー指摘: 既存値検知の前提を排除し、
-  // 「デフォルト値が入っているはず」という仮定が崩れた場合の名称増殖/空欄事故の根を断つ)
-  await page.locator(SELECTORS.nameInputGroup).fill(SELECTORS.defaultCodeName);
-
-  await page.locator(SELECTORS.saveButton).click();
-  await page.waitForTimeout(1500);
-
-  const match = page.url().match(/security\/keys\/(\d+)(?:[/?#]|$)/);
-  if (!match) {
-    throw new Error(`保存後のURLからkeyIdを取得できませんでした (url=${page.url()})`);
-  }
-  const keyId = match[1];
-
+// keyId確定後、QR PNGをAPIから直DLする (新規発行/再利用の両方から呼ぶ共通処理)
+async function downloadQrPng(context, memberId, keyId) {
   const qrUrl = SELECTORS.qrImageUrl(memberId, keyId);
   const res = await context.request.get(qrUrl, { timeout: 30_000 });
   if (res.status() !== 200) {
@@ -124,7 +136,45 @@ async function issueNewFixedCode(context, page, memberId) {
   if (!contentType.toLowerCase().startsWith('image/png')) {
     throw new Error(`QRダウンロードのcontent-typeが不正です: ${contentType || '(none)'}`);
   }
-  const png = Buffer.from(await res.body());
+  return Buffer.from(await res.body());
+}
+
+// 新規登録→(名称確認)→保存する→保存後URLからkeyId取得→QR PNGをAPIから直DL
+async function issueNewFixedCode(context, page, memberId) {
+  await page.locator(SELECTORS.newRegisterLink).click();
+  await page.waitForTimeout(1500); // SPAのルート遷移 (モーダルではない)
+
+  // 既存値の有無を条件分岐せず常に明示fillする(品質レビュー指摘: 既存値検知の前提を排除し、
+  // 「デフォルト値が入っているはず」という仮定が崩れた場合の名称増殖/空欄事故の根を断つ)
+  await page.locator(SELECTORS.nameInputGroup).fill(CODE_NAME || SELECTORS.defaultCodeName);
+
+  await page.locator(SELECTORS.saveButton).click();
+  await page.waitForTimeout(1500);
+
+  const match = page.url().match(/security\/keys\/(\d+)(?:[/?#]|$)/);
+  if (!match) {
+    throw new Error(`保存後のURLからkeyIdを取得できませんでした (url=${page.url()})`);
+  }
+  const keyId = match[1];
+  const png = await downloadQrPng(context, memberId, keyId);
+  return { keyId, png };
+}
+
+// REUSE_CODE_NAME用: コード一覧から指定名称のリンク行を探しhrefからkeyIdを取り、QRをDLする。
+// 新規発行は行わない(TAROのHACOMONOアカウントにテストコードを増やさないため)
+async function reuseFixedCodeByName(context, page, memberId, codeName) {
+  const link = page.locator(SELECTORS.codeLinkByExactName(codeName)).first();
+  const count = await page.locator(SELECTORS.codeLinkByExactName(codeName)).count();
+  if (count === 0) {
+    throw new Error(`REUSE_CODE_NAME="${codeName}" に一致するコードが見つかりませんでした`);
+  }
+  const href = await link.getAttribute('href');
+  const match = (href || '').match(/security\/keys\/(\d+)(?:[/?#]|$)/);
+  if (!match) {
+    throw new Error(`REUSE_CODE_NAME="${codeName}" のリンクからkeyIdを取得できませんでした (href=${href})`);
+  }
+  const keyId = match[1];
+  const png = await downloadQrPng(context, memberId, keyId);
   return { keyId, png };
 }
 
@@ -167,7 +217,11 @@ try {
       await gotoSecurityKeys(page, id);
 
       // 既に有効な「固定メンバーコード用」がある(TARO手動発行済み) → 記録だけして送らない
-      const activeExistingCount = await page.locator(SELECTORS.activeExistingFixedCodeRow).count();
+      // FORCE_ISSUE=1 / REUSE_CODE_NAME (E2Eテスト時のみ・ONLY_MEMBER_ID必須) は
+      // 既存があっても新規発行/再利用に進む
+      const activeExistingCount = FORCE_ISSUE || REUSE_CODE_NAME
+        ? 0
+        : await page.locator(SELECTORS.activeExistingFixedCodeRow).count();
       if (activeExistingCount > 0) {
         const form = new FormData();
         form.set('hacomono_member_id', id);
@@ -178,7 +232,18 @@ try {
         continue;
       }
 
-      const { png } = await issueNewFixedCode(context, page, id);
+      const { png: rawPng } = REUSE_CODE_NAME
+        ? await reuseFixedCodeByName(context, page, id, REUSE_CODE_NAME)
+        : await issueNewFixedCode(context, page, id);
+
+      // QR画像に会員名を焼き込む(兄弟の取り違え防止)。合成に失敗しても元QRはそのまま送る
+      // (ラベルが無くてもQR自体は届く方が良い。品質レビュー指摘: PIIはログに出さない)
+      let png = rawPng;
+      try {
+        png = await composeQrWithName(context, rawPng, m['氏名'] || '');
+      } catch {
+        console.log(`member ${id}: qr label skipped`);
+      }
 
       const form = new FormData();
       form.set('hacomono_member_id', id);
