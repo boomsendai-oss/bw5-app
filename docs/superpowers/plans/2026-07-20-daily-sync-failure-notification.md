@@ -578,10 +578,16 @@ def wait_for_any_selector(page, candidates: list[str], label: str, timeout: int 
 
 こう置き換える。
 
-```python
+**⚠️ 2026-07-20 実測により破棄。`networkidle` は使ってはいけない。**
+Lstepの友だちリスト画面は常時接続を張っており `networkidle` が発火しない。
+適用すると毎回30秒待った末に必ず失敗する（実装中に検証して発覚・差し戻し済み）。
+`page.wait_for_timeout(3000)` はそのまま残し、描画待ちは Step 9 / Step 10 の
+`wait_for_any_selector()`（押す直前に可視を確認する）側で達成する。
+コードには再発防止の NOTE コメントを残すこと。
+
+~~```python
     page.goto(LSTEP_FRIEND_LIST_URL, wait_until="domcontentloaded", timeout=60_000)
-    # 「3秒待てば描画済みのはず」という決め打ちをやめ、body の描画完了を待つ
-    page.wait_for_load_state("networkidle", timeout=30_000)
+    page.wait_for_load_state("networkidle", timeout=30_000)~~
 
     # 最下部までスクロール (lazy-load 対策で2段階)
     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
