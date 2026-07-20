@@ -91,8 +91,14 @@ export async function GET(req: NextRequest) {
   const visited = rows.length - staff;
   // CVRの分母: 来店から「重複ノイズ」「判定中(最近30日)」を除いた確定母数
   const cvrBase = Math.max(1, visited - dupSuspect - recent);
-  const monthlyCvr = (monthly / cvrBase) * 100; // ★主KPI
-  const anyCvr = ((monthly + ticket) / cvrBase) * 100; // 参考(チケ込み)
+  // P5: 休会は「元・月額会員」= 体験→月額入会は成立済みで、その後お休みしているだけ。
+  // 現在のプラン名だけで判定すると分子から落ちて体験の成約力を過小評価する。
+  // (memory project_boom_funnel_kpi のベースライン51.3%も月額系=regular/college/休会 で算出)
+  // 現金収支のKPIではなく集客ファネルのKPIなので、入会済みとして分子に加算する。
+  const converted = monthly + kyukai;
+  const monthlyCvr = (converted / cvrBase) * 100; // ★主KPI
+  const monthlyCvrExclKyukai = (monthly / cvrBase) * 100; // 旧定義(休会を除外)
+  const anyCvr = ((converted + ticket) / cvrBase) * 100; // 参考(チケ込み)
 
   return NextResponse.json({
     ok: true,
@@ -102,8 +108,12 @@ export async function GET(req: NextRequest) {
     breakdown: { monthly, ticket, kyukai, no_plan: noPlanTotal },
     no_plan_detail: { dup_suspect: dupSuspect, recent, churned },
     cvr_base: cvrBase,
-    monthly_cvr: Number(monthlyCvr.toFixed(1)), // 体験→月額 (本命)
+    monthly_cvr: Number(monthlyCvr.toFixed(1)), // 体験→月額 (本命・休会込み)
     any_contract_cvr: Number(anyCvr.toFixed(1)), // 体験→何か契約 (参考・甘い)
+    // P5: 主KPIの定義を明示。休会=元月額会員として分子に計上している(TARO承認 2026-07-20)。
+    kyukai_counted_as_converted: true,
+    monthly_converted: converted, // monthly + kyukai (= monthly_cvr の分子)
+    monthly_cvr_excl_kyukai: Number(monthlyCvrExclKyukai.toFixed(1)), // 旧定義(比較用)
     // 重複疑い・離脱の実名リスト(クレンジング/幽霊整理用)
     dup_suspects: noPlan.filter((x) => x.kind === 'dup_suspect'),
     churned_list: noPlan.filter((x) => x.kind === 'churned'),

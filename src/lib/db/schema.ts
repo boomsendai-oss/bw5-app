@@ -42,6 +42,7 @@ export function getSchemaStatements(): InStatement[] {
       payment_method TEXT NOT NULL,
       status TEXT DEFAULT 'pending',
       square_payment_id TEXT DEFAULT '',
+      unit_price INTEGER,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (merch_id) REFERENCES merchandise(id)
     )`,

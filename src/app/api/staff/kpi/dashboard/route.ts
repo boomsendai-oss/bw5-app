@@ -33,6 +33,16 @@ export async function GET(req: NextRequest) {
   // 以前は20本超のクエリを逐次awaitしており、1本ごとのDB往復(Turso)が積み上がって
   // 毎回5秒超かかっていた。各クエリは互いに独立なので Promise.all で一括並列化する。
   // 計算(派生値)は取得後にまとめて行う。SQL・定義は従来と同一。
+  // P3: 給与・スタジオ料 runs の確定分/未確定(draft)分を1本のクエリで分けて取る。
+  // payroll_runs / studio_billing_runs は同じ status 遷移(draft→confirmed→paid)・同じ列構成。
+  const RUN_TOTAL_SQL = (table: string) =>
+    `SELECT
+       COALESCE(SUM(CASE WHEN status IN ('confirmed','paid') THEN total_amount END), 0) AS confirmed_total,
+       COALESCE(SUM(CASE WHEN status = 'draft' THEN total_amount END), 0) AS draft_total,
+       COALESCE(SUM(CASE WHEN status IN ('confirmed','paid') THEN 1 ELSE 0 END), 0) AS confirmed_cnt,
+       COALESCE(SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END), 0) AS draft_cnt
+     FROM ${table} WHERE year_month = ?`;
+
   const UTIL_EXPR =
     `CASE WHEN capacity IS NOT NULL AND capacity > 0
           THEN CAST(total_reservations AS REAL) / capacity
@@ -128,8 +138,12 @@ export async function GET(req: NextRequest) {
       [monthStart, monthEnd]
     ),
     safeOne(
-      `SELECT COALESCE(SUM(quantity * (SELECT price FROM merchandise WHERE id = mo.merch_id)), 0) AS total
-       FROM merch_orders mo WHERE created_at BETWEEN ? AND ?`,
+      // P4: 単価は注文時点に固定した unit_price を優先。未設定の過去行のみ現在価格へフォールバック
+      // (バックフィルは価格改定履歴のTARO確認後)。
+      `SELECT COALESCE(SUM(mo.quantity * COALESCE(mo.unit_price, m.price)), 0) AS total
+       FROM merch_orders mo
+       LEFT JOIN merchandise m ON m.id = mo.merch_id
+       WHERE mo.created_at BETWEEN ? AND ?`,
       [monthStart, monthEndISO]
     ),
     safeOne(`SELECT value FROM settings WHERE key = 'video_price'`),
@@ -150,8 +164,12 @@ export async function GET(req: NextRequest) {
     safeOne(`SELECT value FROM settings WHERE key = 'kpi_util_new_grace_months'`),
     getUtilizationRate(ym),
     // D: 収益性
-    safeOne(`SELECT COALESCE(SUM(total_amount), 0) AS t FROM payroll_runs WHERE year_month = ?`, [ym]),
-    safeOne(`SELECT COALESCE(SUM(total_amount), 0) AS t FROM studio_billing_runs WHERE year_month = ?`, [ym]),
+    // P3: 未確定(draft)のrunは「試しに計算しただけ」の仮値なので営業利益に混ぜない。
+    // ただし draft しか無い月を0円扱いにすると経費が丸ごと消えて大幅黒字に見え、
+    // 混入より危険なため「確定分があれば確定分／無ければdraft合計を暫定として返す」
+    // 2段フォールバックにする(確定/暫定の別は provisional フラグでフロントへ渡す)。
+    safeOne(RUN_TOTAL_SQL('payroll_runs'), [ym]),
+    safeOne(RUN_TOTAL_SQL('studio_billing_runs'), [ym]),
     // 給与・スタジオ料は別管理のため expenses 側の同カテゴリは除外(T-166 二重計上防止)
     safeAll(
       `SELECT category, COALESCE(SUM(amount), 0) AS t FROM expenses
@@ -268,8 +286,21 @@ export async function GET(req: NextRequest) {
   const bottomClasses = [...normalClasses].sort((a, b) => a.avg_rate - b.avg_rate).slice(0, 10);
 
   // ===== D: 収益性 (派生値) =====
-  const payrollTotal = n(payrollTotalRow?.t);
-  const studioTotal = n(studioTotalRow?.t);
+  // P3: 確定(confirmed/paid)があればそれを採用。無ければdraft合計を「暫定」として使う。
+  function runTotal(row: Row | null): { total: number; provisional: boolean } {
+    const confirmedCnt = n(row?.confirmed_cnt);
+    if (confirmedCnt > 0) return { total: n(row?.confirmed_total), provisional: false };
+    const draftCnt = n(row?.draft_cnt);
+    return { total: n(row?.draft_total), provisional: draftCnt > 0 };
+  }
+  const payroll = runTotal(payrollTotalRow);
+  const studio = runTotal(studioTotalRow);
+  const payrollTotal = payroll.total;
+  const studioTotal = studio.total;
+  const provisionalSources = [
+    ...(payroll.provisional ? ['給与'] : []),
+    ...(studio.provisional ? ['スタジオ料'] : []),
+  ];
   const expBreakdown = {
     広告費: 0, システム費: 0, 通信費: 0, 備品: 0, その他: 0,
   } as Record<string, number>;
@@ -376,6 +407,10 @@ export async function GET(req: NextRequest) {
       source_availability: sourceAvailability,
       missing_sources: missingSources,
       profit_confirmed: profitConfirmed,
+      // P3: 確定(confirmed/paid)のrunが無くdraftだけの財源。金額は暫定値。
+      payroll_provisional: payroll.provisional,
+      studio_provisional: studio.provisional,
+      provisional_sources: provisionalSources,
     },
     targets: targetMap,
     generated_at: new Date().toISOString(),

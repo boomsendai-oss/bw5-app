@@ -127,6 +127,10 @@ type DashboardData = {
     source_availability?: { revenue: boolean; payroll: boolean; studio: boolean; expenses: boolean };
     missing_sources?: string[];
     profit_confirmed?: boolean;
+    // P3: 確定(confirmed/paid)のrunが無く draft しか無い財源 = 金額は暫定値
+    payroll_provisional?: boolean;
+    studio_provisional?: boolean;
+    provisional_sources?: string[];
   };
   targets: Record<string, number>;
   generated_at: string;
@@ -141,6 +145,10 @@ type TrialFunnel = {
   cvr_base: number;
   monthly_cvr: number;
   any_contract_cvr: number;
+  // P5: 休会を入会済みとして分子に計上しているかの明示
+  kyukai_counted_as_converted?: boolean;
+  monthly_converted?: number;
+  monthly_cvr_excl_kyukai?: number;
   dup_suspects: { name: string; enrolled: string | null; last: string | null }[];
   churned_list: { name: string; enrolled: string | null; last: string | null }[];
 };
@@ -667,7 +675,11 @@ export default function InsightsPage() {
                     <KpiCard
                       label="体験→月額CVR ★"
                       value={pct(funnel.monthly_cvr)}
-                      sub={`月額${num(funnel.breakdown.monthly)}人 / 母数${num(funnel.cvr_base)}人`}
+                      sub={
+                        funnel.kyukai_counted_as_converted
+                          ? `月額${num(funnel.breakdown.monthly)}+休会${num(funnel.breakdown.kyukai)}人 / 母数${num(funnel.cvr_base)}人`
+                          : `月額${num(funnel.breakdown.monthly)}人 / 母数${num(funnel.cvr_base)}人`
+                      }
                       unit="%"
                       accent="orange"
                     />
@@ -690,6 +702,12 @@ export default function InsightsPage() {
                     ★本命KPI=体験→「月額会員」CVR。チケット込みの参考値は {pct(funnel.any_contract_cvr)}（月額0円で入りやすく甘く出る）。
                     母数は「来店」から重複ノイズ{num(funnel.no_plan_detail.dup_suspect)}人・最近30日登録{num(funnel.no_plan_detail.recent)}人(判定中)を除いた確定数。
                   </p>
+                  {funnel.kyukai_counted_as_converted && (
+                    <p className="mt-1 text-[10px] text-neutral-400">
+                      ※休会{num(funnel.breakdown.kyukai)}人は「元・月額会員(入会は成立済み・現在お休み中)」のため入会済みとして分子に計上しています。
+                      休会を除いた場合は {pct(funnel.monthly_cvr_excl_kyukai ?? 0)}。
+                    </p>
+                  )}
                   {funnel.dup_suspects.length > 0 && (
                     <div className="mt-2 rounded-lg border border-purple-200 bg-purple-50 p-2 text-[11px]">
                       <div className="font-semibold text-purple-700 mb-1">⚠️ 重複/誤登録の疑い {funnel.dup_suspects.length}件（HACOMONOで名寄せ推奨）</div>
@@ -876,6 +894,12 @@ export default function InsightsPage() {
                   ⚠️ この月は <b>{(data.profitability.missing_sources ?? []).join('・')}</b> のデータが未取込のため、営業利益は<b>確定値ではありません</b>（参考値）。全財源が揃うと黒字赤字を確定表示します。
                 </div>
               )}
+              {/* P3: 確定(confirmed/paid)のrunが無くdraftしか無い財源は暫定値であることを明示 */}
+              {(data.profitability.provisional_sources?.length ?? 0) > 0 && (
+                <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  ⚠️ <b>{data.profitability.provisional_sources!.join('・')}</b> はまだ確定していません（計算しただけの<b>暫定(draft)</b>の金額を表示中）。確定すると数字が変わる可能性があります。
+                </div>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3">
                 <KpiCard
                   label={data.profitability.profit_confirmed === false ? '営業利益(参考値)' : '営業利益'}
@@ -884,15 +908,15 @@ export default function InsightsPage() {
                   accent={data.profitability.profit_confirmed === false ? 'neutral' : (data.profitability.operating_profit >= 0 ? 'green' : 'red')}
                 />
                 <KpiCard
-                  label="給与"
+                  label={data.profitability.payroll_provisional ? '給与(暫定)' : '給与'}
                   value={yen(data.profitability.payroll)}
-                  sub="payroll_runs 集計"
+                  sub={data.profitability.payroll_provisional ? '未確定(draft)の計算値' : '確定分(confirmed/paid)'}
                   accent="red"
                 />
                 <KpiCard
-                  label="スタジオ料"
+                  label={data.profitability.studio_provisional ? 'スタジオ料(暫定)' : 'スタジオ料'}
                   value={yen(data.profitability.studio)}
-                  sub="studio_billing_runs 集計"
+                  sub={data.profitability.studio_provisional ? '未確定(draft)の計算値' : '確定分(confirmed/paid)'}
                   accent="red"
                 />
                 <KpiCard
