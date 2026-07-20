@@ -1,0 +1,26 @@
+# HACOMONOクラウドログイン疎通テスト (WS U)
+# workflow_dispatchのみ・読み取り専用操作のみ(ログイン+ML001 CSVエクスポートAPIのGET)
+name: fixed-qr-login-test
+on:
+  workflow_dispatch:
+concurrency:
+  group: fixed-qr
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install deps
+        working-directory: scripts/fixed_qr
+        run: npm install && npx playwright install --with-deps chromium
+      - name: Login test
+        working-directory: scripts/fixed_qr
+        env:
+          HACOMONO_USERNAME: ${{ secrets.HACOMONO_USERNAME }}
+          HACOMONO_PASSWORD: ${{ secrets.HACOMONO_PASSWORD }}
+        run: node login_test.mjs

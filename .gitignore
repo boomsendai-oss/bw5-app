@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+scripts/fixed_qr/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
