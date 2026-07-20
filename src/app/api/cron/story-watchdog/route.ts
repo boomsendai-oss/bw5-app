@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAll } from '@/lib/db';
+import { getAll, getOne } from '@/lib/db';
 import { todayJst, weekdayJst } from '@/lib/dateJst';
 import { configured, connectionStatus, refreshTokenIfStale } from '@/lib/instagram';
 import { findChainMediaList, loadSidecar, checkSchedule } from '@/lib/storyPlan';
 import { notifyTaro } from '@/lib/notify';
+import { evaluateSyncFreshness } from '@/lib/syncWatchdog';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -237,6 +238,25 @@ export async function GET(req: NextRequest) {
     );
   } catch (e) {
     console.warn(`リール監視に失敗(ストーリー側は継続): ${e instanceof Error ? e.message : e}`);
+  }
+
+  // (2c) 日次同期(daily_sync.py)のデッドマンスイッチ。
+  // 別の故障ドメイン(事務所Mac)の停止を、こちら(Vercel)から見張る。
+  // 「失敗した」通知は sync-health API 側が出すので、ここが拾うのは
+  // *そもそも起動しなかった* ケース(スリープ・cron停止)。
+  try {
+    const lastOk = await getOne(
+      "SELECT ran_at FROM sync_runs WHERE status='ok' ORDER BY id DESC LIMIT 1"
+    );
+    const freshness = evaluateSyncFreshness(
+      (lastOk as { ran_at?: string } | null)?.ran_at ?? null,
+      new Date()
+    );
+    if (freshness.stale && freshness.message) {
+      anomalies.push(freshness.message);
+    }
+  } catch (e) {
+    console.warn(`同期鮮度チェックに失敗(ストーリー側は継続): ${e instanceof Error ? e.message : e}`);
   }
 
   // (3) 通知
