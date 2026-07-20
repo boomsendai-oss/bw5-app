@@ -42,6 +42,7 @@ export function getSchemaStatements(): InStatement[] {
       payment_method TEXT NOT NULL,
       status TEXT DEFAULT 'pending',
       square_payment_id TEXT DEFAULT '',
+      unit_price INTEGER,
       created_at TEXT DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (merch_id) REFERENCES merchandise(id)
     )`,
@@ -672,6 +673,13 @@ export function getSchemaStatements(): InStatement[] {
       expires_at TEXT NOT NULL
     )`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_admin_sess_token ON admin_sessions(token)`, args: [] },
+
+    // PR-5: レート制限の固定窓カウンタ (本番は台帳 20260720_rate_limits.sql で作成済み)
+    { sql: `CREATE TABLE IF NOT EXISTS rate_limits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 0,
+      window_start TEXT NOT NULL
+    )`, args: [] },
 
     { sql: `CREATE TABLE IF NOT EXISTS instructor_pin_resets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   Calendar, ShoppingBag, Music, Video, Vote, Share2, Package, Settings,
-  Lock, Eye, EyeOff, LogOut, X
+  LogOut, X
 } from 'lucide-react';
 
 const TABS = [
@@ -19,72 +19,27 @@ const TABS = [
   { id: 'settings', label: '設定', icon: Settings, href: '/admin/settings' },
 ];
 
+/**
+ * M24: 認証を eventAuth のセッションCookieへ統合。
+ *
+ * 旧実装は sessionStorage('bw5_admin') を見るだけのクライアント側フラグで、
+ * DevToolsで1行セットすれば管理画面が開けた(=実質ノーガード)。現在は proxy.ts の
+ * matcher に /admin・/api/admin を入れてサーバ側で弾き、未ログインは
+ * /staff/events/login へリダイレクトされる。したがってこのコンポーネントに
+ * ログイン画面は不要(ここに描画が到達している時点で認証済み)。
+ */
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
-  const [authed, setAuthed] = useState(false);
-  const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [showPw, setShowPw] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
 
-  // Check sessionStorage on mount
-  useEffect(() => {
-    if (typeof window !== 'undefined' && sessionStorage.getItem('bw5_admin') === '1') {
-      setAuthed(true);
-    }
-  }, []);
-
-  const handleLogin = useCallback(async () => {
-    setAuthError('');
-    const res = await fetch('/api/admin/auth', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      sessionStorage.setItem('bw5_admin', '1');
-      setAuthed(true);
-    } else {
-      setAuthError('パスワードが正しくありません');
-    }
-  }, [password]);
-
-  const handleLogout = useCallback(() => {
-    sessionStorage.removeItem('bw5_admin');
-    setAuthed(false);
-    setPassword('');
+  const handleLogout = useCallback(async () => {
+    // セッションCookieはhttpOnlyなのでサーバ側で失効させる(DBのadmin_sessionsからも削除)
+    await fetch('/api/staff/events/login', { method: 'DELETE' }).catch(() => {});
+    window.location.href = '/staff/events/login?next=/admin';
   }, []);
 
   // Determine active tab from pathname
   const activeTabId = TABS.find(t => pathname.startsWith(t.href))?.id || '';
-
-  // ── Login Screen ──────────────────────────────────────────────────
-  if (!authed) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'var(--bg-primary)' }}>
-        <div className="card p-8 w-full max-w-sm">
-          <h1 className="text-2xl font-bold gradient-text text-center mb-6">BOOM WOP vol.5</h1>
-          <p className="text-center mb-6" style={{ color: 'var(--text-secondary)' }}>管理画面</p>
-          <div className="relative mb-4">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-muted)' }} />
-            <input
-              type={showPw ? 'text' : 'password'}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              placeholder="パスワード"
-              className="admin-input pl-10 pr-10"
-            />
-            <button onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}>
-              {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-          {authError && <p className="text-sm mb-4" style={{ color: 'var(--accent-primary)' }}>{authError}</p>}
-          <button onClick={handleLogin} className="btn-primary w-full text-center">ログイン</button>
-        </div>
-      </div>
-    );
-  }
 
   // ── Dashboard ─────────────────────────────────────────────────────
   return (

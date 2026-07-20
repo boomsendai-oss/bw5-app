@@ -96,8 +96,9 @@ export async function POST(req: NextRequest) {
       args: [merch_id],
     });
     ops.push({
-      sql: `INSERT INTO merch_orders (merch_id, variant_id, color, size, buyer_name, email, payment_method, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      // P4: 集計が「現在の価格」で過去売上を再計算しないよう、注文時点の単価を固定保存する
+      sql: `INSERT INTO merch_orders (merch_id, variant_id, color, size, buyer_name, email, payment_method, status, unit_price)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         merch_id,
         effectiveVariantId,
@@ -107,6 +108,7 @@ export async function POST(req: NextRequest) {
         email,
         payment_method,
         status,
+        Number(item.price ?? 0),
       ],
     });
     const results = await batch(ops, 'write');

@@ -61,14 +61,21 @@ export function getRedirectUri(origin: string): string {
   return `${origin.replace(/\/$/, '')}/api/staff/instagram/callback`;
 }
 
-/** 連携(同意)用URLを生成 */
-export function buildConsentUrl(origin: string): string {
+/**
+ * 連携(同意)用URLを生成。
+ *
+ * M20(横展開): Googleカレンダー連携と同一のCSRF対策。stateはコールバック側で
+ * httpOnly cookieと照合する。Instagram連携は監査(2026-07-06)より後に追加されたため
+ * 設計書のM20には載っていないが、欠陥は完全に同型なので同時に塞ぐ。
+ */
+export function buildConsentUrl(origin: string, state?: string): string {
   const { appId } = requireEnv();
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: getRedirectUri(origin),
     response_type: 'code',
     scope: SCOPES.join(','),
+    ...(state ? { state } : {}),
   });
   return `https://www.instagram.com/oauth/authorize?${params.toString()}`;
 }
@@ -303,6 +310,57 @@ export async function publishStoryVideo(videoUrl: string, mentions?: string[]): 
 
 export async function publishStoryImage(imageUrl: string, mentions?: string[]): Promise<PublishStoryResult> {
   return publishStory(imageUrl, 'image', mentions);
+}
+
+export type MediaInsights = {
+  reach?: number;
+  views?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  saved?: number;
+  replies?: number;
+  total_interactions?: number;
+  raw: string;
+};
+
+// メトリクス名はAPIバージョンで変わる(plays→views 等)ため候補セットを順に試し、
+// 最初に通ったものを採用する。全滅= 投稿直後で未集計 or 権限不足 → null。
+// 2026-07-20 実測: リールは1本目、ストーリーは2本目のセットが通る。
+const INSIGHT_METRIC_SETS: Record<'reel' | 'story', string[]> = {
+  reel: [
+    'reach,views,likes,comments,shares,saved,total_interactions',
+    'reach,plays,likes,comments,shares,saved',
+    'reach',
+  ],
+  story: ['reach,replies,total_interactions', 'reach,replies', 'reach'],
+};
+
+/** 投稿1件のインサイトを取得(読み取りのみ)。scope=instagram_business_manage_insights が必要。 */
+export async function fetchMediaInsights(mediaId: string, kind: 'reel' | 'story'): Promise<MediaInsights | null> {
+  const { token } = await requireConnection();
+  for (const metric of INSIGHT_METRIC_SETS[kind]) {
+    const res = await fetch(
+      `${GRAPH}/${GRAPH_VERSION}/${mediaId}/insights?metric=${metric}&access_token=${token}`
+    );
+    const json = await res.json();
+    if (json.error) continue;
+    const data: Array<{ name?: string; values?: Array<{ value?: unknown }> }> = json.data ?? [];
+    const out: MediaInsights = { raw: JSON.stringify(data) };
+    for (const d of data) {
+      const v = d.values?.[0]?.value;
+      if (typeof v !== 'number' || !d.name) continue;
+      const key = d.name === 'plays' ? 'views' : d.name;
+      if (
+        key === 'reach' || key === 'views' || key === 'likes' || key === 'comments' ||
+        key === 'shares' || key === 'saved' || key === 'replies' || key === 'total_interactions'
+      ) {
+        out[key] = v;
+      }
+    }
+    return out;
+  }
+  return null;
 }
 
 /**

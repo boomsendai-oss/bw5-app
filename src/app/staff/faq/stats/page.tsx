@@ -19,17 +19,27 @@ const PERIODS = [
   { key: 'all', label: '全期間' },
 ] as const;
 
+// 実ユーザー(保護者・インストラクターのベータ利用)とClaudeの品質テストを分けて見るための切替。
+// 判定はボット側: 実UIはcrypto.randomUUID()のsessionIdを発行し、テストスクリプトは任意文字列を使うため
+// 「UUID形式でない=テスト」で自動的にis_testが立つ。
+const AUDIENCES = [
+  { key: 'real', label: '👥 実ユーザー' },
+  { key: 'test', label: '🧪 テスト' },
+  { key: 'all', label: 'すべて' },
+] as const;
+
 export default function FaqStatsPage() {
   const [period, setPeriod] = useState<string>('30');
+  const [audience, setAudience] = useState<string>('real');
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async (p: string) => {
+  const load = useCallback(async (p: string, a: string) => {
     setLoading(true);
     setError('');
     try {
-      const r = await fetch(`/api/staff/faq/stats?period=${p}`, { cache: 'no-store' });
+      const r = await fetch(`/api/staff/faq/stats?period=${p}&audience=${a}`, { cache: 'no-store' });
       if (!r.ok) {
         const e = (await r.json().catch(() => ({}))) as { error?: string };
         throw new Error(e.error || `HTTP ${r.status}`);
@@ -44,8 +54,8 @@ export default function FaqStatsPage() {
   }, []);
 
   useEffect(() => {
-    void load(period);
-  }, [load, period]);
+    void load(period, audience);
+  }, [load, period, audience]);
 
   const maxCat = Math.max(1, ...(stats?.byCategory ?? []).map((r) => Number(r.n) || 0));
 
@@ -58,7 +68,7 @@ export default function FaqStatsPage() {
         backLabel="FAQ管理へ"
       />
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {PERIODS.map((p) => (
           <button
             key={p.key}
@@ -70,7 +80,22 @@ export default function FaqStatsPage() {
             {p.label}
           </button>
         ))}
+        <span className="mx-1 h-5 w-px bg-sand-300" aria-hidden />
+        {AUDIENCES.map((a) => (
+          <button
+            key={a.key}
+            onClick={() => setAudience(a.key)}
+            className={`rounded-full px-4 py-1.5 text-sm border ${
+              audience === a.key ? 'bg-brand-600 text-white' : 'bg-white text-slate-700'
+            }`}
+          >
+            {a.label}
+          </button>
+        ))}
       </div>
+      <p className="-mt-4 text-xs text-slate-400">
+        「実ユーザー」は保護者・インストラクターのベータ利用分。「テスト」はClaudeの品質テスト投入分（自動判定）
+      </p>
 
       {loading && <p className="text-sm text-slate-500">読み込み中…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -118,15 +143,35 @@ export default function FaqStatsPage() {
           </section>
 
           <section className="rounded-lg border bg-white p-4">
-            <h2 className="mb-1 font-bold">最近の質問(最新50件・匿名)</h2>
+            <h2 className="mb-1 font-bold">最近のやりとり(最新50件・匿名)</h2>
             <p className="mb-3 text-xs text-slate-400">
-              よく聞かれて答えられていないものはFAQ管理へ追加を。個人情報を見つけたらPMへ削除依頼
+              質問とボットの回答をセットで表示。回答が的外れ/事実と違うものはFAQ管理へ追加・修正を。個人情報を見つけたらPMへ削除依頼
             </p>
-            <ul className="space-y-2 text-sm">
+            <ul className="space-y-3 text-sm">
               {stats.recent.map((r, i) => (
-                <li key={i} className="border-b pb-1.5">
-                  <span className="mr-2 text-xs text-slate-400 tabular-nums">{String(r.at)}</span>
-                  {String(r.content)}
+                <li key={i} className="border-b pb-2.5">
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-xs text-slate-400 tabular-nums">{String(r.at)}</span>
+                    {r.category ? (
+                      <span className="rounded bg-sand-100 px-1.5 py-0.5 text-[10px] text-navy-700">
+                        {String(r.category)}
+                      </span>
+                    ) : null}
+                  </div>
+                  {/* 質問 */}
+                  <div className="flex gap-1.5">
+                    <span className="shrink-0 font-bold text-navy-700">Q.</span>
+                    <span className="whitespace-pre-wrap">{String(r.content)}</span>
+                  </div>
+                  {/* 回答(カード/分類タグは表示用に除去)。未取得＝回答前に離脱した等 */}
+                  <div className="mt-1 flex gap-1.5 text-slate-600">
+                    <span className="shrink-0 font-bold text-brand-600">A.</span>
+                    <span className="whitespace-pre-wrap">
+                      {r.answer
+                        ? String(r.answer).replace(/\[\[(card|cat):[^\]]*\]\]/g, '').trim()
+                        : '(回答なし)'}
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>

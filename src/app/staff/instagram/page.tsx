@@ -47,6 +47,21 @@ type Plan = {
   items: PlanItem[];
 };
 
+type InsightRow = {
+  media_id: string;
+  kind: 'reel' | 'story' | string;
+  title: string | null;
+  posted_at: string | null;
+  collected_date: string;
+  reach: number | null;
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  saved: number | null;
+  total_interactions: number | null;
+};
+
 /** mentions_applied/failed は JSON文字列(配列)で保存されている。安全にパースして配列を返す。 */
 function parseHandles(raw: string | null | undefined): string[] {
   if (!raw) return [];
@@ -133,6 +148,7 @@ type StatusResp = {
   logs: LogRow[];
   queue: QueueRow[];
   plans?: Plan[];
+  insights?: InsightRow[];
 };
 
 type ReelRow = {
@@ -449,6 +465,56 @@ export default function InstagramStoryPage() {
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {data && (
+          <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
+            <h2 className="font-bold text-navy-800 mb-1">投稿パフォーマンス</h2>
+            <p className="text-xs text-neutral-400 mb-3">
+              毎日自動で取得（リールは投稿後30日・ストーリーは3日）。伸びる型を見極めて投稿計画の判断材料にします
+            </p>
+            {!data.insights || data.insights.length === 0 ? (
+              <p className="text-sm text-neutral-400">まだデータがありません（明朝4時の自動収集後に表示されます）</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm whitespace-nowrap">
+                  <thead>
+                    <tr className="text-xs text-neutral-500 border-b border-sand-200">
+                      <th className="text-left py-1 pr-3">投稿</th>
+                      <th className="text-right py-1 px-2">リーチ</th>
+                      <th className="text-right py-1 px-2">再生</th>
+                      <th className="text-right py-1 px-2">いいね</th>
+                      <th className="text-right py-1 px-2">保存</th>
+                      <th className="text-right py-1 px-2">シェア</th>
+                      <th className="text-right py-1 pl-2">反応計</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.insights.map((r) => (
+                      <tr key={r.media_id} className="border-t border-sand-100">
+                        <td className="py-2 pr-3">
+                          <span
+                            className={`mr-2 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                              r.kind === 'reel' ? 'bg-brand-100 text-brand-700' : 'bg-sand-100 text-neutral-600'
+                            }`}
+                          >
+                            {r.kind === 'reel' ? 'リール' : 'ストーリー'}
+                          </span>
+                          <span className="text-neutral-700">{r.title ?? r.media_id}</span>
+                        </td>
+                        <td className="text-right px-2 font-semibold text-navy-800">{r.reach ?? '—'}</td>
+                        <td className="text-right px-2">{r.views ?? '—'}</td>
+                        <td className="text-right px-2">{r.likes ?? '—'}</td>
+                        <td className="text-right px-2">{r.saved ?? '—'}</td>
+                        <td className="text-right px-2">{r.shares ?? '—'}</td>
+                        <td className="text-right pl-2">{r.total_interactions ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

@@ -36,16 +36,27 @@ export function getRedirectUri(origin: string): string {
   return `${origin.replace(/\/$/, '')}/api/staff/google/calendar-callback`;
 }
 
-/** 連携(同意)用URLを生成 */
-export function buildConsentUrl(origin: string): string {
+/**
+ * 連携(同意)用URLを生成。
+ *
+ * M20: CSRF対策の `state` を必須にする。コールバックは Google がリダイレクトで叩くため
+ * 認証をかけられず、旧実装は誰でも `?code=...` を投げ込めた。攻撃者が自分のGoogleアカウントで
+ * 取得したcodeをTAROに踏ませると、BOOMの連携先が攻撃者のカレンダーにすり替わる。
+ * 発行元でランダムなstateをhttpOnly cookieに保存し、コールバックで一致を検証する。
+ */
+export function buildConsentUrl(origin: string, state?: string): string {
   const { clientId, clientSecret } = getEnv();
   const oauth2 = new google.auth.OAuth2(clientId, clientSecret, getRedirectUri(origin));
   return oauth2.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent', // refresh_token を確実に発行させる
     scope: SCOPES,
+    ...(state ? { state } : {}),
   });
 }
+
+/** M20: OAuth stateを載せるcookie名(google/instagram で共用) */
+export const OAUTH_STATE_COOKIE = 'boom_oauth_state';
 
 /** 同意後のcodeをrefresh_tokenに交換してsettingsに保存 */
 export async function exchangeAndStoreToken(code: string, origin: string): Promise<void> {

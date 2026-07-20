@@ -192,12 +192,20 @@ export default function FaqAdminPage() {
         title="FAQ管理"
         description="AIチャット(BOOMに質問)とHPに公開するよくある質問。公開ONの項目だけが外に出ます（反映まで最大20分ほど）"
         rightExtra={
-          <a
-            href="/staff/faq/stats"
-            className="rounded-lg border border-sand-200 bg-white px-3 py-1.5 text-sm text-navy-800 hover:bg-sand-50"
-          >
-            📊 質問ログ集計
-          </a>
+          <div className="flex gap-2">
+            <a
+              href="/staff/faq/reports"
+              className="rounded-lg border border-sand-200 bg-white px-3 py-1.5 text-sm text-navy-800 hover:bg-sand-50"
+            >
+              🔧 エラー報告
+            </a>
+            <a
+              href="/staff/faq/stats"
+              className="rounded-lg border border-sand-200 bg-white px-3 py-1.5 text-sm text-navy-800 hover:bg-sand-50"
+            >
+              📊 質問ログ集計
+            </a>
+          </div>
         }
       />
 

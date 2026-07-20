@@ -36,9 +36,11 @@ export type InstructorRow = {
   genre: string | null;
   active: number | bigint;
   slug: string | null;
-  profile_text: string | null;
-  career_text: string | null;
-  crews: string | null;
+  // 本番SELECTでは常に返るが、古い/部分的な行(テストfixture・旧スナップショット)も受けられるようoptional。
+  // 未指定はnz()がnullへ正規化するため実行時挙動は同じ。
+  profile_text?: string | null;
+  career_text?: string | null;
+  crews?: string | null;
 };
 
 // boom-hp/src/lib/classes.ts と同一の公開条件(active=1 AND is_public=1)で絞り込むための列のみ。
@@ -55,8 +57,9 @@ export type ClassRow = {
   studio_name: string | null;
   active: number | bigint;
   is_public: number | bigint;
-  target: string | null;
-  description_text: string | null;
+  // InstructorRow同様、未指定を許容(nz()でnull正規化)。
+  target?: string | null;
+  description_text?: string | null;
 };
 
 type Rows = {

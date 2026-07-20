@@ -15,6 +15,8 @@ export async function runMigrations(c: Client): Promise<void> {
   await addColumnIfMissing(c, 'instructors', 'pin_set_at', 'TEXT');
   await addColumnIfMissing(c, 'instructors', 'payslip_folder_url', 'TEXT');
   await addColumnIfMissing(c, 'instructors', 'bank_code', 'TEXT');
+  // P4: 注文時点の単価(本番は台帳 20260720_merch_orders_unit_price.sql で適用済み)
+  await addColumnIfMissing(c, 'merch_orders', 'unit_price', 'INTEGER');
   await addColumnIfMissing(c, 'recurring_expenses', 'match_pattern', 'TEXT');
   await addColumnIfMissing(c, 'recurring_expenses', 'budget_amount', 'INTEGER DEFAULT 0');
   await addColumnIfMissing(c, 'instructors', 'bank_branch_code', 'TEXT');

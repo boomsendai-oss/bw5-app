@@ -1,0 +1,8 @@
+{
+  "name": "fixed-qr-automation",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
