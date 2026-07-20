@@ -19,7 +19,27 @@
 | Task 1〜4 | **BOOM_Master_template** | `/Users/kimurashintarou/BOOM/BOOM_Master_template/05_運営/scripts/auto_sync/daily_sync.py` |
 | Task 5〜8 | **bw5-app** (このworktree) | `/Users/kimurashintarou/BOOM/BW5_2026/bw5-app/.claude/worktrees/gifted-bartik-86c82a/` |
 
-**commitは各リポジトリで別々に行う。** bw5-app側は main へ push すると Vercel が自動デプロイするため、**push は TARO の承認後**（Task 9）。
+### ⚠️ `BOOM_Master_template` は git リポジトリではない
+
+`daily_sync.py` は**バージョン管理されていない**。`git add` / `git commit` は使えない（`fatal: not a git repository`）。
+`daily_sync.py.bak_20260610` が存在するのは、過去に手動バックアップを取った痕跡。
+
+**`git init` はしない。** 同ディレクトリには `.env` / `lstep_state.json`（認証情報）と
+`data/raw/`（個人情報・gitignore前提）があり、リポジトリ化は情報漏洩事故のリスクがある。
+CLAUDE.md 規約8（個人情報の取扱）に照らしても、独断でやるべき変更ではない。
+
+**代わりに既存の `.bak_` 方式に従う:** 各タスクの着手前に必ずタイムスタンプ付きバックアップを取り、
+「commit」の代わりに「バックアップ＋動作確認」をチェックポイントにする。
+
+```bash
+cd /Users/kimurashintarou/BOOM/BOOM_Master_template/05_運営/scripts/auto_sync
+cp -p daily_sync.py "daily_sync.py.bak_$(date +%Y%m%d_%H%M%S)"
+```
+
+ロールバックが必要になったら、該当バックアップを `daily_sync.py` に戻す。
+
+**bw5-app 側（Task 5〜8）は通常通り git commit する。** main へ push すると Vercel が自動デプロイするため、
+**push は TARO の承認後**（Task 9）。
 
 ## スキーマ変更なし
 
@@ -56,15 +76,18 @@ route.ts に直書きするとテストできない。
 他の5ソース（billing / all_members / reservations / rs002 / lstep_trial）は既に個別 `try` で継続する作りになっている。
 つまり**この2箇所を閉じ込め、`post_to_sync_api` の呼び出しを条件付きにするだけ**で部分成功化が成立する。
 
-- [ ] **Step 1: 作業前に現状の挙動を記録**
+- [ ] **Step 1: バックアップを取り、現状の構文が通ることを確認**
+
+git が無いので、これが唯一のロールバック手段。**必ず先にやること。**
 
 Run:
 ```bash
 cd /Users/kimurashintarou/BOOM/BOOM_Master_template/05_運営/scripts/auto_sync
-git status --short
-python3 -c "import ast,sys; ast.parse(open('daily_sync.py',encoding='utf-8').read()); print('構文OK')"
+cp -p daily_sync.py "daily_sync.py.bak_$(date +%Y%m%d_%H%M%S)"
+ls -la daily_sync.py.bak_* | tail -2
+python3 -c "import ast; ast.parse(open('daily_sync.py',encoding='utf-8').read()); print('構文OK')"
 ```
-Expected: `構文OK` と出る。git status に daily_sync.py の変更が無いこと。
+Expected: 新しいバックアップファイルが1つ増えている / `構文OK`
 
 - [ ] **Step 2: 失敗ソース記録用の変数を run() の冒頭に追加**
 
@@ -270,20 +293,19 @@ Expected:
 
 うまくいかない場合は `logs/` の当日ログ全文を読んでから直す。
 
-- [ ] **Step 11: commit**
+- [ ] **Step 11: チェックポイント（git commit の代わり）**
+
+git が無いので、動作確認済みの状態をバックアップとして固定する。
 
 ```bash
 cd /Users/kimurashintarou/BOOM/BOOM_Master_template/05_運営/scripts/auto_sync
-git add daily_sync.py
-git commit -m "daily_sync: DL失敗をソース単位に閉じ込めて部分成功化
-
-Lstep1つの失敗でHACOMONO由来の取込まで全滅していた(7/19に/staff/trialsが
-丸一日停止)。DL段の例外をソース別に閉じ込め、取得できた分はimportする。
-会員突合(post_to_sync_api)は誤退会防止のため3CSV揃った時のみ実行。
-1つでも落ちたら最終ステータスをerrorにして通知を鳴らす。
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+cp -p daily_sync.py "daily_sync.py.ok_task1_$(date +%Y%m%d_%H%M%S)"
 ```
+
+変更内容の記録（あとで Task 9 Step 7 の STATE.md 更新に使う）:
+> DL失敗をソース単位に閉じ込めて部分成功化。Lstep1つの失敗でHACOMONO由来の取込まで
+> 全滅していた（7/19に `/staff/trials` が丸一日停止）。会員突合は誤退会防止のため
+> 3CSV揃った時のみ実行。1つでも落ちたら最終ステータスを error にして通知を鳴らす。
 
 ---
 
@@ -484,18 +506,19 @@ python3 -m unittest test_daily_sync -v 2>&1 | tail -20
 ```
 Expected: `Ran 5 tests` / `OK`
 
-- [ ] **Step 6: commit**
+- [ ] **Step 6: チェックポイント（git commit の代わり）**
 
 ```bash
 cd /Users/kimurashintarou/BOOM/BOOM_Master_template/05_運営/scripts/auto_sync
-git add daily_sync.py test_daily_sync.py
-git commit -m "daily_sync: リトライ制御 with_retry() を追加 (unittest 5件)
-
-失敗は8秒 or 永久待ちの二値なので、待ち時間延長ではなく状態を作り直して
-押し直す方が効く。on_retryフックで再読込・再ログインを差し込めるようにした。
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+cp -p daily_sync.py "daily_sync.py.ok_task2_$(date +%Y%m%d_%H%M%S)"
 ```
+
+変更内容の記録:
+> リトライ制御 `with_retry()` を追加（unittest 5件）。失敗は8秒 or 永久待ちの二値なので、
+> 待ち時間延長ではなく状態を作り直して押し直す方が効く。`on_retry` フックで
+> 再読込・再ログインを差し込めるようにした。
+
+**注意:** `test_daily_sync.py` は新規ファイルなのでバックアップ対象外だが、消さないこと。
 
 ---
 
@@ -644,19 +667,17 @@ Expected: `Lstep 友だちCSV DL完了` が出る。
 **1回成功しただけでは競合状態が直った証明にはならない**（元々73%は成功していた）。
 効果判定は Task 9 Step 8 の1週間後の失敗率で行う。ここで見るのは「壊していないこと」。
 
-- [ ] **Step 7: commit**
+- [ ] **Step 7: チェックポイント（git commit の代わり）**
 
 ```bash
 cd /Users/kimurashintarou/BOOM/BOOM_Master_template/05_運営/scripts/auto_sync
-git add daily_sync.py
-git commit -m "daily_sync: Lstep操作の固定スリープを条件待ちに置換
-
-失敗36回中13回は「CSVエクスポートボタンが見つからない」= wait_for_timeout で
-決め打ちして押しにいって空振りしていた。押す直前に可視を確認する
-wait_for_any_selector を挟み、競合状態を解消する。
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+cp -p daily_sync.py "daily_sync.py.ok_task3_$(date +%Y%m%d_%H%M%S)"
 ```
+
+変更内容の記録:
+> Lstep操作の固定スリープを条件待ちに置換。失敗36回中13回は「CSVエクスポートボタンが
+> 見つからない」＝ `wait_for_timeout` で決め打ちして押しにいって空振りしていた。
+> 押す直前に可視を確認する `wait_for_any_selector` を挟み、競合状態を解消する。
 
 ---
 
@@ -781,18 +802,17 @@ Lstep友だちリストCSV: 3回すべて失敗
 Lstep友だちリストCSV DL 失敗 (継続): ...
 ```
 
-- [ ] **Step 8: commit**
+- [ ] **Step 8: チェックポイント（git commit の代わり）**
 
 ```bash
 cd /Users/kimurashintarou/BOOM/BOOM_Master_template/05_運営/scripts/auto_sync
-git add daily_sync.py
-git commit -m "daily_sync: HACOMONO/Lstepの主要DLを3回リトライにする
-
-エクスポート待ちを3分→45秒に短縮し、同じ時間予算で3回チャンスを作る。
-リトライで救えた回は sync_runs.message に残して黙って直さない。
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+cp -p daily_sync.py "daily_sync.py.ok_task4_$(date +%Y%m%d_%H%M%S)"
 ```
+
+変更内容の記録:
+> HACOMONO/Lstepの主要DLを3回リトライにする。エクスポート待ちを3分→45秒に短縮し、
+> 同じ時間予算で3回チャンスを作る。リトライで救えた回は `sync_runs.message` に残して
+> 黙って直さない。
 
 ---
 
@@ -1269,12 +1289,22 @@ Expected: tsc OK / vitest 全緑 / unittest OK / dry-run が最後まで到達
 
 承認が得られるまで**push しない**。
 
-- [ ] **Step 3: 承認後 — daily_sync.py 側を push**
+- [ ] **Step 3: 承認後 — daily_sync.py 側は push 不要（git管理外）**
 
+`BOOM_Master_template` は git リポジトリではないため push は存在しない。
+ディスク上の `daily_sync.py` がそのまま本番であり、**Task 1〜4 の編集時点で既に本番に反映されている**。
+
+つまり cron の次回起動（00:00 / 06:00 / 12:00 / 18:00 JST）から新しい挙動になる。
+Task 1〜4 の各ステップで構文チェックと dry-run を必ず通しているのはこのため。
+
+作業後の掃除:
 ```bash
-cd /Users/kimurashintarou/BOOM/BOOM_Master_template
-git push
+cd /Users/kimurashintarou/BOOM/BOOM_Master_template/05_運営/scripts/auto_sync
+ls -la daily_sync.py.bak_* daily_sync.py.ok_task*
 ```
+**中間チェックポイント（`.ok_task1`〜`.ok_task3`）は消してよいが、
+着手前バックアップ（`.bak_<今日の日付>`）は最低1週間は残すこと。**
+効果測定（Step 8）で問題が出たら、これが唯一のロールバック手段になる。
 
 - [ ] **Step 4: 承認後 — bw5-app を main へ merge して push**
 
