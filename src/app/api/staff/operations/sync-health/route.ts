@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { notifyTaro } from '@/lib/notify';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
 
   // 失敗は staff_notifications にも (同日重複は抑止)
   if (status === 'error') {
-    await execute(
+    const inserted = await execute(
       `INSERT INTO staff_notifications (type, title, detail, severity)
        SELECT 'sync_failure', '⚠️ 自動同期が失敗しました', ?, 'error'
        WHERE NOT EXISTS (
@@ -30,6 +31,24 @@ export async function POST(req: NextRequest) {
        )`,
       [message ?? '詳細は事務所Macの auto_sync/logs を確認']
     );
+
+    // アプリ内通知が実際に入った時だけプッシュする。
+    // 12h抑止をそのまま流用するので、1日4回失敗してもメールは12hに1通に収まる。
+    // 通知の失敗で同期本体を巻き込まないよう、必ず握りつぶす。
+    if (inserted.rowsAffected > 0) {
+      try {
+        await notifyTaro({
+          subjectPrefix: '[BOOM 同期]',
+          subject: '日次同期が失敗しました',
+          body:
+            `${message ?? '詳細不明'}\n\n` +
+            `確認先: ${process.env.NEXT_PUBLIC_BASE_URL ?? 'https://bw5-app.vercel.app'}/staff/notifications\n` +
+            `ログ: 事務所Mac の auto_sync/logs/`,
+        });
+      } catch (e) {
+        console.error(`同期失敗のプッシュ通知に失敗: ${e instanceof Error ? e.message : e}`);
+      }
+    }
   }
   // storageState の鮮度警告 (20日超・1日1回まで)
   if (age !== null && age >= 20) {
