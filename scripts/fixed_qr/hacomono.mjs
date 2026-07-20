@@ -55,7 +55,8 @@ export async function downloadMl001Csv(context) {
 }
 
 // アンケート([ENQUETE0005]「固定QRコード発行」等)の回答一覧を取得する。
-// discover_enquete.mjsでの実測で動作確認済みのクエリ形式 { enquete_id, limit, offset } を使用する。
+// クエリ形式 { enquete_id, limit, offset } は本番APIへのDRY_RUN疎通で200/JSON/期待件数を確認済み。
+// (管理画面UIが内部で使うのは page/length 方式だが、こちらの形式でも同じ結果が返る)
 export async function fetchEnqueteAnswers(context, enqueteId, limit = 100) {
   const query = encodeURIComponent(JSON.stringify({ enquete_id: String(enqueteId), limit, offset: 0 }));
   const url = `https://boom-admin.hacomono.jp/api/enquete/enquete-answers?query=${query}`;
