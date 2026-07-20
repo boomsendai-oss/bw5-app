@@ -11,8 +11,19 @@ import { sendEmail } from './email';
 
 const TARO_EMAIL = 'boom.sendai@gmail.com';
 
-export async function notifyTaro(opts: { subject: string; body: string }): Promise<void> {
-  const subject = `[BOOM Story] ${opts.subject}`;
+const DEFAULT_SUBJECT_PREFIX = '[BOOM Story]';
+
+/** 件名の組み立て(純関数・テスト用に切り出し)。prefix未指定/空なら既定値を使う。 */
+export function formatSubject(subject: string, prefix?: string): string {
+  return `${prefix || DEFAULT_SUBJECT_PREFIX} ${subject}`;
+}
+
+export async function notifyTaro(opts: {
+  subject: string;
+  body: string;
+  subjectPrefix?: string;
+}): Promise<void> {
+  const subject = formatSubject(opts.subject, opts.subjectPrefix);
 
   const lineToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
   const lineUser = process.env.TARO_LINE_USER_ID;
