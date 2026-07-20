@@ -47,3 +47,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 backup/
+
+# fixed_qr discover.mjs output (PII含むスクショ/HTML。ローカル調査専用)
+scripts/fixed_qr/discover_out/
