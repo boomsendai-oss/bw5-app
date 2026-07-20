@@ -22,9 +22,9 @@ const PART_COLORS: Record<number, string> = {
   3: '#a78bfa',
 };
 
+// M24: 認証は proxy.ts の matcher(/admin/:path*) + eventAuth セッションCookie に統合済み。
+// ここに描画が到達している時点で認証済みなので、旧 sessionStorage ログイン画面は撤去した。
 export default function PerformancesAdminPage() {
-  const [authed, setAuthed] = useState(false);
-  const [password, setPassword] = useState('');
   const [performances, setPerformances] = useState<Performance[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [editData, setEditData] = useState<Performance | null>(null);
@@ -32,12 +32,6 @@ export default function PerformancesAdminPage() {
   const [toast, setToast] = useState('');
   const [filterPart, setFilterPart] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && sessionStorage.getItem('bw5_admin') === '1') {
-      setAuthed(true);
-    }
-  }, []);
 
   const fetchPerformances = useCallback(async () => {
     try {
@@ -50,27 +44,8 @@ export default function PerformancesAdminPage() {
   }, []);
 
   useEffect(() => {
-    if (authed) fetchPerformances();
-  }, [authed, fetchPerformances]);
-
-  const handleLogin = async () => {
-    try {
-      const res = await fetch('/api/admin/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
-      const data = await res.json();
-      if (data?.success) {
-        setAuthed(true);
-        sessionStorage.setItem('bw5_admin', '1');
-      } else {
-        setToast('パスワードが違います');
-      }
-    } catch {
-      setToast('エラーが発生しました');
-    }
-  };
+    fetchPerformances();
+  }, [fetchPerformances]);
 
   const handleEdit = (perf: Performance) => {
     setEditing(perf.m_id);
@@ -124,32 +99,6 @@ export default function PerformancesAdminPage() {
     withCount: performances.filter((p) => p.performer_count > 0).length,
     withInstructor: performances.filter((p) => p.instructor).length,
   };
-
-  if (!authed) {
-    return (
-      <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-4">
-        <div className="w-full max-w-xs rounded-2xl p-6" style={{ background: 'rgba(255,255,255,0.95)' }}>
-          <h2 className="text-lg font-bold text-center mb-4" style={{ color: '#333' }}>管理者ログイン</h2>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-            placeholder="パスワード"
-            className="w-full px-3 py-2.5 rounded-xl text-sm border border-gray-200 focus:border-orange-400 focus:outline-none text-gray-800 mb-3"
-          />
-          <button
-            onClick={handleLogin}
-            className="w-full py-2.5 rounded-xl text-sm font-bold text-white"
-            style={{ background: '#f27a1a' }}
-          >
-            ログイン
-          </button>
-          {toast && <p className="text-xs text-red-500 mt-2 text-center">{toast}</p>}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] bg-noise text-white">

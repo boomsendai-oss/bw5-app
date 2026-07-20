@@ -35,6 +35,29 @@ BOOMダンススクールの常設運営機能 + 各イベント機能を統合�
 - **`orange-*` をスタッフ画面で新規使用しない**（2026-07-10リブランド済）
 - BW5イベントページ(写真/動画DL・一般向け)はオレンジのまま（イベント色として維持）
 
+### 4.5 新規 API route は認可必須（M27・Phase 3で追加）
+
+**新しく `route.ts` を作るときは、次のどちらかを必ず満たすこと。**
+
+1. `withAuth` で包む（`src/lib/eventAuth.ts`）
+   ```ts
+   export const GET = withAuth(async (req) => { ... });
+   ```
+2. 認証をかけない場合は、**「なぜ公開なのか」をファイル冒頭にコメントで書く**
+   ```ts
+   // ⚠️ 公開API(認証なし)。理由: BW5来場者向け公開ページ xxx が叩くため。
+   ```
+
+理由: 各routeの冒頭に `isAuthorized` を書く方式は**書き忘れが検出できず**、実際に
+無認証で個人情報・決済情報が露出していた（監査2026-07-06のC系）。
+
+- **matcher反転（原則すべて認証）は採らない**。`/api/vote`・`/api/photo`・
+  `/api/video-preorder` 等の公開APIが実在し、反転すると即座に顧客側の障害になる
+- スタッフ専用だが `/staff` 配下でない経路は `src/proxy.ts` の matcher に追加する
+  （`/admin`・`/api/admin` はM24で追加済み）
+- 認証が要る画面のUIガードを **クライアント側だけ**で書かない（`sessionStorage` フラグ等）。
+  DevToolsで1行実行すれば突破できるため、サーバ側（proxy or route）で必ず弾く
+
 ### 5. スキーマ変更はマイグレーション
 - `scripts/migrations/YYYYMMDD_<name>.sql` を追加
 - 既存テーブルの破壊的変更は事前にTAROに確認

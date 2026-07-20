@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
   const productMap = await buildProductMap();
 
   let imported = 0;
+  let duplicated = 0;
   let skipped = 0;
   let exactMatched = 0;
   const errors: string[] = [];
@@ -156,8 +157,13 @@ export async function POST(req: NextRequest) {
       // 売上IDがあれば取引単位で upsert (同日同一商品の複数購入も保持)。
       // 売上IDが無い旧フォーマットCSVは従来通り billing_date+member_id+product_name+amount で
       // 重複を抑止する(売上IDなし行同士の取りこぼし防止)。
+      // M17: 実際に書き込まれた行数を rowsAffected で数える。旧実装は無条件に
+      // imported++ しており、sale_id 無し経路の `WHERE NOT EXISTS`(条件付きINSERT)で
+      // 1行も入らなかった場合まで「取込済み」と表示していた
+      // (= 二重取込の疑いを潰す材料にならず、件数が実態とズレる)。
+      let res;
       if (saleId) {
-        await execute(
+        res = await execute(
           `INSERT INTO hacomono_billing_records
            (sale_id, billing_date, member_id, kaiin_no, boom_member_id, product_name, product_category, amount, payment_method, status, imported_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -175,7 +181,7 @@ export async function POST(req: NextRequest) {
           [saleId, billingDate, memberId || null, kaiinNo || null, boomMemberId, productName || null, category, amount, paymentMethod || null, status || null]
         );
       } else {
-        await execute(
+        res = await execute(
           `INSERT INTO hacomono_billing_records
            (billing_date, member_id, kaiin_no, boom_member_id, product_name, product_category, amount, payment_method, status, imported_at)
            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
@@ -187,11 +193,24 @@ export async function POST(req: NextRequest) {
            billingDate, memberId || null, productName || null, amount]
         );
       }
-      imported++;
+      if (Number(res?.rowsAffected ?? 0) > 0) imported++;
+      else duplicated++;
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
       skipped++;
     }
   }
-  return NextResponse.json({ ok: true, total_rows: records.length, imported, skipped, exact_matched: exactMatched, errors: errors.slice(0, 5) });
+  // M17: ok は「全行失敗」のときだけ false。1行でも入っていれば成功扱いにし、
+  // errors は件数に関わらず常に返してUIで見せる(握りつぶさない)。
+  const ok = !(records.length > 0 && imported === 0 && duplicated === 0);
+  return NextResponse.json({
+    ok,
+    total_rows: records.length,
+    imported,          // 実際に新規INSERT/更新された行数
+    duplicated,        // 既に取込済みで書き込みが発生しなかった行数
+    skipped,           // エラーで取り込めなかった行数
+    exact_matched: exactMatched,
+    errors,            // 全件返す(旧実装は先頭5件で打ち切っていた)
+    error_count: errors.length,
+  });
 }

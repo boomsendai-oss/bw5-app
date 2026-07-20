@@ -3,43 +3,39 @@ import { getAll } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/performers?q=佐藤  — search by performer name
-// GET /api/performers?m_id=M2 — get performers for a specific performance
-// GET /api/performers          — get all performers grouped by m_id
+/**
+ * GET /api/performers?m_id=M2 — 指定した演目の出演者のみ返す
+ *
+ * ⚠️ 公開API(認証なし)。理由: BW5来場者向けの公開ページ
+ * `src/app/performance/[mId]/page.tsx` が現役で叩いているため認証をかけられない。
+ *
+ * M22: そのぶん取得範囲を絞る。出演者名は**未成年を含む個人情報**であり、
+ * 旧実装は `?q=` の部分一致検索と引数なしの全件返却を許していたため、
+ * `?q=` に一文字入れるだけで全出演者名簿を機械的に吸い出せる状態だった。
+ * 現在は m_id 完全一致を必須とし、名簿の一括列挙をできなくしている。
+ */
+const MAX_ROWS = 200;
+
 export async function GET(req: NextRequest) {
-  const q = req.nextUrl.searchParams.get('q');
   const mId = req.nextUrl.searchParams.get('m_id');
 
-  if (q) {
-    // Search performers by name (partial match)
-    const rows = await getAll(
-      `SELECT p.name, p.m_id, p.sort_order,
-              pf.title, pf.instructor, pf.part, pf.genre
-       FROM performers p
-       JOIN performances pf ON p.m_id = pf.m_id
-       WHERE p.name LIKE ?
-       ORDER BY pf.part ASC, CAST(SUBSTR(p.m_id, 2) AS INTEGER) ASC, p.sort_order ASC`,
-      [`%${q}%`]
+  // M22: 自由検索(?q=)と全件列挙(引数なし)は廃止。演目の指定を必須にする。
+  if (!mId) {
+    return NextResponse.json(
+      { error: 'm_id required', message: 'm_id を指定してください(出演者の一覧取得・名前検索は廃止されました)' },
+      { status: 400 }
     );
-    return NextResponse.json(rows);
   }
 
-  if (mId) {
-    // Get performers for a specific performance
-    const rows = await getAll(
-      `SELECT name, sort_order FROM performers WHERE m_id = ? ORDER BY sort_order ASC`,
-      [mId]
-    );
-    return NextResponse.json(rows);
+  // 演目IDの形式を固定(M1・M23 等)。想定外の値でDBを引かせない。
+  if (!/^[A-Za-z]\d{1,4}$/.test(mId)) {
+    return NextResponse.json({ error: 'invalid m_id' }, { status: 400 });
   }
 
-  // All performers with their performance info
+  // 返却列は公開ページが使う最小限(name / sort_order)のみ。
   const rows = await getAll(
-    `SELECT p.name, p.m_id, p.sort_order,
-            pf.title, pf.part
-     FROM performers p
-     JOIN performances pf ON p.m_id = pf.m_id
-     ORDER BY pf.part ASC, CAST(SUBSTR(p.m_id, 2) AS INTEGER) ASC, p.sort_order ASC`
+    `SELECT name, sort_order FROM performers WHERE m_id = ? ORDER BY sort_order ASC LIMIT ?`,
+    [mId, MAX_ROWS]
   );
   return NextResponse.json(rows);
 }

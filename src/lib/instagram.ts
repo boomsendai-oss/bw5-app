@@ -61,14 +61,21 @@ export function getRedirectUri(origin: string): string {
   return `${origin.replace(/\/$/, '')}/api/staff/instagram/callback`;
 }
 
-/** 連携(同意)用URLを生成 */
-export function buildConsentUrl(origin: string): string {
+/**
+ * 連携(同意)用URLを生成。
+ *
+ * M20(横展開): Googleカレンダー連携と同一のCSRF対策。stateはコールバック側で
+ * httpOnly cookieと照合する。Instagram連携は監査(2026-07-06)より後に追加されたため
+ * 設計書のM20には載っていないが、欠陥は完全に同型なので同時に塞ぐ。
+ */
+export function buildConsentUrl(origin: string, state?: string): string {
   const { appId } = requireEnv();
   const params = new URLSearchParams({
     client_id: appId,
     redirect_uri: getRedirectUri(origin),
     response_type: 'code',
     scope: SCOPES.join(','),
+    ...(state ? { state } : {}),
   });
   return `https://www.instagram.com/oauth/authorize?${params.toString()}`;
 }

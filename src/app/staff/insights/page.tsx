@@ -408,7 +408,18 @@ export default function InsightsPage() {
       const res = await fetch(endpoint, { method: 'POST', credentials: 'include', body: fd });
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
       const result = await res.json();
-      alert(`${label}取込完了: ${result.imported}件取込 / ${result.skipped}件スキップ`);
+      // M17: 取込結果を実態どおりに出す。「既に取込済み(duplicated)」を取込件数に
+      // 混ぜず別建てにし、エラーは件数に関わらず必ず見せる(旧実装は握りつぶしていた)。
+      const parts = [`${result.imported ?? 0}件取込`];
+      if (result.duplicated) parts.push(`${result.duplicated}件は取込済み(重複)`);
+      if (result.skipped) parts.push(`${result.skipped}件スキップ`);
+      const errs: string[] = Array.isArray(result.errors) ? result.errors : [];
+      const errText = errs.length
+        ? `\n\n⚠️ エラー ${result.error_count ?? errs.length}件:\n` +
+          errs.slice(0, 10).map((m: string) => `・${m}`).join('\n') +
+          (errs.length > 10 ? `\n…ほか${errs.length - 10}件` : '')
+        : '';
+      alert(`${label}取込${result.ok === false ? '失敗' : '完了'}: ${parts.join(' / ')}${errText}`);
       const r = await fetch(`/api/staff/kpi/dashboard?year_month=${ym}`, { credentials: 'include' });
       if (r.ok) setData(await r.json());
     } catch (e) {

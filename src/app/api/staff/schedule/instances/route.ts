@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { oneOf, INSTANCE_STATUSES, badRequest } from '@/lib/validate';
+import { isIsoDate, isHhmm } from '@/lib/dateJst';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,6 +29,20 @@ export async function POST(req: NextRequest) {
   }
   if (!body.master_id && !body.class_name_override) {
     return NextResponse.json({ error: 'master_id か class_name_override が必要' }, { status: 400 });
+  }
+  // M13(POST側): PATCH側と同じ検証をここにも入れる。無検証だと date='2026-7-5' や
+  // status='休講' がそのままDBに入り、給与計算・Google同期・HACOMONO出力が揃って狂う。
+  // (作成時点で弾かないと、PATCH側だけ堅くしても抜け道が残る)
+  if (!isIsoDate(body.date)) return badRequest('date は YYYY-MM-DD 形式');
+  if (!isHhmm(body.start_time)) return badRequest('start_time は HH:MM 形式');
+  if (!isHhmm(body.end_time)) return badRequest('end_time は HH:MM 形式');
+  if (body.status !== undefined && !oneOf(body.status, INSTANCE_STATUSES)) {
+    return badRequest('status は scheduled/cancelled/removed のいずれか');
+  }
+  for (const f of ['master_id', 'studio_id', 'instructor_id'] as const) {
+    if (body[f] !== undefined && body[f] !== null && !(Number.isInteger(body[f]) && body[f] > 0)) {
+      return badRequest(`${f} は正整数か null`);
+    }
   }
   // 冪等性: 既存マスターの instance 化は (master_id, date) で重複を防ぐ。
   // 同じ master+date の instance が既にあれば、新規作成せず既存を再利用する

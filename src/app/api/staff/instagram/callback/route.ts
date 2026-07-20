@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exchangeAndStoreToken } from '@/lib/instagram';
+import { OAUTH_STATE_COOKIE } from '@/lib/googleCalendar';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -26,14 +27,28 @@ export async function GET(req: NextRequest) {
   if (error) return html(400, `<h1>❌ 連携エラー</h1><p>${error}</p>`);
   if (!code) return html(400, '<h1>❌ code がありません</h1>');
 
+  // M20(横展開): 発行元(connect)が仕込んだstateと一致するcodeだけ受け付ける
+  const state = url.searchParams.get('state');
+  const expected = req.cookies.get(OAUTH_STATE_COOKIE)?.value;
+  if (!expected || !state || state !== expected) {
+    return html(
+      400,
+      `<h1>❌ 不正なリクエスト</h1>
+       <p>連携リクエストの照合に失敗しました(state不一致)。</p>
+       <p>お手数ですが <a href="${origin}/staff/instagram">連携状況ページ</a> から最初からやり直してください。</p>`
+    );
+  }
+
   try {
     const { igUserId } = await exchangeAndStoreToken(code, origin);
-    return html(
+    const okRes = html(
       200,
       `<h1>✅ Instagram連携 完了！</h1>
        <p>InstagramビジネスアカウントID: <code>${igUserId}</code></p>
        <p><a href="${origin}/staff/instagram">→ 連携状況ページに戻る</a></p>`
     );
+    okRes.cookies.delete(OAUTH_STATE_COOKIE);
+    return okRes;
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'unknown';
     return html(500, `<h1>❌ 連携に失敗</h1><pre style="white-space:pre-wrap;">${msg}</pre>`);
