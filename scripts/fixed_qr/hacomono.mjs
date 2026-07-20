@@ -5,6 +5,9 @@ import { chromium } from 'playwright';
 const LOGIN_URL = 'https://boom-admin.hacomono.jp/';
 
 export async function launchAndLogin() {
+  if (!process.env.HACOMONO_USERNAME || !process.env.HACOMONO_PASSWORD) {
+    throw new Error('HACOMONO_USERNAME/HACOMONO_PASSWORD が未設定です (GitHub Secrets/環境変数を確認)');
+  }
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -32,9 +35,18 @@ export async function downloadMl001Csv(context) {
   const url = `https://boom-admin.hacomono.jp/api/analysis/queries/export?query=${query}&file_type=csv&encoding=BOM--UTF-8`;
   const res = await context.request.get(url, { timeout: 120_000 });
   if (res.status() !== 200) throw new Error(`ML001 export failed: HTTP ${res.status()}`);
+  // セッション切れ等でHTTP 200のままログインページ(HTML)が返る偽陽性を弾く。
+  // 本文はログに出さず、種別情報のみでエラー化する。
+  const contentType = res.headers()['content-type'] || '';
+  if (!contentType.toLowerCase().includes('csv')) {
+    throw new Error(`ML001 export failed: unexpected content-type=${contentType || '(none)'}`);
+  }
   const body = await res.body();
   const text = body.toString('utf-8').replace(/^﻿/, '');
   const lines = text.split('\n').filter((l) => l.trim());
   if (lines.length < 2) throw new Error(`ML001 export: ${lines.length} lines (期待: ヘッダー+会員行)`);
+  if (!lines[0].includes('メンバーID')) {
+    throw new Error('ML001 export failed: header row missing expected column (メンバーID)');
+  }
   return text;
 }
