@@ -32,7 +32,9 @@ export async function GET(req: NextRequest) {
   const collectedDate = todayJst();
   const collectedAt = nowUtcIso();
   const cutoffReel = new Date(Date.now() - 30 * 86400000).toISOString();
-  const cutoffStory = shiftDays(collectedDate, -3);
+  // ストーリーは24hで消え、期限切れ後はインサイトが取れない(全項目null)。
+  // 毎朝4時の収集で「前日の朝に出したストーリー」を約20時間後に拾えるため、今日+昨日で十分。
+  const cutoffStory = shiftDays(collectedDate, -1);
 
   type Target = { mediaId: string; kind: 'reel' | 'story'; title: string; postedAt: string | null };
   const targets: Target[] = [];
@@ -72,6 +74,14 @@ export async function GET(req: NextRequest) {
       const ins = await fetchMediaInsights(t.mediaId, t.kind);
       if (!ins) {
         pending++; // 未集計(投稿直後)や取得不可。翌日以降のcronで再取得される
+        continue;
+      }
+      // 数値が1つも取れない = 期限切れストーリー等。空行を貯めても判断材料にならないので保存しない。
+      const hasValue = [
+        ins.reach, ins.views, ins.likes, ins.comments, ins.shares, ins.saved, ins.replies, ins.total_interactions,
+      ].some((v) => typeof v === 'number');
+      if (!hasValue) {
+        pending++;
         continue;
       }
       await execute(
