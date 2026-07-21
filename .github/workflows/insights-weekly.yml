@@ -1,20 +1,21 @@
-# リール月次サマリー
-# 毎月1日 JST 9:00 = UTC 0:00。リール成績サマリーをTAROへメール(データ無しの月は自動スキップ)。
-name: insights-monthly
+# リール週次サマリー
+# 毎週月曜 JST 9:00 = UTC 0:00。リール成績サマリー(累計)をTAROへメール。
+# 月曜=先週の火/金リールが数字を積んだ後で集計が安定。データ無しの週は自動スキップ。
+name: insights-weekly
 on:
   schedule:
-    - cron: '0 0 1 * *'
+    - cron: '0 0 * * 1'
   workflow_dispatch: {}
 jobs:
   trigger:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Call /api/cron/insights-monthly
+      - name: Call /api/cron/insights-weekly
         run: |
           set -e
           RESP=$(curl -s --max-time 60 -w '\n%{http_code}' \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            https://bw5-app.vercel.app/api/cron/insights-monthly)
+            https://bw5-app.vercel.app/api/cron/insights-weekly)
           echo "HTTP $(echo "$RESP" | tail -1): $(echo "$RESP" | sed '$d')"
           [ "$(echo "$RESP" | tail -1)" = "200" ] || exit 1

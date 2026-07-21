@@ -7,8 +7,9 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// GET /api/cron/insights-monthly
-// 月1回(月初)、リール成績サマリーをTAROへメール。「画面を見に行かないと分からない」を解消する。
+// GET /api/cron/insights-weekly
+// 週1回(月曜朝)、リール成績サマリー(累計)をTAROへメール。「画面を見に行かないと分からない」を解消する。
+// 月曜=先週の火(レッスン)/金(発表会)リールが数日分の数字を積んだ後なので集計が安定する。
 // media_insights(collect-insightsが毎日貯める)から集計。データが無ければ静かにスキップ。
 // 認証: Bearer CRON_SECRET または x-cron-secret(GH Actions)。
 export async function GET(req: NextRequest) {
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
   try {
     await notifyTaro({
       subjectPrefix: '[BOOM SNS]',
-      subject: `リール月次サマリー（${sc.count}本）`,
+      subject: `リール週次サマリー（${sc.count}本）`,
       body: formatScorecardText(sc),
     });
     sent = true;
