@@ -84,6 +84,9 @@ const SELECTORS = {
   newRegisterLink: 'a:has-text("新規登録")',
   // 有効な「固定メンバーコード用」行 (無効行や「有効期限」列と混同しないよう badge のクラスで判定)
   activeExistingFixedCodeRow: 'tr:has(a:has-text("固定メンバーコード用")):has(span.m_badge.success)',
+  // 上の行の中のリンク (href から keyId を取り、既存コードを再利用するため)
+  activeExistingFixedCodeLink:
+    'tr:has(a:has-text("固定メンバーコード用")):has(span.m_badge.success) a:has-text("固定メンバーコード用")',
   nameInputGroup: '[aria-label="名称"] input[type="text"]',
   saveButton: 'button:has-text("保存する")',
   defaultCodeName: '固定メンバーコード用',
@@ -186,6 +189,43 @@ async function reuseFixedCodeByName(context, page, memberId, codeName) {
   return { keyId, png };
 }
 
+// per-member処理の入り口 (TARO確定要件 2026-07-21: 再申請が来たら新しいコードを作らず、
+// 既にある固定コードのQRをそのまま再送する。新規作成すると後から出てきた古い紙が別物になり
+// 混乱するため)。
+// gotoSecurityKeys後、有効な既存コード(activeExistingFixedCodeRow)が1件以上あればそれを再利用し、
+// 無ければ新規発行する。skipped_existing分岐は廃止(再利用して送るため)。
+async function resolveKeyId(context, page, memberId) {
+  await gotoSecurityKeys(page, memberId);
+
+  // ⚠️E2Eテスト専用の逃がし口 (呼び出し元でONLY_MEMBER_ID必須ガード済み)
+  if (REUSE_CODE_NAME) {
+    const result = await reuseFixedCodeByName(context, page, memberId, REUSE_CODE_NAME);
+    console.log(`member ${memberId}: 既存コード再利用(REUSE_CODE_NAME)`);
+    return result;
+  }
+
+  if (!FORCE_ISSUE) {
+    const existingLinks = page.locator(SELECTORS.activeExistingFixedCodeLink);
+    const count = await existingLinks.count();
+    if (count > 0) {
+      // 複数あれば先頭(最初に見つかった有効な固定コード)を使う
+      const href = await existingLinks.first().getAttribute('href');
+      const match = (href || '').match(/security\/keys\/(\d+)(?:[/?#]|$)/);
+      if (!match) {
+        throw new Error(`既存コード行のhrefからkeyIdを取得できませんでした (href=${href})`);
+      }
+      const keyId = match[1];
+      const png = await downloadQrPng(context, memberId, keyId);
+      console.log(`member ${memberId}: 既存コード再利用`);
+      return { keyId, png };
+    }
+  }
+
+  const result = await issueNewFixedCode(context, page, memberId);
+  console.log(`member ${memberId}: 新規発行`);
+  return result;
+}
+
 const { browser, context, page } = await launchAndLogin();
 console.log('login ok');
 
@@ -202,14 +242,28 @@ try {
   const members = toDicts([hdr, ...validRows]);
   const memberById = new Map(members.filter((m) => m['メンバーID']).map((m) => [m['メンバーID'], m]));
   const { issued } = await appGet('/api/staff/qr-issues');
-  const done = new Set(issued.map((x) => x.hacomono_member_id));
+  // dedup(再送判定)は台帳の last_answered_at ベース。台帳に無い/nullなら「超えている」扱い
+  const lastAnsweredAtByMember = new Map(issued.map((x) => [x.hacomono_member_id, x.last_answered_at || null]));
 
-  // 対象メンバーIDの決定: ONLY_MEMBER_ID指定時は手動モード(アンケート回答を問わない)、
-  // 未指定ならアンケートモード(ANSWER_CUTOFF以降の回答者のみ)
-  let mode, targetMemberIds;
+  // 対象メンバーの決定: ONLY_MEMBER_ID指定時は手動モード(アンケート回答を問わない・dedup無し)、
+  // 未指定ならアンケートモード(ANSWER_CUTOFF以降 かつ 台帳より新しい回答者のみ=再送対応)
+  // targetMembers: [{ id, lastAnsweredAt }] (lastAnsweredAtはPOSTで台帳に記録する値)
+  let mode, targetMembers;
   if (ONLY_MEMBER_ID) {
     mode = 'manual';
-    targetMemberIds = [ONLY_MEMBER_ID];
+    // その会員の最新アンケート回答があればそのanswered_at、無ければ現在時刻を台帳に記録する
+    let lastAnsweredAt = new Date().toISOString();
+    try {
+      const answers = await fetchEnqueteAnswers(context, ENQUETE_ID);
+      const mine = answers.filter((a) => String(a.member_id) === ONLY_MEMBER_ID);
+      if (mine.length > 0) {
+        mine.sort((a, b) => new Date(b.answered_at).getTime() - new Date(a.answered_at).getTime());
+        lastAnsweredAt = mine[0].answered_at;
+      }
+    } catch (e) {
+      console.log(`warn: ONLY_MEMBER_ID用のアンケート取得に失敗、現在時刻を使用します (${e.message})`); // PIIなし
+    }
+    targetMembers = [{ id: ONLY_MEMBER_ID, lastAnsweredAt }];
   } else {
     mode = 'enquete';
     const cutoffMs = new Date(ANSWER_CUTOFF).getTime();
@@ -217,30 +271,41 @@ try {
       throw new Error(`ANSWER_CUTOFFのパースに失敗しました: ${ANSWER_CUTOFF}`);
     }
     const answers = await fetchEnqueteAnswers(context, ENQUETE_ID);
-    // answered_atはISO8601(+09:00)。タイムゾーン表記揺れで壊れる文字列比較ではなく数値比較する
-    const idSet = new Set();
+    // answered_atはISO8601(+09:00)。タイムゾーン表記揺れで壊れる文字列比較ではなく数値比較する。
+    // 会員ごとの「最新回答」(answered_at最大)だけを見る(MULTIPLE回答=再申請は新レコードのため)
+    const latestByMember = new Map(); // member_id -> { answeredAt, ms }
     for (const a of answers) {
       const answeredMs = new Date(a.answered_at).getTime();
       if (Number.isNaN(answeredMs)) {
         console.log(`warn: answered_atのパースに失敗、安全側でスキップ (id=${a.id})`); // PIIなし
         continue;
       }
-      if (answeredMs >= cutoffMs) idSet.add(String(a.member_id));
+      const key = String(a.member_id);
+      const cur = latestByMember.get(key);
+      if (!cur || answeredMs > cur.ms) latestByMember.set(key, { answeredAt: a.answered_at, ms: answeredMs });
     }
-    targetMemberIds = [...idSet];
+    targetMembers = [];
+    for (const [id, { answeredAt, ms }] of latestByMember) {
+      if (ms < cutoffMs) continue; // 稼働開始前の回答は対象外
+      const ledgerRaw = lastAnsweredAtByMember.get(id);
+      const ledgerMs = ledgerRaw ? new Date(ledgerRaw).getTime() : NaN;
+      // 台帳のlast_answered_atが無い(NaN)か、今回の回答の方が新しければ対象(初回送信 or 再申請)。
+      // 同じ回答のまま次のcronが回った場合(ms <= ledgerMs)はスキップ=再送しない
+      if (!Number.isNaN(ledgerMs) && ms <= ledgerMs) continue;
+      targetMembers.push({ id, lastAnsweredAt: answeredAt });
+    }
   }
 
-  const pending = targetMemberIds
-    .filter((id) => {
+  const pending = targetMembers
+    .filter(({ id }) => {
       if (!memberById.has(id)) {
         console.log(`member ${id}: ML001に見つからずスキップ`); // PIIなし(退会等でML001に居ないケース)
         return false;
       }
       return true;
     })
-    .filter((id) => !done.has(id))
     .slice(0, MAX_PER_RUN)
-    .map((id) => memberById.get(id));
+    .map(({ id, lastAnsweredAt }) => ({ m: memberById.get(id), lastAnsweredAt }));
   console.log(`pending: ${pending.length}名 (mode=${mode}, cutoff=${mode === 'enquete' ? ANSWER_CUTOFF : 'n/a'})`);
 
   if (DRY) {
@@ -250,30 +315,12 @@ try {
   }
 
   let okCount = 0, failCount = 0;
-  for (const m of pending) {
+  for (const { m, lastAnsweredAt } of pending) {
     const id = m['メンバーID'];
     try {
-      await gotoSecurityKeys(page, id);
-
-      // 既に有効な「固定メンバーコード用」がある(TARO手動発行済み) → 記録だけして送らない
-      // FORCE_ISSUE=1 / REUSE_CODE_NAME (E2Eテスト時のみ・ONLY_MEMBER_ID必須) は
-      // 既存があっても新規発行/再利用に進む
-      const activeExistingCount = FORCE_ISSUE || REUSE_CODE_NAME
-        ? 0
-        : await page.locator(SELECTORS.activeExistingFixedCodeRow).count();
-      if (activeExistingCount > 0) {
-        const form = new FormData();
-        form.set('hacomono_member_id', id);
-        form.set('action', 'skipped_existing');
-        await appPostForm('/api/staff/qr-issues', form);
-        console.log(`member ${id}: skipped_existing`);
-        okCount++;
-        continue;
-      }
-
-      const { png: rawPng } = REUSE_CODE_NAME
-        ? await reuseFixedCodeByName(context, page, id, REUSE_CODE_NAME)
-        : await issueNewFixedCode(context, page, id);
+      // 既に有効な固定コードがあればそれを再利用し(新規発行しない)、無ければ新規発行する
+      // (TARO確定要件 2026-07-21: 再申請=既存QR再送。skipped_existing分岐は廃止)
+      const { png: rawPng } = await resolveKeyId(context, page, id);
 
       // QR画像に会員名を焼き込む(兄弟の取り違え防止)。合成に失敗しても元QRはそのまま送る
       // (ラベルが無くてもQR自体は届く方が良い。品質レビュー指摘: PIIはログに出さない)
@@ -289,7 +336,7 @@ try {
       form.set('member_name', m['氏名'] || '');
       form.set('email', m['メールアドレス'] || '');
       form.set('rep_email', m['代表メールアドレス'] || '');
-      form.set('action', 'send');
+      form.set('last_answered_at', lastAnsweredAt || '');
       form.set('qr', new Blob([png], { type: 'image/png' }), 'qr.png');
       const res = await appPostForm('/api/staff/qr-issues', form);
       console.log(`member ${id}: ${res.status}`); // 氏名・アドレスはログに出さない

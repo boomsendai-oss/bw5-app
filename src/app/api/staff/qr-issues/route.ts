@@ -1,6 +1,6 @@
 // src/app/api/staff/qr-issues/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getAll, getOne, execute } from '@/lib/db';
+import { getAll, execute } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { sendEmail } from '@/lib/email';
 import { resolveRecipient, maskEmail, buildQrEmail, qrFileName } from '@/lib/qrIssue';
@@ -10,22 +10,24 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 /**
- * 固定QR発行台帳 (WS U / 2026-07-20)
- * GET  : 発行済み(=台帳に記録がある) hacomono_member_id の一覧。GH Actionsスクリプトが差分計算に使う
+ * 固定QR発行台帳 (WS U / 2026-07-20、再送対応 2026-07-21)
+ * GET  : 発行済み(=台帳に記録がある) hacomono_member_id の一覧+最終処理済みアンケート回答日時。
+ *        GH Actionsスクリプトが差分計算(dedup)に使う
  * POST : multipart/form-data
  *   hacomono_member_id (必須)
  *   member_name        (メール宛名。DBには保存しない)
  *   email / rep_email  (ML001の本人・代表アドレス。DBには保存しない)
- *   action             'send'(QR添付送信) | 'skipped_existing'(手動発行済みの記録のみ)
- *   qr                 PNGファイル (action=send のとき必須)
- * 冪等: 同じ member_id は2回目以降 {already:true} で何もしない
+ *   last_answered_at   (任意。このリクエストの元になったアンケート回答のanswered_at。台帳に記録する)
+ *   qr                 PNGファイル (宛先解決OKのとき必須)
+ * 再送対応: 台帳に既存行があっても拒否しない(UPSERT)。アンケート再回答のたびに
+ * 呼ばれる想定で、既存の固定コードのQRをそのまま再送する(新規コードは作らない=issue_qr.mjs側の責務)。
  */
 
 export async function GET(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
   const rows = (await getAll(
-    `SELECT hacomono_member_id, status FROM member_qr_issues`
-  )) as { hacomono_member_id: string; status: string }[];
+    `SELECT hacomono_member_id, status, last_answered_at FROM member_qr_issues`
+  )) as { hacomono_member_id: string; status: string; last_answered_at: string | null }[];
   return NextResponse.json({ issued: rows });
 }
 
@@ -45,40 +47,21 @@ async function handle(req: NextRequest) {
   const memberName = String(form.get('member_name') ?? '').trim();
   const email = String(form.get('email') ?? '');
   const repEmail = String(form.get('rep_email') ?? '');
-  const action = String(form.get('action') ?? 'send');
+  const lastAnsweredAt = String(form.get('last_answered_at') ?? '').trim() || null;
   if (!memberId) {
     return NextResponse.json({ error: 'hacomono_member_id は必須です' }, { status: 400 });
   }
 
-  const existing = await getOne(
-    `SELECT id, status FROM member_qr_issues WHERE hacomono_member_id = ?`, [memberId]
-  );
-  if (existing) return NextResponse.json({ ok: true, already: true, status: existing.status });
-
   const nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
-  if (action === 'skipped_existing') {
-    await execute(
-      `INSERT INTO member_qr_issues (hacomono_member_id, status, issued_at, detail)
-       VALUES (?, 'skipped_existing', ?, 'HACOMONO側に既存の固定コードあり(手動発行済み)')`,
-      [memberId, nowIso]
-    );
-    // 「発行済み扱いだがメールは飛んでいない」を必ず人間に見えるようにする(品質レビュー指摘)
-    await execute(
-      `INSERT INTO staff_notifications (type, title, detail, severity)
-       VALUES ('qr_issue_skipped', '固定QR: 既存コードありのためメール未送信', ?, 'warning')`,
-      [`hacomono_member_id=${memberId} 既存の有効な固定コードを検知。手動発行済みか、前回実行の作りかけの可能性。必要ならHACOMONO画面からQRを送付してください`]
-    );
-    return NextResponse.json({ ok: true, status: 'skipped_existing' });
-  }
-
-  // action === 'send'
   const recipient = resolveRecipient(email, repEmail);
   if (!recipient.ok) {
     await execute(
-      `INSERT INTO member_qr_issues (hacomono_member_id, status, issued_at, detail)
-       VALUES (?, 'manual_needed', ?, ?)`,
-      [memberId, nowIso, `宛先解決不可: ${recipient.reason}`]
+      `INSERT INTO member_qr_issues (hacomono_member_id, status, issued_at, detail, last_answered_at)
+       VALUES (?, 'manual_needed', ?, ?, ?)
+       ON CONFLICT(hacomono_member_id) DO UPDATE SET
+         status = excluded.status, detail = excluded.detail, last_answered_at = excluded.last_answered_at`,
+      [memberId, nowIso, `宛先解決不可: ${recipient.reason}`, lastAnsweredAt]
     );
     await execute(
       `INSERT INTO staff_notifications (type, title, detail, severity)
@@ -101,10 +84,15 @@ async function handle(req: NextRequest) {
     attachments: [{ filename: qrFileName(resolvedName), content: png }],
   });
 
+  // issued_atは初回のみ入れたい(=いつ最初にコードが発行されたか)ので、
+  // DO UPDATEでは触らずINSERT時の値(nowIso)を残す。再送の度に上書きしない。
   await execute(
-    `INSERT INTO member_qr_issues (hacomono_member_id, status, email_to_masked, issued_at, emailed_at)
-     VALUES (?, 'emailed', ?, ?, ?)`,
-    [memberId, maskEmail(recipient.to), nowIso, nowIso]
+    `INSERT INTO member_qr_issues (hacomono_member_id, status, email_to_masked, issued_at, emailed_at, last_answered_at)
+     VALUES (?, 'emailed', ?, ?, ?, ?)
+     ON CONFLICT(hacomono_member_id) DO UPDATE SET
+       status = excluded.status, email_to_masked = excluded.email_to_masked,
+       emailed_at = excluded.emailed_at, last_answered_at = excluded.last_answered_at`,
+    [memberId, maskEmail(recipient.to), nowIso, nowIso, lastAnsweredAt]
   );
   return NextResponse.json({ ok: true, status: 'emailed', to_masked: maskEmail(recipient.to) });
 }
