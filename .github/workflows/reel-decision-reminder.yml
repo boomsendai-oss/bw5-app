@@ -1,0 +1,20 @@
+# リール拡大判断リマインダー
+# 毎朝 JST 9:05 = UTC 0:05 に叩く。8/25以降に一度だけ「YT/TikTok判断タイミング」を通知(冪等)。
+name: reel-decision-reminder
+on:
+  schedule:
+    - cron: '5 0 * * *'
+  workflow_dispatch: {}
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/reel-decision-reminder
+        run: |
+          set -e
+          RESP=$(curl -s --max-time 60 -w '\n%{http_code}' \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/reel-decision-reminder)
+          echo "HTTP $(echo "$RESP" | tail -1): $(echo "$RESP" | sed '$d')"
+          [ "$(echo "$RESP" | tail -1)" = "200" ] || exit 1
