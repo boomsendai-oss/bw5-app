@@ -343,7 +343,7 @@ try {
       okCount++;
     } catch (e) {
       failCount++;
-      console.error(`member ${id}: FAILED ${e.message}`); // 失敗は台帳未記録→翌朝自動リトライ
+      console.error(`member ${id}: FAILED ${e.message}`); // 失敗は台帳未記録→次回cron(15分後)で自動リトライ。既存コードは再利用されるため増殖しない
     }
   }
   console.log(`done: ok=${okCount} fail=${failCount}`);
