@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS reel_draft (id INTEGER PRIMARY KEY AUTOINCREMENT, drive_file_id TEXT NOT NULL UNIQUE, drive_name TEXT, kind TEXT NOT NULL DEFAULT 'class', shot_at TEXT, class_name TEXT, instructor TEXT, daytime TEXT, caption_style TEXT, duration_sec REAL, preview_path TEXT, cover_candidates TEXT, dance_start REAL, dance_end REAL, cover_at REAL, cover_choice INTEGER, status TEXT NOT NULL DEFAULT 'new', reel_queue_id INTEGER, error TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS idx_reel_draft_status ON reel_draft(status);
+CREATE TABLE IF NOT EXISTS reel_pipeline_signal (id INTEGER PRIMARY KEY CHECK (id = 1), sync_requested_at TEXT, generate_requested_at TEXT, updated_at TEXT);
+INSERT OR IGNORE INTO reel_pipeline_signal (id, updated_at) VALUES (1, CURRENT_TIMESTAMP);
