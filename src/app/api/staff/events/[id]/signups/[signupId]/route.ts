@@ -4,9 +4,9 @@ import { deleteSignup } from '@/lib/eventSignupDb';
 
 export const dynamic = 'force-dynamic';
 
-export async function DELETE(req: NextRequest, ctx: { params: Promise<{ eventId: string; signupId: string }> }) {
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string; signupId: string }> }) {
   if (!(await isAuthorized(req))) return unauthorized();
-  const { eventId, signupId } = await ctx.params;
-  await deleteSignup(Number(eventId), Number(signupId));
+  const { id, signupId } = await ctx.params;
+  await deleteSignup(Number(id), Number(signupId));
   return NextResponse.json({ ok: true });
 }
