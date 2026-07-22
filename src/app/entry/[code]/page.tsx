@@ -32,6 +32,7 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [doneToken, setDoneToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const parts: PartDef[] = useMemo(
     () => (view && view.ok ? view.settings.parts : []),
@@ -133,13 +134,16 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
               readOnly
               value={editUrl}
               onFocus={(e) => e.currentTarget.select()}
-              className="w-full text-xs border border-slate-200 rounded-lg px-2 py-2 bg-slate-50"
+              className="w-full text-xs text-slate-900 border border-slate-300 rounded-lg px-2 py-2 bg-white"
             />
             <button
-              onClick={() => navigator.clipboard?.writeText(editUrl)}
-              className="mt-2 w-full rounded-lg bg-teal-600 text-white text-sm font-bold py-2"
+              onClick={() => {
+                setCopied(true);
+                try { navigator.clipboard?.writeText(editUrl); } catch { /* フォールバック: 上の欄を長押し/選択でコピー */ }
+              }}
+              className={`mt-2 w-full rounded-lg text-white text-sm font-bold py-2 ${copied ? 'bg-emerald-600' : 'bg-teal-600'}`}
             >
-              リンクをコピー
+              {copied ? '✓ コピーしました' : 'リンクをコピー'}
             </button>
           </div>
           <button
@@ -222,8 +226,8 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
                       value={row.name}
                       onChange={(e) => setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, name: e.target.value } : r)))}
                       placeholder="おなまえ（カタカナ）"
-                      className={`w-full border rounded-lg px-3 py-2 text-sm ${
-                        row.name.trim() && !isKatakanaName(row.name) ? 'border-red-400 bg-red-50' : 'border-slate-200'
+                      className={`w-full border rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 ${
+                        row.name.trim() && !isKatakanaName(row.name) ? 'border-red-400 bg-red-50' : 'border-slate-300 bg-white'
                       }`}
                     />
                     {row.name.trim() && !isKatakanaName(row.name) ? (
@@ -268,7 +272,7 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
               onChange={(e) => setNote(e.target.value)}
               placeholder="連絡事項があればご記入ください（任意）"
               rows={2}
-              className="w-full border border-slate-200 rounded-2xl px-3 py-2 text-sm bg-white"
+              className="w-full border border-slate-300 rounded-2xl px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 bg-white"
             />
 
             {error && <div className="text-sm text-red-600 text-center">{error}</div>}
