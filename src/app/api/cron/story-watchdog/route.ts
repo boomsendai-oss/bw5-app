@@ -10,6 +10,13 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
+// 正準ベースURL。post-story と必ず同じoriginで素材URLを作らないと、投稿済みを"未投稿"と誤検知して
+// 自己修復が二重投稿を起こす(2026-07-22の事故原因)。判定も origin非依存の pathname で行う。
+const SITE_ORIGIN = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '') || 'https://bw5-app.vercel.app';
+function slotKey(u: string): string {
+  try { return new URL(u).pathname; } catch { return u; }
+}
+
 // GET /api/cron/story-watchdog
 // GitHub Actions とは別の故障ドメイン(Vercel Cron)で毎朝 JST~9:10 に走る監視+自己修復役。
 //   (1) トークン延命(無条件): refreshTokenIfStale(投稿が無い日でも60日失効を防ぐ)。
@@ -38,7 +45,7 @@ async function evaluatePlan(origin: string, date: string, weekday: number): Prom
   const rows = await getAll('SELECT video_path, status, error FROM story_post_log WHERE date = ?', [date]);
   const byPath = new Map<string, Array<{ status: string; error: string | null }>>();
   for (const r of rows) {
-    const p = String(r.video_path);
+    const p = slotKey(String(r.video_path)); // origin非依存キーで集約(cron/watchdogのorigin差を吸収)
     if (!byPath.has(p)) byPath.set(p, []);
     byPath.get(p)!.push({ status: String(r.status), error: r.error ? String(r.error) : null });
   }
@@ -48,7 +55,7 @@ async function evaluatePlan(origin: string, date: string, weekday: number): Prom
   let attemptedAny = false;
 
   for (const media of expected) {
-    const logs = byPath.get(media.url) ?? [];
+    const logs = byPath.get(slotKey(media.url)) ?? [];
     if (logs.length > 0) attemptedAny = true;
     if (logs.some((l) => l.status === 'posted')) {
       postedCount++;
@@ -172,7 +179,7 @@ export async function GET(req: NextRequest) {
 
   const date = todayJst();
   const weekday = weekdayJst(date);
-  const origin = new URL(req.url).origin;
+  const origin = SITE_ORIGIN; // post-storyと必ず同じoriginにする(素材URL一致→誤検知・二重投稿を防ぐ)
   const jstHour = new Date(Date.now() + 9 * 3600 * 1000).getUTCHours();
   const deadmanActive = jstHour >= 9; // JST9時前は「未投稿」を判定しない(朝のcron着地待ち)
   // ストーリーの自己修復は朝のうちだけ。夜のwatchdogが「今日のレッスン」を夜に出してしまう事故を防ぐ。

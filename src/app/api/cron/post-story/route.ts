@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute, getOne } from '@/lib/db';
+import { execute, getOne, getAll } from '@/lib/db';
 import { todayJst, weekdayJst, nowUtcIso } from '@/lib/dateJst';
 import { configured as igConfigured, publishStoryVideo, publishStoryImage, refreshTokenIfStale } from '@/lib/instagram';
 import { pickNextQueueItem, markQueueItemPosted } from '@/lib/storyQueue';
@@ -8,6 +8,15 @@ import { WEEKDAY_FILES, findChainMediaList, loadSidecar, checkSchedule, resolveM
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+
+// 正準ベースURL。cron/watchdog/デプロイ固有URLでoriginが変わると、素材URLが変わって
+// 冪等ガード・claimロックがすり抜け二重投稿する事故があった(2026-07-22)。素材URLは常にこの
+// 安定エイリアスから作り、重複判定はorigin非依存の pathname で行う。
+const SITE_ORIGIN = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '') || 'https://bw5-app.vercel.app';
+// URLからoriginを剥がしたパス(= スロットの安定ID)。重複判定はこれで行う。
+function slotKey(u: string): string {
+  try { return new URL(u).pathname; } catch { return u; }
+}
 
 // 日次ストーリー自動投稿 (毎朝 JST 8:00 に GitHub Actions cron から叩かれる)。
 // 8時=全曜日レッスン前＋フォロワー朝の活動帯。「今日のレッスン」告知を朝に出す方針。
@@ -91,7 +100,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, configured: false, note: 'Instagram連携env未設定のためスキップ' });
   }
 
-  const origin = new URL(req.url).origin;
+  const origin = SITE_ORIGIN; // 常に安定した本番エイリアスから素材URLを作る(origin差による二重投稿を防ぐ)
 
   // 素材の選択(作り置きをTAROが用意・Claudeは選んで出すだけ。無ければ出さない=ブレーキ):
   //   ①日付指定 → ②曜日デフォルト → ③承認済み埋め草キュー → ④出さない。
@@ -111,12 +120,14 @@ export async function POST(req: NextRequest) {
     }
 
     for (const media of mediaList) {
-      // 冪等性: 同じ素材を同じ日に二度投稿しない(スロット単位。手動テストや二重発火対策)
-      const already = await getOne(
-        "SELECT 1 AS hit FROM story_post_log WHERE date = ? AND video_path = ? AND status = 'posted' LIMIT 1",
-        [date, media.url]
+      // 冪等性: 同じ素材を同じ日に二度投稿しない(スロット単位。手動テストや二重発火対策)。
+      // 判定は origin非依存の pathname で行う(過去にorigin差で二重投稿した事故の恒久対策)。
+      const key = slotKey(media.url);
+      const postedToday = await getAll(
+        "SELECT video_path FROM story_post_log WHERE date = ? AND status = 'posted'",
+        [date]
       );
-      if (already) {
+      if (postedToday.some((r) => slotKey(String(r.video_path)) === key)) {
         results.push({ media: media.base, skipped: '投稿済み(冪等)' });
         continue;
       }
@@ -151,8 +162,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // このスロットの投稿権を獲得(取れなければ他プロセスが処理中=スキップ)
-      const claimed = await claimSlot(date, media.url);
+      // このスロットの投稿権を獲得(取れなければ他プロセスが処理中=スキップ)。キーはorigin非依存のpathname。
+      const claimed = await claimSlot(date, key);
       if (!claimed) {
         results.push({ media: media.base, skipped: '別プロセスが投稿処理中(claim)' });
         continue;
@@ -174,7 +185,7 @@ export async function POST(req: NextRequest) {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         // publish失敗: claimを解放して次回の再投稿を可能にする
-        await releaseClaim(date, media.url);
+        await releaseClaim(date, key);
         await logResult(date, weekday, media.url, 'error', undefined, msg);
         errorCount++;
         results.push({ media: media.base, error: msg });
