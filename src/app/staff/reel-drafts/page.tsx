@@ -309,6 +309,9 @@ function CompactRow({ d, onReset, onMsg }: { d: Draft; onReset: () => void; onMs
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <span className={`text-[11px] px-2 py-0.5 rounded-full ${STATUS_STYLE[d.status] ?? ''}`}>{STATUS_LABEL[d.status] ?? d.status}</span>
+        {d.reel_path && (
+          <a href={d.reel_path} download={`${d.class_name || 'reel'}.mp4`} className="text-[11px] text-brand-600 hover:underline">⬇ 保存</a>
+        )}
         {d.status === 'scheduled' && (
           <button onClick={unschedule} className="text-[11px] text-red-500 hover:underline">取り消し</button>
         )}
@@ -367,8 +370,16 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
 
       {/* 完成リールのプレビュー(これが実際に投稿される動画) */}
       {draft.reel_path && (
-        <video src={draft.reel_path} controls playsInline preload="metadata"
-          poster={draft.cover_path ?? undefined} className="w-full max-h-[52vh] rounded-lg bg-black mb-3" />
+        <>
+          <video src={draft.reel_path} controls playsInline preload="metadata"
+            poster={draft.cover_path ?? undefined} className="w-full max-h-[52vh] rounded-lg bg-black mb-2" />
+          <div className="mb-3">
+            <a href={draft.reel_path} download={`${draft.class_name || 'reel'}.mp4`}
+              className="inline-flex items-center gap-1 text-xs text-brand-700 border border-brand-300 rounded-md px-3 py-1.5 hover:bg-brand-50">
+              ⬇ 動画をダウンロード（ストーリー先出し等）
+            </a>
+          </div>
+        </>
       )}
 
       <label className="block mb-3">
