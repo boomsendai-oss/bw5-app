@@ -25,12 +25,13 @@ export interface PartDef {
   key: PartKey;
   label: string;
   note?: string;
+  lesson?: string; // 振り入れレッスンの曜日(公開フォームに表示)
 }
 
 export const DEFAULT_PARTS: PartDef[] = [
-  { key: 'girls_hh', label: 'ガールズHIPHOP' },
-  { key: 'waack', label: 'WAACK' },
-  { key: 'hiphop', label: 'HIPHOP' },
+  { key: 'girls_hh', label: 'ガールズHIPHOP', lesson: '土曜レッスン' },
+  { key: 'waack', label: 'WAACK', lesson: '土曜レッスン' },
+  { key: 'hiphop', label: 'HIPHOP', lesson: '木曜レッスン' },
 ];
 
 export interface ResolvedSettings {

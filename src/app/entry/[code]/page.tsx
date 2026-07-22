@@ -11,7 +11,13 @@ import {
 import { isKatakanaName, type PartDef, type PartKey, type SignupInput } from '@/lib/eventSignup';
 import FlowDiagram from './FlowDiagram';
 
-type PerformerRow = { name: string; parts: PartKey[] };
+// choices: パートごとに 出演する('yes') / 出演しない('no') / 未回答(キー無し)
+type PerformerRow = { name: string; choices: Record<string, 'yes' | 'no'> };
+
+// 送信用に「出演する」パートだけ配列化
+function yesParts(choices: Record<string, 'yes' | 'no'>): PartKey[] {
+  return Object.keys(choices).filter((k) => choices[k] === 'yes') as PartKey[];
+}
 
 function tokenStorageKey(code: string) {
   return `taihaku_signup_token_${code}`;
@@ -29,7 +35,7 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
 
   const [understood, setUnderstood] = useState(false);
   const [note, setNote] = useState('');
-  const [rows, setRows] = useState<PerformerRow[]>([{ name: '', parts: [] }]);
+  const [rows, setRows] = useState<PerformerRow[]>([{ name: '', choices: {} }]);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [doneToken, setDoneToken] = useState<string | null>(null);
@@ -60,7 +66,12 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
       if (r.ok) {
         setUnderstood(true);
         setNote(r.signup.note);
-        setRows(r.signup.performers.map((p) => ({ name: p.name, parts: p.parts })));
+        setRows(
+          r.signup.performers.map((p) => ({
+            name: p.name,
+            choices: Object.fromEntries(p.parts.map((k) => [k, 'yes' as const])),
+          }))
+        );
         setEditing(true);
         setReviewing(true);
         localStorage.setItem(tokenStorageKey(code), token);
@@ -68,18 +79,23 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
     })();
   }, [token, code]);
 
-  const togglePart = useCallback((idx: number, key: PartKey) => {
+  const setChoice = useCallback((idx: number, key: PartKey, val: 'yes' | 'no') => {
     setRows((prev) =>
-      prev.map((r, i) =>
-        i === idx
-          ? { ...r, parts: r.parts.includes(key) ? r.parts.filter((k) => k !== key) : [...r.parts, key] }
-          : r
-      )
+      prev.map((r, i) => {
+        if (i !== idx) return r;
+        // 同じボタンを再タップしたら選択解除（未回答に戻す）
+        if (r.choices[key] === val) {
+          const next = { ...r.choices };
+          delete next[key];
+          return { ...r, choices: next };
+        }
+        return { ...r, choices: { ...r.choices, [key]: val } };
+      })
     );
   }, []);
 
   function addRow() {
-    setRows((r) => [...r, { name: '', parts: [] }]);
+    setRows((r) => [...r, { name: '', choices: {} }]);
   }
   function removeRow(idx: number) {
     setRows((r) => (r.length <= 1 ? r : r.filter((_, i) => i !== idx)));
@@ -89,7 +105,11 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
     setError('');
     setSubmitting(true);
     try {
-      const payload: SignupInput = { understood, note, performers: rows };
+      const payload: SignupInput = {
+        understood,
+        note,
+        performers: rows.map((r) => ({ name: r.name, parts: yesParts(r.choices) })),
+      };
       if (editing && token) {
         const r = await updateOwnSignup(code, token, payload);
         if (!r.ok) { setError(r.error); return; }
@@ -179,7 +199,7 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
                 <div key={i} className="rounded-lg bg-slate-50 px-3 py-2">
                   <div className="text-sm font-bold text-slate-800">{r.name}</div>
                   <div className="text-xs text-slate-500 mt-0.5">
-                    {r.parts.map((k) => parts.find((p) => p.key === k)?.label ?? k).join(' / ') || 'パート未選択'}
+                    {yesParts(r.choices).map((k) => parts.find((p) => p.key === k)?.label ?? k).join(' / ') || 'パート未選択'}
                   </div>
                 </div>
               ))}
@@ -286,21 +306,48 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
                     )}
                   </div>
                   <div>
-                    <div className="text-[11px] text-slate-400 mb-1.5">希望パート（複数選べます）</div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="text-[11px] text-slate-500 mb-1.5">
+                      各パートに<span className="font-bold">出演するか</span>を選んでください（複数OK）
+                    </div>
+                    <div className="space-y-2">
                       {parts.map((p) => {
-                        const on = row.parts.includes(p.key);
+                        const choice = row.choices[p.key];
                         return (
-                          <button
+                          <div
                             key={p.key}
-                            type="button"
-                            onClick={() => togglePart(idx, p.key)}
-                            className={`rounded-full px-3 py-1.5 text-xs font-bold border ${
-                              on ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-slate-600 border-slate-300'
+                            className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 ${
+                              choice === 'yes' ? 'border-teal-300 bg-teal-50' : 'border-slate-200 bg-white'
                             }`}
                           >
-                            {p.label}
-                          </button>
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-slate-800">{p.label}</div>
+                              {p.lesson && <div className="text-[11px] text-slate-400">{p.lesson}で振り入れ</div>}
+                            </div>
+                            <div className="flex gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setChoice(idx, p.key, 'yes')}
+                                className={`rounded-lg px-3 py-1.5 text-xs font-bold border ${
+                                  choice === 'yes'
+                                    ? 'bg-teal-600 text-white border-teal-600'
+                                    : 'bg-white text-slate-600 border-slate-300'
+                                }`}
+                              >
+                                出演する
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setChoice(idx, p.key, 'no')}
+                                className={`rounded-lg px-3 py-1.5 text-xs font-bold border ${
+                                  choice === 'no'
+                                    ? 'bg-slate-500 text-white border-slate-500'
+                                    : 'bg-white text-slate-600 border-slate-300'
+                                }`}
+                              >
+                                出演しない
+                              </button>
+                            </div>
+                          </div>
                         );
                       })}
                     </div>
