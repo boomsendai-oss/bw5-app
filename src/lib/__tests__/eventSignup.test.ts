@@ -24,9 +24,9 @@ describe('validateSignupInput', () => {
     understood: true,
     note: ' メモ ',
     performers: [
-      { name: ' 太郎 ', parts: ['girls_hh', 'girls_hh', 'waack'] },
+      { name: ' タロウ ', parts: ['girls_hh', 'girls_hh', 'waack'] },
       { name: '', parts: [] },
-      { name: '次郎', parts: ['hiphop'] },
+      { name: 'ジロウ', parts: ['hiphop'] },
     ],
   };
 
@@ -36,9 +36,21 @@ describe('validateSignupInput', () => {
     if (typeof r === 'string') return;
     expect(r.note).toBe('メモ');
     expect(r.performers).toEqual([
-      { name: '太郎', parts: ['girls_hh', 'waack'] },
-      { name: '次郎', parts: ['hiphop'] },
+      { name: 'タロウ', parts: ['girls_hh', 'waack'] },
+      { name: 'ジロウ', parts: ['hiphop'] },
     ]);
+  });
+
+  it('カタカナ以外の名前はエラー（ひらがな・漢字・英字）', () => {
+    expect(validateSignupInput({ understood: true, performers: [{ name: 'たろう', parts: ['waack'] }] })).toContain('カタカナ');
+    expect(validateSignupInput({ understood: true, performers: [{ name: '太郎', parts: ['waack'] }] })).toContain('カタカナ');
+    expect(validateSignupInput({ understood: true, performers: [{ name: 'Taro', parts: ['waack'] }] })).toContain('カタカナ');
+  });
+
+  it('カタカナ＋長音符・中点・スペースは許可', () => {
+    const r = validateSignupInput({ understood: true, performers: [{ name: 'サトウ　ハナ・コ', parts: ['waack'] }] });
+    if (typeof r === 'string') throw new Error(r);
+    expect(r.performers[0].name).toBe('サトウ　ハナ・コ');
   });
 
   it('理解チェック未通過はエラー', () => {
@@ -50,19 +62,19 @@ describe('validateSignupInput', () => {
   });
 
   it('パート未選択の出演者はエラー(名前入り)', () => {
-    const r = validateSignupInput({ understood: true, performers: [{ name: '花子', parts: [] }] });
-    expect(r).toContain('花子');
+    const r = validateSignupInput({ understood: true, performers: [{ name: 'ハナコ', parts: [] }] });
+    expect(r).toContain('ハナコ');
     expect(r).toContain('パート');
   });
 
   it('不正なパートキーは無視される', () => {
-    const r = validateSignupInput({ understood: true, performers: [{ name: 'A', parts: ['ballet', 'waack'] }] });
+    const r = validateSignupInput({ understood: true, performers: [{ name: 'エー', parts: ['ballet', 'waack'] }] });
     if (typeof r === 'string') throw new Error(r);
     expect(r.performers[0].parts).toEqual(['waack']);
   });
 
   it('11人以上はエラー', () => {
-    const performers = Array.from({ length: 11 }, (_, i) => ({ name: `p${i}`, parts: ['waack'] }));
+    const performers = Array.from({ length: 11 }, () => ({ name: 'テスト', parts: ['waack'] }));
     expect(validateSignupInput({ understood: true, performers })).toContain('10人');
   });
 });

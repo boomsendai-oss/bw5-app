@@ -1,11 +1,19 @@
 // 太白区民まつり 出演者募集の純ロジック(DB非依存・vitest対象)。
-import { randomBytes } from 'node:crypto';
+// ※ このモジュールはクライアント(公開フォーム)からも import されるため、
+//   node: 依存を持たない(トークン生成は Web Crypto を使う)。
 
 export const PART_KEYS = ['girls_hh', 'waack', 'hiphop'] as const;
 export type PartKey = (typeof PART_KEYS)[number];
 
 export function isPartKey(v: string): v is PartKey {
   return (PART_KEYS as readonly string[]).includes(v);
+}
+
+// 出演者名は全角カタカナのみ許可（長音符ー・中点・・全角/半角スペースは許可）。
+// 名簿を書き起こしやすくするため、ひらがな・漢字・英数字は不可。
+const KATAKANA_NAME_RE = /^[゠-ヿ　\s]+$/;
+export function isKatakanaName(name: string): boolean {
+  return KATAKANA_NAME_RE.test(name);
 }
 
 export interface PartDef {
@@ -43,13 +51,20 @@ export function defaultSettings(): ResolvedSettings {
       '衣装：後日ご案内します',
       '申込締切：2026年8月1日(土)',
       '',
+      '▼ 練習・レッスンの予約について',
+      '出演するパートが決まったら、練習レッスンの予約も HACOMONO から入れてください。',
+      '・ガールズHIPHOP / WAACK … 通常の土曜レッスンの中で振り入れします（土曜レッスンをご予約ください）',
+      '・HIPHOP … 専用レッスンで振り入れします（下記の各回を HACOMONO からご予約ください）',
+      '',
+      '▼ HIPHOPパート 練習日程（木曜 18:30〜19:30・コナミスポーツクラブ仙台長町）',
+      '8/6・8/20・9/10・9/24・10/8',
+      '',
       '▼ 全体リハーサル（2回・できるだけご参加ください）',
       '・9/19(土) 17:30〜19:00　コナスポ',
       '・10/11(日) 18:00〜20:00　太白区文化センター 展示ホール',
       '',
-      '▼ HIPHOPパート 練習日程',
-      '木曜 18:30〜19:30（コナミスポーツクラブ仙台長町）',
-      '8/6・8/20・9/10・9/24・10/8',
+      '⚠ 練習への参加が極端に少ない場合は、出演をお見送りいただくことがあります（特にHIPHOPパート）。',
+      '　振り付けを覚えきれないと本番で他の出演者に影響するため、できるだけご参加ください。',
     ].join('\n'),
   };
 }
@@ -81,6 +96,7 @@ export function validateSignupInput(input: SignupInput): ValidatedSignup | strin
     const name = (p?.name ?? '').trim();
     if (!name) continue;
     if (name.length > 50) return '出演者名が長すぎます（50文字以内）';
+    if (!isKatakanaName(name)) return `「${name}」はカタカナで入力してください`;
     const parts = Array.from(new Set((p?.parts ?? []).filter(isPartKey)));
     if (parts.length === 0) return `${name} さんの希望パートを1つ以上選んでください`;
     cleaned.push({ name, parts });
@@ -92,7 +108,9 @@ export function validateSignupInput(input: SignupInput): ValidatedSignup | strin
 }
 
 export function generateEditToken(): string {
-  return randomBytes(24).toString('hex');
+  const bytes = new Uint8Array(24);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export function countByPart(performers: { parts: PartKey[] }[]): Record<string, number> {

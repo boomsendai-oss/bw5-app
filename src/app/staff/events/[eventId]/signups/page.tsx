@@ -20,6 +20,7 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
   const [parts, setParts] = useState<PartMeta[]>([]);
   const [signups, setSignups] = useState<Signup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterPart, setFilterPart] = useState<string>('all');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,14 +119,43 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
           );
         })}
 
-        {/* 全体名簿（申込単位・兄弟グルーピング） */}
+        {/* 全体名簿（申込単位・兄弟グルーピング）＋ パート絞り込み */}
+        {(() => {
+          const visibleSignups =
+            filterPart === 'all'
+              ? signups
+              : signups
+                  .map((s) => ({ ...s, performers: s.performers.filter((p) => p.parts.includes(filterPart)) }))
+                  .filter((s) => s.performers.length > 0);
+          return (
         <section className="space-y-2">
-          <h2 className="text-sm font-bold text-navy-700">全体名簿（申込ごと）</h2>
-          {signups.length === 0 ? (
-            <Card><CardContent className="py-8 text-center text-muted-foreground">まだ申込がありません</CardContent></Card>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="text-sm font-bold text-navy-700">全体名簿（申込ごと）</h2>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setFilterPart('all')}
+                className={`rounded-full px-3 py-1 text-xs font-bold border ${filterPart === 'all' ? 'bg-navy-700 text-white border-navy-700' : 'bg-white text-slate-600 border-slate-300'}`}
+              >
+                全部
+              </button>
+              {parts.map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => setFilterPart(p.key)}
+                  className={`rounded-full px-3 py-1 text-xs font-bold border ${filterPart === p.key ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-slate-600 border-slate-300'}`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {visibleSignups.length === 0 ? (
+            <Card><CardContent className="py-8 text-center text-muted-foreground">
+              {signups.length === 0 ? 'まだ申込がありません' : 'このパートの出演者はいません'}
+            </CardContent></Card>
           ) : (
             <ul className="space-y-2">
-              {signups.map((s) => (
+              {visibleSignups.map((s) => (
                 <li key={s.id}>
                   <Card><CardContent className="py-3">
                     <div className="flex items-start justify-between gap-3">
@@ -151,6 +181,8 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
             </ul>
           )}
         </section>
+          );
+        })()}
       </div>
     </div>
   );

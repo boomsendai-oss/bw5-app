@@ -8,7 +8,7 @@ import {
   updateOwnSignup,
   type PublicView,
 } from './actions';
-import type { PartDef, PartKey, SignupInput } from '@/lib/eventSignup';
+import { isKatakanaName, type PartDef, type PartKey, type SignupInput } from '@/lib/eventSignup';
 import FlowDiagram from './FlowDiagram';
 
 type PerformerRow = { name: string; parts: PartKey[] };
@@ -217,12 +217,21 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
                       <button onClick={() => removeRow(idx)} className="text-xs text-red-500">削除</button>
                     )}
                   </div>
-                  <input
-                    value={row.name}
-                    onChange={(e) => setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, name: e.target.value } : r)))}
-                    placeholder="出演者名（お名前）"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
-                  />
+                  <div>
+                    <input
+                      value={row.name}
+                      onChange={(e) => setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, name: e.target.value } : r)))}
+                      placeholder="おなまえ（カタカナ）"
+                      className={`w-full border rounded-lg px-3 py-2 text-sm ${
+                        row.name.trim() && !isKatakanaName(row.name) ? 'border-red-400 bg-red-50' : 'border-slate-200'
+                      }`}
+                    />
+                    {row.name.trim() && !isKatakanaName(row.name) ? (
+                      <p className="text-[11px] text-red-600 mt-1">お名前はカタカナでご入力ください（例：ヤマダ ハナコ）</p>
+                    ) : (
+                      <p className="text-[11px] text-slate-400 mt-1">※お名前はカタカナでご入力ください</p>
+                    )}
+                  </div>
                   <div>
                     <div className="text-[11px] text-slate-400 mb-1.5">希望パート（複数選べます）</div>
                     <div className="flex flex-wrap gap-2">
@@ -266,7 +275,7 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
 
             <button
               onClick={onSubmit}
-              disabled={submitting}
+              disabled={submitting || rows.some((r) => r.name.trim() !== '' && !isKatakanaName(r.name))}
               className="w-full rounded-2xl bg-teal-600 text-white text-base font-bold py-3 disabled:opacity-50"
             >
               {submitting ? '送信中…' : editing ? '内容を更新する' : '申し込む'}
