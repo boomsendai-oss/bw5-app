@@ -25,6 +25,7 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
   // token（自己編集用）: URLの ?t= か localStorage から
   const [token, setToken] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [reviewing, setReviewing] = useState(false); // 既存申込を読み取り表示中（まだ編集していない）
 
   const [understood, setUnderstood] = useState(false);
   const [note, setNote] = useState('');
@@ -61,6 +62,7 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
         setNote(r.signup.note);
         setRows(r.signup.performers.map((p) => ({ name: p.name, parts: p.parts })));
         setEditing(true);
+        setReviewing(true);
         localStorage.setItem(tokenStorageKey(code), token);
       }
     })();
@@ -146,11 +148,14 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
               {copied ? '✓ コピーしました' : 'リンクをコピー'}
             </button>
           </div>
+          <p className="text-center text-[11px] text-slate-400 px-2">
+            同じ端末（このスマホ／パソコン）なら、次からこのページを開くだけで自分の申込が表示されます。上の編集用リンクは、別の端末で直すときのために保管してください。
+          </p>
           <button
-            onClick={() => { setDoneToken(null); setEditing(true); setToken(doneToken); }}
+            onClick={() => { setDoneToken(null); setEditing(true); setReviewing(true); setToken(doneToken); }}
             className="w-full text-sm text-slate-500 underline"
           >
-            続けて内容を確認・修正する
+            申込内容を確認する
           </button>
         </div>
       </div>
@@ -159,10 +164,54 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
 
   const s = view.settings;
 
+  // 既存申込の確認モード（同じ端末での再訪 or 送信直後の「確認」）。
+  // いきなり編集させず、内容を表示して「内容を修正する」を押してから編集に入る。
+  if (reviewing) {
+    return (
+      <div className="min-h-screen bg-slate-50 px-4 py-8">
+        <div className="max-w-md mx-auto space-y-4">
+          <h1 className="text-xl font-bold text-slate-800 text-center">{view.eventName}</h1>
+
+          <div className="rounded-2xl border border-teal-200 bg-white p-4">
+            <div className="text-xs font-bold text-teal-700 mb-2">✅ この内容で申込済みです</div>
+            <div className="space-y-2">
+              {rows.filter((r) => r.name.trim()).map((r, i) => (
+                <div key={i} className="rounded-lg bg-slate-50 px-3 py-2">
+                  <div className="text-sm font-bold text-slate-800">{r.name}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {r.parts.map((k) => parts.find((p) => p.key === k)?.label ?? k).join(' / ') || 'パート未選択'}
+                  </div>
+                </div>
+              ))}
+              {note.trim() && <div className="text-xs text-slate-500">メモ：{note}</div>}
+            </div>
+          </div>
+
+          <p className="text-center text-[11px] text-slate-400 px-2">
+            同じ端末なら、次からこのページを開くだけでこの内容が表示されます。修正したいときは下のボタンから。
+          </p>
+
+          <button
+            onClick={() => setReviewing(false)}
+            className="w-full rounded-2xl bg-teal-600 text-white text-base font-bold py-3"
+          >
+            内容を修正する
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8">
       <div className="max-w-md mx-auto space-y-4">
         <h1 className="text-xl font-bold text-slate-800 text-center">{view.eventName}</h1>
+
+        {editing && (
+          <div className="rounded-xl bg-teal-50 border border-teal-200 px-3 py-2 text-xs text-teal-700 text-center">
+            申込内容を修正しています。変更したら下の「内容を更新する」を押してください。
+          </div>
+        )}
 
         {/* 説明 */}
         <div className="rounded-2xl border border-slate-200 bg-white p-4 whitespace-pre-wrap text-sm text-slate-700 leading-relaxed">

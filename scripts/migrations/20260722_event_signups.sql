@@ -35,3 +35,15 @@ CREATE TABLE IF NOT EXISTS event_signup_settings (
   is_open INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS event_signup_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER NOT NULL,
+  signup_id INTEGER,
+  actor TEXT NOT NULL DEFAULT 'guest',
+  action TEXT NOT NULL,
+  message TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_signup_audit_event ON event_signup_audit (event_id);

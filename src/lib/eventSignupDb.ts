@@ -3,6 +3,7 @@ import { getAll, getOne, execute, withWriteTx } from '@/lib/db';
 import type { Transaction } from '@libsql/client';
 import {
   isPartKey,
+  partLabel,
   defaultSettings,
   type PartKey,
   type PartDef,
@@ -28,6 +29,69 @@ export interface StaffSignup {
   note: string;
   createdAt: string;
   performers: StaffPerformer[];
+}
+
+export interface AuditEntry {
+  id: number;
+  signupId: number | null;
+  actor: string;
+  action: string;
+  message: string;
+  createdAt: string;
+}
+
+// 出演者リストを「太郎（ガールズHIPHOP・WAACK）、次郎（HIPHOP）」形式の読める文字列に。
+function snapshotText(performers: { name: string; parts: PartKey[] }[]): string {
+  if (!performers.length) return '(なし)';
+  return performers
+    .map((p) => `${p.name}（${p.parts.map(partLabel).join('・') || 'パート未選択'}）`)
+    .join('、');
+}
+
+async function loadPerformers(signupId: number): Promise<{ name: string; parts: PartKey[] }[]> {
+  const performers = await getAll(
+    'SELECT id, performer_name FROM event_signup_performers WHERE signup_id = ? ORDER BY sort_order ASC, id ASC',
+    [signupId]
+  );
+  const out: { name: string; parts: PartKey[] }[] = [];
+  for (const p of performers) {
+    const parts = await getAll('SELECT part_key FROM event_signup_parts WHERE performer_id = ?', [Number(p.id)]);
+    out.push({
+      name: String(p.performer_name),
+      parts: parts.map((r) => String(r.part_key)).filter(isPartKey) as PartKey[],
+    });
+  }
+  return out;
+}
+
+// 変更ログを1件記録する。actor='guest'(お客様) or 'staff'。
+async function logAudit(
+  eventId: number,
+  signupId: number | null,
+  actor: 'guest' | 'staff',
+  action: string,
+  message: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  await execute(
+    'INSERT INTO event_signup_audit (event_id, signup_id, actor, action, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [eventId, signupId, actor, action, message, now]
+  );
+}
+
+export async function listAudit(eventId: number, limit = 300): Promise<AuditEntry[]> {
+  const rows = await getAll(
+    'SELECT id, signup_id, actor, action, message, created_at FROM event_signup_audit WHERE event_id = ? ORDER BY id DESC LIMIT ?',
+    [eventId, limit]
+  );
+  return rows.map((r) => ({
+    id: Number(r.id),
+    signupId: r.signup_id != null ? Number(r.signup_id) : null,
+    actor: String(r.actor),
+    action: String(r.action),
+    message: String(r.message),
+    createdAt: String(r.created_at),
+  }));
 }
 
 export async function findEventByCode(code: string): Promise<{ id: number; name: string } | null> {
@@ -111,14 +175,16 @@ export async function createSignup(
   data: ValidatedSignup
 ): Promise<void> {
   const now = new Date().toISOString();
+  let signupId = 0;
   await withWriteTx(async (tx) => {
     const res = await tx.execute({
       sql: 'INSERT INTO event_signups (event_id, edit_token, understood, note, created_at, updated_at) VALUES (?, ?, 1, ?, ?, ?)',
       args: [eventId, token, data.note, now, now],
     });
-    const signupId = Number(res.lastInsertRowid);
+    signupId = Number(res.lastInsertRowid);
     await insertPerformers(tx, signupId, data.performers);
   });
+  await logAudit(eventId, signupId, 'guest', 'create', `新規申込：${snapshotText(data.performers)}`);
 }
 
 // トークン一致の1件だけ返す(列挙不可)。無ければ null。
@@ -158,6 +224,7 @@ export async function updateByToken(
   );
   if (!su) return false;
   const signupId = Number(su.id);
+  const before = await loadPerformers(signupId);
   const now = new Date().toISOString();
   await withWriteTx(async (tx) => {
     const perfIds = await tx.execute({
@@ -174,6 +241,13 @@ export async function updateByToken(
     });
     await insertPerformers(tx, signupId, data.performers);
   });
+  await logAudit(
+    eventId,
+    signupId,
+    'guest',
+    'update',
+    `お客様が編集\n変更前：${snapshotText(before)}\n変更後：${snapshotText(data.performers)}`
+  );
   return true;
 }
 
@@ -206,6 +280,7 @@ export async function listByEvent(eventId: number): Promise<StaffSignup[]> {
 export async function deleteSignup(eventId: number, signupId: number): Promise<void> {
   const su = await getOne('SELECT id FROM event_signups WHERE id = ? AND event_id = ?', [signupId, eventId]);
   if (!su) return;
+  const before = await loadPerformers(signupId);
   await withWriteTx(async (tx) => {
     const perfIds = await tx.execute({
       sql: 'SELECT id FROM event_signup_performers WHERE signup_id = ?',
@@ -217,6 +292,7 @@ export async function deleteSignup(eventId: number, signupId: number): Promise<v
     await tx.execute({ sql: 'DELETE FROM event_signup_performers WHERE signup_id = ?', args: [signupId] });
     await tx.execute({ sql: 'DELETE FROM event_signups WHERE id = ?', args: [signupId] });
   });
+  await logAudit(eventId, signupId, 'staff', 'delete', `スタッフが申込を削除：${snapshotText(before)}`);
 }
 
 // スタッフ用: 出演者1人の名前/パートを更新。event_id 経由で所有チェック。
@@ -227,12 +303,17 @@ export async function updatePerformer(
   parts: PartKey[]
 ): Promise<boolean> {
   const row = await getOne(
-    `SELECT p.id FROM event_signup_performers p
+    `SELECT p.id, p.performer_name, p.signup_id FROM event_signup_performers p
        JOIN event_signups s ON s.id = p.signup_id
       WHERE p.id = ? AND s.event_id = ?`,
     [performerId, eventId]
   );
   if (!row) return false;
+  const beforeName = String(row.performer_name);
+  const signupId = Number(row.signup_id);
+  const beforeParts = (await getAll('SELECT part_key FROM event_signup_parts WHERE performer_id = ?', [performerId]))
+    .map((r) => String(r.part_key))
+    .filter(isPartKey) as PartKey[];
   await withWriteTx(async (tx) => {
     await tx.execute({ sql: 'UPDATE event_signup_performers SET performer_name = ? WHERE id = ?', args: [name, performerId] });
     await tx.execute({ sql: 'DELETE FROM event_signup_parts WHERE performer_id = ?', args: [performerId] });
@@ -240,19 +321,30 @@ export async function updatePerformer(
       await tx.execute({ sql: 'INSERT INTO event_signup_parts (performer_id, part_key) VALUES (?, ?)', args: [performerId, k] });
     }
   });
+  await logAudit(
+    eventId,
+    signupId,
+    'staff',
+    'update',
+    `スタッフが編集\n変更前：${snapshotText([{ name: beforeName, parts: beforeParts }])}\n変更後：${snapshotText([{ name, parts }])}`
+  );
   return true;
 }
 
 // スタッフ用: 出演者1人を削除。最後の1人を消すと申込ごと消す。
 export async function deletePerformer(eventId: number, performerId: number): Promise<void> {
   const row = await getOne(
-    `SELECT p.id, p.signup_id FROM event_signup_performers p
+    `SELECT p.id, p.performer_name, p.signup_id FROM event_signup_performers p
        JOIN event_signups s ON s.id = p.signup_id
       WHERE p.id = ? AND s.event_id = ?`,
     [performerId, eventId]
   );
   if (!row) return;
   const signupId = Number(row.signup_id);
+  const delName = String(row.performer_name);
+  const delParts = (await getAll('SELECT part_key FROM event_signup_parts WHERE performer_id = ?', [performerId]))
+    .map((r) => String(r.part_key))
+    .filter(isPartKey) as PartKey[];
   await withWriteTx(async (tx) => {
     await tx.execute({ sql: 'DELETE FROM event_signup_parts WHERE performer_id = ?', args: [performerId] });
     await tx.execute({ sql: 'DELETE FROM event_signup_performers WHERE id = ?', args: [performerId] });
@@ -264,4 +356,11 @@ export async function deletePerformer(eventId: number, performerId: number): Pro
       await tx.execute({ sql: 'DELETE FROM event_signups WHERE id = ?', args: [signupId] });
     }
   });
+  await logAudit(
+    eventId,
+    signupId,
+    'staff',
+    'delete_performer',
+    `スタッフが出演者を削除：${snapshotText([{ name: delName, parts: delParts }])}`
+  );
 }

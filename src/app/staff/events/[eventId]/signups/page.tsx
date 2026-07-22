@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { Download, Trash2, Settings } from 'lucide-react';
+import { Download, Trash2, Settings, ScrollText } from 'lucide-react';
 import Link from 'next/link';
 import StaffPageHeader from '@/components/StaffPageHeader';
 
@@ -13,6 +13,17 @@ type PartMeta = { key: string; label: string };
 type Performer = { id: number; name: string; parts: string[] };
 type Signup = { id: number; note: string; createdAt: string; performers: Performer[] };
 type Summary = { signupCount: number; performerCount: number; byPart: { key: string; label: string; count: number }[] };
+type AuditRow = { id: number; signupId: number | null; actor: string; action: string; message: string; createdAt: string };
+
+function fmtJst(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString('ja-JP', {
+      timeZone: 'Asia/Tokyo', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    });
+  } catch {
+    return iso;
+  }
+}
 
 export default function SignupsPage({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = usePromise(params);
@@ -21,6 +32,26 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
   const [signups, setSignups] = useState<Signup[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterPart, setFilterPart] = useState<string>('all');
+  const [showLog, setShowLog] = useState(false);
+  const [audit, setAudit] = useState<AuditRow[]>([]);
+  const [auditLoaded, setAuditLoaded] = useState(false);
+
+  const loadAudit = useCallback(async () => {
+    const res = await fetch(`/api/staff/events/${eventId}/signups/audit`, { credentials: 'include' });
+    if (res.ok) {
+      const data = await res.json();
+      setAudit(data.entries ?? []);
+      setAuditLoaded(true);
+    }
+  }, [eventId]);
+
+  function toggleLog() {
+    setShowLog((v) => {
+      const next = !v;
+      if (next) loadAudit();
+      return next;
+    });
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,6 +91,9 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
         backLabel="イベント"
         rightExtra={
           <div className="flex items-center gap-2">
+            <Button size="sm" variant={showLog ? 'default' : 'outline'} onClick={toggleLog}>
+              <ScrollText className="size-3.5 mr-1" />変更ログ
+            </Button>
             <Button asChild size="sm" variant="outline">
               <Link href={`/staff/events/${eventId}/signups/settings`}>
                 <Settings className="size-3.5 mr-1" />設定
@@ -75,6 +109,36 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
       />
 
       <div className="max-w-4xl mx-auto p-6 space-y-6">
+        {/* 変更ログ */}
+        {showLog && (
+          <section className="rounded-xl border border-sand-300 bg-white p-4 space-y-2">
+            <div className="flex items-center gap-2 mb-1">
+              <ScrollText className="size-4 text-navy-700" />
+              <h2 className="text-sm font-bold text-navy-700">変更ログ</h2>
+              <span className="text-xs text-muted-foreground">（新しい順・申込/編集/削除の履歴）</span>
+            </div>
+            {!auditLoaded ? (
+              <div className="text-xs text-muted-foreground">読み込み中...</div>
+            ) : audit.length === 0 ? (
+              <div className="text-xs text-muted-foreground">まだ記録がありません</div>
+            ) : (
+              <ul className="space-y-1.5 max-h-96 overflow-y-auto">
+                {audit.map((a) => (
+                  <li key={a.id} className="text-xs border-b border-slate-100 pb-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground tabular-nums">{fmtJst(a.createdAt)}</span>
+                      <Badge variant={a.actor === 'staff' ? 'secondary' : 'outline'} className="text-[9px]">
+                        {a.actor === 'staff' ? 'スタッフ' : 'お客様'}
+                      </Badge>
+                    </div>
+                    <div className="whitespace-pre-wrap text-slate-700 mt-0.5">{a.message}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
         {/* サマリー */}
         <section className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <Card><CardContent className="py-3 text-center">

@@ -9,6 +9,11 @@ export function isPartKey(v: string): v is PartKey {
   return (PART_KEYS as readonly string[]).includes(v);
 }
 
+// パートキー → 表示名(ログ用)。DEFAULT_PARTS を参照。
+export function partLabel(key: string): string {
+  return DEFAULT_PARTS.find((p) => p.key === key)?.label ?? key;
+}
+
 // 出演者名は全角カタカナのみ許可（長音符ー・中点・・全角/半角スペースは許可）。
 // 名簿を書き起こしやすくするため、ひらがな・漢字・英数字は不可。
 const KATAKANA_NAME_RE = /^[゠-ヿ　\s]+$/;
