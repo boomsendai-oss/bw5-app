@@ -74,7 +74,7 @@ export default function EventDashboard({ params }: { params: Promise<{ eventId: 
 
         <nav className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <NavCard href={`/staff/events/${eventId}/todo`} title="ToDo リスト" desc="反省/準備 ToDo を管理" icon={<ListTodo className="size-4" />} />
-          <NavCard href="#" title="スタッフ管理" desc="(Phase 2 で実装)" icon={<Users className="size-4" />} disabled />
+          <NavCard href={`/staff/events/${eventId}/signups`} title="出演者募集・集計" desc="申込状況・パート別名簿・CSV" icon={<Users className="size-4" />} />
           <NavCard href="#" title="タイムテーブル" desc="(Phase 2 で実装)" icon={<Clock3 className="size-4" />} disabled />
           <NavCard href="#" title="収支" desc="(Phase 2 で実装)" icon={<Wallet className="size-4" />} disabled />
         </nav>
