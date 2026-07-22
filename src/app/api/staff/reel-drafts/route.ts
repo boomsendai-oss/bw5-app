@@ -19,21 +19,23 @@ export const maxDuration = 30;
  * need_input を作り、ready を生成して reel_queue に投入する。ここは"入力"だけを担う。
  */
 
-const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice'] as const;
+const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice', 'caption'] as const;
 
 export async function GET(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
   // 表示順: 入力待ち → 生成中 → 完了/エラー(直近)
   const rows = await getAll(
-    `SELECT id, drive_file_id, drive_name, kind, shot_at, class_name, instructor, daytime,
-            caption_style, duration_sec, preview_path, cover_candidates,
-            dance_start, dance_end, cover_at, cover_choice, status, reel_queue_id, error,
-            created_at, updated_at
-     FROM reel_draft
-     ORDER BY CASE status
-        WHEN 'need_input' THEN 0 WHEN 'ready' THEN 1 WHEN 'generating' THEN 2
-        WHEN 'error' THEN 3 WHEN 'done' THEN 4 ELSE 5 END,
-       updated_at DESC
+    `SELECT d.id, d.drive_file_id, d.drive_name, d.kind, d.shot_at, d.class_name, d.instructor, d.daytime,
+            d.caption_style, d.duration_sec, d.preview_path, d.cover_candidates,
+            d.dance_start, d.dance_end, d.cover_at, d.cover_choice, d.status, d.reel_queue_id, d.error,
+            d.reel_path, d.cover_path, d.caption, d.created_at, d.updated_at,
+            q.scheduled_at AS queue_scheduled_at, q.status AS queue_status, q.permalink AS queue_permalink
+     FROM reel_draft d
+     LEFT JOIN reel_queue q ON q.id = d.reel_queue_id
+     ORDER BY CASE d.status
+        WHEN 'need_input' THEN 0 WHEN 'review' THEN 1 WHEN 'ready' THEN 2 WHEN 'generating' THEN 3
+        WHEN 'error' THEN 4 WHEN 'scheduled' THEN 5 WHEN 'done' THEN 6 ELSE 7 END,
+       d.updated_at DESC
      LIMIT 100`
   );
   const signal = await getOne('SELECT sync_requested_at, generate_requested_at, updated_at FROM reel_pipeline_signal WHERE id = 1').catch(() => null);
@@ -96,9 +98,23 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ ok: true, draft: updated });
 }
 
+// 直近未来の 火(2)/金(5) 19:00 JST を UTC ISO で返す(手動GOのデフォルト投稿枠)
+function nextReelSlotIso(): string {
+  const nowJst = new Date(Date.now() + 9 * 3600 * 1000);
+  for (let i = 1; i <= 8; i++) {
+    const d = new Date(nowJst.getTime() + i * 86400000);
+    const dow = d.getUTCDay();
+    if (dow === 2 || dow === 5) {
+      const day = d.toISOString().slice(0, 10);
+      return new Date(`${day}T19:00:00+09:00`).toISOString();
+    }
+  }
+  return new Date(Date.now() + 86400000).toISOString();
+}
+
 export async function POST(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
-  let body: { signal?: string };
+  let body: { signal?: string; action?: string; id?: number; scheduled_at?: string };
   try {
     body = await req.json();
   } catch {
@@ -113,5 +129,52 @@ export async function POST(req: NextRequest) {
     await execute('UPDATE reel_pipeline_signal SET generate_requested_at = ?, updated_at = ? WHERE id = 1', [now, now]);
     return NextResponse.json({ ok: true, requested: 'generate', at: now });
   }
-  return NextResponse.json({ error: "signal は 'sync' か 'generate'" }, { status: 400 });
+
+  // 投稿予約(手動GO): 投稿待ち(review)の完成リールを reel_queue に scheduled で投入する。
+  // ここで初めて自動投稿の対象になる。scheduled_at 未指定なら次の火/金19時。
+  if (body.action === 'schedule') {
+    const id = Number(body.id);
+    if (!Number.isFinite(id)) return NextResponse.json({ error: 'id required' }, { status: 400 });
+    const d = await getOne('SELECT * FROM reel_draft WHERE id = ?', [id]);
+    if (!d) return NextResponse.json({ error: 'not found' }, { status: 404 });
+    if (d.status !== 'review' || !d.reel_path) {
+      return NextResponse.json({ error: '完成した投稿待ちリールのみ予約できます' }, { status: 400 });
+    }
+    let scheduledAt = nextReelSlotIso();
+    if (body.scheduled_at) {
+      const t = new Date(body.scheduled_at);
+      if (isNaN(t.getTime())) return NextResponse.json({ error: '日時が不正です' }, { status: 400 });
+      if (t.getTime() < Date.now() - 60000) return NextResponse.json({ error: '過去の日時は指定できません' }, { status: 400 });
+      scheduledAt = t.toISOString();
+    }
+    const title = `${d.class_name || d.drive_name}${d.instructor ? '（' + d.instructor + '）' : ''}`;
+    const q = await execute(
+      `INSERT INTO reel_queue (title, video_path, cover_path, caption, scheduled_at, status)
+       VALUES (?, ?, ?, ?, ?, 'scheduled')`,
+      [title, d.reel_path, d.cover_path, d.caption ?? '', scheduledAt]
+    );
+    await execute('UPDATE reel_draft SET status = ?, reel_queue_id = ?, updated_at = ? WHERE id = ?',
+      ['scheduled', String(q.lastInsertRowid), now, id]);
+    return NextResponse.json({ ok: true, scheduled_at: scheduledAt, reel_queue_id: String(q.lastInsertRowid) });
+  }
+
+  // 予約取り消し: まだ投稿されていない予約を取り消して投稿待ちに戻す。
+  if (body.action === 'unschedule') {
+    const id = Number(body.id);
+    if (!Number.isFinite(id)) return NextResponse.json({ error: 'id required' }, { status: 400 });
+    const d = await getOne('SELECT * FROM reel_draft WHERE id = ?', [id]);
+    if (!d) return NextResponse.json({ error: 'not found' }, { status: 404 });
+    if (d.reel_queue_id) {
+      const q = await getOne('SELECT status FROM reel_queue WHERE id = ?', [d.reel_queue_id]);
+      if (q && (q.status === 'posted' || q.status === 'posting')) {
+        return NextResponse.json({ error: 'すでに投稿済み/投稿中のため取り消せません' }, { status: 400 });
+      }
+      await execute("UPDATE reel_queue SET status = 'canceled' WHERE id = ?", [d.reel_queue_id]);
+    }
+    await execute('UPDATE reel_draft SET status = ?, reel_queue_id = NULL, updated_at = ? WHERE id = ?',
+      ['review', now, id]);
+    return NextResponse.json({ ok: true, status: 'review' });
+  }
+
+  return NextResponse.json({ error: "signal は 'sync'/'generate'、action は 'schedule'/'unschedule'" }, { status: 400 });
 }

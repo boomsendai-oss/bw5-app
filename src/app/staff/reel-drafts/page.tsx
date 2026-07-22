@@ -29,18 +29,35 @@ type Draft = {
   status: string;
   reel_queue_id: number | null;
   error: string | null;
+  reel_path: string | null;
+  cover_path: string | null;
+  caption: string | null;
+  queue_scheduled_at: string | null;
+  queue_status: string | null;
+  queue_permalink: string | null;
   updated_at: string;
 };
 type Signal = { sync_requested_at: string | null; generate_requested_at: string | null; updated_at: string | null };
 
 const STATUS_LABEL: Record<string, string> = {
-  new: '取込中', need_input: '入力待ち', ready: '生成待ち', generating: '生成中', done: '完了', error: 'エラー',
+  new: '取込中', need_input: '入力待ち', ready: '生成待ち', generating: '生成中',
+  review: '投稿待ち', scheduled: '投稿予約済み', done: '完了', error: 'エラー',
 };
 const STATUS_STYLE: Record<string, string> = {
   need_input: 'bg-amber-100 text-amber-800', ready: 'bg-brand-100 text-brand-700',
-  generating: 'bg-blue-100 text-blue-700', done: 'bg-green-100 text-green-700',
+  generating: 'bg-blue-100 text-blue-700', review: 'bg-purple-100 text-purple-700',
+  scheduled: 'bg-green-100 text-green-700', done: 'bg-green-100 text-green-700',
   error: 'bg-red-100 text-red-700', new: 'bg-sand-200 text-navy-700',
 };
+
+// JST表示ヘルパ
+function fmtJst(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const j = new Date(d.getTime() + 9 * 3600 * 1000);
+  const w = ['日', '月', '火', '水', '木', '金', '土'][j.getUTCDay()];
+  return `${j.getUTCMonth() + 1}/${j.getUTCDate()}(${w}) ${String(j.getUTCHours()).padStart(2, '0')}:${String(j.getUTCMinutes()).padStart(2, '0')}`;
+}
 
 export default function ReelDraftsPage() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -68,6 +85,8 @@ export default function ReelDraftsPage() {
   };
 
   const pending = drafts.filter((d) => d.status === 'need_input');
+  const review = drafts.filter((d) => d.status === 'review');
+  const scheduled = drafts.filter((d) => d.status === 'scheduled');
   const inFlight = drafts.filter((d) => d.status === 'ready' || d.status === 'generating');
   const settled = drafts.filter((d) => d.status === 'done' || d.status === 'error' || d.status === 'new');
 
@@ -102,6 +121,18 @@ export default function ReelDraftsPage() {
             <Section title={`入力待ち (${pending.length})`} empty="Driveに新しいクリップが上がると、ここに並びます">
               {pending.map((d) => <DraftEditor key={d.id} draft={d} onSaved={load} onMsg={setMsg} />)}
             </Section>
+
+            {review.length > 0 && (
+              <Section title={`投稿待ち・確認して投稿 (${review.length})`}>
+                {review.map((d) => <ReviewCard key={d.id} draft={d} onChanged={load} onMsg={setMsg} />)}
+              </Section>
+            )}
+
+            {scheduled.length > 0 && (
+              <Section title={`投稿予約済み (${scheduled.length})`}>
+                {scheduled.map((d) => <CompactRow key={d.id} d={d} onReset={load} onMsg={setMsg} />)}
+              </Section>
+            )}
 
             {inFlight.length > 0 && (
               <Section title={`生成待ち・生成中 (${inFlight.length})`}>
@@ -169,7 +200,7 @@ function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => v
   };
 
   const submit = async () => {
-    if (await patch({}, 'submit')) { onMsg(`「${className || draft.drive_name}」を生成待ちにしました`); onSaved(); }
+    if (await patch({}, 'submit')) { onMsg(`「${className || draft.drive_name}」のリール生成を開始しました（完成すると"投稿待ち"に出ます）`); onSaved(); }
   };
 
   const seekTo = (t: number) => { if (videoRef.current) { videoRef.current.currentTime = t; videoRef.current.pause(); } };
@@ -231,7 +262,7 @@ function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => v
         <button disabled={saving} onClick={() => patch({}).then((ok) => ok && onMsg('下書きを保存しました'))}
           className="px-3 py-1.5 text-xs rounded-md border border-navy-200 text-navy-600 hover:bg-sand-100 disabled:opacity-50">下書き保存</button>
         <button disabled={saving} onClick={submit}
-          className="px-4 py-1.5 text-xs rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50">✅ 生成待ちにする</button>
+          className="px-4 py-1.5 text-xs rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50">✅ リールを作る</button>
       </div>
 
       <style jsx>{`
@@ -260,18 +291,109 @@ function CompactRow({ d, onReset, onMsg }: { d: Draft; onReset: () => void; onMs
     });
     if (r.ok) { onMsg('入力待ちに戻しました'); onReset(); }
   };
+  const unschedule = async () => {
+    const r = await fetch('/api/staff/reel-drafts', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'unschedule', id: d.id }),
+    });
+    const j = await r.json();
+    if (r.ok) { onMsg('予約を取り消して投稿待ちに戻しました'); onReset(); } else { onMsg(j.error ?? '取り消し失敗'); }
+  };
   return (
     <div className="bg-white rounded-lg border border-sand-200 px-3 py-2 flex items-center justify-between gap-2">
       <div className="min-w-0">
         <p className="text-sm text-navy-700 truncate">{d.class_name || d.drive_name}{d.instructor ? `（${d.instructor}）` : ''}</p>
         {d.error && <p className="text-[11px] text-red-600 truncate">{d.error}</p>}
-        {d.reel_queue_id && <p className="text-[11px] text-green-700">投稿キュー #{d.reel_queue_id} に投入済み</p>}
+        {d.status === 'scheduled' && d.queue_scheduled_at && (
+          <p className="text-[11px] text-green-700">📅 {fmtJst(d.queue_scheduled_at)} に投稿予約</p>
+        )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <span className={`text-[11px] px-2 py-0.5 rounded-full ${STATUS_STYLE[d.status] ?? ''}`}>{STATUS_LABEL[d.status] ?? d.status}</span>
+        {d.status === 'scheduled' && (
+          <button onClick={unschedule} className="text-[11px] text-red-500 hover:underline">取り消し</button>
+        )}
         {(d.status === 'error' || d.status === 'ready') && (
           <button onClick={reopen} className="text-[11px] text-brand-600 hover:underline">再編集</button>
         )}
+      </div>
+    </div>
+  );
+}
+
+// 投稿待ち: 完成リールを確認→キャプション微調整→投稿予約(手動GO)
+function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () => void; onMsg: (s: string) => void }) {
+  const [caption, setCaption] = useState(draft.caption ?? '');
+  const [dateStr, setDateStr] = useState(''); // datetime-local
+  const [busy, setBusy] = useState(false);
+
+  const saveCaption = async () => {
+    setBusy(true);
+    await fetch('/api/staff/reel-drafts', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: draft.id, caption }),
+    });
+    setBusy(false);
+    onMsg('キャプションを保存しました');
+  };
+
+  const schedule = async (scheduledAt?: string) => {
+    setBusy(true);
+    // キャプション編集を反映してから予約
+    if (caption !== (draft.caption ?? '')) {
+      await fetch('/api/staff/reel-drafts', {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: draft.id, caption }),
+      });
+    }
+    const body: Record<string, unknown> = { action: 'schedule', id: draft.id };
+    if (scheduledAt) body.scheduled_at = scheduledAt;
+    const r = await fetch('/api/staff/reel-drafts', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    setBusy(false);
+    if (!r.ok) { onMsg(j.error ?? '予約失敗'); return; }
+    onMsg(`${fmtJst(j.scheduled_at)} に投稿予約しました`);
+    onChanged();
+  };
+
+  return (
+    <div className="bg-white rounded-xl border-2 border-purple-200 p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-navy-700 truncate">
+          {draft.class_name || draft.drive_name}{draft.instructor ? `（${draft.instructor}）` : ''}
+          {draft.daytime ? ` ・${draft.daytime}` : ''}
+        </span>
+        <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">投稿待ち</span>
+      </div>
+
+      {/* 完成リールのプレビュー(これが実際に投稿される動画) */}
+      {draft.reel_path && (
+        <video src={draft.reel_path} controls playsInline preload="metadata"
+          poster={draft.cover_path ?? undefined} className="w-full max-h-[52vh] rounded-lg bg-black mb-3" />
+      )}
+
+      <label className="block mb-3">
+        <span className="text-[11px] text-navy-500">キャプション（投稿文・編集可）</span>
+        <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={5}
+          className="w-full border border-sand-200 rounded-lg p-2 text-sm text-navy-800 mt-1" />
+        <button onClick={saveCaption} disabled={busy}
+          className="mt-1 text-[11px] text-brand-600 hover:underline disabled:opacity-50">キャプションだけ保存</button>
+      </label>
+
+      <div className="border-t border-sand-100 pt-3">
+        <p className="text-[11px] text-navy-500 mb-2">確認できたら投稿予約（ここで初めてInstagramに出ます）</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => schedule()} disabled={busy}
+            className="px-4 py-2 text-sm rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50">
+            ▶ 次の火/金19時で投稿
+          </button>
+          <span className="text-navy-300 text-xs">または</span>
+          <input type="datetime-local" value={dateStr} onChange={(e) => setDateStr(e.target.value)}
+            className="border border-sand-200 rounded-md px-2 py-1.5 text-sm text-navy-800" />
+          <button onClick={() => dateStr ? schedule(new Date(dateStr).toISOString()) : onMsg('日時を選んでください')} disabled={busy}
+            className="px-3 py-1.5 text-sm rounded-md border border-brand-300 text-brand-700 hover:bg-brand-50 disabled:opacity-50">
+            この日時で投稿
+          </button>
+        </div>
       </div>
     </div>
   );
