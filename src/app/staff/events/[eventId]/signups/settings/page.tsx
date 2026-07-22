@@ -102,7 +102,7 @@ export default function SignupSettingsPage({ params }: { params: Promise<{ event
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs">説明文（Markdown可）</Label>
+            <Label className="text-xs">説明文（入力した改行はそのまま表示されます）</Label>
             <Textarea
               rows={10}
               value={s.introMd}
