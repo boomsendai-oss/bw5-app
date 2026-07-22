@@ -5,7 +5,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { Download, Trash2 } from 'lucide-react';
+import { Download, Trash2, Settings } from 'lucide-react';
+import Link from 'next/link';
 import StaffPageHeader from '@/components/StaffPageHeader';
 
 type PartMeta = { key: string; label: string };
@@ -57,11 +58,18 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
         backHref={`/staff/events/${eventId}`}
         backLabel="イベント"
         rightExtra={
-          <Button asChild size="sm" variant="outline">
-            <a href={`/api/staff/events/${eventId}/signups/export`}>
-              <Download className="size-3.5 mr-1" />CSV
-            </a>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/staff/events/${eventId}/signups/settings`}>
+                <Settings className="size-3.5 mr-1" />設定
+              </Link>
+            </Button>
+            <Button asChild size="sm" variant="outline">
+              <a href={`/api/staff/events/${eventId}/signups/export`}>
+                <Download className="size-3.5 mr-1" />CSV
+              </a>
+            </Button>
+          </div>
         }
       />
 
