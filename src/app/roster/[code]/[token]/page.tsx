@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, use as usePromise } from 'react';
+import { useEffect, useMemo, useState, use as usePromise } from 'react';
 import { getSharedRosterAction, type SharedRosterResult } from './actions';
 
 // パート色（集計画面と統一）
@@ -20,10 +20,17 @@ const partDot = (k: string) => PART_DOT[k] ?? 'bg-slate-400';
 export default function SharedRosterPage({ params }: { params: Promise<{ code: string; token: string }> }) {
   const { code, token } = usePromise(params);
   const [res, setRes] = useState<SharedRosterResult | null>(null);
+  const [tab, setTab] = useState<string>('all'); // 'all' | part.key
 
   useEffect(() => {
     (async () => setRes(await getSharedRosterAction(code, token)))();
   }, [code, token]);
+
+  // 全出演者を平坦化（名前+パート）
+  const allPerformers = useMemo(() => {
+    if (!res || !res.ok) return [];
+    return res.roster.signups.flatMap((s) => s.performers);
+  }, [res]);
 
   if (!res) {
     return <div className="min-h-screen flex items-center justify-center text-slate-400">読み込み中…</div>;
@@ -37,6 +44,9 @@ export default function SharedRosterPage({ params }: { params: Promise<{ code: s
   }
 
   const r = res.roster;
+  const shown =
+    tab === 'all' ? allPerformers : allPerformers.filter((p) => (p.parts as string[]).includes(tab));
+  const labelOf = (k: string) => r.parts.find((p) => p.key === k)?.label ?? k;
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6">
@@ -66,32 +76,59 @@ export default function SharedRosterPage({ params }: { params: Promise<{ code: s
           </div>
         </section>
 
-        {/* パート別 名簿 */}
-        {r.parts.map((part) => {
-          const members = r.signups.flatMap((s) =>
-            s.performers.filter((p) => (p.parts as string[]).includes(part.key)).map((p) => p.name)
-          );
-          return (
-            <section key={part.key} className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <span className={`size-2.5 rounded-full ${partDot(part.key)}`} />
-                <h2 className="text-sm font-bold text-slate-800">{part.label}</h2>
-                <span className="text-xs text-slate-400">{members.length}名</span>
-              </div>
-              {members.length === 0 ? (
-                <div className="text-xs text-slate-400">まだいません</div>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {members.map((n, i) => (
-                    <span key={i} className="text-sm bg-slate-50 border border-slate-200 rounded-full px-3 py-1 text-slate-700">
-                      {n}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </section>
-          );
-        })}
+        {/* タブ */}
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          <button
+            onClick={() => setTab('all')}
+            className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold border transition ${
+              tab === 'all' ? 'bg-navy-700 text-white border-navy-700' : 'bg-white text-slate-600 border-slate-300'
+            }`}
+          >
+            全体 <span className="tabular-nums">{r.summary.performerCount}</span>
+          </button>
+          {r.parts.map((p) => {
+            const c = r.summary.byPart.find((b) => b.key === p.key)?.count ?? 0;
+            const on = tab === p.key;
+            return (
+              <button
+                key={p.key}
+                onClick={() => setTab(p.key)}
+                className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold border transition ${
+                  on ? `${partPill(p.key)} ring-1 ring-inset` : 'bg-white text-slate-600 border-slate-300'
+                }`}
+              >
+                {p.label} <span className="tabular-nums">{c}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 名簿 */}
+        <section className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          {shown.length === 0 ? (
+            <div className="py-10 text-center text-sm text-slate-400">
+              {allPerformers.length === 0 ? 'まだ申込がありません' : 'このパートの出演者はいません'}
+            </div>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {shown.map((p, i) => (
+                <li key={i} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs text-slate-400 tabular-nums w-5 shrink-0">{i + 1}</span>
+                    <span className="text-sm font-semibold text-slate-800">{p.name}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1 justify-end shrink-0">
+                    {p.parts.map((k) => (
+                      <span key={k} className={`text-[10px] font-bold rounded-full border px-2 py-0.5 ${partPill(k)}`}>
+                        {labelOf(k)}
+                      </span>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
         <p className="text-center text-[11px] text-slate-400 px-4">
           このページは閲覧のみです。編集はできません。名簿には個人情報が含まれるため、リンクの共有は関係者のみにお願いします。
