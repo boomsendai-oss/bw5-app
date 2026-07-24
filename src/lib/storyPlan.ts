@@ -49,10 +49,43 @@ export async function findChainMediaList(origin: string, date: string, weekday: 
 
   // 優先度: ①日付指定(手動上書き) > ②ライブラリ自動選択(カレンダー突合) > ③曜日デフォルト。
   const dated = await fileChain(date, 'date-file');
-  if (dated.length > 0) return dated;
+  if (dated.length > 0) return sortByDeclaredTime(origin, dated);
   const auto = await selectLibraryChain(origin, date, weekday);
-  if (auto.length > 0) return auto;
-  return fileChain(WEEKDAY_FILES[weekday], 'weekday-file');
+  if (auto.length > 0) return sortByDeclaredTime(origin, auto);
+  return sortByDeclaredTime(origin, await fileChain(WEEKDAY_FILES[weekday], 'weekday-file'));
+}
+
+// 投稿順ルール(TARO 2026-07-25確定): チェーン内は「宣言時間が早いスロットから先に」投稿する。
+// 時間の出どころ: lessons宣言の最小start(レッスン素材) / sidecarのtimeフィールド(イベント素材)。
+// 時間が取れないスロットは末尾(元の連番順を維持)。
+function earliestDeclaredTime(lessons?: DeclaredLesson[], time?: string): string | null {
+  const starts = (lessons ?? []).map((l) => l.start.slice(0, 5)).filter(Boolean);
+  if (time) starts.push(time);
+  return starts.length > 0 ? starts.sort()[0] : null;
+}
+
+async function sortByDeclaredTime(origin: string, list: ChainMedia[]): Promise<ChainMedia[]> {
+  if (list.length < 2) return list;
+  const keyed = await Promise.all(
+    list.map(async (m, i) => {
+      // library-auto は台帳由来のlessonsを直接持つ。ファイル素材はsidecarから読む
+      let lessons = m.lessons;
+      let time: string | undefined;
+      if (m.source !== 'library-auto') {
+        const sc = await loadSidecar(origin, m.base);
+        lessons = sc.lessons;
+        time = sc.time;
+      }
+      return { m, i, t: earliestDeclaredTime(lessons, time) };
+    })
+  );
+  keyed.sort((a, b) => {
+    if (a.t && b.t && a.t !== b.t) return a.t < b.t ? -1 : 1;
+    if (a.t && !b.t) return -1;
+    if (!a.t && b.t) return 1;
+    return a.i - b.i;
+  });
+  return keyed.map((k) => k.m);
 }
 
 // 台帳(library/manifest.json)の各画像を当日のカレンダー(正本)と突合し、内容が一致する画像を自動選択する。
@@ -133,6 +166,7 @@ export type DeclaredLesson = { start: string; instructor: string };
 export type Sidecar = {
   mentions?: string[];
   lessons?: DeclaredLesson[];
+  time?: string; // lessons宣言の無い素材(イベントフライヤー等)の開催時刻 HH:MM。投稿順の決定に使う
 };
 
 /**
@@ -157,6 +191,9 @@ export async function loadSidecar(origin: string, base: string): Promise<Sidecar
         typeof (l as DeclaredLesson).instructor === 'string'
     );
     if (lessons.length > 0) out.lessons = lessons;
+  }
+  if (typeof j?.time === 'string' && /^\d{1,2}:\d{2}/.test(j.time)) {
+    out.time = j.time.slice(0, 5).padStart(5, '0');
   }
   return out;
 }
