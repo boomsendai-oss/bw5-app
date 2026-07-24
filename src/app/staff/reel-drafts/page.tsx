@@ -395,7 +395,7 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => schedule()} disabled={busy}
             className="px-4 py-2 text-sm rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50">
-            ▶ 次の火/金19時で投稿
+            ▶ 次の{draft.kind === '発表会' || draft.kind === 'stage' ? '金曜' : '火曜'}19時で投稿
           </button>
           <span className="text-navy-300 text-xs">または</span>
           <input type="datetime-local" value={dateStr} onChange={(e) => setDateStr(e.target.value)}

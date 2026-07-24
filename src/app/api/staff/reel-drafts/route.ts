@@ -98,13 +98,14 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ ok: true, draft: updated });
 }
 
-// 直近未来の 火(2)/金(5) 19:00 JST を UTC ISO で返す(手動GOのデフォルト投稿枠)
-function nextReelSlotIso(): string {
+// 投稿枠ルール(発表会リール制作フロー_v1.md): 火曜=レッスン(クラス)リール / 金曜=発表会リール。
+// kind に応じて次の該当曜日19:00 JST を返す。クラスが金曜に、発表会が火曜に出ないようにする。
+function nextReelSlotIso(kind?: string): string {
+  const targetDow = kind === '発表会' || kind === 'stage' ? 5 : 2; // 発表会→金(5) / それ以外(クラス)→火(2)
   const nowJst = new Date(Date.now() + 9 * 3600 * 1000);
-  for (let i = 1; i <= 8; i++) {
+  for (let i = 1; i <= 14; i++) {
     const d = new Date(nowJst.getTime() + i * 86400000);
-    const dow = d.getUTCDay();
-    if (dow === 2 || dow === 5) {
+    if (d.getUTCDay() === targetDow) {
       const day = d.toISOString().slice(0, 10);
       return new Date(`${day}T19:00:00+09:00`).toISOString();
     }
@@ -140,7 +141,7 @@ export async function POST(req: NextRequest) {
     if (d.status !== 'review' || !d.reel_path) {
       return NextResponse.json({ error: '完成した投稿待ちリールのみ予約できます' }, { status: 400 });
     }
-    let scheduledAt = nextReelSlotIso();
+    let scheduledAt = nextReelSlotIso(String(d.kind ?? 'class'));
     if (body.scheduled_at) {
       const t = new Date(body.scheduled_at);
       if (isNaN(t.getTime())) return NextResponse.json({ error: '日時が不正です' }, { status: 400 });
