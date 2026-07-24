@@ -18,45 +18,26 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 // GBP月次予約投稿の自動登録 (2026-07-25)。
-// クラウドルーティン(毎月20日9:00 JST)が boom-events-hub に生成する翌月分ドラフト
-// docs/gbp-drafts/YYYY-MM.md を取得し、v4 localPosts へ scheduledTime 付きで登録する。
-// GitHub Actions (bw5-app: gbp-post-scheduler-cron.yml) から毎月20日に叩かれる。
+// クラウドルーティン(毎月20日9:00 JST)が boom-events-hub に翌月分ドラフト
+// docs/gbp-drafts/YYYY-MM.md をpushすると、同リポジトリのGH Actions
+// (gbp-schedule-posts.yml) がその内容をこのエンドポイントへPOSTし、
+// v4 localPosts へ scheduledTime 付きの予約投稿(非公開・SCHEDULED)を作成する。
 // 冪等: 同じ予約時刻の投稿が既にあればskip (TARO手動予約・再実行と衝突しない)。
-// 認証: Authorization: Bearer <CRON_SECRET> または x-cron-secret ヘッダ (gbp-reviewsと同パターン)
+// 認証: x-cron-secret (または Bearer) が CRON_SECRET / GBP_SCHEDULER_SECRET の
+//       いずれかに一致 (後者は boom-events-hub 側Actionsに配布した専用シークレット)
 //
+// リクエスト: POST body = JSON { markdown: string } (ドラフトMD全文)
 // クエリ:
-//   ?month=YYYY-MM  対象月の上書き (既定: JST今日の翌月)
+//   ?month=YYYY-MM  対象月 (ログ/通知の表示用。既定: JST今日の翌月)
 //   ?dry=1          作成せず計画だけ返す (疎通テスト用)
-//   ?final=1        この月の最終試行 (ドラフト未生成でもTAROへ通知して人間にバトンを渡す)
-
-const DRAFT_REPO = 'boomsendai-oss/boom-events-hub';
+//   ?final=1        この月の最終試行 (ドラフト未着でもTAROへ通知して人間にバトンを渡す)
 
 function cronAuthorized(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false; // 未設定なら拒否 (無認証公開を防ぐ)
+  const secrets = [process.env.CRON_SECRET, process.env.GBP_SCHEDULER_SECRET].filter(Boolean);
+  if (secrets.length === 0) return false; // 未設定なら拒否 (無認証公開を防ぐ)
   const bearer = req.headers.get('authorization');
-  if (bearer === `Bearer ${secret}`) return true;
-  if (req.headers.get('x-cron-secret') === secret) return true;
-  return false;
-}
-
-/** boom-events-hub(private) からドラフトMDを取得。404はnull */
-async function fetchDraftMarkdown(month: string): Promise<string | null> {
-  const token = process.env.GITHUB_TOKEN_HP_DEPLOY;
-  if (!token) throw new Error('GITHUB_TOKEN_HP_DEPLOY 未設定');
-  const url = `https://api.github.com/repos/${DRAFT_REPO}/contents/docs/gbp-drafts/${month}.md`;
-  const res = await fetch(url, {
-    headers: {
-      Accept: 'application/vnd.github.raw+json',
-      Authorization: `Bearer ${token}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) {
-    throw new Error(`ドラフト取得失敗 (GitHub ${res.status}): ${(await res.text()).slice(0, 200)}`);
-  }
-  return res.text();
+  const header = req.headers.get('x-cron-secret');
+  return secrets.some((s) => bearer === `Bearer ${s}` || header === s);
 }
 
 async function run(req: NextRequest): Promise<NextResponse> {
@@ -75,8 +56,15 @@ async function run(req: NextRequest): Promise<NextResponse> {
   const isFinal = params.get('final') === '1';
 
   try {
-    const markdown = await fetchDraftMarkdown(month);
-    if (markdown === null) {
+    let markdown = '';
+    try {
+      const body = (await req.json()) as { markdown?: string };
+      markdown = typeof body.markdown === 'string' ? body.markdown : '';
+    } catch {
+      // bodyなし/非JSON → draft_missing 扱い
+    }
+
+    if (!markdown.trim()) {
       if (isFinal && !dry) {
         await notifyTaro({
           subjectPrefix: '[BOOM GBP]',
@@ -89,7 +77,12 @@ async function run(req: NextRequest): Promise<NextResponse> {
             `※月初までに手動で予約すれば投稿自体は間に合います。`,
         });
       }
-      return NextResponse.json({ ok: false, month, error: 'draft_missing', notified: isFinal && !dry });
+      return NextResponse.json({
+        ok: false,
+        month,
+        error: 'draft_missing',
+        notified: isFinal && !dry,
+      });
     }
 
     const { posts, errors: parseErrors } = parseGbpDraftMarkdown(markdown);
@@ -117,7 +110,10 @@ async function run(req: NextRequest): Promise<NextResponse> {
     const allErrors = [...parseErrors, ...createErrors];
     if (!dry && (created.length > 0 || allErrors.length > 0)) {
       const jst = (iso: string) =>
-        new Date(new Date(iso).getTime() + 9 * 3600_000).toISOString().slice(0, 16).replace('T', ' ');
+        new Date(new Date(iso).getTime() + 9 * 3600_000)
+          .toISOString()
+          .slice(0, 16)
+          .replace('T', ' ');
       const lines = [
         created.length > 0
           ? `${month}のGBP予約投稿 ${created.length}本を自動登録しました。\n` +
@@ -151,7 +147,9 @@ async function run(req: NextRequest): Promise<NextResponse> {
         scheduledTimeUtc: s.post.scheduledTimeUtc,
         reason: s.reason,
       })),
-      to_create_dry: dry ? plan.toCreate.map((p) => ({ index: p.index, scheduledTimeUtc: p.scheduledTimeUtc })) : undefined,
+      to_create_dry: dry
+        ? plan.toCreate.map((p) => ({ index: p.index, scheduledTimeUtc: p.scheduledTimeUtc }))
+        : undefined,
       errors: allErrors,
     });
   } catch (e) {
@@ -160,16 +158,13 @@ async function run(req: NextRequest): Promise<NextResponse> {
       await notifyTaro({
         subjectPrefix: '[BOOM GBP]',
         subject: `⚠️ ${month}のGBP予約投稿 自動登録が失敗`,
-        body: `エラー: ${msg}\n\n再実行はGitHub Actions (bw5-app / gbp-post-scheduler-cron) のRun workflowから。\n手動予約のフォールバックも可能です(ドラフト: boom-events-hub/docs/gbp-drafts/${month}.md)。`,
+        body: `エラー: ${msg}\n\n再実行はGitHub Actions (boom-events-hub / gbp-schedule-posts) のRun workflowから。\n手動予約のフォールバックも可能です(ドラフト: boom-events-hub/docs/gbp-drafts/${month}.md)。`,
       }).catch(() => {});
     }
     return NextResponse.json({ ok: false, month, error: msg }, { status: 500 });
   }
 }
 
-export async function GET(req: NextRequest) {
-  return run(req);
-}
 export async function POST(req: NextRequest) {
   return run(req);
 }
