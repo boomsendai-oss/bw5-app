@@ -140,7 +140,7 @@ export default function ReelDraftsPage() {
             {tab === 'stage' && <StageCreateForm onCreated={load} onMsg={setMsg} />}
 
             <Section title={`入力待ち (${pending.length})`}
-              empty={tab === 'stage' ? '上のフォームから作成すると生成が始まります' : 'Driveに新しいクリップが上がると、ここに並びます'}>
+              empty={tab === 'stage' ? '作成後、SSD接続中のMacが本編を確定するとここに出ます(カバー選定はスマホでOK)' : 'Driveに新しいクリップが上がると、ここに並びます'}>
               {pending.map((d) => <DraftEditor key={d.id} draft={d} onSaved={load} onMsg={setMsg} />)}
             </Section>
 
@@ -188,6 +188,8 @@ function Section({ title, empty, children }: { title: string; empty?: string; ch
 function fmt(n: number | null | undefined) { return n == null ? '' : String(n); }
 
 function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => void; onMsg: (s: string) => void }) {
+  // 発表会draft: 本編は確定済み(SSD不要)。ここでの入力はカバー選定+演目名/講師だけ。
+  const stage = draft.kind === '発表会' || draft.kind === 'stage';
   const [className, setClassName] = useState(draft.class_name ?? '');
   const [instructor, setInstructor] = useState(draft.instructor ?? '');
   const [daytime, setDaytime] = useState(draft.daytime ?? '');
@@ -270,21 +272,21 @@ function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => v
         </div>
       )}
 
-      {/* 数値・テキスト入力 */}
+      {/* 数値・テキスト入力(発表会は本編確定済みなので秒・曜日時間は出さない) */}
       <div className="grid grid-cols-2 gap-2 mb-3">
-        <Field label="踊り出し(秒)"><input type="number" step="0.1" value={danceStart} onChange={(e) => setDanceStart(e.target.value)} className="input" /></Field>
-        <Field label="踊り終わり(秒)"><input type="number" step="0.1" value={danceEnd} onChange={(e) => setDanceEnd(e.target.value)} className="input" /></Field>
+        {!stage && <Field label="踊り出し(秒)"><input type="number" step="0.1" value={danceStart} onChange={(e) => setDanceStart(e.target.value)} className="input" /></Field>}
+        {!stage && <Field label="踊り終わり(秒)"><input type="number" step="0.1" value={danceEnd} onChange={(e) => setDanceEnd(e.target.value)} className="input" /></Field>}
         <Field label="カバー秒(候補タップで自動)"><input type="number" step="0.1" value={coverAt ?? ''} onChange={(e) => { setCoverAt(e.target.value === '' ? null : Number(e.target.value)); setCoverChoice(null); }} className="input" /></Field>
-        <Field label="曜日・時間"><input value={daytime} onChange={(e) => setDaytime(e.target.value)} placeholder="日曜11:00" className="input" /></Field>
-        <Field label="クラス名"><input value={className} onChange={(e) => setClassName(e.target.value)} placeholder="はじめてのヒップホップ" className="input" /></Field>
-        <Field label="講師"><input value={instructor} onChange={(e) => setInstructor(e.target.value)} placeholder="KEIKO" className="input" /></Field>
+        {!stage && <Field label="曜日・時間"><input value={daytime} onChange={(e) => setDaytime(e.target.value)} placeholder="日曜11:00" className="input" /></Field>}
+        <Field label={stage ? '演目名(カバーに載る)' : 'クラス名'}><input value={className} onChange={(e) => setClassName(e.target.value)} placeholder={stage ? 'そのまま' : 'はじめてのヒップホップ'} className="input" /></Field>
+        <Field label={stage ? '講師(タグ用)' : '講師'}><input value={instructor} onChange={(e) => setInstructor(e.target.value)} placeholder={stage ? 'SAYUKI' : 'KEIKO'} className="input" /></Field>
       </div>
 
       <div className="flex justify-end gap-2">
         <button disabled={saving} onClick={() => patch({}).then((ok) => ok && onMsg('下書きを保存しました'))}
           className="px-3 py-1.5 text-xs rounded-md border border-navy-200 text-navy-600 hover:bg-sand-100 disabled:opacity-50">下書き保存</button>
         <button disabled={saving} onClick={submit}
-          className="px-4 py-1.5 text-xs rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50">✅ リールを作る</button>
+          className="px-4 py-1.5 text-xs rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50">{stage ? '✅ カバー確定・リール仕上げ' : '✅ リールを作る'}</button>
       </div>
 
       <style jsx>{`
@@ -310,7 +312,6 @@ function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (
   const [instructor, setInstructor] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
-  const [coverAt, setCoverAt] = useState('');
   const [kf, setKf] = useState('0=0.5');
   const [busy, setBusy] = useState(false);
 
@@ -323,15 +324,14 @@ function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (
         stage_no: stageNo, title, instructor,
         dance_start: start === '' ? null : Number(start),
         dance_end: end === '' ? null : Number(end),
-        cover_at: coverAt === '' ? null : Number(coverAt),
         stage_kf: kf,
       }),
     });
     const j = await r.json();
     setBusy(false);
     if (!r.ok) { onMsg(j.error ?? '作成失敗'); return; }
-    onMsg(`${stageNo}「${title}」の生成を受け付けました（MacがSSDから生成→"投稿待ち"に出ます。SSD接続を確認してください）`);
-    setStageNo(''); setTitle(''); setInstructor(''); setStart(''); setEnd(''); setCoverAt(''); setKf('0=0.5');
+    onMsg(`${stageNo}「${title}」を受け付けました。SSD接続中のMacが本編を確定すると"入力待ち"に出るので、カバーはそこで(スマホでOK)選んでください`);
+    setStageNo(''); setTitle(''); setInstructor(''); setStart(''); setEnd(''); setKf('0=0.5');
     onCreated();
   };
 
@@ -339,14 +339,13 @@ function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (
     <div className="bg-white rounded-xl border-2 border-brand-200 p-4 shadow-sm">
       <h3 className="text-sm font-semibold text-navy-700 mb-1">🎭 発表会リールを作る</h3>
       <p className="text-[11px] text-navy-400 mb-3">
-        素材はSSDの本番映像(4Kクリーン)。秒数は元動画の経過秒で指定。末尾のロゴ演出・キャプションは固定の型で自動
+        SSDが要るのはこの切り出し指定だけ。秒数は元動画の経過秒。本編確定後のカバー選定・キャプションはスマホで完結できます
       </p>
       <div className="grid grid-cols-2 gap-2 mb-2">
         <Field label="演目番号(M01〜M38)"><input value={stageNo} onChange={(e) => setStageNo(e.target.value)} placeholder="M30" className="input" /></Field>
         <Field label="演目名"><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="そのまま" className="input" /></Field>
         <Field label="見せ場 開始(秒)"><input type="number" step="0.1" value={start} onChange={(e) => setStart(e.target.value)} className="input" /></Field>
         <Field label="見せ場 終了(秒)"><input type="number" step="0.1" value={end} onChange={(e) => setEnd(e.target.value)} className="input" /></Field>
-        <Field label="カバー(秒・空欄で自動)"><input type="number" step="0.05" value={coverAt} onChange={(e) => setCoverAt(e.target.value)} className="input" /></Field>
         <Field label="講師名(タグ用・例 SAYUKI)"><input value={instructor} onChange={(e) => setInstructor(e.target.value)} placeholder="SAYUKI" className="input" /></Field>
       </div>
       <div className="mb-3">

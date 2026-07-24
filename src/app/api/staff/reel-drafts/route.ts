@@ -128,8 +128,8 @@ export async function POST(req: NextRequest) {
   const now = new Date().toISOString();
 
   // 発表会リールの新規作成(TARO 2026-07-25): 素材はDriveでなくSSDの本番映像(M01〜M38)。
-  // TAROが演目番号+秒数+カバー+主役位置を入れるだけで、Mac常駐が
-  // stage_reel.py(9:16クロップ)+outro_logo.sh(固定ロゴ演出)で生成→投稿待ち(review)に出す。
+  // 2段階方式: SSDが要るのは切り出し+追従だけ。Mac常駐が本編を確定してプレビュー+カバー候補を
+  // 出したら(need_input)、以降のカバー選定・キャプションはスマホのアプリだけで完結する。
   if (body.action === 'create_stage') {
     const stageNo = String(body.stage_no ?? '').trim().toUpperCase();
     if (!/^M\d{2}$/.test(stageNo)) return NextResponse.json({ error: '演目番号はM01〜M38の形式で入力してください' }, { status: 400 });
@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
     const r = await execute(
       `INSERT INTO reel_draft (drive_file_id, drive_name, kind, class_name, instructor, dance_start, dance_end, cover_at, stage_kf, status, updated_at)
        VALUES (?, ?, '発表会', ?, ?, ?, ?, ?, ?, 'ready', ?)`,
-      [fileId, `${stageNo}.mp4`, title, String(body.instructor ?? '').trim() || null, ds, de, coverAt ?? ds + Math.min(6, (de - ds) / 2), kfRaw || null, now]
+      [fileId, `${stageNo}.mp4`, title, String(body.instructor ?? '').trim() || null, ds, de, coverAt, kfRaw || null, now]
     );
     return NextResponse.json({ ok: true, id: String(r.lastInsertRowid), status: 'ready' });
   }
