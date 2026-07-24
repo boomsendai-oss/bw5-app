@@ -136,8 +136,21 @@ async function fetchViaIcs(date: string): Promise<CalendarLesson[]> {
     } else if (freq === 'DAILY') {
       const days = Math.floor((Date.parse(isoOf(target)) - Date.parse(isoOf(jstDate))) / 86400000);
       if (days % interval !== 0) continue;
+    } else if (freq === 'MONTHLY') {
+      // 月次: おっちゃんNJS等の「第n日曜」(BYDAY=4SU)。BYMONTHDAY・毎月同日もフォロー。
+      const byday = rrule.match(/BYDAY=([^;]+)/);
+      const bymonthday = rrule.match(/BYMONTHDAY=([^;]+)/);
+      if (byday) {
+        if (!byday[1].split(',').some((tok) => matchesMonthlyByDay(tok, target))) continue;
+      } else if (bymonthday) {
+        if (!bymonthday[1].split(',').map(Number).includes(+target.slice(6, 8))) continue;
+      } else if (target.slice(6, 8) !== jstDate.slice(6, 8)) {
+        continue; // BY*指定なし=DTSTARTと同じ日
+      }
+      const monthsDiff = (+target.slice(0, 4) - +jstDate.slice(0, 4)) * 12 + (+target.slice(4, 6) - +jstDate.slice(4, 6));
+      if (monthsDiff < 0 || monthsDiff % interval !== 0) continue;
     } else {
-      continue; // MONTHLY等は運用に無い
+      continue; // YEARLY等は運用に無い
     }
     // EXDATE(この回だけ削除) / RECURRENCE-ID(この回だけ変更→上で採用済み)を除外
     const exdates = [...ev.matchAll(/EXDATE[^:]*:(\d{8})/g)].map((x) => jstDateOf(ev, x[1]));
@@ -177,4 +190,18 @@ function jstDateOf(ev: string, yyyymmdd: string): string {
 
 function icalDowToNum(d: string): number {
   return { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }[d.trim() as 'SU'] ?? -1;
+}
+
+/** iCalのBYDAYトークン('4SU'=第4日曜 / '-1SU'=最終日曜 / 'SU'=毎日曜)に対象日(YYYYMMDD)が該当するか */
+function matchesMonthlyByDay(token: string, yyyymmdd: string): boolean {
+  const mt = token.trim().match(/^(-?\d+)?(SU|MO|TU|WE|TH|FR|SA)$/);
+  if (!mt) return false;
+  const ord = mt[1] ? parseInt(mt[1], 10) : 0; // 0 = 序数指定なし(毎週該当曜日)
+  const dow = icalDowToNum(mt[2]);
+  const y = +yyyymmdd.slice(0, 4), mo = +yyyymmdd.slice(4, 6), d = +yyyymmdd.slice(6, 8);
+  if (new Date(Date.UTC(y, mo - 1, d)).getUTCDay() !== dow) return false;
+  if (ord === 0) return true;
+  if (ord > 0) return Math.floor((d - 1) / 7) + 1 === ord; // 月初からn番目
+  const daysInMonth = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  return Math.floor((daysInMonth - d) / 7) + 1 === -ord; // 月末からn番目
 }
