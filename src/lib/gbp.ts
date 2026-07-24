@@ -80,3 +80,61 @@ export async function putGbpReply(token: string, reviewId: string, comment: stri
   }
 }
 
+// ---- localPosts (投稿) ----
+// v4 localPosts は2026-07時点で現役 (Q&A APIと違い廃止されていない)。
+// create は scheduledTime を受け付け、SCHEDULED 状態=非公開の予約投稿になる
+// (2026-07-25 実測: create 200 → state SCHEDULED / scheduledTime エコーバック確認済)。
+
+export type GbpLocalPost = {
+  name?: string; // accounts/{a}/locations/{l}/localPosts/{p}
+  state?: string; // LIVE | SCHEDULED | PROCESSING | REJECTED
+  summary?: string;
+  scheduledTime?: string;
+  createTime?: string;
+  searchUrl?: string;
+};
+
+function localPostsBase(): string {
+  return `https://mybusiness.googleapis.com/v4/accounts/${process.env.GBP_ACCOUNT_ID}/locations/${process.env.GBP_LOCATION_ID}/localPosts`;
+}
+
+// 全localPost取得 (冪等判定用。月4本×数年でも高々百数十件)
+export async function listGbpLocalPosts(token: string): Promise<GbpLocalPost[]> {
+  const all: GbpLocalPost[] = [];
+  let pageToken = '';
+  for (let i = 0; i < 20; i++) {
+    const url = `${localPostsBase()}?pageSize=100${pageToken ? `&pageToken=${pageToken}` : ''}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      throw new Error(`GBP localPosts.list失敗: ${res.status} ${await res.text()}`);
+    }
+    const json = (await res.json()) as { localPosts?: GbpLocalPost[]; nextPageToken?: string };
+    all.push(...(json.localPosts ?? []));
+    if (!json.nextPageToken) break;
+    pageToken = json.nextPageToken;
+  }
+  return all;
+}
+
+// 予約投稿を作成 (「最新情報」タイプ・「詳細」ボタン付き)
+export async function createGbpScheduledPost(
+  token: string,
+  opts: { summary: string; scheduledTimeUtc: string; ctaUrl: string }
+): Promise<GbpLocalPost> {
+  const res = await fetch(localPostsBase(), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      languageCode: 'ja',
+      topicType: 'STANDARD',
+      summary: opts.summary,
+      callToAction: { actionType: 'LEARN_MORE', url: opts.ctaUrl },
+      scheduledTime: opts.scheduledTimeUtc,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`GBP localPosts.create失敗: ${res.status} ${await res.text()}`);
+  }
+  return (await res.json()) as GbpLocalPost;
+}
+
