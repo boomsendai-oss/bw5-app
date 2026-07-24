@@ -1,0 +1,9 @@
+{
+  "mentions": ["m55keiko", "takaryu_1203"],
+  "lessons": [
+    { "start": "11:00", "instructor": "KEIKO" },
+    { "start": "12:15", "instructor": "Ryuki" },
+    { "start": "13:30", "instructor": "Ryuki" },
+    { "start": "15:00", "instructor": "KEIKO" }
+  ]
+}

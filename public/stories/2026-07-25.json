@@ -1,0 +1,7 @@
+{
+  "mentions": ["m55keiko"],
+  "lessons": [
+    { "start": "15:30", "instructor": "KEIKO" },
+    { "start": "16:30", "instructor": "KEIKO" }
+  ]
+}
