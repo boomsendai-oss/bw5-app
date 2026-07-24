@@ -210,11 +210,21 @@ const KIND_JA: Record<string, string> = {
   progress: 'プロジェクト進捗',
 };
 
+// タブ切替(TARO 2026-07-25): リール予定が増えるとストーリー予定が下に埋もれるため、
+// ストーリー/リール/分析・ログ をタブで分ける。日常確認の主目的はストーリー予定なので既定はストーリー。
+type Tab = 'story' | 'reel' | 'insights';
+const TABS: Array<{ key: Tab; label: string }> = [
+  { key: 'story', label: '📅 ストーリー' },
+  { key: 'reel', label: '🎬 リール' },
+  { key: 'insights', label: '📊 分析・ログ' },
+];
+
 export default function InstagramStoryPage() {
   const [data, setData] = useState<StatusResp | null>(null);
   const [reels, setReels] = useState<ReelRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const [tab, setTab] = useState<Tab>('story');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -338,6 +348,22 @@ export default function InstagramStoryPage() {
         )}
 
         {data && (
+          <div className="flex gap-1 bg-sand-100 rounded-xl p-1">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`flex-1 rounded-lg px-2 py-2 text-sm font-semibold transition-colors ${
+                  tab === t.key ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {data && tab === 'reel' && (
           <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
             <h2 className="font-bold text-navy-800 mb-1">リール投稿予定</h2>
             <p className="text-xs text-neutral-400 mb-3">
@@ -389,7 +415,7 @@ export default function InstagramStoryPage() {
           </div>
         )}
 
-        {data?.plans && (
+        {data?.plans && tab === 'story' && (
           <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
             <h2 className="font-bold text-navy-800 mb-1">向こう1週間のストーリー予定</h2>
             <p className="text-xs text-neutral-400 mb-3">毎朝8:00に自動投稿。素材の配置状況とGoogleカレンダー照合の結果です</p>
@@ -401,7 +427,7 @@ export default function InstagramStoryPage() {
           </div>
         )}
 
-        {data && (
+        {data && tab === 'story' && (
           <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
             <h2 className="font-bold text-navy-800 mb-2">埋め草キュー</h2>
             <p className="text-xs text-neutral-400 mb-3">
@@ -468,7 +494,7 @@ export default function InstagramStoryPage() {
           </div>
         )}
 
-        {data && (
+        {data && tab === 'insights' && (
           <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
             <h2 className="font-bold text-navy-800 mb-1">投稿パフォーマンス</h2>
             <p className="text-xs text-neutral-400 mb-3">
@@ -518,7 +544,7 @@ export default function InstagramStoryPage() {
           </div>
         )}
 
-        {data && (
+        {data && tab === 'insights' && (
           <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
             <h2 className="font-bold text-navy-800 mb-2">直近の投稿ログ</h2>
             {data.logs.length === 0 ? (

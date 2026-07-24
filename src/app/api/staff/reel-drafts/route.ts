@@ -19,14 +19,14 @@ export const maxDuration = 30;
  * need_input を作り、ready を生成して reel_queue に投入する。ここは"入力"だけを担う。
  */
 
-const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice', 'caption'] as const;
+const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice', 'caption', 'stage_kf'] as const;
 
 export async function GET(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
   // 表示順: 入力待ち → 生成中 → 完了/エラー(直近)
   const rows = await getAll(
     `SELECT d.id, d.drive_file_id, d.drive_name, d.kind, d.shot_at, d.class_name, d.instructor, d.daytime,
-            d.caption_style, d.duration_sec, d.preview_path, d.cover_candidates,
+            d.caption_style, d.duration_sec, d.preview_path, d.cover_candidates, d.stage_kf,
             d.dance_start, d.dance_end, d.cover_at, d.cover_choice, d.status, d.reel_queue_id, d.error,
             d.reel_path, d.cover_path, d.caption, d.created_at, d.updated_at,
             q.scheduled_at AS queue_scheduled_at, q.status AS queue_status, q.permalink AS queue_permalink
@@ -115,13 +115,43 @@ function nextReelSlotIso(kind?: string): string {
 
 export async function POST(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
-  let body: { signal?: string; action?: string; id?: number; scheduled_at?: string };
+  let body: {
+    signal?: string; action?: string; id?: number; scheduled_at?: string;
+    stage_no?: string; title?: string; class_name?: string; instructor?: string;
+    dance_start?: number; dance_end?: number; cover_at?: number; stage_kf?: string;
+  };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: 'invalid json' }, { status: 400 });
   }
   const now = new Date().toISOString();
+
+  // 発表会リールの新規作成(TARO 2026-07-25): 素材はDriveでなくSSDの本番映像(M01〜M38)。
+  // TAROが演目番号+秒数+カバー+主役位置を入れるだけで、Mac常駐が
+  // stage_reel.py(9:16クロップ)+outro_logo.sh(固定ロゴ演出)で生成→投稿待ち(review)に出す。
+  if (body.action === 'create_stage') {
+    const stageNo = String(body.stage_no ?? '').trim().toUpperCase();
+    if (!/^M\d{2}$/.test(stageNo)) return NextResponse.json({ error: '演目番号はM01〜M38の形式で入力してください' }, { status: 400 });
+    const title = String(body.title ?? '').trim();
+    if (!title) return NextResponse.json({ error: '演目名を入力してください' }, { status: 400 });
+    const ds = Number(body.dance_start), de = Number(body.dance_end);
+    if (!Number.isFinite(ds) || !Number.isFinite(de)) return NextResponse.json({ error: '見せ場の開始秒・終了秒を入力してください' }, { status: 400 });
+    if (de <= ds) return NextResponse.json({ error: '終了秒は開始秒より後にしてください' }, { status: 400 });
+    if (de - ds < 3 || de - ds > 90) return NextResponse.json({ error: `クリップ長が${Math.round(de - ds)}秒です(3〜90秒にしてください)` }, { status: 400 });
+    const coverAt = body.cover_at == null || body.cover_at === undefined ? null : Number(body.cover_at);
+    const kfRaw = String(body.stage_kf ?? '').trim();
+    if (kfRaw && !/^\d+(\.\d+)?=(0(\.\d+)?|1(\.0+)?)(,\d+(\.\d+)?=(0(\.\d+)?|1(\.0+)?))*$/.test(kfRaw)) {
+      return NextResponse.json({ error: '主役位置の形式が不正です(例: 0=0.5 または 0=0.5,10=0.3)' }, { status: 400 });
+    }
+    const fileId = `stage:${stageNo}:${crypto.randomUUID().slice(0, 8)}`;
+    const r = await execute(
+      `INSERT INTO reel_draft (drive_file_id, drive_name, kind, class_name, instructor, dance_start, dance_end, cover_at, stage_kf, status, updated_at)
+       VALUES (?, ?, '発表会', ?, ?, ?, ?, ?, ?, 'ready', ?)`,
+      [fileId, `${stageNo}.mp4`, title, String(body.instructor ?? '').trim() || null, ds, de, coverAt ?? ds + Math.min(6, (de - ds) / 2), kfRaw || null, now]
+    );
+    return NextResponse.json({ ok: true, id: String(r.lastInsertRowid), status: 'ready' });
+  }
   if (body.signal === 'sync') {
     await execute('UPDATE reel_pipeline_signal SET sync_requested_at = ?, updated_at = ? WHERE id = 1', [now, now]);
     return NextResponse.json({ ok: true, requested: 'sync', at: now });

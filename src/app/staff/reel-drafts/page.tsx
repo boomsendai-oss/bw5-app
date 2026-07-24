@@ -22,6 +22,7 @@ type Draft = {
   duration_sec: number | null;
   preview_path: string | null;
   cover_candidates: string | null;
+  stage_kf: string | null;
   dance_start: number | null;
   dance_end: number | null;
   cover_at: number | null;
@@ -84,11 +85,18 @@ export default function ReelDraftsPage() {
     setTimeout(load, 800);
   };
 
-  const pending = drafts.filter((d) => d.status === 'need_input');
-  const review = drafts.filter((d) => d.status === 'review');
-  const scheduled = drafts.filter((d) => d.status === 'scheduled');
-  const inFlight = drafts.filter((d) => d.status === 'ready' || d.status === 'generating');
-  const settled = drafts.filter((d) => d.status === 'done' || d.status === 'error' || d.status === 'new');
+  // タブ(TARO 2026-07-25): クラスリール(Drive取込)と発表会リール(SSD本番映像)を分けて表示
+  const [tab, setTab] = useState<'class' | 'stage'>('class');
+  const isStage = (d: Draft) => d.kind === '発表会' || d.kind === 'stage';
+  const shown = drafts.filter((d) => (tab === 'stage' ? isStage(d) : !isStage(d)));
+
+  const pending = shown.filter((d) => d.status === 'need_input');
+  const review = shown.filter((d) => d.status === 'review');
+  const scheduled = shown.filter((d) => d.status === 'scheduled');
+  const inFlight = shown.filter((d) => d.status === 'ready' || d.status === 'generating');
+  const settled = shown.filter((d) => d.status === 'done' || d.status === 'error' || d.status === 'new');
+  const stageCount = drafts.filter(isStage).length;
+  const classCount = drafts.length - stageCount;
 
   return (
     <div className="min-h-screen bg-sand-50">
@@ -114,11 +122,25 @@ export default function ReelDraftsPage() {
           <p className="text-xs text-amber-700">Mac処理待ち…(要求済み。反映まで最大1分)</p>
         )}
 
+        <div className="flex gap-1 bg-sand-100 rounded-xl p-1">
+          <button onClick={() => setTab('class')}
+            className={`flex-1 rounded-lg px-2 py-2 text-sm font-semibold transition-colors ${tab === 'class' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'}`}>
+            🕺 クラスリール ({classCount})
+          </button>
+          <button onClick={() => setTab('stage')}
+            className={`flex-1 rounded-lg px-2 py-2 text-sm font-semibold transition-colors ${tab === 'stage' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'}`}>
+            🎭 発表会リール ({stageCount})
+          </button>
+        </div>
+
         {loading ? (
           <p className="text-navy-500">読み込み中…</p>
         ) : (
           <>
-            <Section title={`入力待ち (${pending.length})`} empty="Driveに新しいクリップが上がると、ここに並びます">
+            {tab === 'stage' && <StageCreateForm onCreated={load} onMsg={setMsg} />}
+
+            <Section title={`入力待ち (${pending.length})`}
+              empty={tab === 'stage' ? '上のフォームから作成すると生成が始まります' : 'Driveに新しいクリップが上がると、ここに並びます'}>
               {pending.map((d) => <DraftEditor key={d.id} draft={d} onSaved={load} onMsg={setMsg} />)}
             </Section>
 
@@ -271,6 +293,79 @@ function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => v
           padding: 0.4rem 0.6rem; font-size: 0.85rem; color: #101040;
         }
       `}</style>
+    </div>
+  );
+}
+
+// 発表会リールの新規作成(素材=SSDの本番映像 M01〜M38。Macで生成するのでSSD接続が必要)
+// 固定フロー: stage_reel.py(9:16クロップ+主役追従) → outro_logo.sh(確定ロゴ演出) → カバー生成 → 投稿待ち
+const KF_PRESETS = [
+  { label: '左', v: '0=0.25' }, { label: 'やや左', v: '0=0.375' }, { label: '中央', v: '0=0.5' },
+  { label: 'やや右', v: '0=0.625' }, { label: '右', v: '0=0.75' },
+];
+
+function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (s: string) => void }) {
+  const [stageNo, setStageNo] = useState('');
+  const [title, setTitle] = useState('');
+  const [instructor, setInstructor] = useState('');
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+  const [coverAt, setCoverAt] = useState('');
+  const [kf, setKf] = useState('0=0.5');
+  const [busy, setBusy] = useState(false);
+
+  const create = async () => {
+    setBusy(true);
+    const r = await fetch('/api/staff/reel-drafts', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create_stage',
+        stage_no: stageNo, title, instructor,
+        dance_start: start === '' ? null : Number(start),
+        dance_end: end === '' ? null : Number(end),
+        cover_at: coverAt === '' ? null : Number(coverAt),
+        stage_kf: kf,
+      }),
+    });
+    const j = await r.json();
+    setBusy(false);
+    if (!r.ok) { onMsg(j.error ?? '作成失敗'); return; }
+    onMsg(`${stageNo}「${title}」の生成を受け付けました（MacがSSDから生成→"投稿待ち"に出ます。SSD接続を確認してください）`);
+    setStageNo(''); setTitle(''); setInstructor(''); setStart(''); setEnd(''); setCoverAt(''); setKf('0=0.5');
+    onCreated();
+  };
+
+  return (
+    <div className="bg-white rounded-xl border-2 border-brand-200 p-4 shadow-sm">
+      <h3 className="text-sm font-semibold text-navy-700 mb-1">🎭 発表会リールを作る</h3>
+      <p className="text-[11px] text-navy-400 mb-3">
+        素材はSSDの本番映像(4Kクリーン)。秒数は元動画の経過秒で指定。末尾のロゴ演出・キャプションは固定の型で自動
+      </p>
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <Field label="演目番号(M01〜M38)"><input value={stageNo} onChange={(e) => setStageNo(e.target.value)} placeholder="M30" className="input" /></Field>
+        <Field label="演目名"><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="そのまま" className="input" /></Field>
+        <Field label="見せ場 開始(秒)"><input type="number" step="0.1" value={start} onChange={(e) => setStart(e.target.value)} className="input" /></Field>
+        <Field label="見せ場 終了(秒)"><input type="number" step="0.1" value={end} onChange={(e) => setEnd(e.target.value)} className="input" /></Field>
+        <Field label="カバー(秒・空欄で自動)"><input type="number" step="0.05" value={coverAt} onChange={(e) => setCoverAt(e.target.value)} className="input" /></Field>
+        <Field label="講師名(タグ用・例 SAYUKI)"><input value={instructor} onChange={(e) => setInstructor(e.target.value)} placeholder="SAYUKI" className="input" /></Field>
+      </div>
+      <div className="mb-3">
+        <span className="text-[11px] text-navy-500">主役の位置(クロップ中心)</span>
+        <div className="flex gap-1.5 mt-1">
+          {KF_PRESETS.map((p) => (
+            <button key={p.v} onClick={() => setKf(p.v)}
+              className={`px-3 py-1.5 text-xs rounded-md border ${kf === p.v ? 'bg-brand-600 text-white border-brand-600' : 'border-navy-200 text-navy-600 hover:bg-sand-100'}`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <input value={kf} onChange={(e) => setKf(e.target.value)} className="input mt-1.5" />
+        <p className="text-[10px] text-navy-400 mt-0.5">上級: 「クリップ内秒=横位置」をカンマ区切りでパン指定可(例 0=0.5,10=0.3)。0=左端〜1=右端</p>
+      </div>
+      <div className="flex justify-end">
+        <button disabled={busy} onClick={create}
+          className="px-4 py-1.5 text-xs rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50">✅ 生成を開始</button>
+      </div>
     </div>
   );
 }
