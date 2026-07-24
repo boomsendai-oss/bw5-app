@@ -9,7 +9,10 @@ export type ChainMedia = {
   url: string;
   type: 'video' | 'image';
   base: string; // 'YYYY-MM-DD' または曜日名。メンションsidecar {base}.json の参照にも使う
-  source: 'date-file' | 'weekday-file';
+  source: 'date-file' | 'weekday-file' | 'library-auto';
+  // library-auto の時だけ: 台帳(manifest)由来の宣言/メンション。sidecar {base}.json は読まずこれを使う。
+  lessons?: DeclaredLesson[];
+  mentions?: string[];
 };
 
 const MAX_SLOTS = 4; // 1日の最大連続投稿数(朝8:00にまとめて投稿)
@@ -21,15 +24,11 @@ const MAX_SLOTS = 4; // 1日の最大連続投稿数(朝8:00にまとめて投�
  * 優先度は日付指定tier全体 > 曜日tier全体(混在しない)。各スロット内は mp4 > jpg。
  */
 export async function findChainMediaList(origin: string, date: string, weekday: number): Promise<ChainMedia[]> {
-  const tiers: Array<{ base: string; source: ChainMedia['source'] }> = [
-    { base: date, source: 'date-file' },
-    { base: WEEKDAY_FILES[weekday], source: 'weekday-file' },
-  ];
   const exts: Array<{ ext: string; type: ChainMedia['type'] }> = [
     { ext: 'mp4', type: 'video' },
     { ext: 'jpg', type: 'image' },
   ];
-  for (const { base, source } of tiers) {
+  const fileChain = async (base: string, source: ChainMedia['source']): Promise<ChainMedia[]> => {
     const list: ChainMedia[] = [];
     for (let slot = 1; slot <= MAX_SLOTS; slot++) {
       const slotBase = slot === 1 ? base : `${base}-${slot}`;
@@ -45,9 +44,87 @@ export async function findChainMediaList(origin: string, date: string, weekday: 
       if (!found) break; // 連番が途切れたら終わり
       list.push(found);
     }
-    if (list.length > 0) return list;
+    return list;
+  };
+
+  // 優先度: ①日付指定(手動上書き) > ②ライブラリ自動選択(カレンダー突合) > ③曜日デフォルト。
+  const dated = await fileChain(date, 'date-file');
+  if (dated.length > 0) return dated;
+  const auto = await selectLibraryChain(origin, date, weekday);
+  if (auto.length > 0) return auto;
+  return fileChain(WEEKDAY_FILES[weekday], 'weekday-file');
+}
+
+// 台帳(library/manifest.json)の各画像を当日のカレンダー(正本)と突合し、内容が一致する画像を自動選択する。
+// 週替わりの土日でも「その週の実際の顔ぶれ」に合う画像を自動で選んで並べる(手作業ゼロ化)。
+// 一致画像が無いグループは投稿されない(=素材不足→watchdog/プレビューで可視化)。
+export async function selectLibraryChain(origin: string, date: string, weekday: number): Promise<ChainMedia[]> {
+  let manifest: { entries?: Array<{ file: string; weekday: number; mentions?: string[]; lessons: DeclaredLesson[] }> };
+  try {
+    const res = await fetch(`${origin}/stories/library/manifest.json`, { cache: 'no-store' });
+    if (!res?.ok) return [];
+    manifest = await res.json();
+  } catch {
+    return [];
   }
-  return [];
+  const entries = (manifest.entries ?? []).filter((e) => e.weekday === weekday && e.lessons?.length);
+  if (entries.length === 0) return [];
+
+  const { fetchLessonsForDate } = await import('./lessonCalendar');
+  const { getAll } = await import('./db');
+  let calLessons: Array<{ start: string; summary: string }>;
+  try {
+    ({ lessons: calLessons } = await fetchLessonsForDate(date));
+  } catch {
+    return []; // カレンダーが読めない時は自動選択しない(誤爆防止→曜日デフォルトへフォールバック)
+  }
+  const knownNames = (await getAll('SELECT name FROM instructors')).map((r) => String(r.name).toUpperCase());
+
+  // 宣言レッスンが全部カレンダーに存在する画像だけ残す(checkScheduleと同じ照合規則)
+  const matched = entries.filter((e) => e.lessons.every((d) => matchDeclaredLesson(calLessons, knownNames, d)));
+  // カバーするレッスン数が多い順(情報量の多い画像を優先。例: サユキ単体よりサユキ+おっちゃん)
+  matched.sort((a, b) => b.lessons.length - a.lessons.length || a.file.localeCompare(b.file));
+  // 貪欲セットカバー: 既に全レッスンがカバー済みの画像(冗長)は捨てる
+  const covered = new Set<string>();
+  const chosen: typeof matched = [];
+  for (const e of matched) {
+    const keys = e.lessons.map((d) => lessonKey(d.start, d.instructor));
+    if (keys.every((k) => covered.has(k))) continue;
+    keys.forEach((k) => covered.add(k));
+    chosen.push(e);
+  }
+  return chosen.slice(0, MAX_SLOTS).map((e) => ({
+    url: `${origin}/stories/library/${encodeURIComponent(e.file)}`,
+    type: 'image' as const,
+    base: e.file,
+    source: 'library-auto' as const,
+    lessons: e.lessons,
+    mentions: e.mentions ?? [],
+  }));
+}
+
+function lessonKey(start: string, instructor: string): string {
+  return `${start.slice(0, 5)}|${instructor.trim().toUpperCase()}`;
+}
+
+// 宣言レッスン1件が当日カレンダーに存在するか(checkScheduleの1件判定と同じ規則)。
+function matchDeclaredLesson(
+  calLessons: Array<{ start: string; summary: string }>,
+  knownNames: string[],
+  d: DeclaredLesson
+): boolean {
+  const start = d.start.slice(0, 5);
+  const who = d.instructor.trim().toUpperCase();
+  const atTime = calLessons.filter((l) => l.start === start);
+  if (atTime.length === 0) return false;
+  return atTime.some((l) => {
+    const title = l.summary.toUpperCase();
+    const daiko = l.summary.match(/代講[\s:：]*([^\s　]+)/);
+    if (daiko) return daiko[1].toUpperCase().includes(who) || who.includes(daiko[1].toUpperCase());
+    const namesInTitle = knownNames.filter((n) => title.includes(n));
+    if (namesInTitle.length === 0) return true; // タイトルに講師名なし→時刻一致でOK
+    return namesInTitle.includes(who);
+  });
 }
 
 /** 素材の宣言内容。「この素材は 18:30 AOI / 19:30 TARO の告知」をsidecarに書く */

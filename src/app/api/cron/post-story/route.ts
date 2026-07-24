@@ -132,7 +132,10 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      const sidecar = await loadSidecar(origin, media.base);
+      // library-auto は台帳(manifest)由来の宣言/メンションをmediaが直接持つ(sidecar {base}.json は無い)
+      const sidecar = media.source === 'library-auto'
+        ? { lessons: media.lessons, mentions: media.mentions }
+        : await loadSidecar(origin, media.base);
 
       // 正本スケジュール照合: 正本=BOOMのGoogleカレンダー(TAROが直接編集)。
       // 宣言レッスンがカレンダーに揃っていなければ(休講・代講・時間変更)このスロットは出さない。

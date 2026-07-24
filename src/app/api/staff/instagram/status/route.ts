@@ -60,7 +60,10 @@ async function buildPlanForDate(origin: string, date: string) {
   if (chainList.length > 0) {
     const items = [];
     for (const media of chainList) {
-      const sidecar = await loadSidecar(origin, media.base);
+      // library-auto は台帳(manifest)の宣言/メンションをmediaが直接持つ(sidecar {base}.json は無い)
+      const sidecar = media.source === 'library-auto'
+        ? { lessons: media.lessons, mentions: media.mentions }
+        : await loadSidecar(origin, media.base);
       const check = await checkSchedule(date, sidecar.lessons);
       items.push({
         base: media.base,

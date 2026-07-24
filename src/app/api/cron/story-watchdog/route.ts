@@ -68,7 +68,8 @@ async function evaluatePlan(origin: string, date: string, weekday: number): Prom
     } else if (errored) {
       missing.push(`❌ ${media.base}: 投稿エラー — ${errored.error ?? ''}`);
     } else {
-      const sc = await checkSchedule(date, (await loadSidecar(origin, media.base)).lessons).catch(() => null);
+      const declared = media.source === 'library-auto' ? media.lessons : (await loadSidecar(origin, media.base)).lessons;
+      const sc = await checkSchedule(date, declared).catch(() => null);
       const hint = sc && sc.result === 'mismatch' ? `(照合: ${sc.problems.join(' / ')})` : '(未起動→自己修復対象)';
       missing.push(`❌ ${media.base}: 未投稿 ${hint}`);
     }
