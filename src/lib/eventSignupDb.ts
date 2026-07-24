@@ -5,6 +5,8 @@ import {
   isPartKey,
   partLabel,
   defaultSettings,
+  generateEditToken,
+  countByPart,
   type PartKey,
   type PartDef,
   type ResolvedSettings,
@@ -363,4 +365,78 @@ export async function deletePerformer(eventId: number, performerId: number): Pro
     'delete_performer',
     `スタッフが出演者を削除：${snapshotText([{ name: delName, parts: delParts }])}`
   );
+}
+
+// ============================================================
+// 講師共有(読み取り専用): 秘密トークンでその1イベントの名簿だけ見せる
+// ============================================================
+
+export interface SharedRosterPerformer {
+  name: string;
+  parts: PartKey[];
+}
+export interface SharedRosterSignup {
+  note: string;
+  createdAt: string;
+  performers: SharedRosterPerformer[];
+}
+export interface SharedRoster {
+  eventName: string;
+  summary: { performerCount: number; signupCount: number; byPart: { key: string; label: string; count: number }[] };
+  parts: { key: string; label: string }[];
+  signups: SharedRosterSignup[];
+}
+
+// スタッフ用: 共有トークンを取得(無ければ生成して保存)。
+export async function getOrCreateShareToken(eventId: number): Promise<string> {
+  const row = await getOne('SELECT share_token FROM event_signup_settings WHERE event_id = ?', [eventId]);
+  if (row?.share_token) return String(row.share_token);
+  const token = generateEditToken();
+  const cur = await resolveSettings(eventId);
+  const now = new Date().toISOString();
+  await execute(
+    `INSERT INTO event_signup_settings
+       (event_id, parts_json, fee_text, deadline, intro_md, calendar_url, is_open, updated_at, share_token)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(event_id) DO UPDATE SET share_token = excluded.share_token`,
+    [
+      eventId,
+      JSON.stringify(cur.parts),
+      cur.feeText,
+      cur.deadline,
+      cur.introMd,
+      cur.calendarUrl,
+      cur.isOpen ? 1 : 0,
+      now,
+      token,
+    ]
+  );
+  return token;
+}
+
+// 公開(講師共有): code と token が一致したときだけ、読み取り専用の名簿を返す。
+// 不一致・未設定は null(存在有無を漏らさない)。
+export async function getSharedRoster(code: string, token: string): Promise<SharedRoster | null> {
+  if (!token) return null;
+  const ev = await findEventByCode(code);
+  if (!ev) return null;
+  const row = await getOne('SELECT share_token FROM event_signup_settings WHERE event_id = ?', [ev.id]);
+  const stored = row?.share_token ? String(row.share_token) : '';
+  if (!stored || stored !== token) return null;
+
+  const settings = await resolveSettings(ev.id);
+  const signups = await listByEvent(ev.id);
+  const flat = signups.flatMap((s) => s.performers.map((p) => ({ parts: p.parts })));
+  const counts = countByPart(flat);
+  const byPart = settings.parts.map((p) => ({ key: p.key, label: p.label, count: counts[p.key] ?? 0 }));
+  return {
+    eventName: ev.name,
+    summary: { performerCount: flat.length, signupCount: signups.length, byPart },
+    parts: settings.parts.map((p) => ({ key: p.key, label: p.label })),
+    signups: signups.map((s) => ({
+      note: s.note,
+      createdAt: s.createdAt,
+      performers: s.performers.map((p) => ({ name: p.name, parts: p.parts })),
+    })),
+  };
 }

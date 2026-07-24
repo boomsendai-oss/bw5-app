@@ -43,6 +43,8 @@ export async function runMigrations(c: Client): Promise<void> {
   await addColumnIfMissing(c, 'hacomono_schedule_map', 'space_selectable', 'INTEGER');
   await addColumnIfMissing(c, 'hacomono_schedule_map', 'space_movable', 'INTEGER');
   await addColumnIfMissing(c, 'hacomono_schedule_map', 'publish_fixed', 'INTEGER');
+  // 出演者募集: 講師共有(読み取り専用)ページの秘密トークン。本番は台帳 20260725_event_signup_share_token.sql
+  await addColumnIfMissing(c, 'event_signup_settings', 'share_token', 'TEXT');
   // 体験予約 担当周知(WS T / 2026-07-18)の trial_records 列(course_type/dance_experience/
   // referral_source)は台帳 scripts/migrations/20260718_trial_notify_fields.sql で追加する。
   // 本番は SKIP_DB_INIT=1 でこの runMigrations 自体が走らないため、ここに書いても本番へ届かない。

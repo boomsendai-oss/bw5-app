@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, use as usePromise } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { Download, Trash2, Settings, ScrollText, Users } from 'lucide-react';
+import { Download, Trash2, Settings, ScrollText, Users, Share2 } from 'lucide-react';
 import Link from 'next/link';
 import StaffPageHeader from '@/components/StaffPageHeader';
 
@@ -48,6 +48,21 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
   const [showLog, setShowLog] = useState(false);
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [auditLoaded, setAuditLoaded] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  async function toggleShare() {
+    const next = !showShare;
+    setShowShare(next);
+    if (next && !shareUrl) {
+      const res = await fetch(`/api/staff/events/${eventId}/signups/share`, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setShareUrl(`${window.location.origin}${data.path}`);
+      }
+    }
+  }
 
   const loadAudit = useCallback(async () => {
     const res = await fetch(`/api/staff/events/${eventId}/signups/audit`, { credentials: 'include' });
@@ -115,6 +130,9 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
         backLabel="イベント"
         rightExtra={
           <div className="flex items-center gap-2">
+            <Button size="sm" variant={showShare ? 'default' : 'outline'} onClick={toggleShare}>
+              <Share2 className="size-3.5 mr-1" />講師共有
+            </Button>
             <Button size="sm" variant={showLog ? 'default' : 'outline'} onClick={toggleLog}>
               <ScrollText className="size-3.5 mr-1" />変更ログ
             </Button>
@@ -133,6 +151,43 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
       />
 
       <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-4">
+        {/* 講師共有リンク */}
+        {showShare && (
+          <section className="rounded-xl border border-teal-300 bg-white p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Share2 className="size-4 text-teal-700" />
+              <h2 className="text-sm font-bold text-navy-800">講師共有リンク（読み取り専用）</h2>
+            </div>
+            <p className="text-[11px] text-muted-foreground mb-2">
+              このリンクを渡すと、パスワードなしで<strong>この名簿だけ</strong>を見られます（編集不可・他の管理画面は見えません）。
+              名簿には個人情報が含まれるため、<strong>担当講師にだけ</strong>渡してください（グループ等に貼らない）。
+            </p>
+            {!shareUrl ? (
+              <div className="text-xs text-muted-foreground">リンクを準備中…</div>
+            ) : (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  readOnly
+                  value={shareUrl}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="flex-1 text-xs text-slate-900 border border-slate-300 rounded-lg px-2 py-2 bg-white"
+                />
+                <Button
+                  size="sm"
+                  variant={shareCopied ? 'default' : 'outline'}
+                  onClick={() => {
+                    setShareCopied(true);
+                    try { navigator.clipboard?.writeText(shareUrl); } catch { /* 手動選択でコピー */ }
+                    toast.success('リンクをコピーしました');
+                  }}
+                >
+                  {shareCopied ? '✓ コピー済み' : 'コピー'}
+                </Button>
+              </div>
+            )}
+          </section>
+        )}
+
         {/* 変更ログ */}
         {showLog && (
           <section className="rounded-xl border border-sand-300 bg-white p-4">

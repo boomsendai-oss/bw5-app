@@ -953,7 +953,8 @@ export function getSchemaStatements(): InStatement[] {
       intro_md TEXT NOT NULL DEFAULT '',
       calendar_url TEXT DEFAULT '',
       is_open INTEGER NOT NULL DEFAULT 1,
-      updated_at TEXT NOT NULL DEFAULT ''
+      updated_at TEXT NOT NULL DEFAULT '',
+      share_token TEXT
     )`,
       args: [],
     },
