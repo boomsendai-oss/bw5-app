@@ -43,9 +43,9 @@ export async function peekNextQueueItem(date: string): Promise<QueueItem | null>
        AND (valid_until IS NULL OR valid_until >= ?)
      ORDER BY
        (valid_until IS NULL) ASC,          -- 期限付きを先に
-       valid_until ASC,                    -- 締切が近い順
+       COALESCE(last_posted_at, '') ASC,   -- 最も久しく出していないものから(繰り返しローテーション)
+       valid_until ASC,                    -- 同条件なら締切が近い順
        priority DESC,
-       COALESCE(last_posted_at, '') ASC,   -- エバーグリーンは最も出していないもの
        id ASC
      LIMIT 1`,
     [date, date]
@@ -55,12 +55,14 @@ export async function peekNextQueueItem(date: string): Promise<QueueItem | null>
 
 /**
  * 投稿成功後の状態更新。
- * エバーグリーン(valid_until NULL)はapprovedのまま残してローテーション、期限付きはposted。
+ * 期限付き・エバーグリーンともapprovedのまま残してローテーションする(TARO 2026-07-26変更:
+ * 募集告知など「期限まで空き日のたびに繰り返し出したい」素材のため。1回きりにしたい素材は
+ * 投稿後に/staff/instagramで却下するか、valid_untilを翌日にして自然expireさせる)。
+ * 期限切れは pickNextQueueItem が expired に落とす。
  */
 export async function markQueueItemPosted(item: QueueItem, nowIso: string): Promise<void> {
-  const nextStatus = item.valid_until === null ? 'approved' : 'posted';
   await execute(
-    'UPDATE story_queue SET status = ?, last_posted_at = ?, times_posted = times_posted + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-    [nextStatus, nowIso, item.id]
+    'UPDATE story_queue SET last_posted_at = ?, times_posted = times_posted + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    [nowIso, item.id]
   );
 }
