@@ -97,6 +97,16 @@ export async function GET(req: NextRequest) {
       statsUrl: `${BASE_URL}/staff/faq/stats`,
     };
 
+    // 沈黙=正常。質問が0件の日はメールしない(毎朝の「0件」通知は読み飛ばされ、
+    // 本当に見てほしい日の通知まで埋もれるため・TARO要望2026-07-27)。
+    // ただし質問0でも「未仕分けのエラー報告」「空応答/エラー応答」がある日は必ず送る
+    // (放置すると気づけない異常なので、静かにするのは何も起きていない日だけにする)。
+    const worthSending =
+      input.questions > 0 || input.newReports > 0 || input.brokenAnswers > 0;
+    if (!worthSending) {
+      return NextResponse.json({ ok: true, sent: false, skipped: 'no-activity', ...input });
+    }
+
     const digest = formatFaqDigest(input);
     await sendEmail({ to: TARO_EMAIL, subject: digest.subject, text: digest.text });
     return NextResponse.json({ ok: true, sent: true, ...input });
