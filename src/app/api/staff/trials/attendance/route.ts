@@ -24,6 +24,11 @@ export const POST = withAuth(async (req: NextRequest) => {
   if (raw !== null && raw !== 'noshow') {
     return NextResponse.json({ error: "override は 'noshow' か null のみです" }, { status: 400 });
   }
-  await execute(`UPDATE trial_records SET attendance_override = ? WHERE id = ?`, [raw, trialId]);
-  return NextResponse.json({ ok: true, trial_id: trialId, override: raw });
+  try {
+    await execute(`UPDATE trial_records SET attendance_override = ? WHERE id = ?`, [raw, trialId]);
+    return NextResponse.json({ ok: true, trial_id: trialId, override: raw });
+  } catch (e) {
+    console.error('[trials/attendance POST]', e);
+    return NextResponse.json({ error: '更新に失敗しました' }, { status: 500 });
+  }
 });
