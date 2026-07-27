@@ -299,7 +299,7 @@ export default function InsightsPage() {
   const [actionMessage, setActionMessage] = useState('');
 
   // GA4 LINEクリック (lib/ga4側で1hキャッシュ。GA4自体が数時間〜1日遅れ)
-  type LineClickRange = { days: number; total: number; ads: number; est_cpa_jpy: number | null };
+  type LineClickRange = { days: number; total: number; ads: number; cost_jpy: number | null; cpa_jpy: number | null };
   const [lineClicks, setLineClicks] = useState<{ ok: boolean; error?: string; ranges: LineClickRange[] } | null>(null);
   useEffect(() => {
     fetch('/api/staff/insights/line-clicks', { credentials: 'include' })
@@ -656,9 +656,14 @@ export default function InsightsPage() {
                   accent="purple"
                 />
                 <KpiCard
-                  label="広告CPA概算 (30日)"
-                  value={(() => { const r = lineClicks?.ranges.find((x) => x.days === 30); return r?.est_cpa_jpy != null ? `¥${num(r.est_cpa_jpy)}` : '—'; })()}
-                  sub="日予算¥200×経過日数÷広告経由クリック (GA4基準・広告管理画面とは一致しない)"
+                  label="広告CPA (30日)"
+                  value={(() => { const r = lineClicks?.ranges.find((x) => x.days === 30); return r?.cpa_jpy != null ? `¥${num(r.cpa_jpy)}` : '—'; })()}
+                  sub={(() => {
+                    const r = lineClicks?.ranges.find((x) => x.days === 30);
+                    return r?.cost_jpy != null
+                      ? `広告費¥${num(r.cost_jpy)} ÷ 広告経由クリック${num(r.ads)}件 (GA4実費用)`
+                      : 'GA4から広告費を取得できません';
+                  })()}
                   accent="purple"
                 />
               </div>

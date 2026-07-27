@@ -18,7 +18,6 @@
 import { BetaAnalyticsDataClient } from '@google-analytics/data';
 
 export const GA4_MEASUREMENT_START = '2026-06-10'; // line_click 計測開始日
-export const ADS_DAILY_BUDGET_JPY = 200; // スマートキャンペーン日予算 (CPA概算用)
 
 export type LineClickStats = {
   available: boolean; // env未設定/権限エラー時 false
