@@ -4,8 +4,9 @@
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { getAll, getOne } from '@/lib/db';
 import { isAuthorizedServer } from '@/lib/eventAuth';
-import { buildTrialGroups, type TrialRow } from '@/lib/trialNotify';
+import { buildTrialGroups, toHiragana, type TrialRow } from '@/lib/trialNotify';
 import TrialCopyList from './TrialCopyList';
+import NoshowCorrections, { type PastTrial } from './NoshowCorrections';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -58,6 +59,36 @@ export default async function TrialsPage() {
   const groups = buildTrialGroups(rows);
   const visitorCount = groups.reduce((n, g) => n + g.visitors.length, 0);
 
+  // 直近2週間の実施済み体験 — 来店訂正用 (WS AA)。キャンセル済みは訂正不要なので除く。
+  const pastRows = (await getAll(
+    `SELECT id, reserved_at, lesson_name, status, attendance_override,
+            applicant_name, applicant_name_kana
+       FROM trial_records
+      WHERE date(reserved_at) < date(?) AND date(reserved_at) >= date(?, '-14 day')
+        AND COALESCE(status, '') <> 'キャンセル'
+      ORDER BY reserved_at DESC`,
+    [today, today]
+  )) as {
+    id: number;
+    reserved_at: string;
+    lesson_name: string | null;
+    status: string | null;
+    attendance_override: string | null;
+    applicant_name: string | null;
+    applicant_name_kana: string | null;
+  }[];
+
+  const pastTrials: PastTrial[] = pastRows.map((r) => {
+    const kana = (r.applicant_name_kana ?? '').trim();
+    return {
+      id: r.id,
+      reservedLabel: r.reserved_at.slice(5, 16).replace('-', '/'),
+      name: kana ? toHiragana(kana) : (r.applicant_name ?? '（お名前未取得）').trim(),
+      lessonName: r.lesson_name ?? '',
+      attendanceOverride: r.attendance_override,
+    };
+  });
+
   const freshRow = (await getOne(
     `SELECT MAX(status_updated_at) AS last FROM trial_records`
   )) as { last: string | null } | null;
@@ -78,6 +109,7 @@ export default async function TrialsPage() {
           {lastImport && <span>最終取込: {lastImport}</span>}
         </div>
         <TrialCopyList groups={groups} todayLabel={today} />
+        <NoshowCorrections trials={pastTrials} />
       </div>
     </div>
   );
