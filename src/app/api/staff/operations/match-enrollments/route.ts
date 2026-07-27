@@ -18,8 +18,13 @@ export const maxDuration = 60;
  * matched_by='manual' の行は対象外(人の判断を上書きしない)。
  */
 export const POST = withAuth(async () => {
-  const result = await runEnrollmentMatch();
-  return NextResponse.json(result);
+  try {
+    const result = await runEnrollmentMatch();
+    return NextResponse.json(result);
+  } catch (e) {
+    console.error('[match-enrollments POST]', e);
+    return NextResponse.json({ error: '突合処理に失敗しました' }, { status: 500 });
+  }
 });
 
 export type MatchSummary = {

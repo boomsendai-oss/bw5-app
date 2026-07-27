@@ -363,7 +363,7 @@ export function getSchemaStatements(): InStatement[] {
       enrolled_after INTEGER DEFAULT 0,
       enrolled_member_id INTEGER,                 -- 突合できた boom_members.id (FKは張らない。既存の member_id 列に合わせる)
       matched_by TEXT,                            -- 突合根拠: kana_auto / lstep_link / manual
-      matched_at TEXT,                            -- 突合時刻 (UTC ISO)
+      matched_at TEXT,                            -- 突合処理が最後にこの行を触った時刻 (UTC ISO)。解除時も更新する。現在の突合有無は enrolled_member_id で判定すること
       attendance_override TEXT,                   -- 来店判定の人手訂正: 'noshow' のみ。未訂正は NULL
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`,
