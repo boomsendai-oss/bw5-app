@@ -250,8 +250,13 @@ export type AdCost = {
 /**
  * Google広告の費用とクリック数を取得する。
  *
- * ⚠️ advertiserAdCost は yearMonth 次元と互換性が無く、全月に同じ値を返してしまう
- * (本番で確認済み)。必ず date 次元で取得して合算すること。
+ * ⚠️ advertiserAdCost には次元の相性がある(いずれも本番GA4で実測済み):
+ *   - yearMonth 次元 … エラーにはならないが *全月に同じ値* を返す(壊れている)
+ *   - date 次元のみ  … INVALID_ARGUMENT
+ *     ("Please add sessionCampaignName to make the request compatible")
+ *   - date + sessionCampaignName … ✅ 正しく日次×キャンペーンに分割される
+ * よって sessionCampaignName を必ず併せて指定し、全行を合算する。
+ * 表示にキャンペーン名は使わないが、この次元が無いとAPIが受け付けない。
  *
  * @param startDate 'YYYY-MM-DD' または '30daysAgo' 等のGA4表現
  */
@@ -264,11 +269,11 @@ export async function getAdCost(startDate: string, endDate: string): Promise<AdC
     const [res] = await cfg.client.runReport({
       property: cfg.property,
       dateRanges: [{ startDate, endDate }],
-      dimensions: [{ name: 'date' }],
+      dimensions: [{ name: 'date' }, { name: 'sessionCampaignName' }],
       metrics: [{ name: 'advertiserAdCost' }, { name: 'advertiserAdClicks' }],
-      // date次元は1日1行。現在の呼び出しは最大でも1ヶ月(31行)なので余裕がある。
-      // ⚠️ 数年分など400日を超える範囲を渡すと、GA4はエラーを出さず黙って打ち切るため
-      //    合計が過少になる。長期間を集計したくなったらページングを実装すること。
+      // 行数は 日数 × キャンペーン数。現在は1キャンペーンなので1ヶ月で最大31行。
+      // ⚠️ 上限に達するとGA4はエラーを出さず黙って打ち切るため合計が過少になる。
+      //    長期間やキャンペーン多数を集計したくなったらページングを実装すること。
       limit: 400,
     });
     const { cost, clicks } = sumAdRows(res.rows);

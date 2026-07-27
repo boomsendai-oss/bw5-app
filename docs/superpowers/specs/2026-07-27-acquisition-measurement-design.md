@@ -78,7 +78,10 @@ Google広告のパフォーマンス分析（2026-07-27・PMセッション）�
 ### 2.3 GA4に広告費が既に入っている
 
 GA4はGoogle広告とリンク済みで、`advertiserAdCost` / `advertiserAdClicks` が
-`date` 次元で正しく日次に分割されて取得できる（`yearMonth` 次元は非対応で同値が返るため使用しない）。
+`date` + `sessionCampaignName` の2次元で正しく日次に分割されて取得できる。
+※`yearMonth` 次元は同値が返る（壊れている）。`date` 単独は INVALID_ARGUMENT になり
+`sessionCampaignName` の併記が必須（2026-07-27 本番実測。当初この併記要件を書き落とし、
+本番で `available:false` になって発覚した）。
 
 14日分の合計 $109.7 → 30日換算 ≈ **¥26,700**。広告管理画面の**¥26,730とほぼ一致**。
 クリック数も日次14〜54で30日579クリックと整合する。
@@ -206,7 +209,7 @@ GA4はGoogle広告とリンク済みで、`advertiserAdCost` / `advertiserAdClic
 - **入会（分子）** = 上記のうち突合が確定した（`enrolled_after = 1`）もの
 - **CVR** = 入会 ÷ 体験
 - **月次の帰属** = **体験日（`reserved_at`）の月**に集計する（入会日の月ではない）。施策の効果を打った月に帰属させるため
-- **広告費** = GA4 `advertiserAdCost` を `date` 次元で日次取得し月内合計
+- **広告費** = GA4 `advertiserAdCost` を `date` + `sessionCampaignName` の2次元で取得し月内合計（`date`単独はAPIが受け付けない）
 
 ---
 
