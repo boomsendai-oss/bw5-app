@@ -23,6 +23,8 @@ export async function GET(req: NextRequest) {
     getAdCost('30daysAgo', 'today'),
   ]);
 
+  // キーは getLineClickStats が返す ranges の days と一致させること。
+  // 未知の days が来た場合はエラーにせず cost_jpy: null に落ちる (下の `c?.available` 参照)。
   const costByDays: Record<number, { cost: number; available: boolean }> = {
     7: { cost: cost7.cost, available: cost7.available },
     30: { cost: cost30.cost, available: cost30.available },

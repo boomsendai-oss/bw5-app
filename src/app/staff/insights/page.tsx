@@ -656,12 +656,12 @@ export default function InsightsPage() {
                   accent="purple"
                 />
                 <KpiCard
-                  label="広告CPA (30日)"
+                  label="広告CPA (GA4基準・30日)"
                   value={(() => { const r = lineClicks?.ranges.find((x) => x.days === 30); return r?.cpa_jpy != null ? `¥${num(r.cpa_jpy)}` : '—'; })()}
                   sub={(() => {
                     const r = lineClicks?.ranges.find((x) => x.days === 30);
                     return r?.cost_jpy != null
-                      ? `広告費¥${num(r.cost_jpy)} ÷ 広告経由クリック${num(r.ads)}件 (GA4実費用)`
+                      ? `広告費¥${num(r.cost_jpy)} ÷ GA4計測の広告経由LINEクリック${num(r.ads)}件。広告管理画面のCV基準とは計測方法が違うため一致しない`
                       : 'GA4から広告費を取得できません';
                   })()}
                   accent="purple"
