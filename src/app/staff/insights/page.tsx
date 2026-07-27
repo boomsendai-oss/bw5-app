@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { yen } from '@/lib/utils';
+import AcquisitionFunnel from './AcquisitionFunnel';
 
 type TrendData = {
   months: string[];
@@ -672,8 +673,17 @@ export default function InsightsPage() {
               </p>
             </Section>
 
+            {/* ===== 集客ファネル (WS AA) ===== */}
+            <Section
+              title="集客ファネル（月次・流入経路別）"
+              icon={<Sprout className="h-4 w-4 text-brand-500" />}
+              hint="広告費→LINE→体験→入会。投資判断はこちらを見る"
+            >
+              <AcquisitionFunnel />
+            </Section>
+
             {/* ===== 体験→入会ファネル (T-157/T-160) ===== */}
-            <Section title="体験→入会ファネル" icon={<Sprout className="h-4 w-4 text-brand-500" />} hint="HACOMONO会員登録=体験来店とみなした累計CVR">
+            <Section title="体験→入会ファネル（累計・参考）" icon={<Sprout className="h-4 w-4 text-brand-500" />} hint="HACOMONO会員登録=体験来店とみなした累計CVR。月次/経路別は上の集客ファネルを見る">
               {!funnel || funnel.empty || !funnel.ok ? (
                 <p className="text-xs text-neutral-400">
                   全メンバー(ML001)未取込のため未表示。日次同期(次回)で自動取込されます。
