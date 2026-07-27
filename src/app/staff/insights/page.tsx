@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { yen } from '@/lib/utils';
+import { formatAdCost } from '@/lib/adCostFormat';
 import AcquisitionFunnel from './AcquisitionFunnel';
 
 type TrendData = {
@@ -300,7 +301,16 @@ export default function InsightsPage() {
   const [actionMessage, setActionMessage] = useState('');
 
   // GA4 LINEクリック (lib/ga4側で1hキャッシュ。GA4自体が数時間〜1日遅れ)
-  type LineClickRange = { days: number; total: number; ads: number; cost_jpy: number | null; cpa_jpy: number | null };
+  // ⚠️ cost_jpy/cpa_jpy はフィールド名に反して GA4プロパティ通貨建て(JPYとは限らない)。
+  //    currency を見て formatAdCost で表示すること。
+  type LineClickRange = {
+    days: number;
+    total: number;
+    ads: number;
+    cost_jpy: number | null;
+    cpa_jpy: number | null;
+    currency: string;
+  };
   const [lineClicks, setLineClicks] = useState<{ ok: boolean; error?: string; ranges: LineClickRange[] } | null>(null);
   useEffect(() => {
     fetch('/api/staff/insights/line-clicks', { credentials: 'include' })
@@ -658,12 +668,18 @@ export default function InsightsPage() {
                 />
                 <KpiCard
                   label="広告CPA (GA4基準・30日)"
-                  value={(() => { const r = lineClicks?.ranges.find((x) => x.days === 30); return r?.cpa_jpy != null ? `¥${num(r.cpa_jpy)}` : '—'; })()}
+                  value={(() => {
+                    const r = lineClicks?.ranges.find((x) => x.days === 30);
+                    return r?.cpa_jpy != null ? formatAdCost(r.cpa_jpy, r.currency) : '—';
+                  })()}
                   sub={(() => {
                     const r = lineClicks?.ranges.find((x) => x.days === 30);
-                    return r?.cost_jpy != null
-                      ? `広告費¥${num(r.cost_jpy)} ÷ GA4計測の広告経由LINEクリック${num(r.ads)}件。広告管理画面のCV基準とは計測方法が違うため一致しない`
-                      : 'GA4から広告費を取得できません';
+                    if (r?.cost_jpy == null) return 'GA4から広告費を取得できません';
+                    const costStr = formatAdCost(r.cost_jpy, r.currency);
+                    const base = `広告費${costStr} ÷ GA4計測の広告経由LINEクリック${num(r.ads)}件。広告管理画面のCV基準とは計測方法が違うため一致しない`;
+                    return r.currency && r.currency !== 'JPY'
+                      ? `${base}。⚠️ GA4プロパティの通貨が${r.currency}のため円ではありません`
+                      : base;
                   })()}
                   accent="purple"
                 />

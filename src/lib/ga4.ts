@@ -241,11 +241,19 @@ export type AdCost = {
   error?: string;
   /**
    * GA4プロパティに設定された通貨建ての値をそのまま返す(このコードは換算しない)。
-   * 円で欲しい場合はGA4管理画面のプロパティ通貨をJPYにすること。
+   * 通貨コードは `currency` で報告されるので、呼び出し側は必ずそれと一緒に表示すること
+   * (JPYだと決め打ちしてはいけない)。円で欲しい場合はGA4管理画面のプロパティ通貨をJPYにすること。
    */
   cost: number;
   clicks: number;
+  /** GA4プロパティの通貨コード (例: 'JPY' | 'USD')。取得できない場合は ''。 */
+  currency: string;
 };
+
+// 表示整形の実体は './adCostFormat' にある(このファイルは '@google-analytics/data' 経由で
+// gRPC/Node専用コードをimportしており、クライアントコンポーネントから直接importすると
+// ブラウザ向けビルドが壊れるため)。サーバ側の既存コードのために re-export だけしておく。
+export { formatAdCost } from './adCostFormat';
 
 /**
  * Google広告の費用とクリック数を取得する。
@@ -263,7 +271,7 @@ export type AdCost = {
 export async function getAdCost(startDate: string, endDate: string): Promise<AdCost> {
   const cfg = getClient();
   if (!cfg) {
-    return { available: false, error: 'GA4_PROPERTY_ID / GA4_SA_KEY_JSON が未設定です', cost: 0, clicks: 0 };
+    return { available: false, error: 'GA4_PROPERTY_ID / GA4_SA_KEY_JSON が未設定です', cost: 0, clicks: 0, currency: '' };
   }
   try {
     const [res] = await cfg.client.runReport({
@@ -277,8 +285,9 @@ export async function getAdCost(startDate: string, endDate: string): Promise<AdC
       limit: 400,
     });
     const { cost, clicks } = sumAdRows(res.rows);
-    return { available: true, cost, clicks };
+    const currency = res.metadata?.currencyCode ?? '';
+    return { available: true, cost, clicks, currency };
   } catch (e) {
-    return { available: false, error: e instanceof Error ? e.message : String(e), cost: 0, clicks: 0 };
+    return { available: false, error: e instanceof Error ? e.message : String(e), cost: 0, clicks: 0, currency: '' };
   }
 }

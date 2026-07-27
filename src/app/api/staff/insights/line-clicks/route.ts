@@ -25,18 +25,21 @@ export async function GET(req: NextRequest) {
 
   // キーは getLineClickStats が返す ranges の days と一致させること。
   // 未知の days が来た場合はエラーにせず cost_jpy: null に落ちる (下の `c?.available` 参照)。
-  const costByDays: Record<number, { cost: number; available: boolean }> = {
-    7: { cost: cost7.cost, available: cost7.available },
-    30: { cost: cost30.cost, available: cost30.available },
+  // ⚠️ フィールド名は cost_jpy/cpa_jpy だが、値はGA4プロパティ通貨建て(JPYとは限らない)。
+  //    必ず currency も一緒に見て表示すること (円だと決め打ちしない)。
+  const costByDays: Record<number, { cost: number; available: boolean; currency: string }> = {
+    7: { cost: cost7.cost, available: cost7.available, currency: cost7.currency },
+    30: { cost: cost30.cost, available: cost30.available, currency: cost30.currency },
   };
 
   const ranges = stats.ranges.map((r) => {
     const c = costByDays[r.days];
-    const cost = c?.available ? Math.round(c.cost) : null;
+    const cost = c?.available ? c.cost : null;
     return {
       ...r,
       cost_jpy: cost,
-      cpa_jpy: cost != null && r.ads > 0 ? Math.round(cost / r.ads) : null,
+      cpa_jpy: cost != null && r.ads > 0 ? cost / r.ads : null,
+      currency: c?.available ? c.currency : '',
     };
   });
 

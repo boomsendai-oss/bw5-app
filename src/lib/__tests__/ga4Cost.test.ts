@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { monthRange, sumAdRows } from '../ga4';
+import { monthRange, sumAdRows, formatAdCost } from '../ga4';
 
 describe('monthRange', () => {
   it('月初と月末を返す', () => {
@@ -22,5 +22,19 @@ describe('sumAdRows', () => {
   it('行が無ければゼロ', () => {
     expect(sumAdRows([])).toEqual({ cost: 0, clicks: 0 });
     expect(sumAdRows(undefined)).toEqual({ cost: 0, clicks: 0 });
+  });
+});
+
+describe('formatAdCost', () => {
+  it('JPYは¥つき・整数に丸めて表示する', () => {
+    expect(formatAdCost(26730, 'JPY')).toBe('¥26,730');
+    expect(formatAdCost(26730.6, 'JPY')).toBe('¥26,731');
+  });
+  it('JPY以外は通貨コードを併記し小数第2位まで表示する', () => {
+    expect(formatAdCost(160.54, 'USD')).toBe('USD 160.54');
+    expect(formatAdCost(160.5, 'USD')).toBe('USD 160.50');
+  });
+  it('通貨コードが不明/空の場合はコードを付けず数値をそのまま表示する', () => {
+    expect(formatAdCost(5, '')).toBe('5');
   });
 });

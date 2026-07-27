@@ -40,7 +40,13 @@ export const GET = withAuth(async () => {
       month: ym,
       monthly,
       referral,
-      ad: { available: adCost.available, error: adCost.error, cost: Math.round(adCost.cost), clicks: adCost.clicks },
+      ad: {
+        available: adCost.available,
+        error: adCost.error,
+        cost: adCost.cost,
+        clicks: adCost.clicks,
+        currency: adCost.currency,
+      },
       line_clicks_month: {
         available: lineClicks.available,
         error: lineClicks.error,
