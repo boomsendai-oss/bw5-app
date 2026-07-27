@@ -10,6 +10,7 @@
 //   - 不明な指標は 0 ではなく「未計測」と明記する(捏造しない)
 //   - 金額の算出根拠を必ず併記する(TAROの経営判断に使われるため)
 
+import { formatAdCost } from './adCostFormat';
 import { yen } from './utils';
 
 export type WindowCounts = {
@@ -65,6 +66,12 @@ export type WeeklyReportInput = {
     trials_month: number;
     /** 当月の広告費(expenses の「広告費」カテゴリ計上額)。未計上なら null */
     ad_spend_month: number | null;
+    /**
+     * GA4の実広告費(当月1日〜今日)。WS AAが整備した getAdCost の結果。
+     * 取得できなければ null(この場合は経費計上ベースの ad_spend_month にフォールバック)。
+     * currency は GA4プロパティの通貨。JPY以外の可能性があるため必ず併記して表示する。
+     */
+    ad_cost_ga4: { amount: number; currency: string; clicks: number } | null;
   };
 
   /** STATE.md 由来。GitHub Actions が抽出して渡す(取れなければ空配列) */
@@ -271,9 +278,27 @@ export function formatWeeklyReport(i: WeeklyReportInput): WeeklyReport {
   L.push(vsPrev('体験予約', i.this_week.trials, i.prev_week.trials, '件'));
   L.push(vsPrev('LINE友だち追加', i.this_week.line_new, i.prev_week.line_new, '人'));
   L.push('    ※ LINE追加は日次同期で新しく現れた友だちの数（Lstepの登録日そのものではない）');
-  if (i.entry.ad_spend_month === null) {
-    L.push(`  広告費（${i.year_month}）: 未計測（経費として未計上）`);
-    L.push('    ※ 日次の実広告費(GA4)連携はWS AA(集客計測基盤)で整備中。連携後にCPAを実費ベースへ切替予定。');
+  // 広告費は GA4の実費用を優先し、取れないときだけ経費計上ベースへ落とす。
+  // どちらの基準で出しているかを必ず併記する(基準が混ざると前月比が意味を失うため)。
+  const ga4 = i.entry.ad_cost_ga4;
+  if (ga4) {
+    L.push(
+      `  広告費（${i.year_month} 1日〜昨日・GA4実費用）: ${formatAdCost(ga4.amount, ga4.currency)}（クリック ${ga4.clicks}回）`
+    );
+    if (ga4.currency && ga4.currency !== 'JPY') {
+      L.push(
+        `    ※ GA4プロパティの通貨が ${ga4.currency} のままです。円で見たい場合はGA4の通貨設定をJPYに変更してください。`
+      );
+    }
+    if (i.entry.trials_month > 0) {
+      L.push(
+        `  体験1件あたり: ${formatAdCost(ga4.amount / i.entry.trials_month, ga4.currency)}（当月の体験 ${i.entry.trials_month}件で割った概算）`
+      );
+    } else {
+      L.push('  体験1件あたり: 未計測（当月の体験予約が0件）');
+    }
+  } else if (i.entry.ad_spend_month === null) {
+    L.push(`  広告費（${i.year_month}）: 未計測（GA4から取得できず、経費にも未計上）`);
   } else {
     L.push(`  広告費（${i.year_month} 経費計上ベース）: ${yen(i.entry.ad_spend_month)}`);
     if (i.entry.trials_month > 0) {

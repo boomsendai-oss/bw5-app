@@ -11,6 +11,7 @@
 
 import { getOne } from './db';
 import { todayJst } from './dateJst';
+import { getAdCost } from './ga4';
 import { getActiveMemberCount, getMonthlyFinance, NON_CUSTOMER_TYPES_SQL } from './kpiMetrics';
 import { lastFullWeek, type WeeklyReportInput, type WindowCounts } from './weeklyReport';
 
@@ -102,7 +103,7 @@ export async function buildWeeklyReportInput(
   const prevLastDay = new Date(py, pmo, 0).getDate();
   const prevSameDay = `${pym}-${String(Math.min(dayOfMonth, prevLastDay)).padStart(2, '0')}`;
 
-  const [thisWeek, prevWeek, membersNow, finance, prevFinance, prevToDateRow, trialsMonth] =
+  const [thisWeek, prevWeek, membersNow, finance, prevFinance, prevToDateRow, trialsMonth, adCost] =
     await Promise.all([
       windowCounts(start, end),
       windowCounts(prevStart, prevEnd),
@@ -119,6 +120,9 @@ export async function buildWeeklyReportInput(
         `${ym}-01`,
         `${today}T23:59:59`,
       ]),
+      // GA4の実広告費(当月1日〜昨日)。GA4は当日分が固まらないので終端は昨日。
+      // 未設定/権限エラーでもレポート全体を落とさない(available=false で「未計測」表示)。
+      getAdCost(`${ym}-01`, shift(today, -1)).catch(() => null),
     ]);
 
   const adSpend = finance.profitability.expense_breakdown.広告費 ?? 0;
@@ -158,6 +162,10 @@ export async function buildWeeklyReportInput(
       trials_month: trialsMonth ?? 0,
       // 経費として1円も計上が無い月は「0円使った」ではなく「未計測」として扱う
       ad_spend_month: adSpend > 0 ? adSpend : null,
+      ad_cost_ga4:
+        adCost && adCost.available
+          ? { amount: adCost.cost, currency: adCost.currency, clicks: adCost.clicks }
+          : null,
     },
     state,
     insights_url: `${BASE_URL}/staff/insights`,

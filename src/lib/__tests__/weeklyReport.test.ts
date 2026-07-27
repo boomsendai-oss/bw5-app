@@ -36,7 +36,7 @@ function baseInput(over: Partial<WeeklyReportInput> = {}): WeeklyReportInput {
       missing_sources: [],
       provisional_sources: [],
     },
-    entry: { trials_month: 12, ad_spend_month: 30_000 },
+    entry: { trials_month: 12, ad_spend_month: 30_000, ad_cost_ga4: null },
     state: {
       bottlenecks: ['マル経: 原子さんへ面談日程返信'],
       deadlines: [{ date: '2026-08-16', title: 'バイブス多賀城 出演チーム選定', owner: 'KEIKO' }],
@@ -164,7 +164,7 @@ describe('formatWeeklyReport', () => {
   });
 
   it('広告費が未計上の月はCPAを0円と書かず「未計測」にする', () => {
-    const i = baseInput({ entry: { trials_month: 12, ad_spend_month: null } });
+    const i = baseInput({ entry: { trials_month: 12, ad_spend_month: null, ad_cost_ga4: null } });
     const { text } = formatWeeklyReport(i);
     expect(text).toContain('広告費（2026-07）: 未計測');
     expect(text).not.toContain('体験1件あたり: ¥0');
@@ -180,6 +180,27 @@ describe('formatWeeklyReport', () => {
   it('在籍数が取れないときは0人と書かない', () => {
     const { text } = formatWeeklyReport(baseInput({ members_unavailable: true, members_now: 0 }));
     expect(text).toContain('現在の在籍: 未計測');
+  });
+
+  it('GA4の実広告費が取れたらそちらを使い、基準を明記する', () => {
+    const { text } = formatWeeklyReport(
+      baseInput({
+        entry: { trials_month: 12, ad_spend_month: 30_000, ad_cost_ga4: { amount: 26_700, currency: 'JPY', clicks: 412 } },
+      })
+    );
+    expect(text).toContain('GA4実費用）: ¥26,700（クリック 412回）');
+    expect(text).toContain('体験1件あたり: ¥2,225');
+    expect(text).not.toContain('経費計上ベース');
+  });
+
+  it('GA4の通貨がJPYでないときは通貨コードを併記し、円と誤認させない', () => {
+    const { text } = formatWeeklyReport(
+      baseInput({
+        entry: { trials_month: 12, ad_spend_month: null, ad_cost_ga4: { amount: 160.54, currency: 'USD', clicks: 100 } },
+      })
+    );
+    expect(text).toContain('USD 160.54');
+    expect(text).toContain('通貨が USD のままです');
   });
 
   it('LINE追加の数え方の但し書きを必ず入れる(誤読防止)', () => {
