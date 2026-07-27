@@ -1,5 +1,15 @@
 import { getOne, getAll } from './db';
 
+type Row = Record<string, unknown>;
+
+async function safeOne(sql: string, args: (string | number)[] = []): Promise<Row | null> {
+  try { return (await getOne(sql, args)) as Row | null; } catch { return null; }
+}
+async function safeAll(sql: string, args: (string | number)[] = []): Promise<Row[]> {
+  try { return (await getAll(sql, args)) as Row[]; } catch { return []; }
+}
+function n(v: unknown): number { return Number(v ?? 0); }
+
 /**
  * 経営KPIの「正準(canonical)」集計ロジック。
  *
@@ -180,4 +190,197 @@ export async function getUtilizationRate(ym: string): Promise<number> {
   }
 
   return normalWeightSum > 0 ? normalWeightedRate / normalWeightSum : 0;
+}
+
+// ============================================================
+// 月次ファイナンス(売上・収益性) — 正準集計
+// ============================================================
+//
+// もともと `/api/staff/kpi/dashboard` の route 内にSQLと派生計算が直書きされており、
+// 週次経営レポート(WS AB)が同じ数字を出すには丸ごとコピペするしかなかった。
+// コピペすると「insightsの営業利益」と「メールの営業利益」が将来ズレる
+// (TAROの経営判断が2つの違う数字を見ることになる)ため、ここに1本化して
+// dashboard route / 週次レポートの両方がこれを呼ぶ。
+//
+// 定義は移設前と完全に同一(SQL・フォールバック・除外カテゴリすべて)。
+
+/** payroll_runs / studio_billing_runs の確定/暫定を1行で取るSQL。 */
+const RUN_TOTAL_SQL = (table: string) =>
+  `SELECT
+     COALESCE(SUM(CASE WHEN status IN ('confirmed','paid') THEN total_amount END), 0) AS confirmed_total,
+     COALESCE(SUM(CASE WHEN status = 'draft' THEN total_amount END), 0) AS draft_total,
+     COALESCE(SUM(CASE WHEN status IN ('confirmed','paid') THEN 1 ELSE 0 END), 0) AS confirmed_cnt,
+     COALESCE(SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END), 0) AS draft_cnt
+   FROM ${table} WHERE year_month = ?`;
+
+/**
+ * P3: 確定(confirmed/paid)があればそれを採用。無ければ draft 合計を「暫定」として使う。
+ * draft しか無い月を0円扱いにすると経費が丸ごと消えて大幅黒字に見え、混入より危険なため。
+ */
+export function pickRunTotal(row: Row | null): { total: number; provisional: boolean } {
+  const confirmedCnt = n(row?.confirmed_cnt);
+  if (confirmedCnt > 0) return { total: n(row?.confirmed_total), provisional: false };
+  const draftCnt = n(row?.draft_cnt);
+  return { total: n(row?.draft_total), provisional: draftCnt > 0 };
+}
+
+/** 経費の表示バケット。既知カテゴリ以外は「その他」へ寄せる。 */
+export function bucketExpenses(rows: Array<{ category?: unknown; t?: unknown }>): Record<string, number> {
+  const out: Record<string, number> = { 広告費: 0, システム費: 0, 通信費: 0, 備品: 0, その他: 0 };
+  for (const e of rows) {
+    const cat = String(e.category ?? '');
+    if (cat in out) out[cat] = n(e.t);
+    else out.その他 += n(e.t);
+  }
+  return out;
+}
+
+export type MonthlyFinance = {
+  revenue: {
+    core: number;
+    breakdown: Record<string, number>;
+    data_available: boolean;
+  };
+  aux_revenue: {
+    merch_orders: number;
+    video_preorders_estimate: number;
+    video_preorder_count: number;
+  };
+  profitability: {
+    revenue: number;
+    payroll: number;
+    studio: number;
+    expense_breakdown: Record<string, number>;
+    total_expenses: number;
+    operating_profit: number;
+    profit_margin: number;
+    source_availability: { revenue: boolean; payroll: boolean; studio: boolean; expenses: boolean };
+    missing_sources: string[];
+    profit_confirmed: boolean;
+    payroll_provisional: boolean;
+    studio_provisional: boolean;
+    provisional_sources: string[];
+  };
+};
+
+/**
+ * 指定月の売上・補助売上・収益性をまとめて取得(正準)。ym='YYYY-MM'。
+ * 各クエリは独立なので Promise.all で1往復ぶんに畳む(dashboard の性能特性を維持)。
+ */
+export async function getMonthlyFinance(ym: string): Promise<MonthlyFinance> {
+  const [y, m] = splitYm(ym);
+  const lastDay = new Date(y, m, 0).getDate();
+  const monthStart = `${ym}-01`;
+  const monthEnd = `${ym}-${String(lastDay).padStart(2, '0')}`;
+  const monthEndISO = `${monthEnd}T23:59:59`;
+
+  const [
+    billingRows,
+    merchTotalRow,
+    videoSettings,
+    videoCountRow,
+    payrollTotalRow,
+    studioTotalRow,
+    expensesByCategory,
+    billingCountRow,
+    payrollCountRow,
+    studioCountRow,
+    expenseCountRow,
+  ] = await Promise.all([
+    safeAll(
+      `SELECT product_category, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS cnt
+       FROM hacomono_billing_records
+       WHERE billing_date BETWEEN ? AND ?
+       GROUP BY product_category`,
+      [monthStart, monthEnd]
+    ),
+    // P4: 単価は注文時点に固定した unit_price を優先。未設定の過去行のみ現在価格へフォールバック。
+    safeOne(
+      `SELECT COALESCE(SUM(mo.quantity * COALESCE(mo.unit_price, m.price)), 0) AS total
+       FROM merch_orders mo
+       LEFT JOIN merchandise m ON m.id = mo.merch_id
+       WHERE mo.created_at BETWEEN ? AND ?`,
+      [monthStart, monthEndISO]
+    ),
+    safeOne(`SELECT value FROM settings WHERE key = 'video_price'`),
+    safeOne(
+      `SELECT COUNT(*) AS n FROM video_preorders WHERE created_at BETWEEN ? AND ? AND (status IS NULL OR status != 'duplicate')`,
+      [monthStart, monthEndISO]
+    ),
+    // P3: 未確定(draft)のrunは仮値なので確定分と分けて取る。
+    safeOne(RUN_TOTAL_SQL('payroll_runs'), [ym]),
+    safeOne(RUN_TOTAL_SQL('studio_billing_runs'), [ym]),
+    // 給与・スタジオ料は別管理のため expenses 側の同カテゴリは除外(T-166 二重計上防止)
+    safeAll(
+      `SELECT category, COALESCE(SUM(amount), 0) AS t FROM expenses
+       WHERE expense_date BETWEEN ? AND ?
+         AND category NOT IN ('給与', '人件費', 'スタジオ料', 'スタジオ使用料', 'スタジオ代')
+       GROUP BY category`,
+      [monthStart, monthEnd]
+    ),
+    // 締め確定ガード(T-158): 4財源の当月データ有無
+    safeOne(`SELECT COUNT(*) AS c FROM hacomono_billing_records WHERE billing_date BETWEEN ? AND ?`, [monthStart, monthEnd]),
+    safeOne(`SELECT COUNT(*) AS c FROM payroll_runs WHERE year_month = ?`, [ym]),
+    safeOne(`SELECT COUNT(*) AS c FROM studio_billing_runs WHERE year_month = ?`, [ym]),
+    safeOne(`SELECT COUNT(*) AS c FROM expenses WHERE expense_date BETWEEN ? AND ?`, [monthStart, monthEnd]),
+  ]);
+
+  const revenueBreakdown: Record<string, number> = { plan: 0, ticket: 0, enrollment_fee: 0, other: 0 };
+  for (const r of billingRows) {
+    const cat = (r.product_category as string | null) ?? 'other';
+    revenueBreakdown[cat] = n(r.total);
+  }
+  const coreRevenue = revenueBreakdown.plan + revenueBreakdown.ticket + revenueBreakdown.enrollment_fee;
+
+  const payroll = pickRunTotal(payrollTotalRow);
+  const studio = pickRunTotal(studioTotalRow);
+  const provisionalSources = [
+    ...(payroll.provisional ? ['給与'] : []),
+    ...(studio.provisional ? ['スタジオ料'] : []),
+  ];
+  const expBreakdown = bucketExpenses(expensesByCategory as Array<{ category?: unknown; t?: unknown }>);
+  const totalExpenses =
+    payroll.total + studio.total + Object.values(expBreakdown).reduce((a, b) => a + b, 0);
+  const operatingProfit = coreRevenue - totalExpenses;
+
+  const sourceAvailability = {
+    revenue: n(billingCountRow?.c) > 0,
+    payroll: n(payrollCountRow?.c) > 0,
+    studio: n(studioCountRow?.c) > 0,
+    expenses: n(expenseCountRow?.c) > 0,
+  };
+  const missingSources = Object.entries(sourceAvailability)
+    .filter(([, ok]) => !ok)
+    .map(([k]) => ({ revenue: '売上(課金)', payroll: '給与', studio: 'スタジオ料', expenses: '経費' }[k] ?? k));
+
+  const videoCount = n(videoCountRow?.n);
+  const videoPrice = n(videoSettings?.value);
+
+  return {
+    revenue: {
+      core: coreRevenue,
+      breakdown: revenueBreakdown,
+      data_available: billingRows.length > 0,
+    },
+    aux_revenue: {
+      merch_orders: n(merchTotalRow?.total),
+      video_preorders_estimate: videoCount * videoPrice,
+      video_preorder_count: videoCount,
+    },
+    profitability: {
+      revenue: coreRevenue,
+      payroll: payroll.total,
+      studio: studio.total,
+      expense_breakdown: expBreakdown,
+      total_expenses: totalExpenses,
+      operating_profit: operatingProfit,
+      profit_margin: coreRevenue > 0 ? (operatingProfit / coreRevenue) * 100 : 0,
+      source_availability: sourceAvailability,
+      missing_sources: missingSources,
+      profit_confirmed: missingSources.length === 0,
+      payroll_provisional: payroll.provisional,
+      studio_provisional: studio.provisional,
+      provisional_sources: provisionalSources,
+    },
+  };
 }

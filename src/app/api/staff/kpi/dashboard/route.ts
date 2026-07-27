@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
-import { getActiveMemberCount, getActiveMemberCountByType, getUtilizationRate, NON_CUSTOMER_TYPES_SQL } from '@/lib/kpiMetrics';
+import { getActiveMemberCount, getActiveMemberCountByType, getMonthlyFinance, getUtilizationRate, NON_CUSTOMER_TYPES_SQL } from '@/lib/kpiMetrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -33,16 +33,8 @@ export async function GET(req: NextRequest) {
   // 以前は20本超のクエリを逐次awaitしており、1本ごとのDB往復(Turso)が積み上がって
   // 毎回5秒超かかっていた。各クエリは互いに独立なので Promise.all で一括並列化する。
   // 計算(派生値)は取得後にまとめて行う。SQL・定義は従来と同一。
-  // P3: 給与・スタジオ料 runs の確定分/未確定(draft)分を1本のクエリで分けて取る。
-  // payroll_runs / studio_billing_runs は同じ status 遷移(draft→confirmed→paid)・同じ列構成。
-  const RUN_TOTAL_SQL = (table: string) =>
-    `SELECT
-       COALESCE(SUM(CASE WHEN status IN ('confirmed','paid') THEN total_amount END), 0) AS confirmed_total,
-       COALESCE(SUM(CASE WHEN status = 'draft' THEN total_amount END), 0) AS draft_total,
-       COALESCE(SUM(CASE WHEN status IN ('confirmed','paid') THEN 1 ELSE 0 END), 0) AS confirmed_cnt,
-       COALESCE(SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END), 0) AS draft_cnt
-     FROM ${table} WHERE year_month = ?`;
-
+  // 売上・収益性(旧: この route 内のSQL+派生計算)は `getMonthlyFinance` へ移設した。
+  // 週次経営レポートのメールが同じ数字を出す必要があり、コピペすると将来ズレるため。
   const UTIL_EXPR =
     `CASE WHEN capacity IS NOT NULL AND capacity > 0
           THEN CAST(total_reservations AS REAL) / capacity
@@ -62,22 +54,12 @@ export async function GET(req: NextRequest) {
     lineFriendsRow,
     lineBlockedRow,
     lineTotalRow,
-    billingRows,
-    merchTotalRow,
-    videoSettings,
-    videoCountRow,
     utilClassRows,
     overrideRows,
     lowThrRow,
     graceRow,
     avgUtilization,
-    payrollTotalRow,
-    studioTotalRow,
-    expensesByCategory,
-    billingCountRow,
-    payrollCountRow,
-    studioCountRow,
-    expenseCountRow,
+    finance,
     targets,
   ] = await Promise.all([
     // B: 顧客動態 — 在籍系は全て課金対象顧客のみ(staff/休会/visitor除外 = T-164)
@@ -129,28 +111,6 @@ export async function GET(req: NextRequest) {
     safeOne(`SELECT COUNT(*) AS n FROM lstep_friends WHERE blocked = 0`),
     safeOne(`SELECT COUNT(*) AS n FROM lstep_friends WHERE blocked = 1`),
     safeOne(`SELECT COUNT(*) AS n FROM lstep_friends`),
-    // A: 売上系
-    safeAll(
-      `SELECT product_category, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS cnt
-       FROM hacomono_billing_records
-       WHERE billing_date BETWEEN ? AND ?
-       GROUP BY product_category`,
-      [monthStart, monthEnd]
-    ),
-    safeOne(
-      // P4: 単価は注文時点に固定した unit_price を優先。未設定の過去行のみ現在価格へフォールバック
-      // (バックフィルは価格改定履歴のTARO確認後)。
-      `SELECT COALESCE(SUM(mo.quantity * COALESCE(mo.unit_price, m.price)), 0) AS total
-       FROM merch_orders mo
-       LEFT JOIN merchandise m ON m.id = mo.merch_id
-       WHERE mo.created_at BETWEEN ? AND ?`,
-      [monthStart, monthEndISO]
-    ),
-    safeOne(`SELECT value FROM settings WHERE key = 'video_price'`),
-    safeOne(
-      `SELECT COUNT(*) AS n FROM video_preorders WHERE created_at BETWEEN ? AND ? AND (status IS NULL OR status != 'duplicate')`,
-      [monthStart, monthEndISO]
-    ),
     // C: 稼働率 — 予約ベース(総予約数/定員)。定員なし行のみ保存値へフォールバック
     safeAll(
       `SELECT program_name, staff_name, AVG(${UTIL_EXPR}) AS avg_rate, COUNT(*) AS cnt
@@ -163,26 +123,9 @@ export async function GET(req: NextRequest) {
     safeOne(`SELECT value FROM settings WHERE key = 'kpi_util_low_threshold'`),
     safeOne(`SELECT value FROM settings WHERE key = 'kpi_util_new_grace_months'`),
     getUtilizationRate(ym),
-    // D: 収益性
-    // P3: 未確定(draft)のrunは「試しに計算しただけ」の仮値なので営業利益に混ぜない。
-    // ただし draft しか無い月を0円扱いにすると経費が丸ごと消えて大幅黒字に見え、
-    // 混入より危険なため「確定分があれば確定分／無ければdraft合計を暫定として返す」
-    // 2段フォールバックにする(確定/暫定の別は provisional フラグでフロントへ渡す)。
-    safeOne(RUN_TOTAL_SQL('payroll_runs'), [ym]),
-    safeOne(RUN_TOTAL_SQL('studio_billing_runs'), [ym]),
-    // 給与・スタジオ料は別管理のため expenses 側の同カテゴリは除外(T-166 二重計上防止)
-    safeAll(
-      `SELECT category, COALESCE(SUM(amount), 0) AS t FROM expenses
-       WHERE expense_date BETWEEN ? AND ?
-         AND category NOT IN ('給与', '人件費', 'スタジオ料', 'スタジオ使用料', 'スタジオ代')
-       GROUP BY category`,
-      [monthStart, monthEnd]
-    ),
-    // 締め確定ガード(T-158): 4財源の当月データ有無
-    safeOne(`SELECT COUNT(*) AS c FROM hacomono_billing_records WHERE billing_date BETWEEN ? AND ?`, [monthStart, monthEnd]),
-    safeOne(`SELECT COUNT(*) AS c FROM payroll_runs WHERE year_month = ?`, [ym]),
-    safeOne(`SELECT COUNT(*) AS c FROM studio_billing_runs WHERE year_month = ?`, [ym]),
-    safeOne(`SELECT COUNT(*) AS c FROM expenses WHERE expense_date BETWEEN ? AND ?`, [monthStart, monthEnd]),
+    // A: 売上系 + D: 収益性 — 正準集計(src/lib/kpiMetrics.ts)。
+    // 週次経営レポートのメールも同じ関数を呼ぶため、画面とメールの数字が構造的に一致する。
+    getMonthlyFinance(ym),
     safeAll(`SELECT metric_key, target_value FROM kpi_targets WHERE year_month = ?`, [ym]),
   ]);
 
@@ -203,18 +146,8 @@ export async function GET(req: NextRequest) {
   const lineBlockRate = lineTotal > 0 ? (lineBlocked / lineTotal) * 100 : 0;
 
   // ===== A: 売上系 (派生値) =====
-  const revenueBreakdown = {
-    plan: 0, ticket: 0, enrollment_fee: 0, other: 0,
-  } as Record<string, number>;
-  for (const r of billingRows) {
-    const cat = (r.product_category as string | null) ?? 'other';
-    revenueBreakdown[cat] = n(r.total);
-  }
-  const coreRevenue = revenueBreakdown.plan + revenueBreakdown.ticket + revenueBreakdown.enrollment_fee;
-  const arpu = endActive > 0 ? revenueBreakdown.plan / endActive : 0;
-  const merchTotal = n(merchTotalRow?.total);
-  const videoPrice = n(videoSettings?.value);
-  const videoCount = n(videoCountRow?.n);
+  // 金額そのものは getMonthlyFinance が正準。ここは画面固有の派生値(ARPU)だけ持つ。
+  const arpu = endActive > 0 ? finance.revenue.breakdown.plan / endActive : 0;
   const overrideMap = new Map<string, { category: string | null; launched_at: string | null }>();
   for (const o of overrideRows) {
     overrideMap.set(o.program_name as string, {
@@ -286,49 +219,8 @@ export async function GET(req: NextRequest) {
   const bottomClasses = [...normalClasses].sort((a, b) => a.avg_rate - b.avg_rate).slice(0, 10);
 
   // ===== D: 収益性 (派生値) =====
-  // P3: 確定(confirmed/paid)があればそれを採用。無ければdraft合計を「暫定」として使う。
-  function runTotal(row: Row | null): { total: number; provisional: boolean } {
-    const confirmedCnt = n(row?.confirmed_cnt);
-    if (confirmedCnt > 0) return { total: n(row?.confirmed_total), provisional: false };
-    const draftCnt = n(row?.draft_cnt);
-    return { total: n(row?.draft_total), provisional: draftCnt > 0 };
-  }
-  const payroll = runTotal(payrollTotalRow);
-  const studio = runTotal(studioTotalRow);
-  const payrollTotal = payroll.total;
-  const studioTotal = studio.total;
-  const provisionalSources = [
-    ...(payroll.provisional ? ['給与'] : []),
-    ...(studio.provisional ? ['スタジオ料'] : []),
-  ];
-  const expBreakdown = {
-    広告費: 0, システム費: 0, 通信費: 0, 備品: 0, その他: 0,
-  } as Record<string, number>;
-  for (const e of expensesByCategory) {
-    const cat = e.category as string;
-    if (cat in expBreakdown) expBreakdown[cat] = n(e.t);
-    else expBreakdown.その他 += n(e.t);
-  }
-  const totalExpenses = payrollTotal + studioTotal + Object.values(expBreakdown).reduce((a, b) => a + b, 0);
-  const operatingProfit = coreRevenue - totalExpenses;
-
-  // 締め確定ガード(T-158): 営業利益=売上−給与−スタジオ料−経費 だが、各財源の
-  // 当月データが揃わないと利益が虚偽になる。4財源それぞれの当月行有無を返し、
-  // フロントは全部揃った月だけ黒字赤字を確定表示する。
-  const billingCount = n(billingCountRow?.c);
-  const payrollCount = n(payrollCountRow?.c);
-  const studioCount = n(studioCountRow?.c);
-  const expenseCount = n(expenseCountRow?.c);
-  const sourceAvailability = {
-    revenue: billingCount > 0,
-    payroll: payrollCount > 0,
-    studio: studioCount > 0,
-    expenses: expenseCount > 0,
-  };
-  const missingSources = Object.entries(sourceAvailability)
-    .filter(([, ok]) => !ok)
-    .map(([k]) => ({ revenue: '売上(課金)', payroll: '給与', studio: 'スタジオ料', expenses: '経費' }[k] ?? k));
-  const profitConfirmed = missingSources.length === 0;
+  // 締め確定ガード(T-158)・draft暫定フォールバック(P3)・経費の二重計上防止(T-166)は
+  // すべて getMonthlyFinance 側にある(週次レポートと共有する正準ロジック)。
 
   // ===== 目標値 =====
   const targetMap: Record<string, number> = {};
@@ -365,18 +257,9 @@ export async function GET(req: NextRequest) {
       block_rate: lineBlockRate,
     },
     // A 売上系
-    revenue: {
-      core: coreRevenue,
-      breakdown: revenueBreakdown,
-      arpu: arpu,
-      data_available: billingRows.length > 0,
-    },
+    revenue: { ...finance.revenue, arpu },
     // 補助売上
-    aux_revenue: {
-      merch_orders: merchTotal,
-      video_preorders_estimate: videoCount * videoPrice,
-      video_preorder_count: videoCount,
-    },
+    aux_revenue: finance.aux_revenue,
     // C オペレーション
     // average/lesson_count は normal(通常)クラスのみ・予約数重み付け。
     // new(立ち上げ期)/watch(要対策)/excluded(除外) は別枠で返す。
@@ -394,24 +277,9 @@ export async function GET(req: NextRequest) {
       excluded_classes: excludedClasses,
     },
     // D 収益性
-    profitability: {
-      revenue: coreRevenue,
-      payroll: payrollTotal,
-      studio: studioTotal,
-      expense_breakdown: expBreakdown,
-      total_expenses: totalExpenses,
-      operating_profit: operatingProfit,
-      profit_margin: coreRevenue > 0 ? (operatingProfit / coreRevenue) * 100 : 0,
-      // 締め確定ガード(T-158): 4財源が全て揃った月だけ profit_confirmed=true。
-      // フロントは false の月は黒字赤字を確定表示せず「データ不足」を出す。
-      source_availability: sourceAvailability,
-      missing_sources: missingSources,
-      profit_confirmed: profitConfirmed,
-      // P3: 確定(confirmed/paid)のrunが無くdraftだけの財源。金額は暫定値。
-      payroll_provisional: payroll.provisional,
-      studio_provisional: studio.provisional,
-      provisional_sources: provisionalSources,
-    },
+    // 締め確定ガード(T-158)で profit_confirmed=false の月は、フロントが
+    // 黒字赤字を確定表示せず「データ不足」を出す。
+    profitability: finance.profitability,
     targets: targetMap,
     generated_at: new Date().toISOString(),
     _prev_unused: prevStart, // 前月比対応用にダミー(将来)
