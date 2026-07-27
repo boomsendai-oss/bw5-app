@@ -161,7 +161,10 @@ export function sumAdRows(rows: AdRow[] | null | undefined): { cost: number; cli
 export type AdCost = {
   available: boolean;
   error?: string;
-  /** GA4プロパティの通貨建て。2026-07-27時点でJPY化をTARO承認済み */
+  /**
+   * GA4プロパティに設定された通貨建ての値をそのまま返す(このコードは換算しない)。
+   * 円で欲しい場合はGA4管理画面のプロパティ通貨をJPYにすること。
+   */
   cost: number;
   clicks: number;
 };
@@ -185,6 +188,9 @@ export async function getAdCost(startDate: string, endDate: string): Promise<AdC
       dateRanges: [{ startDate, endDate }],
       dimensions: [{ name: 'date' }],
       metrics: [{ name: 'advertiserAdCost' }, { name: 'advertiserAdClicks' }],
+      // date次元は1日1行。現在の呼び出しは最大でも1ヶ月(31行)なので余裕がある。
+      // ⚠️ 数年分など400日を超える範囲を渡すと、GA4はエラーを出さず黙って打ち切るため
+      //    合計が過少になる。長期間を集計したくなったらページングを実装すること。
       limit: 400,
     });
     const { cost, clicks } = sumAdRows(res.rows);
