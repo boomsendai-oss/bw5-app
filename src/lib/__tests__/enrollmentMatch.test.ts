@@ -104,4 +104,52 @@ describe('matchEnrollments', () => {
     expect(r.matches).toEqual([]);
     expect(r.ambiguous).toEqual([]);
   });
+
+  it('reserved_atが非ゼロ埋め(信用できない日付)なら突合しない', () => {
+    const r = matchEnrollments(
+      [trial(1, 'ヤマダタロウ', '2026-6-1 19:00:00')],
+      [member(10, 'ヤマダタロウ', '2026-06-01')]
+    );
+    expect(r.matches).toEqual([]);
+    expect(r.ambiguous).toEqual([]);
+  });
+
+  it('enrolled_atが非ゼロ埋め(信用できない日付)なら突合しない', () => {
+    const r = matchEnrollments(
+      [trial(1, 'ヤマダタロウ', '2026-06-01 19:00:00')],
+      [member(10, 'ヤマダタロウ', '2026-6-3')]
+    );
+    expect(r.matches).toEqual([]);
+    expect(r.ambiguous).toEqual([]);
+  });
+
+  it('同じ会員・同じ日の複数体験は時刻の書式に関わらずtrial_id昇順で確定する', () => {
+    const r = matchEnrollments(
+      [
+        trial(2, 'ヤマダタロウ', '2026-06-01 9:00:00'),
+        trial(1, 'ヤマダタロウ', '2026-06-01 09:30:00'),
+      ],
+      [member(10, 'ヤマダタロウ', '2026-06-05')]
+    );
+    expect(r.matches).toEqual([{ trial_id: 1, member_id: 10 }]);
+  });
+
+  it('ambiguousはtrial_id昇順で返る', () => {
+    const r = matchEnrollments(
+      [
+        trial(2, 'スズキハナコ', '2026-06-01 19:00:00'),
+        trial(1, 'ヤマダタロウ', '2026-06-01 19:00:00'),
+      ],
+      [
+        member(10, 'ヤマダタロウ', '2026-06-02'),
+        member(11, 'ヤマダタロウ', '2026-06-05'),
+        member(20, 'スズキハナコ', '2026-06-02'),
+        member(21, 'スズキハナコ', '2026-06-05'),
+      ]
+    );
+    expect(r.ambiguous).toEqual([
+      { trial_id: 1, member_ids: [10, 11] },
+      { trial_id: 2, member_ids: [20, 21] },
+    ]);
+  });
 });

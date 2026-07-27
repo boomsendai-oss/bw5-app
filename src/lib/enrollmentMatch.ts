@@ -38,7 +38,16 @@ export type EnrollmentMatchResult = {
   ambiguous: { trial_id: number; member_ids: number[] }[];
 };
 
-/** 'YYYY-MM-DD...' を1970-01-01からの日数に。解釈できなければ null。 */
+/**
+ * 'YYYY-MM-DD...' を1970-01-01からの日数に。解釈できなければ null。
+ *
+ * `reserved_at`(trial側)・`enrolled_at`(member側)はどちらも同じCSV取込経路で、
+ * parseDateTime(csvUtil.ts)がゼロ埋めも書式検証もしないため '2026-7-1' のような
+ * 非ゼロ埋め値がそのまま入り得る(src/lib/trialAttendance.ts の同種のハザードを参照)。
+ * 正規表現をゼロ埋め厳密 'YYYY-MM-DD' に固定しているのは意図的。緩めないこと。
+ * ここでマッチしない行は「日付を信用できない」として突合対象から除外する(fail closed)。
+ * 緩めて誤った桁のまま比較すると、窓判定が壊れて誤って一致/不一致になり得るため。
+ */
 function dayNumber(dateStr: string | null): number | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((dateStr ?? '').trim());
   if (!m) return null;
@@ -62,8 +71,10 @@ export function matchEnrollments(
   }
 
   const ambiguous: EnrollmentMatchResult['ambiguous'] = [];
-  // 会員ID → 候補の体験。最後に「最初の体験」を選ぶために貯める
-  const perMember = new Map<number, { trial_id: number; reserved_at: string }[]>();
+  // 会員ID → 候補の体験。最後に「最初の体験」を選ぶために貯める。
+  // reserved_at の時刻部分は dayNumber() で検証していない(日付部分しか見ない)ため、
+  // ソートの根拠には検証済みの tDay(日数)だけを使う。時刻文字列は比較に使わない。
+  const perMember = new Map<number, { trial_id: number; tDay: number }[]>();
 
   for (const t of trials) {
     if ((t.matched_by ?? '') === 'manual') continue;
@@ -82,18 +93,21 @@ export function matchEnrollments(
     }
     const memberId = hits[0].id;
     const list = perMember.get(memberId);
-    if (list) list.push({ trial_id: t.id, reserved_at: t.reserved_at });
-    else perMember.set(memberId, [{ trial_id: t.id, reserved_at: t.reserved_at }]);
+    if (list) list.push({ trial_id: t.id, tDay });
+    else perMember.set(memberId, [{ trial_id: t.id, tDay }]);
   }
 
   // 1入会=1件にする。同じ会員が複数の体験にヒットしたら最初の体験に寄せる
-  // (流入経路の起点を正しく取るため)。
+  // (流入経路の起点を正しく取るため)。同日の複数体験は trial_id 昇順で確定させる
+  // (時刻文字列は書式が不揃いなため比較に使わない=決定的なタイブレーク)。
   const matches: EnrollmentMatchResult['matches'] = [];
   for (const [memberId, list] of perMember) {
-    list.sort((a, b) => (a.reserved_at < b.reserved_at ? -1 : a.reserved_at > b.reserved_at ? 1 : a.trial_id - b.trial_id));
+    list.sort((a, b) => (a.tDay !== b.tDay ? a.tDay - b.tDay : a.trial_id - b.trial_id));
     matches.push({ trial_id: list[0].trial_id, member_id: memberId });
   }
   matches.sort((a, b) => a.trial_id - b.trial_id);
+  // ambiguous も matches と同様に trial_id 昇順で確定させる(呼び出し元SQLの並び順に依存しないため)。
+  ambiguous.sort((a, b) => a.trial_id - b.trial_id);
 
   return { matches, ambiguous };
 }
