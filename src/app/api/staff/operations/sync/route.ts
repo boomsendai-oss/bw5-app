@@ -5,6 +5,7 @@ import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { parseCSV, rowsToDicts, parseDate, parseDateTime } from '@/lib/csvUtil';
 import { buildLinkSuggestions, type Member as SuggestMember, type LinkSuggestion } from '@/lib/linkSuggest';
 import { deriveMemberType } from '@/lib/memberType';
+import { runEnrollmentMatch, type MatchSummary } from '../match-enrollments/route';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -405,6 +406,16 @@ async function handleSync(req: NextRequest) {
     newMembers, planChanges, withdrewDetected, linkSuggestions
   );
 
+  // --- 体験→入会の突合 (WS AA) ---
+  // 会員データが更新された直後に実行する。失敗しても同期全体は落とさない
+  // (2026-07-20に入れた部分成功の方針に合わせる)。
+  let enrollmentMatch: MatchSummary | { ok: false; error: string };
+  try {
+    enrollmentMatch = await runEnrollmentMatch();
+  } catch (e) {
+    enrollmentMatch = { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+
   return NextResponse.json({
     ok: true,
     summary: {
@@ -418,6 +429,7 @@ async function handleSync(req: NextRequest) {
       hacomono_active_total: activeMembers.length,
       hacomono_withdrew_total: withdrewMembers.length,
       lstep_total: lstepRows.length,
+      enrollment_match: enrollmentMatch,
     },
     details: {
       new_members: newMembers.map((m) => ({
