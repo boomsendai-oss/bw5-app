@@ -36,9 +36,17 @@ describe('resolveAttendance', () => {
     expect(r).toBe('来店');
   });
 
-  it('Lstepで来店確認済が打たれていればもちろん来店', () => {
+  it('キャンセル以外のstatusは中身によらず来店(来店確認済も同じ扱い)', () => {
     const r = resolveAttendance(
       { status: '来店確認済', attendance_override: null, reserved_at: '2026-07-01 19:00:00' },
+      TODAY
+    );
+    expect(r).toBe('来店');
+  });
+
+  it('statusがnullでも過去日ならキャンセルでない限り来店', () => {
+    const r = resolveAttendance(
+      { status: null, attendance_override: null, reserved_at: '2026-07-01 19:00:00' },
       TODAY
     );
     expect(r).toBe('来店');
@@ -55,6 +63,44 @@ describe('resolveAttendance', () => {
   it('未来の予約は予約済', () => {
     const r = resolveAttendance(
       { status: '予約済', attendance_override: null, reserved_at: '2026-08-18 19:00:00' },
+      TODAY
+    );
+    expect(r).toBe('予約済');
+  });
+
+  it('人の訂正はカレンダーより優先される(未来日でもnoshow指定を尊重する)', () => {
+    const r = resolveAttendance(
+      { status: '予約済', attendance_override: 'noshow', reserved_at: '2026-08-18 19:00:00' },
+      TODAY
+    );
+    expect(r).toBe('ノーショー');
+  });
+
+  it('reserved_atが非ゼロ埋め(月/日が1桁)だとfail closedで予約済のまま', () => {
+    // parseDateTime(csvUtil.ts)はゼロ埋めしないため '2026-7-1' のような値が実際に入り得る。
+    // 辞書順比較だと '2026-7-1' > '2026-07-27' 扱いになり来店に昇格しない=安全側に倒れることを確認する。
+    const r = resolveAttendance(
+      { status: '予約済', attendance_override: null, reserved_at: '2026-7-1 19:00:00' },
+      TODAY
+    );
+    expect(r).toBe('予約済');
+    expect(isTrialDenominator({ status: '予約済', attendance_override: null, reserved_at: '2026-7-1 19:00:00' }, TODAY)).toBe(false);
+  });
+
+  it('reserved_atが欠損/切り詰められている場合もfail closedで予約済のまま', () => {
+    // '2026' のような値は辞書順比較だと常に「過去日」扱いになってしまう(過大計上のリスク)ため、
+    // 形式チェックで弾いて '予約済'(=集計対象外)に倒す。
+    const r = resolveAttendance(
+      { status: '予約済', attendance_override: null, reserved_at: '2026' },
+      TODAY
+    );
+    expect(r).toBe('予約済');
+    expect(isTrialDenominator({ status: '予約済', attendance_override: null, reserved_at: '2026' }, TODAY)).toBe(false);
+  });
+
+  it('reserved_atが空文字でもfail closedで予約済のまま', () => {
+    const r = resolveAttendance(
+      { status: '予約済', attendance_override: null, reserved_at: '' },
       TODAY
     );
     expect(r).toBe('予約済');
