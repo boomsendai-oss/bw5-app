@@ -138,3 +138,59 @@ export async function getLineClickStats(force = false): Promise<LineClickStats> 
     return { available: false, error: msg, ranges: [], fetchedAt: new Date().toISOString() };
   }
 }
+
+/** 'YYYY-MM' → GA4のdateRange。月末はうるう年も含めて正しく出す。 */
+export function monthRange(ym: string): { startDate: string; endDate: string } {
+  const [y, m] = ym.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { startDate: `${ym}-01`, endDate: `${ym}-${String(last).padStart(2, '0')}` };
+}
+
+type AdRow = { metricValues?: ({ value?: string | null } | null)[] | null };
+
+/** 日次行を合計する。cost は小数第2位で丸める(浮動小数の誤差を表示に持ち込まないため)。 */
+export function sumAdRows(rows: AdRow[] | null | undefined): { cost: number; clicks: number } {
+  let cost = 0;
+  let clicks = 0;
+  for (const r of rows ?? []) {
+    cost += Number(r?.metricValues?.[0]?.value ?? 0);
+    clicks += Number(r?.metricValues?.[1]?.value ?? 0);
+  }
+  return { cost: Math.round(cost * 100) / 100, clicks };
+}
+
+export type AdCost = {
+  available: boolean;
+  error?: string;
+  /** GA4プロパティの通貨建て。2026-07-27時点でJPY化をTARO承認済み */
+  cost: number;
+  clicks: number;
+};
+
+/**
+ * Google広告の費用とクリック数を取得する。
+ *
+ * ⚠️ advertiserAdCost は yearMonth 次元と互換性が無く、全月に同じ値を返してしまう
+ * (本番で確認済み)。必ず date 次元で取得して合算すること。
+ *
+ * @param startDate 'YYYY-MM-DD' または '30daysAgo' 等のGA4表現
+ */
+export async function getAdCost(startDate: string, endDate: string): Promise<AdCost> {
+  const cfg = getClient();
+  if (!cfg) {
+    return { available: false, error: 'GA4_PROPERTY_ID / GA4_SA_KEY_JSON が未設定です', cost: 0, clicks: 0 };
+  }
+  try {
+    const [res] = await cfg.client.runReport({
+      property: cfg.property,
+      dateRanges: [{ startDate, endDate }],
+      dimensions: [{ name: 'date' }],
+      metrics: [{ name: 'advertiserAdCost' }, { name: 'advertiserAdClicks' }],
+      limit: 400,
+    });
+    const { cost, clicks } = sumAdRows(res.rows);
+    return { available: true, cost, clicks };
+  } catch (e) {
+    return { available: false, error: e instanceof Error ? e.message : String(e), cost: 0, clicks: 0 };
+  }
+}
