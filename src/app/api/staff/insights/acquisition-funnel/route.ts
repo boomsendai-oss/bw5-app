@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAll } from '@/lib/db';
 import { withAuth } from '@/lib/eventAuth';
 import { todayJst } from '@/lib/dateJst';
-import { getAdCost, getLineClickStats, monthRange } from '@/lib/ga4';
+import { getAdCost, getLineClickCount, monthRange } from '@/lib/ga4';
 import {
   buildMonthlyFunnel,
   buildReferralBreakdown,
@@ -31,7 +31,7 @@ export const GET = withAuth(async () => {
     const { startDate, endDate } = monthRange(ym);
     const [adCost, lineClicks] = await Promise.all([
       getAdCost(startDate, endDate),
-      getLineClickStats(),
+      getLineClickCount(startDate, endDate),
     ]);
 
     return NextResponse.json({
@@ -41,7 +41,12 @@ export const GET = withAuth(async () => {
       monthly,
       referral,
       ad: { available: adCost.available, error: adCost.error, cost: Math.round(adCost.cost), clicks: adCost.clicks },
-      line_clicks_30d: lineClicks.available ? lineClicks.ranges.find((r) => r.days === 30) ?? null : null,
+      line_clicks_month: {
+        available: lineClicks.available,
+        error: lineClicks.error,
+        total: lineClicks.total,
+        ads: lineClicks.ads,
+      },
     });
   } catch (e) {
     console.error('[acquisition-funnel GET]', e);

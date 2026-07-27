@@ -13,7 +13,7 @@ type Payload = {
   monthly: MonthlyRow[];
   referral: ReferralRow[];
   ad: { available: boolean; error?: string; cost: number; clicks: number };
-  line_clicks_30d: { days: number; total: number; ads: number } | null;
+  line_clicks_month: { available: boolean; error?: string; total: number; ads: number };
 };
 
 const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
@@ -44,11 +44,16 @@ export default function AcquisitionFunnel() {
   return (
     <div className="space-y-3">
       <div className="rounded-lg border border-sand-200 p-3 text-sm">
-        <div className="font-semibold text-navy-800 mb-2">{data.month} の集客ファネル</div>
+        <div className="font-semibold text-navy-800 mb-1">{data.month} の集客ファネル</div>
+        <div className="text-[10px] text-neutral-400 mb-2">当月分（GA4は数時間〜1日遅れ）</div>
         <dl className="space-y-1">
           <Step label="広告費" value={data.ad.available ? `¥${num(data.ad.cost)}` : '—'} note={data.ad.available ? undefined : 'GA4から取得できません'} />
           <Step label="広告クリック" value={data.ad.available ? num(data.ad.clicks) : '—'} />
-          <Step label="LINEクリック (30日)" value={data.line_clicks_30d ? `${num(data.line_clicks_30d.total)} (うち広告 ${num(data.line_clicks_30d.ads)})` : '—'} />
+          <Step
+            label="LINEクリック"
+            value={data.line_clicks_month.available ? `${num(data.line_clicks_month.total)} (うち広告 ${num(data.line_clicks_month.ads)})` : '—'}
+            note={data.line_clicks_month.available ? undefined : 'GA4から取得できません'}
+          />
           <Step label="体験 (来店)" value={cur ? num(cur.trials) : '0'} note={cur ? `キャンセル${cur.canceled} / ノーショー${cur.noshow}` : undefined} />
           <Step label="入会" value={cur ? `${num(cur.enrolled)}　CVR ${pct(cur.cvr)}` : '0'} />
         </dl>

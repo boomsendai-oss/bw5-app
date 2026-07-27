@@ -138,6 +138,84 @@ export async function getLineClickStats(force = false): Promise<LineClickStats> 
   }
 }
 
+export type LineClickCount = {
+  available: boolean;
+  error?: string;
+  /** 期間内のLINEクリック総数 */
+  total: number;
+  /** うち google / cpc 経由 */
+  ads: number;
+};
+
+/**
+ * 指定期間のLINEクリック数。getLineClickStats は 7日/30日 固定なので、
+ * 月次ファネルのように任意期間で揃えたい場合はこちらを使う。
+ * (ファネルの各段が違う期間だと1つのコホートとして誤読されるため)
+ *
+ * getLineClickStats と同じイベント名フィルタ・同じ 'google / cpc' フィルタを使う
+ * (数字がずれないように)。月次で毎回呼ばれる想定のためキャッシュはしない
+ * (既存の1時間キャッシュは7/30日固定範囲用でキーが無く、任意期間には使い回せない)。
+ *
+ * @param startDate 'YYYY-MM-DD'
+ * @param endDate 'YYYY-MM-DD'
+ */
+export async function getLineClickCount(startDate: string, endDate: string): Promise<LineClickCount> {
+  const cfg = getClient();
+  if (!cfg) {
+    return { available: false, error: 'GA4_PROPERTY_ID / GA4_SA_KEY_JSON が未設定です', total: 0, ads: 0 };
+  }
+
+  const eventFilter = {
+    filter: {
+      fieldName: 'eventName',
+      stringFilter: { value: LINE_EVENT() },
+    },
+  };
+
+  try {
+    const [batch] = await cfg.client.batchRunReports({
+      property: cfg.property,
+      requests: [
+        {
+          dateRanges: [{ startDate, endDate }],
+          metrics: [{ name: 'eventCount' }],
+          dimensionFilter: eventFilter,
+        },
+        {
+          dateRanges: [{ startDate, endDate }],
+          metrics: [{ name: 'eventCount' }],
+          dimensionFilter: {
+            andGroup: {
+              expressions: [
+                eventFilter,
+                {
+                  filter: {
+                    fieldName: 'sessionSourceMedium',
+                    stringFilter: { value: 'google / cpc' },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    // 単一dateRangeのみ指定しているため dateRange ディメンションは付与されない
+    // (getLineClickStats と違い複数レンジを跨がないので、行は最大1件)。
+    const sumRows = (reportIdx: number): number => {
+      const rows = batch.reports?.[reportIdx]?.rows ?? [];
+      let sum = 0;
+      for (const row of rows) sum += Number(row.metricValues?.[0]?.value ?? 0);
+      return sum;
+    };
+
+    return { available: true, total: sumRows(0), ads: sumRows(1) };
+  } catch (e) {
+    return { available: false, error: e instanceof Error ? e.message : String(e), total: 0, ads: 0 };
+  }
+}
+
 /** 'YYYY-MM' → GA4のdateRange。月末はうるう年も含めて正しく出す。 */
 export function monthRange(ym: string): { startDate: string; endDate: string } {
   const [y, m] = ym.split('-').map(Number);
