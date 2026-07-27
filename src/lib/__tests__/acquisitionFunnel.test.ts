@@ -68,7 +68,7 @@ describe('buildReferralBreakdown', () => {
     const r = buildReferralBreakdown(rows, TODAY);
     expect(r).toEqual([
       { channel: '紹介', trials: 2, enrolled: 1, cvr: 0.5 },
-      { channel: 'ネット検索', trials: 1, enrolled: 1, cvr: 1 },
+      { channel: 'ネット検索・マップ', trials: 1, enrolled: 1, cvr: 1 },
       { channel: '未記入', trials: 1, enrolled: 0, cvr: 0 },
     ]);
   });
@@ -79,7 +79,7 @@ describe('buildReferralBreakdown', () => {
   });
 
   it('入力順が逆でも表示順は REFERRAL_CHANNELS の正準順になる(挿入順ではない)', () => {
-    // わざと正準順(紹介→ネット検索→マップ→インスタ→チラシ・看板)の逆で行を渡す。
+    // わざと正準順(紹介→ネット検索・マップ→インスタ→チラシ・看板)の逆で行を渡す。
     // 挿入順で出力してしまう回帰があってもこのテストでしか検出できない
     // (Task11のフィクスチャは初出順=正準順が偶然一致していた)。
     const rows = [
@@ -90,6 +90,6 @@ describe('buildReferralBreakdown', () => {
       row({ reserved_at: '2026-06-05 19:00:00', referral_source: '知り合いからのご紹介' }),
     ];
     const r = buildReferralBreakdown(rows, TODAY);
-    expect(r.map((x) => x.channel)).toEqual(['紹介', 'ネット検索', 'マップ', 'インスタ', 'チラシ・看板']);
+    expect(r.map((x) => x.channel)).toEqual(['紹介', 'ネット検索・マップ', 'インスタ', 'チラシ・看板']);
   });
 });
