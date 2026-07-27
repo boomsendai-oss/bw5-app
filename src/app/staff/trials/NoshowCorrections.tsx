@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 
 export type PastTrial = {
   id: number;
-  reservedLabel: string;   // '7/20(月) 19:00'
+  reservedLabel: string;   // '7/20(月) 19:00' (formatDateLabel + 'HH:MM')
   name: string;
   lessonName: string;
   attendanceOverride: string | null;
@@ -47,7 +47,7 @@ export default function NoshowCorrections({ trials }: { trials: PastTrial[] }) {
     <Card>
       <CardContent className="pt-3 pb-3 space-y-2">
         <div className="text-xs text-muted-foreground">
-          直近2週間の体験（来店として集計中）。実際に来なかった方だけ「ノーショー」に直してください。
+          直近45日の体験（来店として集計中）。実際に来なかった方だけ「ノーショーにする」に直してください。
         </div>
         {trials.map((t) => {
           const isNoshow = state[t.id] === 'noshow';
@@ -66,7 +66,7 @@ export default function NoshowCorrections({ trials }: { trials: PastTrial[] }) {
                 disabled={busy === t.id}
                 onClick={() => toggle(t.id, !isNoshow)}
               >
-                {isNoshow ? '来店に戻す' : 'ノーショー'}
+                {isNoshow ? '来店に戻す' : 'ノーショーにする'}
               </Button>
             </div>
           );

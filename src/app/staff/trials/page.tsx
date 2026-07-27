@@ -4,7 +4,7 @@
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { getAll, getOne } from '@/lib/db';
 import { isAuthorizedServer } from '@/lib/eventAuth';
-import { buildTrialGroups, toHiragana, type TrialRow } from '@/lib/trialNotify';
+import { buildTrialGroups, formatDateLabel, resolveVisitorName, type TrialRow } from '@/lib/trialNotify';
 import TrialCopyList from './TrialCopyList';
 import NoshowCorrections, { type PastTrial } from './NoshowCorrections';
 
@@ -59,13 +59,18 @@ export default async function TrialsPage() {
   const groups = buildTrialGroups(rows);
   const visitorCount = groups.reduce((n, g) => n + g.visitors.length, 0);
 
-  // 直近2週間の実施済み体験 — 来店訂正用 (WS AA)。キャンセル済みは訂正不要なので除く。
+  // 直近45日分の実施済み体験 — 来店訂正用 (WS AA)。trialAttendance.ts の判定は日数の
+  // 上限なしに過去の非キャンセルを「来店」扱いし続けるため、月次KPIレビュー(先月分の
+  // 見直し)で気づいたノーショーも直せるよう前月レビューを余裕を持ってカバーする45日
+  // とした。トレードオフ: これより古い訂正はこの画面からはできない。
+  // status の比較は trialAttendance.ts の判定(.trim()込み)と揃えるため TRIM する
+  // (例: ' キャンセル' のような先頭空白混入時に判定がズレるのを防ぐ)。
   const pastRows = (await getAll(
     `SELECT id, reserved_at, lesson_name, status, attendance_override,
             applicant_name, applicant_name_kana
        FROM trial_records
-      WHERE date(reserved_at) < date(?) AND date(reserved_at) >= date(?, '-14 day')
-        AND COALESCE(status, '') <> 'キャンセル'
+      WHERE date(reserved_at) < date(?) AND date(reserved_at) >= date(?, '-45 day')
+        AND TRIM(COALESCE(status, '')) <> 'キャンセル'
       ORDER BY reserved_at DESC`,
     [today, today]
   )) as {
@@ -79,11 +84,12 @@ export default async function TrialsPage() {
   }[];
 
   const pastTrials: PastTrial[] = pastRows.map((r) => {
-    const kana = (r.applicant_name_kana ?? '').trim();
+    const date = r.reserved_at.slice(0, 10);
+    const time = r.reserved_at.slice(11, 16);
     return {
       id: r.id,
-      reservedLabel: r.reserved_at.slice(5, 16).replace('-', '/'),
-      name: kana ? toHiragana(kana) : (r.applicant_name ?? '（お名前未取得）').trim(),
+      reservedLabel: `${formatDateLabel(date)} ${time}`,
+      name: resolveVisitorName(r.applicant_name, r.applicant_name_kana),
       lessonName: r.lesson_name ?? '',
       attendanceOverride: r.attendance_override,
     };
@@ -109,7 +115,10 @@ export default async function TrialsPage() {
           {lastImport && <span>最終取込: {lastImport}</span>}
         </div>
         <TrialCopyList groups={groups} todayLabel={today} />
-        <NoshowCorrections trials={pastTrials} />
+        <NoshowCorrections
+          key={pastTrials.map((t) => `${t.id}:${t.attendanceOverride ?? ''}`).join(',')}
+          trials={pastTrials}
+        />
       </div>
     </div>
   );

@@ -87,9 +87,14 @@ export function buildVisitorBlock(v: TrialVisitor): string {
   return lines.join('\n');
 }
 
+/** 申込者の表示名。カナがあればひらがな化、無ければ漢字名、どちらも無ければプレースホルダ。 */
+export function resolveVisitorName(applicantName: string | null, applicantKana: string | null): string {
+  const kana = (applicantKana ?? '').trim();
+  return kana ? toHiragana(kana) : (applicantName ?? '（お名前未取得）').trim();
+}
+
 function toVisitor(row: TrialRow): TrialVisitor {
-  const kana = (row.applicant_name_kana ?? '').trim();
-  const name = kana ? toHiragana(kana) : (row.applicant_name ?? '（お名前未取得）').trim();
+  const name = resolveVisitorName(row.applicant_name, row.applicant_name_kana);
   return {
     name,
     age: row.applicant_age,
