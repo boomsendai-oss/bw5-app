@@ -26,6 +26,15 @@ export type AttendanceInput = {
 const ISO_DATE_PREFIX = /^\d{4}-\d{2}-\d{2}/;
 
 /**
+ * reserved_at の日付部分がゼロ埋め 'YYYY-MM-DD' として解釈できるか。
+ * 集計側で月キーを作る前の検証にも使う (resolveAttendance はキャンセル/ノーショーを
+ * 日付検証より先に返すため、その分岐では日付の妥当性が保証されない)。
+ */
+export function hasParsableTrialDate(reservedAt: string | null | undefined): boolean {
+  return ISO_DATE_PREFIX.test((reservedAt ?? '').slice(0, 10));
+}
+
+/**
  * @param todayJstStr 今日の日付(JST) 'YYYY-MM-DD'。lib/dateJst の todayJst() を渡す
  */
 export function resolveAttendance(row: AttendanceInput, todayJstStr: string): TrialAttendance {
@@ -40,7 +49,7 @@ export function resolveAttendance(row: AttendanceInput, todayJstStr: string): Tr
   // (例: '2026-7-1' は '2026-07-27' より大きい扱いになり、7/1の来店が永久に'予約済'のまま=分母の過少計上。
   //      '2026' のような欠損値は逆に常に「過去日」と判定され=分母の過大計上)。
   // 出どころを信用できない日付は集計対象外の'予約済'にfail closedし、分子・分母どちらにも入れない。
-  if (!ISO_DATE_PREFIX.test(day)) return '予約済';
+  if (!hasParsableTrialDate(day)) return '予約済';
   if (day < todayJstStr) return '来店';
   return '予約済';
 }

@@ -4,7 +4,12 @@
 // 分子は突合済みの入会 (enrolled_after=1)。
 // 月次の帰属は入会日ではなく *体験日* の月にする。施策を打った月に効果を帰属させるため。
 
-import { isTrialDenominator, resolveAttendance, type AttendanceInput } from './trialAttendance';
+import {
+  hasParsableTrialDate,
+  isTrialDenominator,
+  resolveAttendance,
+  type AttendanceInput,
+} from './trialAttendance';
 import { normalizeReferral, REFERRAL_CHANNELS, type ReferralChannel } from './referralSource';
 
 export type FunnelTrialRow = AttendanceInput & {
@@ -36,6 +41,10 @@ function ratio(enrolled: number, trials: number): number | null {
 export function buildMonthlyFunnel(rows: FunnelTrialRow[], todayJstStr: string): MonthlyFunnelRow[] {
   const acc = new Map<string, MonthlyFunnelRow>();
   for (const r of rows) {
+    // 月バケットは reserved_at から作るため、日付が信用できない行はここで落とす。
+    // resolveAttendance はキャンセル/ノーショーを日付検証より先に返すので、
+    // その分岐に頼ると '2026-7-1'+キャンセル が '2026-7-' という壊れた月を作ってしまう。
+    if (!hasParsableTrialDate(r.reserved_at)) continue;
     const att = resolveAttendance(r, todayJstStr);
     if (att === '予約済') continue; // まだ結果が出ていない予約は集計しない
     const ym = (r.reserved_at ?? '').slice(0, 7);
@@ -57,6 +66,8 @@ export function buildMonthlyFunnel(rows: FunnelTrialRow[], todayJstStr: string):
   return out;
 }
 
+// 完了した体験(来店)のみを数える。キャンセル・ノーショーは経路ごとに集計しないため、
+// この表の合計は月次表の trials + canceled + noshow とは意図的に一致しない。
 export function buildReferralBreakdown(
   rows: FunnelTrialRow[],
   todayJstStr: string
