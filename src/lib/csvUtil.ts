@@ -118,9 +118,43 @@ export function parseDate(s: string | undefined | null): string | null {
   return t.replace(/\//g, '-').slice(0, 10) || null;
 }
 
+// 'YYYY-MM-DD[(space|T)HH:MM[:SS]]' を受ける。区切りは - / どちらも可、各要素のゼロ埋めは任意。
+const DATE_TIME_RE = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:(T| +)(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/;
+
+const pad2 = (n: string) => n.padStart(2, '0');
+
+/**
+ * CSV の日時文字列を `YYYY-MM-DD[ HH:MM[:SS]]` に正規化する。解釈できなければ null。
+ *
+ * 戻り値は DB 保存後に **'YYYY-MM-DD' 前提の文字列比較** で使われる
+ * (`trialAttendance.resolveAttendance` の `day < todayJst` 等)。ゼロ埋めしないと
+ * `'2026-7-1' < '2026-07-27'` が false になり ('7' > '0')、集計が静かに壊れる。
+ * そのため正規化はこの関数の責務とし、壊れた文字列をそのまま通さず null を返す (fail closed)。
+ *
+ * 設計上の判断:
+ * - **秒は入力に有ったときだけ付ける**。`10:00` に勝手に `:00` を補うと
+ *   trial_records の重複判定キー `(lstep_id, reserved_at)` が既存行と変わり二重登録になる。
+ *   各要素がゼロ埋めされていれば秒の有無が混在しても辞書順比較は暦順と一致する
+ *   (秒なしは `:00` より前に並ぶ = 同義)。
+ * - 月1-12・日1-31 の範囲検証のみで、暦上の実在判定 (2026-02-30 等) はしない。
+ *   辞書順比較の安全性に不要な一方、fail closed で取込を落とす副作用が増えるため。
+ */
 export function parseDateTime(s: string | undefined | null): string | null {
   if (!s) return null;
   const t = s.trim();
   if (!t) return null;
-  return t.replace(/\//g, '-');
+  // YYYYMMDD (8桁数字のみ)。parseDate と同じ扱い。
+  const src = /^\d{8}$/.test(t) ? `${t.slice(0, 4)}-${t.slice(4, 6)}-${t.slice(6, 8)}` : t;
+
+  const m = DATE_TIME_RE.exec(src);
+  if (!m) return null;
+  const [, year, month, day, sep, hour, min, sec] = m;
+  if (+month < 1 || +month > 12 || +day < 1 || +day > 31) return null;
+
+  const date = `${year}-${pad2(month)}-${pad2(day)}`;
+  if (hour === undefined) return date;
+  if (+hour > 23 || +min > 59 || (sec !== undefined && +sec > 59)) return null;
+
+  const time = `${pad2(hour)}:${pad2(min)}` + (sec !== undefined ? `:${pad2(sec)}` : '');
+  return `${date}${sep === 'T' ? 'T' : ' '}${time}`;
 }
