@@ -10,8 +10,10 @@ const trial = (
   id: number,
   kana: string | null,
   reserved_at: string,
-  matched_by: string | null = null
-) => ({ id, applicant_name_kana: kana, reserved_at, matched_by });
+  matched_by: string | null = null,
+  status: string | null = null,
+  attendance_override: string | null = null
+) => ({ id, applicant_name_kana: kana, reserved_at, matched_by, status, attendance_override });
 
 describe('matchEnrollments', () => {
   it('カナ一致かつ入会日が窓内なら突合する', () => {
@@ -130,6 +132,30 @@ describe('matchEnrollments', () => {
         trial(1, 'ヤマダタロウ', '2026-06-01 09:30:00'),
       ],
       [member(10, 'ヤマダタロウ', '2026-06-05')]
+    );
+    expect(r.matches).toEqual([{ trial_id: 1, member_id: 10 }]);
+  });
+
+  it('最初の体験がキャンセルなら、集計対象になる後続の体験に帰属させる', () => {
+    // ファネル集計はキャンセル行を分母に数えないため、キャンセル行に入会を
+    // 帰属させると入会そのものがCVRから消える(本番: member_id=51で確認済みの実バグ)。
+    const r = matchEnrollments(
+      [
+        trial(1, 'ヤマダタロウ', '2026-06-01 19:00:00', null, 'キャンセル'),
+        trial(2, 'ヤマダタロウ', '2026-06-20 19:00:00'),
+      ],
+      [member(10, 'ヤマダタロウ', '2026-06-25')]
+    );
+    expect(r.matches).toEqual([{ trial_id: 2, member_id: 10 }]);
+  });
+
+  it('候補が全てキャンセル/ノーショーなら、それでも最初の体験に寄せて記録は残す', () => {
+    const r = matchEnrollments(
+      [
+        trial(2, 'ヤマダタロウ', '2026-06-20 19:00:00', null, null, 'noshow'),
+        trial(1, 'ヤマダタロウ', '2026-06-01 19:00:00', null, 'キャンセル'),
+      ],
+      [member(10, 'ヤマダタロウ', '2026-06-25')]
     );
     expect(r.matches).toEqual([{ trial_id: 1, member_id: 10 }]);
   });

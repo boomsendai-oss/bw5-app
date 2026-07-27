@@ -39,7 +39,8 @@ export type MatchSummary = {
 
 export async function runEnrollmentMatch(): Promise<MatchSummary> {
   const trials = (await getAll(
-    `SELECT id, applicant_name_kana, reserved_at, matched_by, enrolled_after, enrolled_member_id
+    `SELECT id, applicant_name_kana, reserved_at, matched_by, status, attendance_override,
+            enrolled_after, enrolled_member_id
        FROM trial_records`
   )) as (TrialForMatch & { enrolled_after: number; enrolled_member_id: number | null })[];
 

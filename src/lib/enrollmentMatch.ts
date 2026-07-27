@@ -6,7 +6,10 @@
 //
 // 本番実データでの検証(2026-07-27):
 //   - 窓 -7〜+90日で48件ヒット・1体験に複数会員がヒットする曖昧ケースは0件
-//   - 同一会員が複数体験にヒットするのは6人 → 最初の体験に寄せる
+//   - 同一会員が複数体験にヒットするのは6人 → 集計対象(キャンセル/ノーショーでない)の
+//     体験を優先し、その中で最初の体験に寄せる。全部キャンセル/ノーショーなら最初の体験。
+//     (キャンセル済みの体験に入会を帰属させると、そのままではacquisitionFunnel.tsの
+//      分母に数えられず入会がCVRから消えるため。member_id=51で実際に発生を確認)
 //   - 月別CVRが既存KPI「体験→月額CVR 51.3%」とほぼ一致することを確認済み
 
 import { normalizeKana } from './linkSuggest';
@@ -23,6 +26,10 @@ export type TrialForMatch = {
   reserved_at: string;
   /** 既存の突合根拠。'manual' なら自動突合は触らない */
   matched_by: string | null;
+  /** 'キャンセル' なら集計対象外。帰属先の優先度判定に使う */
+  status: string | null;
+  /** 'noshow' なら集計対象外。同上 */
+  attendance_override: string | null;
 };
 
 export type MemberForMatch = {
@@ -54,6 +61,17 @@ function dayNumber(dateStr: string | null): number | null {
   return Math.floor(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86400000);
 }
 
+/**
+ * ファネル集計(src/lib/acquisitionFunnel.ts)は「来店した」体験だけを分母に数え、
+ * enrolled_after もその来店行でしか読まない。キャンセル/ノーショーの行に入会を
+ * 帰属させると、集計上その行が数えられないため入会が月次CVR・流入経路別の
+ * どちらからも消えてしまう(本番: member_id=51で確認済み)。
+ * ここでの判定は todayJstStr を使わない(未来日の体験はそもそも突合窓を満たせないため
+ * resolveAttendance の「当日中は予約済扱い」ロジックは不要)。
+ */
+const isCountable = (t: TrialForMatch) =>
+  (t.status ?? '').trim() !== 'キャンセル' && (t.attendance_override ?? '') !== 'noshow';
+
 export function matchEnrollments(
   trials: TrialForMatch[],
   members: MemberForMatch[]
@@ -71,10 +89,10 @@ export function matchEnrollments(
   }
 
   const ambiguous: EnrollmentMatchResult['ambiguous'] = [];
-  // 会員ID → 候補の体験。最後に「最初の体験」を選ぶために貯める。
+  // 会員ID → 候補の体験。最後に「帰属させる1件」を選ぶために貯める。
   // reserved_at の時刻部分は dayNumber() で検証していない(日付部分しか見ない)ため、
   // ソートの根拠には検証済みの tDay(日数)だけを使う。時刻文字列は比較に使わない。
-  const perMember = new Map<number, { trial_id: number; tDay: number }[]>();
+  const perMember = new Map<number, { trial_id: number; tDay: number; countable: boolean }[]>();
 
   for (const t of trials) {
     if ((t.matched_by ?? '') === 'manual') continue;
@@ -92,17 +110,27 @@ export function matchEnrollments(
       continue;
     }
     const memberId = hits[0].id;
+    const entry = { trial_id: t.id, tDay, countable: isCountable(t) };
     const list = perMember.get(memberId);
-    if (list) list.push({ trial_id: t.id, tDay });
-    else perMember.set(memberId, [{ trial_id: t.id, tDay }]);
+    if (list) list.push(entry);
+    else perMember.set(memberId, [entry]);
   }
 
-  // 1入会=1件にする。同じ会員が複数の体験にヒットしたら最初の体験に寄せる
-  // (流入経路の起点を正しく取るため)。同日の複数体験は trial_id 昇順で確定させる
-  // (時刻文字列は書式が不揃いなため比較に使わない=決定的なタイブレーク)。
+  // 1入会=1件にする。同じ会員が複数の体験にヒットしたら、まず集計対象になる
+  // (キャンセル/ノーショーでない)体験を優先し、その中で最初の体験に寄せる
+  // (流入経路の起点を正しく取るため)。全候補がキャンセル/ノーショーしかない
+  // 場合でも、突合そのものは記録に残す(監査できるように)ため最初の体験を選ぶ。
+  // 同日の複数体験は trial_id 昇順で確定させる(時刻文字列は書式が不揃いなため
+  // 比較に使わない=決定的なタイブレーク)。
   const matches: EnrollmentMatchResult['matches'] = [];
   for (const [memberId, list] of perMember) {
-    list.sort((a, b) => (a.tDay !== b.tDay ? a.tDay - b.tDay : a.trial_id - b.trial_id));
+    list.sort((a, b) => {
+      const countableRank = (v: boolean) => (v ? 0 : 1);
+      if (countableRank(a.countable) !== countableRank(b.countable)) {
+        return countableRank(a.countable) - countableRank(b.countable);
+      }
+      return a.tDay !== b.tDay ? a.tDay - b.tDay : a.trial_id - b.trial_id;
+    });
     matches.push({ trial_id: list[0].trial_id, member_id: memberId });
   }
   matches.sort((a, b) => a.trial_id - b.trial_id);
