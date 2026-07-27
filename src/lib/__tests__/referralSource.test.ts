@@ -41,9 +41,28 @@ describe('normalizeReferral', () => {
       '紹介',
       'ネット検索・マップ',
       'インスタ',
+      'X',
       'チラシ・看板',
       'その他',
       '未記入',
     ]);
+  });
+
+  it('X(旧Twitter)を正しく判定する', () => {
+    expect(normalizeReferral('X（旧Twitter）')).toBe('X');
+    expect(normalizeReferral('X (旧 twitter)')).toBe('X'); // Lstepに現存する表記
+    expect(normalizeReferral('Twitter')).toBe('X');
+    expect(normalizeReferral('ツイッター')).toBe('X');
+    expect(normalizeReferral('X')).toBe('X');
+  });
+
+  it('Xの誤マッチ回帰: 英字1文字のxを含むだけの語はXにならない', () => {
+    expect(normalizeReferral('Xperia')).toBe('その他');
+    expect(normalizeReferral('boxで見た')).toBe('その他');
+    expect(normalizeReferral('Instagram')).toBe('インスタ');
+  });
+
+  it('Xは検索系より優先される(単独語として現れる場合)', () => {
+    expect(normalizeReferral('Xで検索して')).toBe('X');
   });
 });
