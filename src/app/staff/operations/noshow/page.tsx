@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Clock, AlertTriangle } from 'lucide-react';
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { Button } from '@/components/ui/button';
@@ -66,9 +67,12 @@ export default function NoshowCandidatesPage() {
       <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-[12px] text-amber-900 flex gap-2">
         <AlertTriangle className="size-4 shrink-0 mt-0.5" />
         <div>
-          体験予約が<strong>予約時刻から{hours}時間以上経過しても「予約済」のまま</strong>の人＝ノーショー疑い。
-          LSTEPに自動キャンセル機能が無いため、ここで確認して<strong>LSTEPのフェーズタグを手動で「体験キャンセル」へ</strong>切り替えてください。
-          （アプリはLSTEPに書き込みません）
+          来店判定は自動化されました。<strong>キャンセル以外・予約日を過ぎたもの</strong>は自動で「来店」として集計されるため、
+          ここでの操作は不要です。このページは<strong>予約済のまま時間が経過している予約を見つけるための確認用</strong>で、
+          体験予約が予約時刻から{hours}時間以上経過しても「予約済」のままの人を一覧表示しています。
+          実際に来なかった人がいた場合の訂正は
+          <Link href="/staff/trials" className="underline font-medium">/staff/trials</Link>
+          で1クリックで行ってください（LSTEPのフェーズタグ操作は不要です）。
         </div>
       </div>
 

@@ -5,6 +5,8 @@ import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { parseCSV, rowsToDicts, parseDate, parseDateTime } from '@/lib/csvUtil';
 import { buildLinkSuggestions, type Member as SuggestMember, type LinkSuggestion } from '@/lib/linkSuggest';
 import { deriveMemberType } from '@/lib/memberType';
+import { runEnrollmentMatch, type MatchSummary } from '@/lib/enrollmentMatchDb';
+import { buildLstepUpsertSql, lstepMissingColumns } from '@/lib/lstepSync';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -330,20 +332,11 @@ async function handleSync(req: NextRequest) {
   }
 
   // lstep_friends
-  const lstepUpsertSql = `
-    INSERT INTO lstep_friends
-      (lstep_id, display_name, system_display_name, line_register_name, real_name,
-       role, blocked, last_message_at, updated_at)
-    VALUES (?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
-    ON CONFLICT(lstep_id) DO UPDATE SET
-      display_name=excluded.display_name,
-      system_display_name=excluded.system_display_name,
-      line_register_name=excluded.line_register_name,
-      real_name=excluded.real_name,
-      blocked=excluded.blocked,
-      last_message_at=excluded.last_message_at,
-      updated_at=CURRENT_TIMESTAMP
-  `;
+  // CSVに存在する列だけを UPDATE 対象にする。Lstep側のエクスポート項目が縮んだとき
+  // (2026-07-27に実際に発生し813人分が消えた) に既存データを null で潰さないため。
+  const lstepHeaders = Object.keys(lstepRows[0] ?? {});
+  const lstepMissing = lstepMissingColumns(lstepHeaders);
+  const lstepUpsertSql = buildLstepUpsertSql(lstepHeaders);
 
   const lstepNew: { lstep_id: string; display_name: string; system_display_name: string; real_name: string }[] = [];
   const lstepStatements = lstepRows.map((r) => {
@@ -405,6 +398,16 @@ async function handleSync(req: NextRequest) {
     newMembers, planChanges, withdrewDetected, linkSuggestions
   );
 
+  // --- 体験→入会の突合 (WS AA) ---
+  // 会員データが更新された直後に実行する。失敗しても同期全体は落とさない
+  // (2026-07-20に入れた部分成功の方針に合わせる)。
+  let enrollmentMatch: MatchSummary | { ok: false; error: string };
+  try {
+    enrollmentMatch = await runEnrollmentMatch();
+  } catch (e) {
+    enrollmentMatch = { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+
   return NextResponse.json({
     ok: true,
     summary: {
@@ -418,6 +421,10 @@ async function handleSync(req: NextRequest) {
       hacomono_active_total: activeMembers.length,
       hacomono_withdrew_total: withdrewMembers.length,
       lstep_total: lstepRows.length,
+      // CSVから欠けていて今回更新できなかった項目。空でなければLstep側のエクスポート
+      // 設定が縮んでいる = 気づかないと画面から名前やブロック状態が消えたままになる。
+      lstep_missing_columns: lstepMissing,
+      enrollment_match: enrollmentMatch,
     },
     details: {
       new_members: newMembers.map((m) => ({

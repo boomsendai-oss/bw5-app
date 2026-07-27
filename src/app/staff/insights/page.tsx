@@ -11,6 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { yen } from '@/lib/utils';
+import { formatAdCost } from '@/lib/adCostFormat';
+import AcquisitionFunnel from './AcquisitionFunnel';
 
 type TrendData = {
   months: string[];
@@ -299,7 +301,16 @@ export default function InsightsPage() {
   const [actionMessage, setActionMessage] = useState('');
 
   // GA4 LINEクリック (lib/ga4側で1hキャッシュ。GA4自体が数時間〜1日遅れ)
-  type LineClickRange = { days: number; total: number; ads: number; est_cpa_jpy: number | null };
+  // ⚠️ cost_jpy/cpa_jpy はフィールド名に反して GA4プロパティ通貨建て(JPYとは限らない)。
+  //    currency を見て formatAdCost で表示すること。
+  type LineClickRange = {
+    days: number;
+    total: number;
+    ads: number;
+    cost_jpy: number | null;
+    cpa_jpy: number | null;
+    currency: string;
+  };
   const [lineClicks, setLineClicks] = useState<{ ok: boolean; error?: string; ranges: LineClickRange[] } | null>(null);
   useEffect(() => {
     fetch('/api/staff/insights/line-clicks', { credentials: 'include' })
@@ -656,9 +667,20 @@ export default function InsightsPage() {
                   accent="purple"
                 />
                 <KpiCard
-                  label="広告CPA概算 (30日)"
-                  value={(() => { const r = lineClicks?.ranges.find((x) => x.days === 30); return r?.est_cpa_jpy != null ? `¥${num(r.est_cpa_jpy)}` : '—'; })()}
-                  sub="日予算¥200×経過日数÷広告経由クリック (GA4基準・広告管理画面とは一致しない)"
+                  label="広告CPA (GA4基準・30日)"
+                  value={(() => {
+                    const r = lineClicks?.ranges.find((x) => x.days === 30);
+                    return r?.cpa_jpy != null ? formatAdCost(r.cpa_jpy, r.currency) : '—';
+                  })()}
+                  sub={(() => {
+                    const r = lineClicks?.ranges.find((x) => x.days === 30);
+                    if (r?.cost_jpy == null) return 'GA4から広告費を取得できません';
+                    const costStr = formatAdCost(r.cost_jpy, r.currency);
+                    const base = `広告費${costStr} ÷ GA4計測の広告経由LINEクリック${num(r.ads)}件。広告管理画面のCV基準とは計測方法が違うため一致しない`;
+                    return r.currency && r.currency !== 'JPY'
+                      ? `${base}。⚠️ GA4プロパティの通貨が${r.currency}のため円ではありません`
+                      : base;
+                  })()}
                   accent="purple"
                 />
               </div>
@@ -667,8 +689,17 @@ export default function InsightsPage() {
               </p>
             </Section>
 
+            {/* ===== 集客ファネル (WS AA) ===== */}
+            <Section
+              title="集客ファネル（月次・流入経路別）"
+              icon={<Sprout className="h-4 w-4 text-brand-500" />}
+              hint="広告費→LINE→体験→入会。投資判断はこちらを見る"
+            >
+              <AcquisitionFunnel />
+            </Section>
+
             {/* ===== 体験→入会ファネル (T-157/T-160) ===== */}
-            <Section title="体験→入会ファネル" icon={<Sprout className="h-4 w-4 text-brand-500" />} hint="HACOMONO会員登録=体験来店とみなした累計CVR">
+            <Section title="体験→入会ファネル（累計・参考）" icon={<Sprout className="h-4 w-4 text-brand-500" />} hint="HACOMONO会員登録=体験来店とみなした累計CVR。月次/経路別は上の集客ファネルを見る">
               {!funnel || funnel.empty || !funnel.ok ? (
                 <p className="text-xs text-neutral-400">
                   全メンバー(ML001)未取込のため未表示。日次同期(次回)で自動取込されます。

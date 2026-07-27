@@ -18,7 +18,6 @@
 import { BetaAnalyticsDataClient } from '@google-analytics/data';
 
 export const GA4_MEASUREMENT_START = '2026-06-10'; // line_click 計測開始日
-export const ADS_DAILY_BUDGET_JPY = 200; // スマートキャンペーン日予算 (CPA概算用)
 
 export type LineClickStats = {
   available: boolean; // env未設定/権限エラー時 false
@@ -136,5 +135,159 @@ export async function getLineClickStats(force = false): Promise<LineClickStats> 
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { available: false, error: msg, ranges: [], fetchedAt: new Date().toISOString() };
+  }
+}
+
+export type LineClickCount = {
+  available: boolean;
+  error?: string;
+  /** 期間内のLINEクリック総数 */
+  total: number;
+  /** うち google / cpc 経由 */
+  ads: number;
+};
+
+/**
+ * 指定期間のLINEクリック数。getLineClickStats は 7日/30日 固定なので、
+ * 月次ファネルのように任意期間で揃えたい場合はこちらを使う。
+ * (ファネルの各段が違う期間だと1つのコホートとして誤読されるため)
+ *
+ * getLineClickStats と同じイベント名フィルタ・同じ 'google / cpc' フィルタを使う
+ * (数字がずれないように)。月次で毎回呼ばれる想定のためキャッシュはしない
+ * (既存の1時間キャッシュは7/30日固定範囲用でキーが無く、任意期間には使い回せない)。
+ *
+ * @param startDate 'YYYY-MM-DD'
+ * @param endDate 'YYYY-MM-DD'
+ */
+export async function getLineClickCount(startDate: string, endDate: string): Promise<LineClickCount> {
+  const cfg = getClient();
+  if (!cfg) {
+    return { available: false, error: 'GA4_PROPERTY_ID / GA4_SA_KEY_JSON が未設定です', total: 0, ads: 0 };
+  }
+
+  const eventFilter = {
+    filter: {
+      fieldName: 'eventName',
+      stringFilter: { value: LINE_EVENT() },
+    },
+  };
+
+  try {
+    const [batch] = await cfg.client.batchRunReports({
+      property: cfg.property,
+      requests: [
+        {
+          dateRanges: [{ startDate, endDate }],
+          metrics: [{ name: 'eventCount' }],
+          dimensionFilter: eventFilter,
+        },
+        {
+          dateRanges: [{ startDate, endDate }],
+          metrics: [{ name: 'eventCount' }],
+          dimensionFilter: {
+            andGroup: {
+              expressions: [
+                eventFilter,
+                {
+                  filter: {
+                    fieldName: 'sessionSourceMedium',
+                    stringFilter: { value: 'google / cpc' },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    // 単一dateRangeのみ指定しているため dateRange ディメンションは付与されない
+    // (getLineClickStats と違い複数レンジを跨がないので、行は最大1件)。
+    const sumRows = (reportIdx: number): number => {
+      const rows = batch.reports?.[reportIdx]?.rows ?? [];
+      let sum = 0;
+      for (const row of rows) sum += Number(row.metricValues?.[0]?.value ?? 0);
+      return sum;
+    };
+
+    return { available: true, total: sumRows(0), ads: sumRows(1) };
+  } catch (e) {
+    return { available: false, error: e instanceof Error ? e.message : String(e), total: 0, ads: 0 };
+  }
+}
+
+/** 'YYYY-MM' → GA4のdateRange。月末はうるう年も含めて正しく出す。 */
+export function monthRange(ym: string): { startDate: string; endDate: string } {
+  const [y, m] = ym.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { startDate: `${ym}-01`, endDate: `${ym}-${String(last).padStart(2, '0')}` };
+}
+
+type AdRow = { metricValues?: ({ value?: string | null } | null)[] | null };
+
+/** 日次行を合計する。cost は小数第2位で丸める(浮動小数の誤差を表示に持ち込まないため)。 */
+export function sumAdRows(rows: AdRow[] | null | undefined): { cost: number; clicks: number } {
+  let cost = 0;
+  let clicks = 0;
+  for (const r of rows ?? []) {
+    cost += Number(r?.metricValues?.[0]?.value ?? 0);
+    clicks += Number(r?.metricValues?.[1]?.value ?? 0);
+  }
+  return { cost: Math.round(cost * 100) / 100, clicks };
+}
+
+export type AdCost = {
+  available: boolean;
+  error?: string;
+  /**
+   * GA4プロパティに設定された通貨建ての値をそのまま返す(このコードは換算しない)。
+   * 通貨コードは `currency` で報告されるので、呼び出し側は必ずそれと一緒に表示すること
+   * (JPYだと決め打ちしてはいけない)。円で欲しい場合はGA4管理画面のプロパティ通貨をJPYにすること。
+   */
+  cost: number;
+  clicks: number;
+  /** GA4プロパティの通貨コード (例: 'JPY' | 'USD')。取得できない場合は ''。 */
+  currency: string;
+};
+
+// 表示整形の実体は './adCostFormat' にある(このファイルは '@google-analytics/data' 経由で
+// gRPC/Node専用コードをimportしており、クライアントコンポーネントから直接importすると
+// ブラウザ向けビルドが壊れるため)。サーバ側の既存コードのために re-export だけしておく。
+export { formatAdCost } from './adCostFormat';
+
+/**
+ * Google広告の費用とクリック数を取得する。
+ *
+ * ⚠️ advertiserAdCost には次元の相性がある(いずれも本番GA4で実測済み):
+ *   - yearMonth 次元 … エラーにはならないが *全月に同じ値* を返す(壊れている)
+ *   - date 次元のみ  … INVALID_ARGUMENT
+ *     ("Please add sessionCampaignName to make the request compatible")
+ *   - date + sessionCampaignName … ✅ 正しく日次×キャンペーンに分割される
+ * よって sessionCampaignName を必ず併せて指定し、全行を合算する。
+ * 表示にキャンペーン名は使わないが、この次元が無いとAPIが受け付けない。
+ *
+ * @param startDate 'YYYY-MM-DD' または '30daysAgo' 等のGA4表現
+ */
+export async function getAdCost(startDate: string, endDate: string): Promise<AdCost> {
+  const cfg = getClient();
+  if (!cfg) {
+    return { available: false, error: 'GA4_PROPERTY_ID / GA4_SA_KEY_JSON が未設定です', cost: 0, clicks: 0, currency: '' };
+  }
+  try {
+    const [res] = await cfg.client.runReport({
+      property: cfg.property,
+      dateRanges: [{ startDate, endDate }],
+      dimensions: [{ name: 'date' }, { name: 'sessionCampaignName' }],
+      metrics: [{ name: 'advertiserAdCost' }, { name: 'advertiserAdClicks' }],
+      // 行数は 日数 × キャンペーン数。現在は1キャンペーンなので1ヶ月で最大31行。
+      // ⚠️ 上限に達するとGA4はエラーを出さず黙って打ち切るため合計が過少になる。
+      //    長期間やキャンペーン多数を集計したくなったらページングを実装すること。
+      limit: 400,
+    });
+    const { cost, clicks } = sumAdRows(res.rows);
+    const currency = res.metadata?.currencyCode ?? '';
+    return { available: true, cost, clicks, currency };
+  } catch (e) {
+    return { available: false, error: e instanceof Error ? e.message : String(e), cost: 0, clicks: 0, currency: '' };
   }
 }

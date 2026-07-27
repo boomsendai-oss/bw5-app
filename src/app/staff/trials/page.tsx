@@ -4,8 +4,9 @@
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { getAll, getOne } from '@/lib/db';
 import { isAuthorizedServer } from '@/lib/eventAuth';
-import { buildTrialGroups, type TrialRow } from '@/lib/trialNotify';
+import { buildTrialGroups, formatDateLabel, resolveVisitorName, type TrialRow } from '@/lib/trialNotify';
 import TrialCopyList from './TrialCopyList';
+import NoshowCorrections, { type PastTrial } from './NoshowCorrections';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -58,6 +59,53 @@ export default async function TrialsPage() {
   const groups = buildTrialGroups(rows);
   const visitorCount = groups.reduce((n, g) => n + g.visitors.length, 0);
 
+  // 直近45日分の実施済み体験 — 来店訂正用 (WS AA)。trialAttendance.ts の判定は日数の
+  // 上限なしに過去の非キャンセルを「来店」扱いし続けるため、月次KPIレビュー(先月分の
+  // 見直し)で気づいたノーショーも直せるよう前月レビューを余裕を持ってカバーする45日
+  // とした。トレードオフ: これより古い訂正はこの画面からはできない。
+  // status の比較は trialAttendance.ts の判定(.trim()込み)と揃えるため TRIM する
+  // (例: ' キャンセル' のような先頭空白混入時に判定がズレるのを防ぐ)。
+  //
+  // ⚠️ attendance_override はマイグレーション未適用の本番でも動くように保護する。
+  // 本番は SKIP_DB_INIT=1 でマイグレーションが自動実行されず、デプロイはmainへのpushで
+  // 自動的に走る。列が無い状態でこのクエリが落ちるとページ全体(講師周知リスト)が
+  // 500になるため、訂正UIだけを縮退させる。
+  let pastTrials: PastTrial[] = [];
+  try {
+    const pastRows = (await getAll(
+      `SELECT id, reserved_at, lesson_name, status, attendance_override,
+              applicant_name, applicant_name_kana
+         FROM trial_records
+        WHERE date(reserved_at) < date(?) AND date(reserved_at) >= date(?, '-45 day')
+          AND TRIM(COALESCE(status, '')) <> 'キャンセル'
+        ORDER BY reserved_at DESC`,
+      [today, today]
+    )) as {
+      id: number;
+      reserved_at: string;
+      lesson_name: string | null;
+      status: string | null;
+      attendance_override: string | null;
+      applicant_name: string | null;
+      applicant_name_kana: string | null;
+    }[];
+
+    pastTrials = pastRows.map((r) => {
+      const date = r.reserved_at.slice(0, 10);
+      const time = r.reserved_at.slice(11, 16);
+      return {
+        id: r.id,
+        reservedLabel: `${formatDateLabel(date)} ${time}`,
+        name: resolveVisitorName(r.applicant_name, r.applicant_name_kana),
+        lessonName: r.lesson_name ?? '',
+        attendanceOverride: r.attendance_override,
+      };
+    });
+  } catch (e) {
+    console.error('[trials/page pastRows]', e);
+    pastTrials = [];
+  }
+
   const freshRow = (await getOne(
     `SELECT MAX(status_updated_at) AS last FROM trial_records`
   )) as { last: string | null } | null;
@@ -78,6 +126,10 @@ export default async function TrialsPage() {
           {lastImport && <span>最終取込: {lastImport}</span>}
         </div>
         <TrialCopyList groups={groups} todayLabel={today} />
+        <NoshowCorrections
+          key={pastTrials.map((t) => `${t.id}:${t.attendanceOverride ?? ''}`).join(',')}
+          trials={pastTrials}
+        />
       </div>
     </div>
   );
