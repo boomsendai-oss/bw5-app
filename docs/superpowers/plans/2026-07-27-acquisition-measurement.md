@@ -982,11 +982,26 @@ Expected: サマリへ連結している行（1591-1592付近）が見つかる
 Run: `python3 -m py_compile "/Users/kimurashintarou/BOOM/BOOM_Master_template/05_運営/scripts/auto_sync/daily_sync.py"`
 Expected: 出力なし（成功）
 
-- [ ] **Step 4: 別リポジトリでコミット**
+- [ ] **Step 4: バックアップを作成する（⚠️ このディレクトリはgit管理外）**
+
+`/Users/kimurashintarou/BOOM/BOOM_Master_template` は **gitリポジトリではない**（`~/BOOM` 直下にも `.git` は無い）。
+このディレクトリには `03_生徒`（生徒の個人情報）が含まれるため、**勝手に `git init` してはいけない**
+（PIIをバージョン管理に載せる判断はTAROのもの）。
+
+代わりに、同ディレクトリで既に使われているバックアップ規約に従うこと。既存例:
+`daily_sync.py.bak_20260610` / `daily_sync.py.bak_task4_20260720_144049`
+
+**編集する前に**必ず退避を取る:
 
 ```bash
-git -C "/Users/kimurashintarou/BOOM/BOOM_Master_template" add "05_運営/scripts/auto_sync/daily_sync.py"
-git -C "/Users/kimurashintarou/BOOM/BOOM_Master_template" commit -m "daily_sync: ノーショー候補のメール通知を廃止 (来店判定の自動化に伴い)"
+cd "/Users/kimurashintarou/BOOM/BOOM_Master_template/05_運営/scripts/auto_sync"
+cp daily_sync.py "daily_sync.py.bak_before_noshow_removal_20260727"
+```
+
+編集後、退避版と現行の差分が意図した変更だけであることを確認する:
+
+```bash
+diff "daily_sync.py.bak_before_noshow_removal_20260727" daily_sync.py
 ```
 
 ---
