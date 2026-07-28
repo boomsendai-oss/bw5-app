@@ -379,6 +379,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function CompactRow({ d, onReset, onMsg }: { d: Draft; onReset: () => void; onMsg: (s: string) => void }) {
+  // 予約済み/完了でもキャプション本文を確認・修正できるようにする(TARO 2026-07-28)。
+  // 予約済みの編集はAPI側で reel_queue(実際に投稿される文面)にも同期される。
+  const [caption, setCaption] = useState(d.caption ?? '');
+  const [savingCap, setSavingCap] = useState(false);
+  const saveCaption = async () => {
+    setSavingCap(true);
+    const r = await fetch('/api/staff/reel-drafts', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: d.id, caption }),
+    });
+    setSavingCap(false);
+    onMsg(r.ok ? 'キャプションを保存しました（投稿にもそのまま使われます）' : 'キャプション保存に失敗しました');
+  };
   const reopen = async () => {
     const r = await fetch('/api/staff/reel-drafts', {
       method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: d.id, action: 'reset' }),
@@ -393,26 +405,43 @@ function CompactRow({ d, onReset, onMsg }: { d: Draft; onReset: () => void; onMs
     if (r.ok) { onMsg('予約を取り消して投稿待ちに戻しました'); onReset(); } else { onMsg(j.error ?? '取り消し失敗'); }
   };
   return (
-    <div className="bg-white rounded-lg border border-sand-200 px-3 py-2 flex items-center justify-between gap-2">
-      <div className="min-w-0">
-        <p className="text-sm text-navy-700 truncate">{d.class_name || d.drive_name}{d.instructor ? `（${d.instructor}）` : ''}</p>
-        {d.error && <p className="text-[11px] text-red-600 truncate">{d.error}</p>}
-        {d.status === 'scheduled' && d.queue_scheduled_at && (
-          <p className="text-[11px] text-green-700">📅 {fmtJst(d.queue_scheduled_at)} に投稿予約</p>
-        )}
+    <div className="bg-white rounded-lg border border-sand-200 px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm text-navy-700 truncate">{d.class_name || d.drive_name}{d.instructor ? `（${d.instructor}）` : ''}</p>
+          {d.error && <p className="text-[11px] text-red-600 truncate">{d.error}</p>}
+          {d.status === 'scheduled' && d.queue_scheduled_at && (
+            <p className="text-[11px] text-green-700">📅 {fmtJst(d.queue_scheduled_at)} に投稿予約</p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-[11px] px-2 py-0.5 rounded-full ${STATUS_STYLE[d.status] ?? ''}`}>{STATUS_LABEL[d.status] ?? d.status}</span>
+          {d.reel_path && (
+            <a href={d.reel_path} download={`${d.class_name || 'reel'}.mp4`} className="text-[11px] text-brand-600 hover:underline">⬇ 保存</a>
+          )}
+          {d.status === 'scheduled' && (
+            <button onClick={unschedule} className="text-[11px] text-red-500 hover:underline">取り消し</button>
+          )}
+          {(d.status === 'error' || d.status === 'ready') && (
+            <button onClick={reopen} className="text-[11px] text-brand-600 hover:underline">再編集</button>
+          )}
+        </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <span className={`text-[11px] px-2 py-0.5 rounded-full ${STATUS_STYLE[d.status] ?? ''}`}>{STATUS_LABEL[d.status] ?? d.status}</span>
-        {d.reel_path && (
-          <a href={d.reel_path} download={`${d.class_name || 'reel'}.mp4`} className="text-[11px] text-brand-600 hover:underline">⬇ 保存</a>
-        )}
-        {d.status === 'scheduled' && (
-          <button onClick={unschedule} className="text-[11px] text-red-500 hover:underline">取り消し</button>
-        )}
-        {(d.status === 'error' || d.status === 'ready') && (
-          <button onClick={reopen} className="text-[11px] text-brand-600 hover:underline">再編集</button>
-        )}
-      </div>
+      {d.caption != null && d.caption !== '' && (
+        <details className="mt-1.5">
+          <summary className="text-[11px] text-navy-500 cursor-pointer select-none">📝 キャプションを確認{d.status === 'scheduled' ? '・編集' : ''}</summary>
+          {d.status === 'scheduled' ? (
+            <div className="mt-1.5">
+              <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={6}
+                className="w-full border border-sand-200 rounded-lg p-2 text-xs text-navy-800" />
+              <button onClick={saveCaption} disabled={savingCap}
+                className="mt-1 px-3 py-1 text-[11px] rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50">保存（投稿文に反映）</button>
+            </div>
+          ) : (
+            <pre className="mt-1.5 text-xs text-navy-700 whitespace-pre-wrap font-sans bg-sand-50 rounded-lg p-2">{d.caption}</pre>
+          )}
+        </details>
+      )}
     </div>
   );
 }

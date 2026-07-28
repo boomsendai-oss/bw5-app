@@ -94,6 +94,14 @@ export async function PATCH(req: NextRequest) {
   args.push(new Date().toISOString());
   args.push(id);
   await execute(`UPDATE reel_draft SET ${sets.join(', ')} WHERE id = ?`, args);
+  // 予約済みのキャプション編集は、実際に投稿へ使われる reel_queue 側にも同期する
+  // (予約時にコピーされるため、draft だけ直しても投稿文は変わらない事故の防止)
+  if ('caption' in body && draft.reel_queue_id) {
+    const q = await getOne('SELECT status FROM reel_queue WHERE id = ?', [draft.reel_queue_id]);
+    if (q && q.status === 'scheduled') {
+      await execute('UPDATE reel_queue SET caption = ? WHERE id = ?', [body.caption ?? '', draft.reel_queue_id]);
+    }
+  }
   const updated = await getOne('SELECT * FROM reel_draft WHERE id = ?', [id]);
   return NextResponse.json({ ok: true, draft: updated });
 }
