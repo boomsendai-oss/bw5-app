@@ -58,8 +58,11 @@ export async function POST(req: NextRequest) {
   }
 
   const origin = new URL(req.url).origin;
-  const videoUrl = `${origin}${due.video_path}`;
-  const coverUrl = due.cover_path ? `${origin}${due.cover_path}` : undefined;
+  // 素材URLは必ずパーセントエンコードして渡す(2026-07-28障害: ファイル名に日本語が入ると
+  // Instagram側のフェッチが失敗し status_code=ERROR になり投稿されなかった)。
+  const encodePath = (p: string) => p.split('/').map(encodeURIComponent).join('/');
+  const videoUrl = `${origin}${encodePath(String(due.video_path))}`;
+  const coverUrl = due.cover_path ? `${origin}${encodePath(String(due.cover_path))}` : undefined;
 
   try {
     const { mediaId, permalink } = await publishReel(videoUrl, String(due.caption), coverUrl);
