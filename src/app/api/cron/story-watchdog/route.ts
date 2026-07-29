@@ -98,8 +98,14 @@ type ReelEval = {
 
 // リールの見張り。reel_queue は post-reel が1回1件だけ出す設計なので、
 // 「予約時刻を過ぎたのに scheduled のまま」= 未投稿。
-//   - 超過12時間以内 → 自己修復(post-reelをその件数だけ叩く)
-//   - 超過12時間超   → 鮮度の判断が要るので自動投稿せず通知のみ
+//   - 超過20時間以内 → 自己修復(post-reelをその件数だけ叩く)
+//   - 超過20時間超   → 鮮度の判断が要るので自動投稿せず通知のみ
+//
+// ⚠️ 20時間の根拠(2026-07-29の未投稿事故): リール枠はJST19:00、GH Actions由来の見張りは
+// 同じ19:45枠。GHが落ちる日は投稿cronも夜watchdogも「まとめて」不発になる(実際に発生)。
+// 別ドメインで確実に動くのは Vercel Cron の翌朝JST9:10だけで、19:00からの経過は約14時間。
+// 旧しきい値12時間だとこの唯一の生き残り経路が「通知のみ」になり、永久に自動復旧できなかった。
+// 14時間を確実に含む20時間に広げ、翌朝の遅れ投稿でも必ず世に出す(遅れた事実はTAROへ通知)。
 //   - posting で停止  → 二重投稿の恐れがあるため自動リセットせず通知のみ(IG側の確認が先)
 //   - failed(24h以内) → 通知
 //   - 1週間以上放置の scheduled は手動整理待ちとみなし鳴らさない(恒久ノイズ回避)
@@ -120,7 +126,7 @@ async function evaluateReels(): Promise<ReelEval> {
       if (!Number.isFinite(at) || at > now) continue; // まだ予約時刻前=正常
       const hours = (now - at) / 3600000;
       if (hours > 24 * 7) continue;
-      if (hours <= 12) out.overdueHealable.push({ id, title, hours });
+      if (hours <= 20) out.overdueHealable.push({ id, title, hours });
       else
         out.other.push(
           `⏰ リール「${title}」(#${id}): 予約時刻を${Math.floor(hours)}時間超過。鮮度の判断が要るため自動投稿は見送りました(手動で公開 or 予約し直しを)。`
@@ -221,6 +227,7 @@ export async function GET(req: NextRequest) {
   let reelRecovered = 0;
   try {
     let rev = await evaluateReels();
+    const rev0Hours = rev.overdueHealable.map((o) => o.hours);
     if (rev.overdueHealable.length > 0) {
       const before = rev.overdueHealable.length;
       // post-reel は1回1件しか出さないので、期限切れの件数ぶん(最大3回)叩く
@@ -235,7 +242,11 @@ export async function GET(req: NextRequest) {
       rev = await evaluateReels();
       reelRecovered = before - rev.overdueHealable.length;
       if (reelRecovered > 0) {
-        notes.push(`ℹ️ 予約時刻を過ぎていたリール${reelRecovered}本を、watchdogが自動投稿で復旧しました。`);
+        const late = Math.floor(Math.max(...rev0Hours));
+        notes.push(
+          `ℹ️ 予約時刻を過ぎていたリール${reelRecovered}本を、watchdogが自動投稿で復旧しました` +
+            (late >= 3 ? `(予約から約${late}時間遅れ。投稿cronの不発が疑われます)。` : '。')
+        );
       }
     }
     anomalies.push(
