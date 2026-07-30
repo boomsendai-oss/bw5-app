@@ -5,6 +5,9 @@ import { parseCSV, rowsToDicts, parseDate } from '@/lib/csvUtil';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+// 既定(15秒)では余裕が薄い。実測でこのrouteは約12秒かかる回があり、
+// 行数が増えると既定値に当たって504になるため明示的に余裕を取る(2026-07-30)。
+export const maxDuration = 60;
 
 // POST /api/staff/kpi/import-reservations
 // HACOMONO RL001(固定枠:予約一覧) CSV → hacomono_reservations にUPSERT (T-175)。

@@ -5,6 +5,9 @@ import { parseCSV, rowsToDicts, parseDate } from '@/lib/csvUtil';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+// 既定(15秒)では余裕が薄い。実測でこのrouteは約12秒かかる回があり、
+// 行数が増えると既定値に当たって504になるため明示的に余裕を取る(2026-07-30)。
+export const maxDuration = 60;
 
 // 完全一致を全キーで先に試し、無ければ部分一致にフォールバックする。
 // 部分一致を後回しにしないと「割引金額」が「金額」を誤ヒットするバグが起きる（T-155）。
