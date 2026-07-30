@@ -267,9 +267,12 @@ export async function GET(req: NextRequest) {
     const lastOk = await getOne(
       "SELECT ran_at FROM sync_runs WHERE status='ok' ORDER BY id DESC LIMIT 1"
     );
+    // status問わずの最新も見て「起動していない」と「動いているが失敗中」を切り分ける
+    const lastAny = await getOne('SELECT ran_at FROM sync_runs ORDER BY id DESC LIMIT 1');
     const freshness = evaluateSyncFreshness(
       (lastOk as { ran_at?: string } | null)?.ran_at ?? null,
-      new Date()
+      new Date(),
+      (lastAny as { ran_at?: string } | null)?.ran_at ?? null
     );
     if (freshness.stale && freshness.message) {
       anomalies.push(freshness.message);

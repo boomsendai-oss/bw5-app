@@ -45,3 +45,23 @@ describe('evaluateSyncFreshness', () => {
     expect(r.stale).toBe(false);
   });
 });
+
+// 2026-07-29の誤診対策: 起動しているのに成功しない場合は「スリープ」と言わない
+describe('起動中だが連続失敗しているケース', () => {
+  const now = new Date('2026-07-29T11:37:00Z');
+
+  it('直近に実行行があれば「動いているが成功していない」と伝える', () => {
+    const r = evaluateSyncFreshness('2026-07-28 21:02:40', now, '2026-07-29 09:45:38');
+    expect(r.stale).toBe(true);
+    expect(r.message).toContain('動いていますが');
+    // 原因をスリープと断定しない(「スリープではなく」と否定形で触れるのはOK)
+    expect(r.message).toContain('スリープではなく');
+    expect(r.message).toContain('CSV取得');
+  });
+
+  it('実行行自体が古ければ従来どおりスリープ/cron停止を疑う', () => {
+    const r = evaluateSyncFreshness('2026-07-28 21:02:40', now, '2026-07-28 21:02:40');
+    expect(r.stale).toBe(true);
+    expect(r.message).toContain('スリープ');
+  });
+});

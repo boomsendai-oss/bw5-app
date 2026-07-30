@@ -20,8 +20,14 @@ export type SyncFreshness = {
 /**
  * @param lastOkAt sync_runs で status='ok' の最新 ran_at (UTC 'YYYY-MM-DD HH:MM:SS')。無ければ null
  * @param now 現在時刻
+ * @param lastAnyAt status問わず最新の ran_at。渡すと「起動していないのか/動いているが失敗しているのか」を
+ *   区別した本文にする(2026-07-29: 実際は連続失敗だったのに「Macがスリープ」と誤診し調査が遠回りした)。
  */
-export function evaluateSyncFreshness(lastOkAt: string | null, now: Date): SyncFreshness {
+export function evaluateSyncFreshness(
+  lastOkAt: string | null,
+  now: Date,
+  lastAnyAt?: string | null
+): SyncFreshness {
   if (!lastOkAt) {
     return {
       stale: true,
@@ -48,6 +54,20 @@ export function evaluateSyncFreshness(lastOkAt: string | null, now: Date): SyncF
   }
   if (hours < SYNC_STALE_HOURS) {
     return { stale: false, hours, message: null };
+  }
+
+  // 起動自体はしているのに成功しない = 「Macがスリープ」ではなく取得失敗の連続。
+  // 直近3時間以内に(status問わず)実行行があるならその旨を明示する。
+  const lastAny = lastAnyAt ? Date.parse(`${lastAnyAt.replace(' ', 'T')}Z`) : NaN;
+  const ranRecently = Number.isFinite(lastAny) && now.getTime() - lastAny < 3 * 3600000;
+  if (ranRecently) {
+    return {
+      stale: true,
+      hours,
+      message:
+        `⚠️ 日次同期は動いていますが、${hours}時間"成功"していません(直近の実行は失敗/部分成功)。` +
+        'Macのスリープではなく、HACOMONO/LstepのCSV取得が連続で失敗している可能性が高いです。logs/launchd.log を確認してください。',
+    };
   }
 
   return {
