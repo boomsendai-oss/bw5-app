@@ -16,15 +16,36 @@ describe('evaluateSyncFreshness', () => {
     expect(r.stale).toBe(false);
   });
 
-  it('15時間前のokは stale', () => {
-    const r = evaluateSyncFreshness('2026-07-19 09:10:00', NOW);
+  it('21時間前のokは stale', () => {
+    const r = evaluateSyncFreshness('2026-07-19 03:10:00', NOW);
     expect(r.stale).toBe(true);
-    expect(r.hours).toBe(15);
-    expect(r.message).toContain('15時間');
+    expect(r.hours).toBe(21);
+    expect(r.message).toContain('21時間');
   });
 
-  it('しきい値は14時間', () => {
-    expect(SYNC_STALE_HOURS).toBe(14);
+  it('しきい値は20時間', () => {
+    expect(SYNC_STALE_HOURS).toBe(20);
+  });
+
+  // 2026-07-30: TAROは日中ノートPCを持ち出すため 12:00/18:00枠が飛ぶのが平常。
+  // 正常な最大間隔は 06:00→翌00:00 の18時間なので、これを誤報にしてはいけない。
+  it('日中2枠が飛んだだけでは stale にしない(平常運転・18時間ギャップ)', () => {
+    // 最後の成功 = 7/30 06:03 JST、点検 = 7/30 19:40 JST(story-watchdog)
+    const r = evaluateSyncFreshness(
+      '2026-07-29 21:03:00',
+      new Date('2026-07-30T10:40:00Z'),
+    );
+    expect(r.stale).toBe(false);
+  });
+
+  it('Vercel Cronが40分遅れても平常運転なら誤報しない(旧14hだと誤報していた)', () => {
+    // 点検が 20:20 JST にずれたケース: 経過14時間17分 → 旧しきい値14hでは stale
+    const r = evaluateSyncFreshness(
+      '2026-07-29 21:03:00',
+      new Date('2026-07-30T11:20:00Z'),
+    );
+    expect(r.hours).toBe(14);
+    expect(r.stale).toBe(false);
   });
 
   it('okの記録が1件も無ければ stale', () => {
@@ -51,7 +72,7 @@ describe('起動中だが連続失敗しているケース', () => {
   const now = new Date('2026-07-29T11:37:00Z');
 
   it('直近に実行行があれば「動いているが成功していない」と伝える', () => {
-    const r = evaluateSyncFreshness('2026-07-28 21:02:40', now, '2026-07-29 09:45:38');
+    const r = evaluateSyncFreshness('2026-07-28 14:00:00', now, '2026-07-29 09:45:38');
     expect(r.stale).toBe(true);
     expect(r.message).toContain('動いていますが');
     // 原因をスリープと断定しない(「スリープではなく」と否定形で触れるのはOK)
@@ -60,7 +81,7 @@ describe('起動中だが連続失敗しているケース', () => {
   });
 
   it('実行行自体が古ければ従来どおりスリープ/cron停止を疑う', () => {
-    const r = evaluateSyncFreshness('2026-07-28 21:02:40', now, '2026-07-28 21:02:40');
+    const r = evaluateSyncFreshness('2026-07-28 14:00:00', now, '2026-07-28 14:00:00');
     expect(r.stale).toBe(true);
     expect(r.message).toContain('スリープ');
   });
