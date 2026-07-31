@@ -21,6 +21,7 @@ type Draft = {
   daytime: string | null;
   duration_sec: number | null;
   preview_path: string | null;
+  wide_path: string | null;
   cover_candidates: string | null;
   stage_kf: string | null;
   dance_start: number | null;
@@ -367,6 +368,133 @@ const r2 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 100) / 100;
 const fmtKf = (pts: KfPoint[]) =>
   [...pts].sort((a, b) => a.t - b.t).map((p) => `${Math.max(0, Math.round(p.t * 10) / 10)}=${r2(p.v)}`).join(',');
 
+/**
+ * 追従を「見ながら」決めるエディタ(TARO 2026-07-31の要望そのまま)。
+ *   再生 → 止める → 枠を左右にドラッグして中心を合わせる → 「ここをマーク」
+ *   → また再生 → ずれたら止めてマーク … を繰り返すとキーフレームが出来上がる。
+ * 切り取る前(16:9)の wide.mp4 に、実際に切り取られる 9:16 の枠を重ねて見せる。
+ */
+const WIN_W = (9 / 16) / (16 / 9); // 16:9 の中で 9:16 が占める横幅の割合 ≈ 0.316
+
+function StageTrackEditor({ src, kf, setKf, clipLen }:
+  { src: string; kf: string; setKf: (v: string) => void; clipLen: number }) {
+  const vref = useRef<HTMLVideoElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState(0.5);      // 現在の枠の中心(0〜1)
+  const [t, setT] = useState(0);            // 現在の再生位置(秒)
+  const [playing, setPlaying] = useState(false);
+  const pts = parseKf(kf);
+
+  // ドラッグ/タップで枠の中心を動かす
+  const moveTo = useCallback((clientX: number) => {
+    const el = boxRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const x = (clientX - r.left) / r.width;             // 0〜1
+    const half = WIN_W / 2;
+    setPos(Math.min(1, Math.max(0, (x - half) / (1 - WIN_W))));
+  }, []);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    moveTo(e.clientX);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (e.buttons === 0) return;
+    moveTo(e.clientX);
+  };
+
+  const togglePlay = () => {
+    const v = vref.current;
+    if (!v) return;
+    if (v.paused) { v.play(); setPlaying(true); } else { v.pause(); setPlaying(false); }
+  };
+
+  const step = (by: number) => {
+    const v = vref.current;
+    if (!v) return;
+    v.pause(); setPlaying(false);
+    v.currentTime = Math.min(clipLen, Math.max(0, v.currentTime + by));
+  };
+
+  const mark = () => {
+    const sec = Math.round(t * 10) / 10;
+    const next = pts.filter((p) => Math.abs(p.t - sec) > 0.05);
+    next.push({ t: sec, v: pos });
+    setKf(fmtKf(next));
+  };
+
+  // 再生位置が変わったら、その時点の指定値に枠を合わせる(補間して表示)
+  const kfAt = useCallback((sec: number) => {
+    const s = [...pts].sort((a, b) => a.t - b.t);
+    if (!s.length) return 0.5;
+    if (sec <= s[0].t) return s[0].v;
+    if (sec >= s[s.length - 1].t) return s[s.length - 1].v;
+    for (let i = 0; i < s.length - 1; i++) {
+      if (sec >= s[i].t && sec <= s[i + 1].t) {
+        const r = (sec - s[i].t) / Math.max(0.001, s[i + 1].t - s[i].t);
+        return s[i].v + (s[i + 1].v - s[i].v) * r;
+      }
+    }
+    return 0.5;
+  }, [pts]);
+
+  return (
+    <div className="space-y-2">
+      <div
+        ref={boxRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        className="relative w-full overflow-hidden rounded-lg bg-black touch-none select-none"
+      >
+        <video
+          ref={vref} src={src} playsInline preload="metadata" className="w-full block"
+          onTimeUpdate={(e) => {
+            const cur = e.currentTarget.currentTime;
+            setT(cur);
+            if (!e.currentTarget.paused) setPos(kfAt(cur)); // 再生中は指定どおりに枠が動く
+          }}
+          onPause={() => setPlaying(false)}
+          onPlay={() => setPlaying(true)}
+        />
+        {/* 実際に切り取られる範囲(9:16) */}
+        <div className="pointer-events-none absolute inset-y-0 border-[3px] border-brand-400 bg-brand-400/10"
+          style={{ left: `${pos * (1 - WIN_W) * 100}%`, width: `${WIN_W * 100}%` }} />
+        {/* 枠の外は暗くして、使われない部分を分かりやすく */}
+        <div className="pointer-events-none absolute inset-y-0 left-0 bg-black/55"
+          style={{ width: `${pos * (1 - WIN_W) * 100}%` }} />
+        <div className="pointer-events-none absolute inset-y-0 right-0 bg-black/55"
+          style={{ width: `${(1 - WIN_W - pos * (1 - WIN_W)) * 100}%` }} />
+        <span className="pointer-events-none absolute left-2 top-2 rounded bg-black/70 px-2 py-0.5 text-[11px] text-white">
+          {t.toFixed(1)}s / 位置 {pos.toFixed(2)}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-1.5">
+        <button onClick={() => step(-0.5)} className="min-h-[44px] text-xs rounded-md border border-navy-200 bg-white text-navy-700">◀ 0.5s</button>
+        <button onClick={togglePlay} className="min-h-[44px] text-sm font-semibold rounded-md bg-navy-700 text-white">{playing ? '⏸ 停止' : '▶ 再生'}</button>
+        <button onClick={() => step(0.5)} className="min-h-[44px] text-xs rounded-md border border-navy-200 bg-white text-navy-700">0.5s ▶</button>
+        <button onClick={mark} className="min-h-[44px] text-xs font-semibold rounded-md bg-brand-600 text-white">📍ここをマーク</button>
+      </div>
+      <p className="text-[10px] text-navy-400">
+        止めて枠を左右にドラッグ → 「ここをマーク」。同じ秒に打ち直すと上書きされます
+      </p>
+
+      {pts.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {[...pts].sort((a, b) => a.t - b.t).map((p, i) => (
+            <span key={i} className="inline-flex items-center gap-1 rounded-full border border-sand-300 bg-white px-2 py-1 text-[11px] text-navy-700">
+              <button onClick={() => { const v = vref.current; if (v) { v.pause(); v.currentTime = p.t; } setPos(p.v); }}
+                className="font-semibold">{p.t}s → {p.v.toFixed(2)}</button>
+              <button onClick={() => setKf(fmtKf(pts.filter((q) => q !== p)))} className="text-red-500">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StageKfControl({ kf, setKf, clipLen }: { kf: string; setKf: (v: string) => void; clipLen: number }) {
   const pts = parseKf(kf);
   const [mode, setMode] = useState<'fix' | 'pan' | 'multi'>(
@@ -565,7 +693,19 @@ function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
             長さ {len.toFixed(1)}秒{lenNg ? '（3〜90秒にしてください）' : ''}
           </p>
 
-          <StageKfControl kf={kf} setKf={setKf} clipLen={len} />
+          {/* 切り取る前の映像がある時は「見ながらマーク」できるエディタを主役にする */}
+          {draft.wide_path ? (
+            <div className="space-y-2">
+              <span className="text-[11px] text-navy-500">追従（見ながらマーク）</span>
+              <StageTrackEditor src={draft.wide_path} kf={kf} setKf={setKf} clipLen={len} />
+              <details>
+                <summary className="text-[11px] text-navy-500 cursor-pointer select-none">数値で指定する</summary>
+                <div className="mt-2"><StageKfControl kf={kf} setKf={setKf} clipLen={len} /></div>
+              </details>
+            </div>
+          ) : (
+            <StageKfControl kf={kf} setKf={setKf} clipLen={len} />
+          )}
 
           <button disabled={busy || lenNg || !dirty} onClick={recut}
             className="w-full min-h-[48px] text-sm font-semibold rounded-md bg-navy-700 text-white disabled:opacity-40">

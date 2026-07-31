@@ -72,6 +72,9 @@ export async function GET(req: NextRequest) {
             d.caption_style, d.duration_sec, d.preview_path, d.cover_candidates, d.stage_kf,
             d.dance_start, d.dance_end, d.cover_at, d.cover_choice, d.status, d.reel_queue_id, d.error,
             d.reel_path, d.cover_path, d.caption, d.created_at, d.updated_at,
+            -- 追従を目で決めるための「切り取る前(16:9)」プレビュー。存在する時だけURLを返す
+            CASE WHEN d.preview_path IS NOT NULL AND d.kind IN ('発表会','stage')
+                 THEN REPLACE(d.preview_path, 'preview.mp4', 'wide.mp4') END AS wide_path,
             q.scheduled_at AS queue_scheduled_at, q.status AS queue_status, q.permalink AS queue_permalink
      FROM reel_draft d
      LEFT JOIN reel_queue q ON q.id = d.reel_queue_id
