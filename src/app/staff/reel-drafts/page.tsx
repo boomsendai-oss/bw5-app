@@ -347,52 +347,75 @@ const KF_PRESET_LIST = [
 ];
 
 /**
- * 追従(主役の位置)の指定UI。スライダーで細かく決められるようにした(TARO 2026-07-31)。
- * プリセット5段だけだと「0.3くらい」が指定できず、自由入力は数式を覚える必要があったため。
- *   固定 … クリップ中ずっと同じ位置(0=左端〜1=右端) → "0=0.55" 形式
- *   移動 … 開始位置から終了位置へ直線的にパン(人が横に動く演目用) → "0=a,{尺}=b" 形式
+ * 追従(主役の位置)の指定UI(TARO 2026-07-31)。
+ *   固定 … クリップ中ずっと同じ位置 → "0=0.55"
+ *   パン … 開始→終わりへ直線移動   → "0=a,{尺}=b"
+ *   詳細 … 「◯秒でこの位置」を何点でも打てる → "0=a,4=b,9=c,..."
+ *          (主役が入れ替わる群舞用。点と点の間は自動で滑らかに繋がる)
+ * ⚠️ 秒は「元素材の秒」ではなく**クリップ内の経過秒**(切り出しの先頭が0秒)。
  */
+type KfPoint = { t: number; v: number };
+
+function parseKf(kf: string): KfPoint[] {
+  const pts = kf.split(',').map((p) => {
+    const [t, v] = p.split('=');
+    return { t: Number(t), v: Number(v) };
+  }).filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v));
+  return pts.length ? pts : [{ t: 0, v: 0.5 }];
+}
+const r2 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 100) / 100;
+const fmtKf = (pts: KfPoint[]) =>
+  [...pts].sort((a, b) => a.t - b.t).map((p) => `${Math.max(0, Math.round(p.t * 10) / 10)}=${r2(p.v)}`).join(',');
+
 function StageKfControl({ kf, setKf, clipLen }: { kf: string; setKf: (v: string) => void; clipLen: number }) {
-  const parsed = kf.split(',').map((p) => Number(p.split('=')[1])).filter((n) => Number.isFinite(n));
-  const isPan = parsed.length >= 2;
-  const [mode, setMode] = useState<'fix' | 'pan'>(isPan ? 'pan' : 'fix');
-  const a = parsed[0] ?? 0.5;
-  const b = parsed[parsed.length - 1] ?? 0.5;
-  const r2 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 100) / 100;
+  const pts = parseKf(kf);
+  const [mode, setMode] = useState<'fix' | 'pan' | 'multi'>(
+    pts.length > 2 ? 'multi' : pts.length === 2 ? 'pan' : 'fix'
+  );
+  const a = pts[0].v;
+  const b = pts[pts.length - 1].v;
   const endSec = Math.max(1, Math.round(clipLen));
 
   const setFix = (v: number) => setKf(`0=${r2(v)}`);
   const setPan = (from: number, to: number) => setKf(`0=${r2(from)},${endSec}=${r2(to)}`);
+  const setPts = (next: KfPoint[]) => setKf(fmtKf(next));
 
   return (
     <div>
       <div className="flex items-center justify-between">
         <span className="text-[11px] text-navy-500">追従（主役の位置）</span>
         <div className="flex gap-1">
-          {(['fix', 'pan'] as const).map((m) => (
+          {([['fix', '固定'], ['pan', 'パン'], ['multi', '詳細']] as const).map(([m, label]) => (
             <button key={m}
-              onClick={() => { setMode(m); if (m === 'fix') setFix(a); else setPan(a, b); }}
+              onClick={() => {
+                setMode(m);
+                if (m === 'fix') setFix(a);
+                else if (m === 'pan') setPan(a, b);
+                else if (pts.length < 2) setPts([{ t: 0, v: a }, { t: endSec, v: a }]);
+              }}
               className={`px-2.5 py-1 text-[11px] rounded-md border ${mode === m ? 'bg-navy-700 text-white border-navy-700' : 'border-navy-200 text-navy-600 bg-white'}`}>
-              {m === 'fix' ? '固定' : '移動（パン）'}
+              {label}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="grid grid-cols-5 gap-1 mt-1.5">
-        {KF_PRESET_LIST.map((p) => {
-          const v = Number(p.v.split('=')[1]);
-          const active = mode === 'fix' && Math.abs(a - v) < 0.001;
-          return (
-            <button key={p.v} onClick={() => { setMode('fix'); setFix(v); }}
-              className={`min-h-[44px] text-[11px] rounded-md border ${active ? 'bg-brand-600 text-white border-brand-600' : 'border-navy-200 text-navy-600 bg-white'}`}>
-              {p.label}
-            </button>
-          );
-        })}
-      </div>
+      {mode !== 'multi' && (
+        <div className="grid grid-cols-5 gap-1 mt-1.5">
+          {KF_PRESET_LIST.map((p) => {
+            const v = Number(p.v.split('=')[1]);
+            const active = mode === 'fix' && Math.abs(a - v) < 0.001;
+            return (
+              <button key={p.v} onClick={() => { setMode('fix'); setFix(v); }}
+                className={`min-h-[44px] text-[11px] rounded-md border ${active ? 'bg-brand-600 text-white border-brand-600' : 'border-navy-200 text-navy-600 bg-white'}`}>
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      {mode === 'fix' ? (
+      {mode === 'fix' && (
         <div className="mt-2">
           <div className="flex items-center justify-between text-[11px] text-navy-500">
             <span>左端</span><span className="font-semibold text-navy-700">{a.toFixed(2)}</span><span>右端</span>
@@ -400,30 +423,63 @@ function StageKfControl({ kf, setKf, clipLen }: { kf: string; setKf: (v: string)
           <input type="range" min={0} max={1} step={0.01} value={a}
             onChange={(e) => setFix(Number(e.target.value))} className="w-full accent-brand-600" />
         </div>
-      ) : (
+      )}
+
+      {mode === 'pan' && (
         <div className="mt-2 space-y-2">
-          <div>
-            <div className="flex items-center justify-between text-[11px] text-navy-500">
-              <span>開始の位置</span><span className="font-semibold text-navy-700">{a.toFixed(2)}</span>
+          {([['開始の位置', a, (v: number) => setPan(v, b)], ['終わりの位置', b, (v: number) => setPan(a, v)]] as const).map(([label, val, on]) => (
+            <div key={label}>
+              <div className="flex items-center justify-between text-[11px] text-navy-500">
+                <span>{label}</span><span className="font-semibold text-navy-700">{val.toFixed(2)}</span>
+              </div>
+              <input type="range" min={0} max={1} step={0.01} value={val}
+                onChange={(e) => on(Number(e.target.value))} className="w-full accent-brand-600" />
             </div>
-            <input type="range" min={0} max={1} step={0.01} value={a}
-              onChange={(e) => setPan(Number(e.target.value), b)} className="w-full accent-brand-600" />
-          </div>
-          <div>
-            <div className="flex items-center justify-between text-[11px] text-navy-500">
-              <span>終わりの位置</span><span className="font-semibold text-navy-700">{b.toFixed(2)}</span>
-            </div>
-            <input type="range" min={0} max={1} step={0.01} value={b}
-              onChange={(e) => setPan(a, Number(e.target.value))} className="w-full accent-brand-600" />
-          </div>
+          ))}
           <p className="text-[10px] text-navy-400">主役が横に動く演目向け。開始→終わりへゆっくりパンします</p>
+        </div>
+      )}
+
+      {mode === 'multi' && (
+        <div className="mt-2 space-y-2">
+          <p className="text-[10px] text-navy-400">
+            「この秒はこの子がセンター」を何点でも指定できます。秒は<b>切り出しの先頭を0秒</b>とした経過秒（クリップの長さ {clipLen.toFixed(1)}秒）
+          </p>
+          {pts.map((p, i) => (
+            <div key={i} className="rounded-md border border-sand-200 bg-white p-2">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] text-navy-500 shrink-0">{i + 1}点目</span>
+                <input type="number" step="0.5" min={0} max={Math.max(1, clipLen)} value={p.t}
+                  onChange={(e) => { const n = [...pts]; n[i] = { ...p, t: Number(e.target.value) }; setPts(n); }}
+                  className="w-20 border border-sand-300 rounded-md px-2 py-1 text-sm text-right text-navy-800" />
+                <span className="text-[11px] text-navy-500">秒</span>
+                <span className="ml-auto text-[11px] font-semibold text-navy-700">{p.v.toFixed(2)}</span>
+                {pts.length > 1 && (
+                  <button onClick={() => setPts(pts.filter((_, j) => j !== i))}
+                    className="text-[11px] text-red-500 shrink-0">削除</button>
+                )}
+              </div>
+              <input type="range" min={0} max={1} step={0.01} value={p.v}
+                onChange={(e) => { const n = [...pts]; n[i] = { ...p, v: Number(e.target.value) }; setPts(n); }}
+                className="w-full accent-brand-600" />
+            </div>
+          ))}
+          <button
+            onClick={() => {
+              const last = pts[pts.length - 1];
+              const t = Math.min(Math.max(1, clipLen), Math.round((last.t + Math.max(1, clipLen / 4)) * 10) / 10);
+              setPts([...pts, { t, v: last.v }]);
+            }}
+            className="w-full min-h-[44px] text-sm rounded-md border border-brand-300 text-brand-700 bg-white">
+            ＋ ポイントを追加
+          </button>
         </div>
       )}
 
       <input value={kf} onChange={(e) => setKf(e.target.value)}
         className="w-full mt-1.5 border border-sand-300 rounded-md px-2 py-1 text-xs text-navy-800" />
       <p className="text-[10px] text-navy-400 mt-0.5">
-        直接入力も可: 「秒=横位置」をカンマ区切り（例 0=0.5,10=0.3）。0=左端〜1=右端
+        直接入力も可: 「クリップ内の秒=横位置」をカンマ区切り（例 0=0.5,4=0.3,9=0.6）。0=左端〜1=右端
       </p>
     </div>
   );
