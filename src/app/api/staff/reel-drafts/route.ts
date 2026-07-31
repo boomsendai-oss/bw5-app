@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
   let body: {
     signal?: string; action?: string; id?: number; scheduled_at?: string;
-    stage_no?: string; title?: string; class_name?: string; instructor?: string;
+    stage_no?: string; title?: string; class_name?: string; class_label?: string; instructor?: string;
     dance_start?: number; dance_end?: number; cover_at?: number; stage_kf?: string;
   };
   try {
@@ -195,10 +195,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '主役位置の形式が不正です(例: 0=0.5 または 0=0.5,10=0.3)' }, { status: 400 });
     }
     const fileId = `stage:${stageNo}:${crypto.randomUUID().slice(0, 8)}`;
+    // daytime列 = クラス名(カバーの大文字+キャプションのクラス紹介に使う。TARO 2026-07-31確定)
     const r = await execute(
-      `INSERT INTO reel_draft (drive_file_id, drive_name, kind, class_name, instructor, dance_start, dance_end, cover_at, stage_kf, status, updated_at)
-       VALUES (?, ?, '発表会', ?, ?, ?, ?, ?, ?, 'ready', ?)`,
-      [fileId, `${stageNo}.mp4`, title, String(body.instructor ?? '').trim() || null, ds, de, coverAt, kfRaw || null, now]
+      `INSERT INTO reel_draft (drive_file_id, drive_name, kind, class_name, daytime, instructor, dance_start, dance_end, cover_at, stage_kf, status, updated_at)
+       VALUES (?, ?, '発表会', ?, ?, ?, ?, ?, ?, ?, 'ready', ?)`,
+      [fileId, `${stageNo}.mp4`, title, String(body.class_label ?? '').trim() || null,
+       String(body.instructor ?? '').trim() || null, ds, de, coverAt, kfRaw || null, now]
     );
     return NextResponse.json({ ok: true, id: String(r.lastInsertRowid), status: 'ready' });
   }

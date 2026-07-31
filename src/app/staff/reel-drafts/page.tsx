@@ -309,8 +309,11 @@ function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => v
         {!stage && <Field label="踊り出し(秒)"><input type="number" step="0.1" value={danceStart} onChange={(e) => setDanceStart(e.target.value)} className="input" /></Field>}
         {!stage && <Field label="踊り終わり(秒)"><input type="number" step="0.1" value={danceEnd} onChange={(e) => setDanceEnd(e.target.value)} className="input" /></Field>}
         <Field label="カバー秒(候補タップで自動)"><input type="number" step="0.1" value={coverAt ?? ''} onChange={(e) => { setCoverAt(e.target.value === '' ? null : Number(e.target.value)); setCoverChoice(null); }} className="input" /></Field>
-        {!stage && <Field label="曜日・時間"><input value={daytime} onChange={(e) => setDaytime(e.target.value)} placeholder="日曜11:00" className="input" /></Field>}
-        <Field label={stage ? '演目名(カバーに載る)' : 'クラス名'}><input value={className} onChange={(e) => setClassName(e.target.value)} placeholder={stage ? 'そのまま' : 'はじめてのヒップホップ'} className="input" /></Field>
+        {/* 発表会: カバーに載るのはクラス名(TARO 2026-07-31確定)。演目名はキャプション用 */}
+        <Field label={stage ? 'クラス名(カバーに載る)' : '曜日・時間'}>
+          <input value={daytime} onChange={(e) => setDaytime(e.target.value)} placeholder={stage ? '水曜TARO HIPHOP' : '日曜11:00'} className="input" />
+        </Field>
+        <Field label={stage ? '演目名(キャプション用)' : 'クラス名'}><input value={className} onChange={(e) => setClassName(e.target.value)} placeholder={stage ? 'そのまま' : 'はじめてのヒップホップ'} className="input" /></Field>
         <Field label={stage ? '講師(タグ用)' : '講師'}><input value={instructor} onChange={(e) => setInstructor(e.target.value)} placeholder={stage ? 'SAYUKI' : 'KEIKO'} className="input" /></Field>
       </div>
 
@@ -458,6 +461,7 @@ function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
 function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (s: string) => void }) {
   const [stageNo, setStageNo] = useState('');
   const [title, setTitle] = useState('');
+  const [classLabel, setClassLabel] = useState('');
   const [instructor, setInstructor] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
@@ -470,7 +474,7 @@ function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         action: 'create_stage',
-        stage_no: stageNo, title, instructor,
+        stage_no: stageNo, title, instructor, class_label: classLabel,
         dance_start: start === '' ? null : Number(start),
         dance_end: end === '' ? null : Number(end),
         stage_kf: kf,
@@ -480,7 +484,7 @@ function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (
     setBusy(false);
     if (!r.ok) { onMsg(j.error ?? '作成失敗'); return; }
     onMsg(`${stageNo}「${title}」を受け付けました。SSD接続中のMacが本編を確定すると"入力待ち"に出るので、カバーはそこで(スマホでOK)選んでください`);
-    setStageNo(''); setTitle(''); setInstructor(''); setStart(''); setEnd(''); setKf('0=0.5');
+    setStageNo(''); setTitle(''); setClassLabel(''); setInstructor(''); setStart(''); setEnd(''); setKf('0=0.5');
     onCreated();
   };
 
@@ -492,10 +496,11 @@ function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (
       </p>
       <div className="grid grid-cols-2 gap-2 mb-2">
         <Field label="演目番号(M01〜M38)"><input value={stageNo} onChange={(e) => setStageNo(e.target.value)} placeholder="M30" className="input" /></Field>
-        <Field label="演目名"><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="そのまま" className="input" /></Field>
+        <Field label="演目名(キャプション用)"><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="そのまま" className="input" /></Field>
+        <Field label="クラス名(カバーに載る)"><input value={classLabel} onChange={(e) => setClassLabel(e.target.value)} placeholder="水曜TARO HIPHOP" className="input" /></Field>
+        <Field label="講師名(タグ用・例 SAYUKI)"><input value={instructor} onChange={(e) => setInstructor(e.target.value)} placeholder="SAYUKI" className="input" /></Field>
         <Field label="見せ場 開始(秒)"><input type="number" step="0.1" value={start} onChange={(e) => setStart(e.target.value)} className="input" /></Field>
         <Field label="見せ場 終了(秒)"><input type="number" step="0.1" value={end} onChange={(e) => setEnd(e.target.value)} className="input" /></Field>
-        <Field label="講師名(タグ用・例 SAYUKI)"><input value={instructor} onChange={(e) => setInstructor(e.target.value)} placeholder="SAYUKI" className="input" /></Field>
       </div>
       <div className="mb-3">
         <span className="text-[11px] text-navy-500">主役の位置(クロップ中心)</span>
