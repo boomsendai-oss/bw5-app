@@ -407,9 +407,10 @@ function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
                 />
               </div>
               <div className="grid grid-cols-4 gap-1.5">
+                {/* 指で押す前提なので高さ44px以上を確保する */}
                 {[-1, -0.5, 0.5, 1].map((by) => (
                   <button key={by} onClick={() => nudge(which, by)}
-                    className="py-2 text-xs font-semibold rounded-md border border-navy-200 text-navy-700 bg-white active:bg-sand-100">
+                    className="min-h-[44px] text-sm font-semibold rounded-md border border-navy-200 text-navy-700 bg-white active:bg-sand-100">
                     {by > 0 ? `＋${by}s` : `−${Math.abs(by)}s`}
                   </button>
                 ))}
@@ -426,7 +427,7 @@ function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
             <div className="grid grid-cols-5 gap-1 mt-1">
               {KF_PRESET_LIST.map((p) => (
                 <button key={p.v} onClick={() => setKf(p.v)}
-                  className={`py-2 text-[11px] rounded-md border ${kf === p.v ? 'bg-brand-600 text-white border-brand-600' : 'border-navy-200 text-navy-600 bg-white'}`}>
+                  className={`min-h-[44px] text-[11px] rounded-md border ${kf === p.v ? 'bg-brand-600 text-white border-brand-600' : 'border-navy-200 text-navy-600 bg-white'}`}>
                   {p.label}
                 </button>
               ))}
@@ -439,7 +440,7 @@ function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
           </div>
 
           <button disabled={busy || lenNg || !dirty} onClick={recut}
-            className="w-full py-2.5 text-sm font-semibold rounded-md bg-navy-700 text-white disabled:opacity-40">
+            className="w-full min-h-[48px] text-sm font-semibold rounded-md bg-navy-700 text-white disabled:opacity-40">
             {busy ? '送信中…' : dirty ? '🔄 この設定で作り直す' : '変更なし'}
           </button>
           <p className="text-[10px] text-navy-400">
