@@ -64,7 +64,7 @@ async function buildStageCaption(
   const slot = await lessonSlotText(lessonMasterId);
   const info = [slot ? `📍${slot}` : null, handle ? `講師：@${handle}` : null].filter(Boolean).join(' / ');
   const { handles: mentions } = normalizeHandles(mentionHandles);
-  const cast = mentions.length ? `出演：${mentions.map((h) => `@${h}`).join(' ')}` : null;
+  const cast = mentions.length ? `CAST : ${mentions.map((h) => `@${h}`).join(' ')}` : null;
   return [
     `【BOOM WOP vol.5】${title} 🕺`,
     className
