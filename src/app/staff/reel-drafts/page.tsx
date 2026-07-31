@@ -77,6 +77,15 @@ export default function ReelDraftsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // 生成中/生成待ちがある間は自動で更新する。
+  // 「秒を直す→作り直す→出来上がりを見る」をスマホで手を動かさず追えるようにするため(TARO 2026-07-31)。
+  const waiting = drafts.some((d) => d.status === 'ready' || d.status === 'generating');
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(load, 15000);
+    return () => clearInterval(t);
+  }, [waiting, load]);
+
   const sendSignal = async (kind: 'sync' | 'generate') => {
     setMsg(kind === 'sync' ? '同期を要求しました…(Macが1分以内に反応)' : '生成を要求しました…(Macが1分以内に反応)');
     await fetch('/api/staff/reel-drafts', {
@@ -121,6 +130,9 @@ export default function ReelDraftsPage() {
         {signal && (signal.sync_requested_at || signal.generate_requested_at) && (
           <p className="text-xs text-amber-700">Mac処理待ち…(要求済み。反映まで最大1分)</p>
         )}
+        {waiting && (
+          <p className="text-xs text-brand-700">⏳ 生成の進み具合を15秒ごとに自動で確認しています（このまま待てば結果が出ます）</p>
+        )}
 
         <div className="flex gap-1 bg-sand-100 rounded-xl p-1">
           <button onClick={() => setTab('class')}
@@ -141,12 +153,14 @@ export default function ReelDraftsPage() {
 
             <Section title={`入力待ち (${pending.length})`}
               empty={tab === 'stage' ? '作成後、SSD接続中のMacが本編を確定するとここに出ます(カバー選定はスマホでOK)' : 'Driveに新しいクリップが上がると、ここに並びます'}>
-              {pending.map((d) => <DraftEditor key={d.id} draft={d} onSaved={load} onMsg={setMsg} />)}
+              {/* key に updated_at を含める: 作り直しで素材が入れ替わったら入力状態(選択中のカバー等)を
+                  作り直し前のまま持ち越さずリセットする */}
+              {pending.map((d) => <DraftEditor key={`${d.id}:${d.updated_at}`} draft={d} onSaved={load} onMsg={setMsg} />)}
             </Section>
 
             {review.length > 0 && (
               <Section title={`投稿待ち・確認して投稿 (${review.length})`}>
-                {review.map((d) => <ReviewCard key={d.id} draft={d} onChanged={load} onMsg={setMsg} />)}
+                {review.map((d) => <ReviewCard key={`${d.id}:${d.updated_at}`} draft={d} onChanged={load} onMsg={setMsg} />)}
               </Section>
             )}
 
@@ -158,7 +172,14 @@ export default function ReelDraftsPage() {
 
             {inFlight.length > 0 && (
               <Section title={`生成待ち・生成中 (${inFlight.length})`}>
-                {inFlight.map((d) => <CompactRow key={d.id} d={d} onReset={load} onMsg={setMsg} />)}
+                {inFlight.map((d) => (
+                  <div key={`${d.id}:${d.updated_at}`} className="space-y-2">
+                    <CompactRow d={d} onReset={load} onMsg={setMsg} />
+                    {isStage(d) && d.status === 'ready' && (
+                      <StageCutPanel draft={d} onDone={load} onMsg={setMsg} />
+                    )}
+                  </div>
+                ))}
               </Section>
             )}
 
@@ -236,19 +257,30 @@ function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => v
         <span className={`text-[11px] px-2 py-0.5 rounded-full ${STATUS_STYLE[draft.status] ?? ''}`}>{STATUS_LABEL[draft.status] ?? draft.status}</span>
       </div>
 
-      {/* プレビュー(スクラブバー)。位置を踊り出し/終わり/カバーに反映できる */}
+      {/* プレビュー。発表会は本編確定済みなので「カバーに使う瞬間」を選ぶために見る */}
       {draft.preview_path && (
         <div className="mb-3">
           <video ref={videoRef} src={draft.preview_path} controls playsInline preload="metadata"
             className="w-full max-h-[46vh] rounded-lg bg-black" />
           <div className="flex flex-wrap gap-2 mt-2">
-            <button onClick={() => { const t = grab(); if (t != null) setDanceStart(String(t)); }}
-              className="px-2.5 py-1 text-xs rounded-md border border-navy-200 text-navy-700 hover:bg-sand-100">⏱ 再生位置を踊り出しに</button>
-            <button onClick={() => { const t = grab(); if (t != null) setDanceEnd(String(t)); }}
-              className="px-2.5 py-1 text-xs rounded-md border border-navy-200 text-navy-700 hover:bg-sand-100">⏱ 再生位置を踊り終わりに</button>
+            {!stage && (
+              <>
+                <button onClick={() => { const t = grab(); if (t != null) setDanceStart(String(t)); }}
+                  className="px-2.5 py-1 text-xs rounded-md border border-navy-200 text-navy-700 hover:bg-sand-100">⏱ 再生位置を踊り出しに</button>
+                <button onClick={() => { const t = grab(); if (t != null) setDanceEnd(String(t)); }}
+                  className="px-2.5 py-1 text-xs rounded-md border border-navy-200 text-navy-700 hover:bg-sand-100">⏱ 再生位置を踊り終わりに</button>
+              </>
+            )}
             <button onClick={() => { const t = grab(); if (t != null) { setCoverAt(t); setCoverChoice(null); } }}
               className="px-2.5 py-1 text-xs rounded-md border border-brand-300 text-brand-700 hover:bg-brand-50">🖼 この瞬間をカバーに</button>
           </div>
+        </div>
+      )}
+
+      {/* 発表会: 切り出し秒・追従の微調整→作り直し(スマホ完結) */}
+      {stage && (
+        <div className="mb-3">
+          <StageCutPanel draft={draft} onDone={onSaved} onMsg={onMsg} />
         </div>
       )}
 
@@ -299,13 +331,128 @@ function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => v
   );
 }
 
-// 発表会リールの新規作成(素材=SSDの本番映像 M01〜M38。Macで生成するのでSSD接続が必要)
-// 固定フロー: stage_reel.py(9:16クロップ+主役追従) → outro_logo.sh(確定ロゴ演出) → カバー生成 → 投稿待ち
-const KF_PRESETS = [
+// 元素材(M**)の何秒〜何秒を使っているかを表示する
+function stageNoOf(d: Draft): string {
+  const m = String(d.drive_file_id ?? '').match(/^stage:(M\d{2})/);
+  return m ? m[1] : String(d.drive_name ?? '').replace(/\.mp4$/i, '');
+}
+const fmtSec = (v: number | null | undefined) => (v == null ? '—' : `${Number(v).toFixed(1)}s`);
+
+const KF_PRESET_LIST = [
   { label: '左', v: '0=0.25' }, { label: 'やや左', v: '0=0.375' }, { label: '中央', v: '0=0.5' },
   { label: 'やや右', v: '0=0.625' }, { label: '右', v: '0=0.75' },
 ];
 
+/**
+ * 発表会リールの「切り出し＋追従」調整パネル(スマホ完結・TARO 2026-07-31)。
+ * 元素材の何秒〜何秒を使っているかを見せ、±0.5/±1秒で微調整→ワンボタンで作り直す。
+ * 作り直しは本編を焼き直す工程なのでSSDが要る。未接続なら「接続待ち」で保留され、挿すと自動で走る。
+ */
+function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
+  { draft: Draft; onDone: () => void; onMsg: (s: string) => void; defaultOpen?: boolean }) {
+  const [start, setStart] = useState<number>(Number(draft.dance_start ?? 0));
+  const [end, setEnd] = useState<number>(Number(draft.dance_end ?? 0));
+  const [kf, setKf] = useState<string>(draft.stage_kf ?? '0=0.5');
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
+
+  const len = end - start;
+  const dirty = start !== Number(draft.dance_start ?? 0) || end !== Number(draft.dance_end ?? 0)
+    || kf !== (draft.stage_kf ?? '0=0.5');
+  const lenNg = len < 3 || len > 90;
+
+  const nudge = (which: 's' | 'e', by: number) => {
+    const round = (v: number) => Math.max(0, Math.round(v * 10) / 10);
+    if (which === 's') setStart((v) => round(v + by));
+    else setEnd((v) => round(v + by));
+  };
+
+  const recut = async () => {
+    setBusy(true);
+    const r = await fetch('/api/staff/reel-drafts', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'recut', id: draft.id, dance_start: start, dance_end: end, stage_kf: kf }),
+    });
+    const j = await r.json();
+    setBusy(false);
+    if (!r.ok) { onMsg(j.error ?? '作り直しに失敗しました'); return; }
+    onMsg(`${stageNoOf(draft)} を ${start.toFixed(1)}s〜${end.toFixed(1)}s で作り直します（Macが1分以内に開始・SSD未接続なら挿した時点で自動実行）`);
+    onDone();
+  };
+
+  return (
+    <div className="rounded-lg border border-sand-200 bg-sand-50 p-3">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between text-left">
+        <span className="text-xs font-semibold text-navy-700">
+          ✂️ 切り出し {fmtSec(draft.dance_start)}〜{fmtSec(draft.dance_end)}
+          <span className="text-navy-400 font-normal">（元素材 {stageNoOf(draft)} ・{(Number(draft.dance_end) - Number(draft.dance_start)).toFixed(1)}秒）</span>
+        </span>
+        <span className="text-xs text-brand-600">{open ? '閉じる' : '調整する'}</span>
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          {(['s', 'e'] as const).map((which) => (
+            <div key={which}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] text-navy-500">{which === 's' ? '開始' : '終了'}（元素材の経過秒）</span>
+                <input
+                  type="number" step="0.1" inputMode="decimal"
+                  value={which === 's' ? start : end}
+                  onChange={(e) => {
+                    const v = e.target.value === '' ? 0 : Number(e.target.value);
+                    if (which === 's') setStart(v); else setEnd(v);
+                  }}
+                  className="w-24 text-right border border-sand-300 rounded-md px-2 py-1 text-sm text-navy-800"
+                />
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {[-1, -0.5, 0.5, 1].map((by) => (
+                  <button key={by} onClick={() => nudge(which, by)}
+                    className="py-2 text-xs font-semibold rounded-md border border-navy-200 text-navy-700 bg-white active:bg-sand-100">
+                    {by > 0 ? `＋${by}s` : `−${Math.abs(by)}s`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <p className={`text-xs font-semibold ${lenNg ? 'text-red-600' : 'text-navy-600'}`}>
+            長さ {len.toFixed(1)}秒{lenNg ? '（3〜90秒にしてください）' : ''}
+          </p>
+
+          <div>
+            <span className="text-[11px] text-navy-500">追従（主役の位置）</span>
+            <div className="grid grid-cols-5 gap-1 mt-1">
+              {KF_PRESET_LIST.map((p) => (
+                <button key={p.v} onClick={() => setKf(p.v)}
+                  className={`py-2 text-[11px] rounded-md border ${kf === p.v ? 'bg-brand-600 text-white border-brand-600' : 'border-navy-200 text-navy-600 bg-white'}`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <input value={kf} onChange={(e) => setKf(e.target.value)}
+              className="w-full mt-1.5 border border-sand-300 rounded-md px-2 py-1 text-xs text-navy-800" />
+            <p className="text-[10px] text-navy-400 mt-0.5">
+              途中で追う位置を動かす: 「秒=横位置」をカンマ区切り（例 0=0.5,10=0.3）。0=左端〜1=右端
+            </p>
+          </div>
+
+          <button disabled={busy || lenNg || !dirty} onClick={recut}
+            className="w-full py-2.5 text-sm font-semibold rounded-md bg-navy-700 text-white disabled:opacity-40">
+            {busy ? '送信中…' : dirty ? '🔄 この設定で作り直す' : '変更なし'}
+          </button>
+          <p className="text-[10px] text-navy-400">
+            作り直すと本編・カバー候補が新しくなります（カバーの選び直しが必要）。キャプションの手直しは残ります
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 発表会リールの新規作成(素材=SSDの本番映像 M01〜M38。Macで生成するのでSSD接続が必要)
+// 固定フロー: stage_reel.py(9:16クロップ+主役追従) → outro_logo.sh(確定ロゴ演出) → カバー生成 → 投稿待ち
 function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (s: string) => void }) {
   const [stageNo, setStageNo] = useState('');
   const [title, setTitle] = useState('');
@@ -351,7 +498,7 @@ function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (
       <div className="mb-3">
         <span className="text-[11px] text-navy-500">主役の位置(クロップ中心)</span>
         <div className="flex gap-1.5 mt-1">
-          {KF_PRESETS.map((p) => (
+          {KF_PRESET_LIST.map((p) => (
             <button key={p.v} onClick={() => setKf(p.v)}
               className={`px-3 py-1.5 text-xs rounded-md border ${kf === p.v ? 'bg-brand-600 text-white border-brand-600' : 'border-navy-200 text-navy-600 hover:bg-sand-100'}`}>
               {p.label}
@@ -448,9 +595,21 @@ function CompactRow({ d, onReset, onMsg }: { d: Draft; onReset: () => void; onMs
 
 // 投稿待ち: 完成リールを確認→キャプション微調整→投稿予約(手動GO)
 function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () => void; onMsg: (s: string) => void }) {
+  const stage = draft.kind === '発表会' || draft.kind === 'stage';
   const [caption, setCaption] = useState(draft.caption ?? '');
   const [dateStr, setDateStr] = useState(''); // datetime-local
   const [busy, setBusy] = useState(false);
+
+  const resetCaption = async () => {
+    if (!window.confirm('キャプションを自動文面に戻しますか？(手直しは消えます)')) return;
+    setBusy(true);
+    const r = await fetch('/api/staff/reel-drafts', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'reset_caption', id: draft.id }),
+    });
+    setBusy(false);
+    if (r.ok) { onMsg('自動文面に戻しました(次の生成で作り直されます)'); onChanged(); }
+  };
 
   const saveCaption = async () => {
     setBusy(true);
@@ -505,12 +664,23 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
         </>
       )}
 
+      {/* 発表会: この段階でも切り出しをやり直せる(完成を見てから「もう1秒前から」が言える) */}
+      {stage && (
+        <div className="mb-3">
+          <StageCutPanel draft={draft} onDone={onChanged} onMsg={onMsg} />
+        </div>
+      )}
+
       <label className="block mb-3">
         <span className="text-[11px] text-navy-500">キャプション（投稿文・編集可）</span>
         <textarea value={caption} onChange={(e) => setCaption(e.target.value)} rows={5}
           className="w-full border border-sand-200 rounded-lg p-2 text-sm text-navy-800 mt-1" />
-        <button onClick={saveCaption} disabled={busy}
-          className="mt-1 text-[11px] text-brand-600 hover:underline disabled:opacity-50">キャプションだけ保存</button>
+        <div className="flex gap-3 mt-1">
+          <button onClick={saveCaption} disabled={busy}
+            className="text-[11px] text-brand-600 hover:underline disabled:opacity-50">キャプションだけ保存</button>
+          <button onClick={resetCaption} disabled={busy}
+            className="text-[11px] text-navy-400 hover:underline disabled:opacity-50">自動文面に戻す</button>
+        </div>
       </label>
 
       <div className="border-t border-sand-100 pt-3">

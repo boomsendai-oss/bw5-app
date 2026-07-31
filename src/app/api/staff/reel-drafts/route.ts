@@ -21,6 +21,22 @@ export const maxDuration = 30;
 
 const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice', 'caption', 'stage_kf'] as const;
 
+const isStage = (kind: unknown) => kind === '発表会' || kind === 'stage';
+
+/** 主役位置(キーフレーム)の書式検証。「秒=横位置(0〜1)」をカンマ区切り。例 0=0.5 / 0=0.5,10=0.3 */
+const KF_RE = /^\d+(\.\d+)?=(0(\.\d+)?|1(\.0+)?)(,\d+(\.\d+)?=(0(\.\d+)?|1(\.0+)?))*$/;
+
+/** 見せ場の秒指定を検証し、問題があればエラー文を返す(問題なければ null) */
+function validateCut(start: number, end: number): string | null {
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return '開始秒・終了秒を数値で入力してください';
+  if (start < 0) return '開始秒は0以上にしてください';
+  if (end <= start) return '終了秒は開始秒より後にしてください';
+  const len = end - start;
+  if (len < 3) return `クリップが${len.toFixed(1)}秒です(3秒以上にしてください)`;
+  if (len > 90) return `クリップが${Math.round(len)}秒です(90秒以内にしてください)`;
+  return null;
+}
+
 export async function GET(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
   // 表示順: 入力待ち → 生成中 → 完了/エラー(直近)
@@ -144,12 +160,11 @@ export async function POST(req: NextRequest) {
     const title = String(body.title ?? '').trim();
     if (!title) return NextResponse.json({ error: '演目名を入力してください' }, { status: 400 });
     const ds = Number(body.dance_start), de = Number(body.dance_end);
-    if (!Number.isFinite(ds) || !Number.isFinite(de)) return NextResponse.json({ error: '見せ場の開始秒・終了秒を入力してください' }, { status: 400 });
-    if (de <= ds) return NextResponse.json({ error: '終了秒は開始秒より後にしてください' }, { status: 400 });
-    if (de - ds < 3 || de - ds > 90) return NextResponse.json({ error: `クリップ長が${Math.round(de - ds)}秒です(3〜90秒にしてください)` }, { status: 400 });
+    const cutErr = validateCut(ds, de);
+    if (cutErr) return NextResponse.json({ error: cutErr }, { status: 400 });
     const coverAt = body.cover_at == null || body.cover_at === undefined ? null : Number(body.cover_at);
     const kfRaw = String(body.stage_kf ?? '').trim();
-    if (kfRaw && !/^\d+(\.\d+)?=(0(\.\d+)?|1(\.0+)?)(,\d+(\.\d+)?=(0(\.\d+)?|1(\.0+)?))*$/.test(kfRaw)) {
+    if (kfRaw && !KF_RE.test(kfRaw)) {
       return NextResponse.json({ error: '主役位置の形式が不正です(例: 0=0.5 または 0=0.5,10=0.3)' }, { status: 400 });
     }
     const fileId = `stage:${stageNo}:${crypto.randomUUID().slice(0, 8)}`;
@@ -167,6 +182,55 @@ export async function POST(req: NextRequest) {
   if (body.signal === 'generate') {
     await execute('UPDATE reel_pipeline_signal SET generate_requested_at = ?, updated_at = ? WHERE id = 1', [now, now]);
     return NextResponse.json({ ok: true, requested: 'generate', at: now });
+  }
+
+  // 切り出しのやり直し(TARO 2026-07-31): スマホだけで「1秒前から」「1秒後ろで」等の微調整→再生成。
+  // 秒・追従(stage_kf)を上書きして本編を作り直す。preview_path を消すと Mac側 generateStage が
+  // Stage A(切り出し+追従+ロゴ)から実行する。SSD未接続なら ready のまま「接続待ち」になり、
+  // 挿した時点で自動的に走る(取りこぼさない)。
+  if (body.action === 'recut') {
+    const id = Number(body.id);
+    if (!Number.isFinite(id)) return NextResponse.json({ error: 'id required' }, { status: 400 });
+    const d = await getOne('SELECT * FROM reel_draft WHERE id = ?', [id]);
+    if (!d) return NextResponse.json({ error: 'not found' }, { status: 404 });
+    if (!isStage(d.kind)) {
+      return NextResponse.json({ error: '切り出しのやり直しは発表会リールのみ対応しています' }, { status: 400 });
+    }
+    if (d.status === 'scheduled') {
+      return NextResponse.json({ error: '投稿予約中です。先に予約を取り消してください' }, { status: 400 });
+    }
+    if (d.status === 'generating') {
+      return NextResponse.json({ error: '生成中です。完了してからやり直してください' }, { status: 400 });
+    }
+    const ds = body.dance_start != null ? Number(body.dance_start) : Number(d.dance_start);
+    const de = body.dance_end != null ? Number(body.dance_end) : Number(d.dance_end);
+    const cutErr = validateCut(ds, de);
+    if (cutErr) return NextResponse.json({ error: cutErr }, { status: 400 });
+    const kf = (body.stage_kf != null ? String(body.stage_kf) : String(d.stage_kf ?? '0=0.5')).trim() || '0=0.5';
+    if (!KF_RE.test(kf)) {
+      return NextResponse.json({ error: '主役位置の形式が不正です(例: 0=0.5 または 0=0.5,10=0.3)' }, { status: 400 });
+    }
+    await execute(
+      `UPDATE reel_draft
+         SET dance_start = ?, dance_end = ?, stage_kf = ?, status = 'ready',
+             preview_path = NULL, cover_candidates = NULL, cover_at = NULL, cover_choice = NULL,
+             reel_path = NULL, cover_path = NULL, error = NULL, updated_at = ?
+       WHERE id = ?`,
+      [ds, de, kf, now, id]
+    );
+    // Mac常駐に「今すぐ生成」を要求(1分以内に反応)
+    await execute('UPDATE reel_pipeline_signal SET generate_requested_at = ?, updated_at = ? WHERE id = 1', [now, now]);
+    return NextResponse.json({ ok: true, dance_start: ds, dance_end: de, stage_kf: kf, status: 'ready' });
+  }
+
+  // キャプションを自動文面に戻す(手直しをやめたい時)。次の生成時に作り直される。
+  if (body.action === 'reset_caption') {
+    const id = Number(body.id);
+    if (!Number.isFinite(id)) return NextResponse.json({ error: 'id required' }, { status: 400 });
+    const d = await getOne('SELECT reel_queue_id, status FROM reel_draft WHERE id = ?', [id]);
+    if (!d) return NextResponse.json({ error: 'not found' }, { status: 404 });
+    await execute('UPDATE reel_draft SET caption = NULL, updated_at = ? WHERE id = ?', [now, id]);
+    return NextResponse.json({ ok: true, note: '次の生成でキャプションが作り直されます' });
   }
 
   // 投稿予約(手動GO): 投稿待ち(review)の完成リールを reel_queue に scheduled で投入する。
@@ -215,5 +279,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, status: 'review' });
   }
 
-  return NextResponse.json({ error: "signal は 'sync'/'generate'、action は 'schedule'/'unschedule'" }, { status: 400 });
+  return NextResponse.json(
+    { error: "signal は 'sync'/'generate'、action は 'create_stage'/'recut'/'reset_caption'/'schedule'/'unschedule'" },
+    { status: 400 }
+  );
 }
