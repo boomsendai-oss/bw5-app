@@ -72,7 +72,7 @@ export default function OutreachList({
             {reviewTotal}
             <span className="text-sm font-normal text-muted-foreground"> / {reviewGoal}</span>
           </div>
-          <div className="text-[11px] text-muted-foreground">Googleクチコミ(目標=仙台1位)</div>
+          <div className="text-[11px] text-muted-foreground">Googleクチコミ(目標=宮城のストリート1位)</div>
         </div>
         <div className="rounded-lg border bg-sand-50 p-3">
           <div className="text-2xl font-bold text-navy-700">{buckets.asked.length}</div>
