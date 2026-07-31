@@ -19,7 +19,7 @@ export const maxDuration = 30;
  * need_input を作り、ready を生成して reel_queue に投入する。ここは"入力"だけを担う。
  */
 
-const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice', 'caption', 'stage_kf', 'lesson_master_id'] as const;
+const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice', 'caption', 'stage_kf', 'lesson_master_id', 'mention_handles'] as const;
 
 const isStage = (kind: unknown) => kind === '発表会' || kind === 'stage';
 
@@ -47,7 +47,8 @@ async function lessonSlotText(lessonMasterId: unknown): Promise<string | null> {
 }
 
 async function buildStageCaption(
-  title: string, instructor: string | null, className: string | null, lessonMasterId?: unknown
+  title: string, instructor: string | null, className: string | null, lessonMasterId?: unknown,
+  mentionHandles?: unknown
 ): Promise<string> {
   const tags = '#仙台ダンススクール #ダンススクール #ストリートダンス #仙台 #ダンス発表会 #仙台ダンス #ダンス好きな人と繋がりたい';
   let handle = '';
@@ -62,6 +63,8 @@ async function buildStageCaption(
   // 時間はレッスンマスターから引くので、時間割が変われば次の生成から自動で新しくなる。
   const slot = await lessonSlotText(lessonMasterId);
   const info = [slot ? `📍${slot}` : null, handle ? `講師：@${handle}` : null].filter(Boolean).join(' / ');
+  const { handles: mentions } = normalizeHandles(mentionHandles);
+  const cast = mentions.length ? `出演：${mentions.map((h) => `@${h}`).join(' ')}` : null;
   return [
     `【BOOM WOP vol.5】${title} 🕺`,
     className
@@ -69,11 +72,35 @@ async function buildStageCaption(
       : '仙台のダンススクールBOOMの発表会ステージナンバーです。',
     info ? '' : null,
     info || null,
+    cast ? '' : null,
+    cast,
     '',
     '体験レッスンは無料。ご予約はプロフィールの公式LINEから',
     '',
     tags,
   ].filter((l) => l !== null).join('\n');
+}
+
+
+/**
+ * 出演者メンション(TARO 2026-07-31)。投稿時にキャプションへ入れる＝本人に通知が飛び、
+ * 本人のストーリー再シェアで「知らない人」に届くのが狙い。
+ * ⚠️ Instagramの仕様上、キャプションのメンションは1投稿20件が上限。
+ * ⚠️ 未成年を含むため、収集時に本人/保護者のタグ付け同意を取った人だけを入れること。
+ */
+const MENTION_MAX = 20;
+function normalizeHandles(raw: unknown): { handles: string[]; error: string | null } {
+  const list = String(raw ?? '')
+    .split(/[\s,、，\n]+/)
+    .map((h) => h.trim().replace(/^@+/, ''))
+    .filter(Boolean);
+  const bad = list.filter((h) => !/^[A-Za-z0-9._]{1,30}$/.test(h));
+  if (bad.length) return { handles: [], error: `使えない文字が含まれています: ${bad.slice(0, 3).join(' / ')}` };
+  const uniq = [...new Set(list)];
+  if (uniq.length > MENTION_MAX) {
+    return { handles: [], error: `メンションは${MENTION_MAX}件までです(現在${uniq.length}件)` };
+  }
+  return { handles: uniq, error: null };
 }
 
 /** 見せ場の秒指定を検証し、問題があればエラー文を返す(問題なければ null) */
@@ -94,7 +121,7 @@ export async function GET(req: NextRequest) {
     `SELECT d.id, d.drive_file_id, d.drive_name, d.kind, d.shot_at, d.class_name, d.instructor, d.daytime,
             d.caption_style, d.duration_sec, d.preview_path, d.cover_candidates, d.stage_kf,
             d.dance_start, d.dance_end, d.cover_at, d.cover_choice, d.status, d.reel_queue_id, d.error,
-            d.reel_path, d.cover_path, d.caption, d.created_at, d.updated_at, d.lesson_master_id,
+            d.reel_path, d.cover_path, d.caption, d.created_at, d.updated_at, d.lesson_master_id, d.mention_handles,
             -- 追従を目で決めるための「切り取る前(16:9)」プレビュー。存在する時だけURLを返す
             CASE WHEN d.preview_path IS NOT NULL AND d.kind IN ('発表会','stage')
                  THEN REPLACE(d.preview_path, 'preview.mp4', 'wide.mp4') END AS wide_path,
@@ -132,6 +159,12 @@ export async function PATCH(req: NextRequest) {
 
   const draft = await getOne('SELECT * FROM reel_draft WHERE id = ?', [id]);
   if (!draft) return NextResponse.json({ error: 'not found' }, { status: 404 });
+
+  if ('mention_handles' in body) {
+    const chk = normalizeHandles(body.mention_handles);
+    if (chk.error) return NextResponse.json({ error: chk.error }, { status: 400 });
+    body.mention_handles = chk.handles.join(' ') || null; // 正規化して保存(@なし・重複なし)
+  }
 
   const sets: string[] = [];
   const args: unknown[] = [];
@@ -333,7 +366,8 @@ export async function POST(req: NextRequest) {
       String(d.class_name || d.drive_name || '発表会'),
       d.instructor ? String(d.instructor) : null,
       d.daytime ? String(d.daytime) : null,
-      d.lesson_master_id
+      d.lesson_master_id,
+      d.mention_handles
     );
     await execute('UPDATE reel_draft SET caption = ?, updated_at = ? WHERE id = ?', [caption, now, id]);
     // 予約済みなら実際に投稿される文面(reel_queue)にも反映する

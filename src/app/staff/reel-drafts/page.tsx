@@ -38,6 +38,7 @@ type Draft = {
   queue_status: string | null;
   queue_permalink: string | null;
   lesson_master_id: number | null;
+  mention_handles: string | null;
   updated_at: string;
 };
 type Lesson = { id: number; class_name: string; dw: number; st: string; et: string | null; instructor: string | null };
@@ -224,6 +225,7 @@ function DraftEditor({ draft, onSaved, onMsg, lessons = [] }: { draft: Draft; on
   const [coverAt, setCoverAt] = useState<number | null>(draft.cover_at);
   const [coverChoice, setCoverChoice] = useState<number | null>(draft.cover_choice);
   const [lessonId, setLessonId] = useState<number | null>(draft.lesson_master_id ?? null);
+  const [mentions, setMentions] = useState(draft.mention_handles ?? '');
   const [saving, setSaving] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -238,7 +240,7 @@ function DraftEditor({ draft, onSaved, onMsg, lessons = [] }: { draft: Draft; on
       id: draft.id, class_name: className, instructor, daytime,
       dance_start: danceStart === '' ? null : Number(danceStart),
       dance_end: danceEnd === '' ? null : Number(danceEnd),
-      cover_at: coverAt, cover_choice: coverChoice, lesson_master_id: lessonId, ...extra,
+      cover_at: coverAt, cover_choice: coverChoice, lesson_master_id: lessonId, mention_handles: mentions, ...extra,
     };
     if (action) body.action = action;
     const r = await fetch('/api/staff/reel-drafts', {
@@ -327,6 +329,21 @@ function DraftEditor({ draft, onSaved, onMsg, lessons = [] }: { draft: Draft; on
         <div className="mb-3">
           <LessonPicker value={lessonId} onChange={setLessonId} lessons={lessons} />
         </div>
+      )}
+
+      {/* 出演者メンション: 投稿時にキャプションへ入る。本人に通知が飛び、再シェアで知らない人へ届く */}
+      {stage && (
+        <label className="block mb-3">
+          <span className="text-[11px] text-navy-500">
+            出演者のインスタ（スペース/カンマ区切り・最大20人・@は不要）
+          </span>
+          <textarea value={mentions} onChange={(e) => setMentions(e.target.value)} rows={2}
+            placeholder="taro_bsb  sayu_sayuki" className="w-full border border-sand-200 rounded-lg p-2 text-sm text-navy-800 mt-1" />
+          <span className="text-[10px] text-navy-400">
+            {mentions.trim() ? `${mentions.trim().split(/[\s,、，]+/).filter(Boolean).length}人` : '未入力'}
+            ／ 本人に通知が飛ぶので、タグ付けの了承を得た人だけ入れてください
+          </span>
+        </label>
       )}
 
       <div className="flex justify-end gap-2">
