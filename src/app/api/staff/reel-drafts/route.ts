@@ -19,7 +19,7 @@ export const maxDuration = 30;
  * need_input を作り、ready を生成して reel_queue に投入する。ここは"入力"だけを担う。
  */
 
-const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice', 'caption', 'stage_kf'] as const;
+const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice', 'caption', 'stage_kf', 'lesson_master_id'] as const;
 
 const isStage = (kind: unknown) => kind === '発表会' || kind === 'stage';
 
@@ -31,7 +31,24 @@ const KF_RE = /^\d+(\.\d+)?=(0(\.\d+)?|1(\.0+)?)(,\d+(\.\d+)?=(0(\.\d+)?|1(\.0+)
  * 「自動文面に戻す」を review 状態で押しても即座に文面が入るようにサーバ側でも組む
  * (投稿直前に生成される訳ではないため、空のまま予約されるのを防ぐ)。
  */
-async function buildStageCaption(title: string, instructor: string | null, className: string | null): Promise<string> {
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+
+/** 紐づけたクラスの「曜日 開始〜終了」を返す。未紐づけ/時間未設定なら null */
+async function lessonSlotText(lessonMasterId: unknown): Promise<string | null> {
+  const id = Number(lessonMasterId);
+  if (!Number.isFinite(id)) return null;
+  const m = await getOne(
+    'SELECT default_day_of_week dw, default_start_time st, default_end_time et FROM lesson_master WHERE id = ?',
+    [id]
+  );
+  if (!m || m.dw == null || !m.st) return null;
+  const hhmm = (v: unknown) => String(v).slice(0, 5);
+  return `${WD[Number(m.dw)]}曜 ${hhmm(m.st)}〜${m.et ? hhmm(m.et) : ''}`.trim();
+}
+
+async function buildStageCaption(
+  title: string, instructor: string | null, className: string | null, lessonMasterId?: unknown
+): Promise<string> {
   const tags = '#仙台ダンススクール #ダンススクール #ストリートダンス #仙台 #ダンス発表会 #仙台ダンス #ダンス好きな人と繋がりたい';
   let handle = '';
   if (instructor) {
@@ -41,13 +58,19 @@ async function buildStageCaption(title: string, instructor: string | null, class
       ?? rows.find((r) => String(r.name).trim().toUpperCase().includes(who) || who.includes(String(r.name).trim().toUpperCase()));
     if (hit?.instagram_handle) handle = String(hit.instagram_handle).trim();
   }
+  // クラスの曜日・時間を入れる(TARO 2026-07-31: 見た人が「いつ行けばいいか」まで分かる方が効く)。
+  // 時間はレッスンマスターから引くので、時間割が変われば次の生成から自動で新しくなる。
+  const slot = await lessonSlotText(lessonMasterId);
+  const info = [slot ? `📍${slot}` : null, handle ? `講師：@${handle}` : null].filter(Boolean).join(' / ');
   return [
     `【BOOM WOP vol.5】${title} 🕺`,
     className
       ? `仙台のダンススクールBOOM「${className}」クラスによるステージナンバーです。`
       : '仙台のダンススクールBOOMの発表会ステージナンバーです。',
-    handle ? `講師：@${handle}` : null,
-    '体験・受講の相談はプロフィールの公式LINEから',
+    info ? '' : null,
+    info || null,
+    '',
+    '体験レッスンは無料。ご予約はプロフィールの公式LINEから',
     '',
     tags,
   ].filter((l) => l !== null).join('\n');
@@ -71,7 +94,7 @@ export async function GET(req: NextRequest) {
     `SELECT d.id, d.drive_file_id, d.drive_name, d.kind, d.shot_at, d.class_name, d.instructor, d.daytime,
             d.caption_style, d.duration_sec, d.preview_path, d.cover_candidates, d.stage_kf,
             d.dance_start, d.dance_end, d.cover_at, d.cover_choice, d.status, d.reel_queue_id, d.error,
-            d.reel_path, d.cover_path, d.caption, d.created_at, d.updated_at,
+            d.reel_path, d.cover_path, d.caption, d.created_at, d.updated_at, d.lesson_master_id,
             -- 追従を目で決めるための「切り取る前(16:9)」プレビュー。存在する時だけURLを返す
             CASE WHEN d.preview_path IS NOT NULL AND d.kind IN ('発表会','stage')
                  THEN REPLACE(d.preview_path, 'preview.mp4', 'wide.mp4') END AS wide_path,
@@ -85,7 +108,15 @@ export async function GET(req: NextRequest) {
      LIMIT 100`
   );
   const signal = await getOne('SELECT sync_requested_at, generate_requested_at, updated_at FROM reel_pipeline_signal WHERE id = 1').catch(() => null);
-  return NextResponse.json({ drafts: rows, signal });
+  // クラス紐づけ用の候補(稼働中で曜日・時間が入っているものだけ)。
+  // 表記ゆれで自動一致しない事故を避けるため、アプリでは必ずここから選ばせる。
+  const lessons = await getAll(
+    `SELECT lm.id, lm.class_name, lm.default_day_of_week dw, lm.default_start_time st, lm.default_end_time et, i.name instructor
+       FROM lesson_master lm LEFT JOIN instructors i ON i.id = lm.default_instructor_id
+      WHERE lm.active = 1 AND lm.default_day_of_week IS NOT NULL AND lm.default_start_time IS NOT NULL
+      ORDER BY lm.default_day_of_week, lm.default_start_time`
+  ).catch(() => []);
+  return NextResponse.json({ drafts: rows, signal, lessons });
 }
 
 export async function PATCH(req: NextRequest) {
@@ -173,6 +204,7 @@ export async function POST(req: NextRequest) {
     signal?: string; action?: string; id?: number; scheduled_at?: string;
     stage_no?: string; title?: string; class_name?: string; class_label?: string; instructor?: string;
     dance_start?: number; dance_end?: number; cover_at?: number; cover_choice?: number; stage_kf?: string;
+    lesson_master_id?: number;
   };
   try {
     body = await req.json();
@@ -200,10 +232,12 @@ export async function POST(req: NextRequest) {
     const fileId = `stage:${stageNo}:${crypto.randomUUID().slice(0, 8)}`;
     // daytime列 = クラス名(カバーの大文字+キャプションのクラス紹介に使う。TARO 2026-07-31確定)
     const r = await execute(
-      `INSERT INTO reel_draft (drive_file_id, drive_name, kind, class_name, daytime, instructor, dance_start, dance_end, cover_at, stage_kf, status, updated_at)
-       VALUES (?, ?, '発表会', ?, ?, ?, ?, ?, ?, ?, 'ready', ?)`,
+      `INSERT INTO reel_draft (drive_file_id, drive_name, kind, class_name, daytime, instructor, lesson_master_id, dance_start, dance_end, cover_at, stage_kf, status, updated_at)
+       VALUES (?, ?, '発表会', ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?)`,
       [fileId, `${stageNo}.mp4`, title, String(body.class_label ?? '').trim() || null,
-       String(body.instructor ?? '').trim() || null, ds, de, coverAt, kfRaw || null, now]
+       String(body.instructor ?? '').trim() || null,
+       Number.isFinite(Number(body.lesson_master_id)) ? Number(body.lesson_master_id) : null,
+       ds, de, coverAt, kfRaw || null, now]
     );
     return NextResponse.json({ ok: true, id: String(r.lastInsertRowid), status: 'ready' });
   }
@@ -298,7 +332,8 @@ export async function POST(req: NextRequest) {
     const caption = await buildStageCaption(
       String(d.class_name || d.drive_name || '発表会'),
       d.instructor ? String(d.instructor) : null,
-      d.daytime ? String(d.daytime) : null
+      d.daytime ? String(d.daytime) : null,
+      d.lesson_master_id
     );
     await execute('UPDATE reel_draft SET caption = ?, updated_at = ? WHERE id = ?', [caption, now, id]);
     // 予約済みなら実際に投稿される文面(reel_queue)にも反映する

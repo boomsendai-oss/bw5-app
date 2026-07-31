@@ -37,8 +37,10 @@ type Draft = {
   queue_scheduled_at: string | null;
   queue_status: string | null;
   queue_permalink: string | null;
+  lesson_master_id: number | null;
   updated_at: string;
 };
+type Lesson = { id: number; class_name: string; dw: number; st: string; et: string | null; instructor: string | null };
 type Signal = { sync_requested_at: string | null; generate_requested_at: string | null; updated_at: string | null };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -64,6 +66,7 @@ function fmtJst(iso: string | null): string {
 export default function ReelDraftsPage() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [signal, setSignal] = useState<Signal | null>(null);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string>('');
 
@@ -73,6 +76,7 @@ export default function ReelDraftsPage() {
     const j = await r.json();
     setDrafts(j.drafts ?? []);
     setSignal(j.signal ?? null);
+    setLessons(j.lessons ?? []);
     setLoading(false);
   }, []);
 
@@ -150,13 +154,13 @@ export default function ReelDraftsPage() {
           <p className="text-navy-500">読み込み中…</p>
         ) : (
           <>
-            {tab === 'stage' && <StageCreateForm onCreated={load} onMsg={setMsg} />}
+            {tab === 'stage' && <StageCreateForm onCreated={load} onMsg={setMsg} lessons={lessons} />}
 
             <Section title={`入力待ち (${pending.length})`}
               empty={tab === 'stage' ? '作成後、SSD接続中のMacが本編を確定するとここに出ます(カバー選定はスマホでOK)' : 'Driveに新しいクリップが上がると、ここに並びます'}>
               {/* key に updated_at を含める: 作り直しで素材が入れ替わったら入力状態(選択中のカバー等)を
                   作り直し前のまま持ち越さずリセットする */}
-              {pending.map((d) => <DraftEditor key={`${d.id}:${d.updated_at}`} draft={d} onSaved={load} onMsg={setMsg} />)}
+              {pending.map((d) => <DraftEditor key={`${d.id}:${d.updated_at}`} draft={d} onSaved={load} onMsg={setMsg} lessons={lessons} />)}
             </Section>
 
             {review.length > 0 && (
@@ -209,7 +213,7 @@ function Section({ title, empty, children }: { title: string; empty?: string; ch
 
 function fmt(n: number | null | undefined) { return n == null ? '' : String(n); }
 
-function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => void; onMsg: (s: string) => void }) {
+function DraftEditor({ draft, onSaved, onMsg, lessons = [] }: { draft: Draft; onSaved: () => void; onMsg: (s: string) => void; lessons?: Lesson[] }) {
   // 発表会draft: 本編は確定済み(SSD不要)。ここでの入力はカバー選定+演目名/講師だけ。
   const stage = draft.kind === '発表会' || draft.kind === 'stage';
   const [className, setClassName] = useState(draft.class_name ?? '');
@@ -219,6 +223,7 @@ function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => v
   const [danceEnd, setDanceEnd] = useState(fmt(draft.dance_end));
   const [coverAt, setCoverAt] = useState<number | null>(draft.cover_at);
   const [coverChoice, setCoverChoice] = useState<number | null>(draft.cover_choice);
+  const [lessonId, setLessonId] = useState<number | null>(draft.lesson_master_id ?? null);
   const [saving, setSaving] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -233,7 +238,7 @@ function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => v
       id: draft.id, class_name: className, instructor, daytime,
       dance_start: danceStart === '' ? null : Number(danceStart),
       dance_end: danceEnd === '' ? null : Number(danceEnd),
-      cover_at: coverAt, cover_choice: coverChoice, ...extra,
+      cover_at: coverAt, cover_choice: coverChoice, lesson_master_id: lessonId, ...extra,
     };
     if (action) body.action = action;
     const r = await fetch('/api/staff/reel-drafts', {
@@ -318,6 +323,12 @@ function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => v
         <Field label={stage ? '講師(タグ用)' : '講師'}><input value={instructor} onChange={(e) => setInstructor(e.target.value)} placeholder={stage ? 'SAYUKI' : 'KEIKO'} className="input" /></Field>
       </div>
 
+      {stage && lessons.length > 0 && (
+        <div className="mb-3">
+          <LessonPicker value={lessonId} onChange={setLessonId} lessons={lessons} />
+        </div>
+      )}
+
       <div className="flex justify-end gap-2">
         <button disabled={saving} onClick={() => patch({}).then((ok) => ok && onMsg('下書きを保存しました'))}
           className="px-3 py-1.5 text-xs rounded-md border border-navy-200 text-navy-600 hover:bg-sand-100 disabled:opacity-50">下書き保存</button>
@@ -332,6 +343,34 @@ function DraftEditor({ draft, onSaved, onMsg }: { draft: Draft; onSaved: () => v
         }
       `}</style>
     </div>
+  );
+}
+
+const WD_JA = ['日', '月', '火', '水', '木', '金', '土'];
+const lessonLabel = (l: Lesson) =>
+  `${WD_JA[l.dw]} ${String(l.st).slice(0, 5)} ${l.class_name}${l.instructor ? ` / ${l.instructor}` : ''}`;
+
+/**
+ * クラスの紐づけ(TARO 2026-07-31)。キャプションの曜日・時間はここから引く。
+ * 手入力の表記ゆれ(「多賀城HOUSE」vs「多賀城 HOUSE」)で自動一致に失敗した実績があるので、
+ * 必ずレッスンマスターから選ばせる。時間割が変われば次の生成で自動的に新しい時間になる。
+ */
+function LessonPicker({ value, onChange, lessons }:
+  { value: number | null; onChange: (v: number | null) => void; lessons: Lesson[] }) {
+  const cur = lessons.find((l) => l.id === value) ?? null;
+  return (
+    <label className="block">
+      <span className="text-[11px] text-navy-500">クラス（キャプションの曜日・時間に使う）</span>
+      <select value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+        className="input">
+        <option value="">— 紐づけない —</option>
+        {lessons.map((l) => <option key={l.id} value={l.id}>{lessonLabel(l)}</option>)}
+      </select>
+      <span className="text-[10px] text-navy-400">
+        {cur ? `キャプションに「${WD_JA[cur.dw]}曜 ${String(cur.st).slice(0, 5)}〜${cur.et ? String(cur.et).slice(0, 5) : ''}」が入ります`
+             : '紐づけると曜日・時間が自動で入ります'}
+      </span>
+    </label>
   );
 }
 
@@ -758,10 +797,11 @@ function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
 
 // 発表会リールの新規作成(素材=SSDの本番映像 M01〜M38。Macで生成するのでSSD接続が必要)
 // 固定フロー: stage_reel.py(9:16クロップ+主役追従) → outro_logo.sh(確定ロゴ演出) → カバー生成 → 投稿待ち
-function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (s: string) => void }) {
+function StageCreateForm({ onCreated, onMsg, lessons }: { onCreated: () => void; onMsg: (s: string) => void; lessons: Lesson[] }) {
   const [stageNo, setStageNo] = useState('');
   const [title, setTitle] = useState('');
   const [classLabel, setClassLabel] = useState('');
+  const [lessonId, setLessonId] = useState<number | null>(null);
   const [instructor, setInstructor] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
@@ -774,7 +814,7 @@ function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         action: 'create_stage',
-        stage_no: stageNo, title, instructor, class_label: classLabel,
+        stage_no: stageNo, title, instructor, class_label: classLabel, lesson_master_id: lessonId,
         dance_start: start === '' ? null : Number(start),
         dance_end: end === '' ? null : Number(end),
         stage_kf: kf,
@@ -784,7 +824,7 @@ function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (
     setBusy(false);
     if (!r.ok) { onMsg(j.error ?? '作成失敗'); return; }
     onMsg(`${stageNo}「${title}」を受け付けました。SSD接続中のMacが本編を確定すると"入力待ち"に出るので、カバーはそこで(スマホでOK)選んでください`);
-    setStageNo(''); setTitle(''); setClassLabel(''); setInstructor(''); setStart(''); setEnd(''); setKf('0=0.5');
+    setStageNo(''); setTitle(''); setClassLabel(''); setLessonId(null); setInstructor(''); setStart(''); setEnd(''); setKf('0=0.5');
     onCreated();
   };
 
@@ -802,6 +842,18 @@ function StageCreateForm({ onCreated, onMsg }: { onCreated: () => void; onMsg: (
         <Field label="見せ場 開始(秒)"><input type="number" step="0.1" value={start} onChange={(e) => setStart(e.target.value)} className="input" /></Field>
         <Field label="見せ場 終了(秒)"><input type="number" step="0.1" value={end} onChange={(e) => setEnd(e.target.value)} className="input" /></Field>
       </div>
+      {lessons.length > 0 && (
+        <div className="mb-3">
+          <LessonPicker value={lessonId}
+            onChange={(v) => {
+              setLessonId(v);
+              // クラス名(カバーに載る)が空なら選んだクラス名を入れておく
+              const l = lessons.find((x) => x.id === v);
+              if (l && !classLabel.trim()) setClassLabel(l.class_name);
+            }}
+            lessons={lessons} />
+        </div>
+      )}
       <div className="mb-3">
         <span className="text-[11px] text-navy-500">主役の位置(クロップ中心)</span>
         <div className="flex gap-1.5 mt-1">
