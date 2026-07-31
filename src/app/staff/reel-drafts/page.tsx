@@ -472,15 +472,40 @@ function StageTrackEditor({ src, kf, setKf, clipLen, onUnavailable }:
         </span>
       </div>
 
+      {/* マークの位置が一目で分かる帯。タップでその秒へ飛ぶ */}
+      <div className="relative h-7 rounded bg-sand-100"
+        onPointerDown={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          const sec = ((e.clientX - r.left) / r.width) * clipLen;
+          const v = vref.current;
+          if (v) { v.pause(); v.currentTime = Math.max(0, Math.min(clipLen, sec)); }
+        }}>
+        {[...pts].sort((a, b) => a.t - b.t).map((p, i) => (
+          <span key={i} className="absolute top-0 h-full w-[3px] bg-brand-600"
+            style={{ left: `${Math.min(100, (p.t / Math.max(0.1, clipLen)) * 100)}%` }} />
+        ))}
+        <span className="absolute top-0 h-full w-[2px] bg-red-500"
+          style={{ left: `${Math.min(100, (t / Math.max(0.1, clipLen)) * 100)}%` }} />
+      </div>
+
       <div className="grid grid-cols-4 gap-1.5">
         <button onClick={() => step(-0.5)} className="min-h-[44px] text-xs rounded-md border border-navy-200 bg-white text-navy-700">◀ 0.5s</button>
         <button onClick={togglePlay} className="min-h-[44px] text-sm font-semibold rounded-md bg-navy-700 text-white">{playing ? '⏸ 停止' : '▶ 再生'}</button>
         <button onClick={() => step(0.5)} className="min-h-[44px] text-xs rounded-md border border-navy-200 bg-white text-navy-700">0.5s ▶</button>
         <button onClick={mark} className="min-h-[44px] text-xs font-semibold rounded-md bg-brand-600 text-white">📍ここをマーク</button>
       </div>
-      <p className="text-[10px] text-navy-400">
-        止めて枠を左右にドラッグ → 「ここをマーク」。同じ秒に打ち直すと上書きされます
-      </p>
+
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] text-navy-400">
+          止めて枠をドラッグ → 「ここをマーク」。<b>マークとマークの間は自動でなめらかに動きます</b>
+        </p>
+        {/* 前の指定が残っていると自分のマークと引っ張り合って左右に振られる。まっさらから打ち直せるように */}
+        <button
+          onClick={() => { if (window.confirm('マークを全部消して、今の位置で固定しますか？')) setKf(`0=${r2(pos)}`); }}
+          className="shrink-0 min-h-[36px] px-3 text-[11px] rounded-md border border-red-300 text-red-600 bg-white">
+          🗑 全消去
+        </button>
+      </div>
 
       {pts.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
