@@ -376,8 +376,8 @@ const fmtKf = (pts: KfPoint[]) =>
  */
 const WIN_W = (9 / 16) / (16 / 9); // 16:9 の中で 9:16 が占める横幅の割合 ≈ 0.316
 
-function StageTrackEditor({ src, kf, setKf, clipLen }:
-  { src: string; kf: string; setKf: (v: string) => void; clipLen: number }) {
+function StageTrackEditor({ src, kf, setKf, clipLen, onUnavailable }:
+  { src: string; kf: string; setKf: (v: string) => void; clipLen: number; onUnavailable: () => void }) {
   const vref = useRef<HTMLVideoElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(0.5);      // 現在の枠の中心(0〜1)
@@ -456,6 +456,8 @@ function StageTrackEditor({ src, kf, setKf, clipLen }:
           }}
           onPause={() => setPlaying(false)}
           onPlay={() => setPlaying(true)}
+          // 古い世代の下書きには切り取る前の映像が無い。壊れたプレーヤーを見せず数値指定に戻す
+          onError={onUnavailable}
         />
         {/* 実際に切り取られる範囲(9:16) */}
         <div className="pointer-events-none absolute inset-y-0 border-[3px] border-brand-400 bg-brand-400/10"
@@ -625,6 +627,7 @@ function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
   const [kf, setKf] = useState<string>(draft.stage_kf ?? '0=0.5');
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(defaultOpen);
+  const [wideNg, setWideNg] = useState(false); // 切り取る前の映像が無い/読めない世代のフォールバック
 
   const len = end - start;
   const dirty = start !== Number(draft.dance_start ?? 0) || end !== Number(draft.dance_end ?? 0)
@@ -694,17 +697,25 @@ function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
           </p>
 
           {/* 切り取る前の映像がある時は「見ながらマーク」できるエディタを主役にする */}
-          {draft.wide_path ? (
+          {draft.wide_path && !wideNg ? (
             <div className="space-y-2">
               <span className="text-[11px] text-navy-500">追従（見ながらマーク）</span>
-              <StageTrackEditor src={draft.wide_path} kf={kf} setKf={setKf} clipLen={len} />
+              <StageTrackEditor src={draft.wide_path} kf={kf} setKf={setKf} clipLen={len}
+                onUnavailable={() => setWideNg(true)} />
               <details>
                 <summary className="text-[11px] text-navy-500 cursor-pointer select-none">数値で指定する</summary>
                 <div className="mt-2"><StageKfControl kf={kf} setKf={setKf} clipLen={len} /></div>
               </details>
             </div>
           ) : (
-            <StageKfControl kf={kf} setKf={setKf} clipLen={len} />
+            <>
+              {draft.wide_path && wideNg && (
+                <p className="text-[10px] text-amber-700 mb-1">
+                  この下書きには切り取る前の映像がまだありません（一度作り直すと次から使えます）。数値で指定してください
+                </p>
+              )}
+              <StageKfControl kf={kf} setKf={setKf} clipLen={len} />
+            </>
           )}
 
           <button disabled={busy || lenNg || !dirty} onClick={recut}
