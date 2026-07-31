@@ -382,12 +382,13 @@ function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
 
   return (
     <div className="rounded-lg border border-sand-200 bg-sand-50 p-3">
-      <button onClick={() => setOpen(!open)} className="w-full flex items-center justify-between text-left">
-        <span className="text-xs font-semibold text-navy-700">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-start justify-between gap-2 text-left">
+        <span className="text-xs font-semibold text-navy-700 min-w-0">
           ✂️ 切り出し {fmtSec(draft.dance_start)}〜{fmtSec(draft.dance_end)}
-          <span className="text-navy-400 font-normal">（元素材 {stageNoOf(draft)} ・{(Number(draft.dance_end) - Number(draft.dance_start)).toFixed(1)}秒）</span>
+          <br />
+          <span className="text-navy-400 font-normal">元素材 {stageNoOf(draft)} ・{(Number(draft.dance_end) - Number(draft.dance_start)).toFixed(1)}秒</span>
         </span>
-        <span className="text-xs text-brand-600">{open ? '閉じる' : '調整する'}</span>
+        <span className="text-xs text-brand-600 shrink-0 whitespace-nowrap">{open ? '閉じる' : '調整する'}</span>
       </button>
 
       {open && (
