@@ -9,7 +9,8 @@ import OutreachList, { type Family } from './OutreachList';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const REVIEW_GOAL = 40; // 仙台1位ライン (ROCKFOOT 39超え・2026-07-13実測)
+const REVIEW_GOAL = 58; // 宮城のストリートダンススクール1位ライン (ROCKFOOT名取 57超え・2026-07-31実測)
+// 次の目標: 66件で東北1位 (秋田パフォーマンススタジオ 65超え) → 最終100件
 
 type MemberRow = {
   id: number;
