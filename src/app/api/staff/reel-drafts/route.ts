@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
   let body: {
     signal?: string; action?: string; id?: number; scheduled_at?: string;
     stage_no?: string; title?: string; class_name?: string; class_label?: string; instructor?: string;
-    dance_start?: number; dance_end?: number; cover_at?: number; stage_kf?: string;
+    dance_start?: number; dance_end?: number; cover_at?: number; cover_choice?: number; stage_kf?: string;
   };
   try {
     body = await req.json();
@@ -253,6 +253,35 @@ export async function POST(req: NextRequest) {
     // Mac常駐に「今すぐ生成」を要求(1分以内に反応)
     await execute('UPDATE reel_pipeline_signal SET generate_requested_at = ?, updated_at = ? WHERE id = 1', [now, now]);
     return NextResponse.json({ ok: true, dance_start: ds, dance_end: de, stage_kf: kf, status: 'ready' });
+  }
+
+  // カバーだけ選び直す(TARO 2026-07-31)。投稿待ちのまま気が変わってもSSD不要で差し替えられる。
+  // 本編(preview_path)は残したまま status を ready に戻すので、Mac側は Stage B
+  // (キャッシュした本編からカバー生成)だけを走らせる=切り出しからはやり直さない。
+  if (body.action === 'recover') {
+    const id = Number(body.id);
+    if (!Number.isFinite(id)) return NextResponse.json({ error: 'id required' }, { status: 400 });
+    const d = await getOne('SELECT * FROM reel_draft WHERE id = ?', [id]);
+    if (!d) return NextResponse.json({ error: 'not found' }, { status: 404 });
+    if (!isStage(d.kind)) {
+      return NextResponse.json({ error: 'カバーの選び直しは発表会リールのみ対応しています' }, { status: 400 });
+    }
+    if (d.status === 'scheduled') {
+      return NextResponse.json({ error: '投稿予約中です。先に予約を取り消してください' }, { status: 400 });
+    }
+    if (!d.preview_path) {
+      return NextResponse.json({ error: '本編がまだありません。先に切り出しを実行してください' }, { status: 400 });
+    }
+    const at = Number(body.cover_at);
+    if (!Number.isFinite(at) || at < 0) {
+      return NextResponse.json({ error: 'カバーの秒を指定してください' }, { status: 400 });
+    }
+    await execute(
+      `UPDATE reel_draft SET cover_at = ?, cover_choice = ?, status = 'ready', error = NULL, updated_at = ? WHERE id = ?`,
+      [at, body.cover_choice ?? null, now, id]
+    );
+    await execute('UPDATE reel_pipeline_signal SET generate_requested_at = ?, updated_at = ? WHERE id = 1', [now, now]);
+    return NextResponse.json({ ok: true, cover_at: at });
   }
 
   // キャプションを自動文面に戻す(手直しをやめたい時)。

@@ -900,12 +900,31 @@ function CompactRow({ d, onReset, onMsg }: { d: Draft; onReset: () => void; onMs
   );
 }
 
+/** 次の投稿枠(発表会=金/クラス=火 の19:00 JST)を datetime-local の値で返す */
+function defaultSlotLocal(stage: boolean): string {
+  const target = stage ? 5 : 2; // 金 or 火
+  const now = new Date();
+  const jst = new Date(now.getTime() + 9 * 3600 * 1000);
+  for (let i = 0; i <= 14; i++) {
+    const d = new Date(jst.getTime() + i * 86400000);
+    if (d.getUTCDay() !== target) continue;
+    const sameDay = i === 0;
+    if (sameDay && jst.getUTCHours() >= 19) continue; // 今日の枠を過ぎていたら次週
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T19:00`;
+  }
+  return '';
+}
+
 // 投稿待ち: 完成リールを確認→キャプション微調整→投稿予約(手動GO)
 function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () => void; onMsg: (s: string) => void }) {
   const stage = draft.kind === '発表会' || draft.kind === 'stage';
   const [caption, setCaption] = useState(draft.caption ?? '');
   const [dateStr, setDateStr] = useState(''); // datetime-local
   const [busy, setBusy] = useState(false);
+  const [pickCover, setPickCover] = useState(false);
+  let candidates: Candidate[] = [];
+  try { candidates = draft.cover_candidates ? JSON.parse(draft.cover_candidates) : []; } catch { /* ignore */ }
 
   const resetCaption = async () => {
     if (!window.confirm('キャプションを自動文面に戻しますか？(手直しは消えます)')) return;
@@ -971,6 +990,59 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
         </>
       )}
 
+      {/* カバー写真: 一覧で最初に目に入る絵。ここで実物を確認して選び直せる */}
+      {draft.cover_path && (
+        <div className="mb-3 flex gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={draft.cover_path} alt="カバー"
+            className="w-24 aspect-[9/16] object-cover rounded-md border border-sand-200 bg-black" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] text-navy-500">カバー写真（一覧で最初に見える絵）</p>
+            <p className="text-[11px] text-navy-400 mt-0.5">{draft.cover_at != null ? `${draft.cover_at}s の場面` : ''}</p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              <a href={draft.cover_path} target="_blank" rel="noreferrer"
+                className="text-[11px] text-brand-700 border border-brand-300 rounded-md px-2.5 py-1">拡大して確認</a>
+              {stage && (
+                <button onClick={() => setPickCover((v) => !v)}
+                  className="text-[11px] text-navy-700 border border-navy-200 rounded-md px-2.5 py-1">
+                  {pickCover ? '閉じる' : '🖼 カバーを選び直す'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 選び直し: 切り出しはやり直さずカバーだけ作り直す(SSD不要・数十秒) */}
+      {pickCover && candidates.length > 0 && (
+        <div className="mb-3">
+          <p className="text-[11px] text-navy-500 mb-1">タップしたコマでカバーを作り直します</p>
+          <div className="grid grid-cols-5 gap-1.5">
+            {candidates.map((c) => (
+              <button key={c.n} disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  const r = await fetch('/api/staff/reel-drafts', {
+                    method: 'POST', headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ action: 'recover', id: draft.id, cover_at: c.t, cover_choice: c.n }),
+                  });
+                  const j = await r.json();
+                  setBusy(false);
+                  if (!r.ok) { onMsg(j.error ?? 'カバーの作り直しに失敗しました'); return; }
+                  onMsg(`${c.t}s のコマでカバーを作り直します（1分以内に反映）`);
+                  setPickCover(false);
+                  onChanged();
+                }}
+                className="relative rounded-md overflow-hidden border-2 border-transparent disabled:opacity-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={c.url} alt={`候補${c.n}`} className="w-full aspect-[9/16] object-cover" />
+                <span className="absolute bottom-0 left-0 text-[9px] bg-black/60 text-white px-1">{c.t}s</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 発表会: この段階でも切り出しをやり直せる(完成を見てから「もう1秒前から」が言える) */}
       {stage && (
         <div className="mb-3">
@@ -998,7 +1070,9 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
             ▶ 次の{draft.kind === '発表会' || draft.kind === 'stage' ? '金曜' : '火曜'}19時で投稿
           </button>
           <span className="text-navy-300 text-xs">または</span>
-          <input type="datetime-local" value={dateStr} onChange={(e) => setDateStr(e.target.value)}
+          {/* 好きな日時で予約。空なら次の投稿枠を初期値にしておく(スマホで打ち直す手間を減らす) */}
+          <input type="datetime-local" value={dateStr || defaultSlotLocal(stage)}
+            onChange={(e) => setDateStr(e.target.value)}
             className="border border-sand-200 rounded-md px-2 py-1.5 text-sm text-navy-800" />
           <button onClick={() => dateStr ? schedule(new Date(dateStr).toISOString()) : onMsg('日時を選んでください')} disabled={busy}
             className="px-3 py-1.5 text-sm rounded-md border border-brand-300 text-brand-700 hover:bg-brand-50 disabled:opacity-50">
