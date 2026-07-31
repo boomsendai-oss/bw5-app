@@ -347,6 +347,89 @@ const KF_PRESET_LIST = [
 ];
 
 /**
+ * 追従(主役の位置)の指定UI。スライダーで細かく決められるようにした(TARO 2026-07-31)。
+ * プリセット5段だけだと「0.3くらい」が指定できず、自由入力は数式を覚える必要があったため。
+ *   固定 … クリップ中ずっと同じ位置(0=左端〜1=右端) → "0=0.55" 形式
+ *   移動 … 開始位置から終了位置へ直線的にパン(人が横に動く演目用) → "0=a,{尺}=b" 形式
+ */
+function StageKfControl({ kf, setKf, clipLen }: { kf: string; setKf: (v: string) => void; clipLen: number }) {
+  const parsed = kf.split(',').map((p) => Number(p.split('=')[1])).filter((n) => Number.isFinite(n));
+  const isPan = parsed.length >= 2;
+  const [mode, setMode] = useState<'fix' | 'pan'>(isPan ? 'pan' : 'fix');
+  const a = parsed[0] ?? 0.5;
+  const b = parsed[parsed.length - 1] ?? 0.5;
+  const r2 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 100) / 100;
+  const endSec = Math.max(1, Math.round(clipLen));
+
+  const setFix = (v: number) => setKf(`0=${r2(v)}`);
+  const setPan = (from: number, to: number) => setKf(`0=${r2(from)},${endSec}=${r2(to)}`);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-navy-500">追従（主役の位置）</span>
+        <div className="flex gap-1">
+          {(['fix', 'pan'] as const).map((m) => (
+            <button key={m}
+              onClick={() => { setMode(m); if (m === 'fix') setFix(a); else setPan(a, b); }}
+              className={`px-2.5 py-1 text-[11px] rounded-md border ${mode === m ? 'bg-navy-700 text-white border-navy-700' : 'border-navy-200 text-navy-600 bg-white'}`}>
+              {m === 'fix' ? '固定' : '移動（パン）'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-5 gap-1 mt-1.5">
+        {KF_PRESET_LIST.map((p) => {
+          const v = Number(p.v.split('=')[1]);
+          const active = mode === 'fix' && Math.abs(a - v) < 0.001;
+          return (
+            <button key={p.v} onClick={() => { setMode('fix'); setFix(v); }}
+              className={`min-h-[44px] text-[11px] rounded-md border ${active ? 'bg-brand-600 text-white border-brand-600' : 'border-navy-200 text-navy-600 bg-white'}`}>
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {mode === 'fix' ? (
+        <div className="mt-2">
+          <div className="flex items-center justify-between text-[11px] text-navy-500">
+            <span>左端</span><span className="font-semibold text-navy-700">{a.toFixed(2)}</span><span>右端</span>
+          </div>
+          <input type="range" min={0} max={1} step={0.01} value={a}
+            onChange={(e) => setFix(Number(e.target.value))} className="w-full accent-brand-600" />
+        </div>
+      ) : (
+        <div className="mt-2 space-y-2">
+          <div>
+            <div className="flex items-center justify-between text-[11px] text-navy-500">
+              <span>開始の位置</span><span className="font-semibold text-navy-700">{a.toFixed(2)}</span>
+            </div>
+            <input type="range" min={0} max={1} step={0.01} value={a}
+              onChange={(e) => setPan(Number(e.target.value), b)} className="w-full accent-brand-600" />
+          </div>
+          <div>
+            <div className="flex items-center justify-between text-[11px] text-navy-500">
+              <span>終わりの位置</span><span className="font-semibold text-navy-700">{b.toFixed(2)}</span>
+            </div>
+            <input type="range" min={0} max={1} step={0.01} value={b}
+              onChange={(e) => setPan(a, Number(e.target.value))} className="w-full accent-brand-600" />
+          </div>
+          <p className="text-[10px] text-navy-400">主役が横に動く演目向け。開始→終わりへゆっくりパンします</p>
+        </div>
+      )}
+
+      <input value={kf} onChange={(e) => setKf(e.target.value)}
+        className="w-full mt-1.5 border border-sand-300 rounded-md px-2 py-1 text-xs text-navy-800" />
+      <p className="text-[10px] text-navy-400 mt-0.5">
+        直接入力も可: 「秒=横位置」をカンマ区切り（例 0=0.5,10=0.3）。0=左端〜1=右端
+      </p>
+    </div>
+  );
+}
+
+/**
  * 発表会リールの「切り出し＋追従」調整パネル(スマホ完結・TARO 2026-07-31)。
  * 元素材の何秒〜何秒を使っているかを見せ、±0.5/±1秒で微調整→ワンボタンで作り直す。
  * 作り直しは本編を焼き直す工程なのでSSDが要る。未接続なら「接続待ち」で保留され、挿すと自動で走る。
@@ -426,22 +509,7 @@ function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
             長さ {len.toFixed(1)}秒{lenNg ? '（3〜90秒にしてください）' : ''}
           </p>
 
-          <div>
-            <span className="text-[11px] text-navy-500">追従（主役の位置）</span>
-            <div className="grid grid-cols-5 gap-1 mt-1">
-              {KF_PRESET_LIST.map((p) => (
-                <button key={p.v} onClick={() => setKf(p.v)}
-                  className={`min-h-[44px] text-[11px] rounded-md border ${kf === p.v ? 'bg-brand-600 text-white border-brand-600' : 'border-navy-200 text-navy-600 bg-white'}`}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <input value={kf} onChange={(e) => setKf(e.target.value)}
-              className="w-full mt-1.5 border border-sand-300 rounded-md px-2 py-1 text-xs text-navy-800" />
-            <p className="text-[10px] text-navy-400 mt-0.5">
-              途中で追う位置を動かす: 「秒=横位置」をカンマ区切り（例 0=0.5,10=0.3）。0=左端〜1=右端
-            </p>
-          </div>
+          <StageKfControl kf={kf} setKf={setKf} clipLen={len} />
 
           <button disabled={busy || lenNg || !dirty} onClick={recut}
             className="w-full min-h-[48px] text-sm font-semibold rounded-md bg-navy-700 text-white disabled:opacity-40">
