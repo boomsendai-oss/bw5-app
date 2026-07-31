@@ -26,6 +26,33 @@ const isStage = (kind: unknown) => kind === '発表会' || kind === 'stage';
 /** 主役位置(キーフレーム)の書式検証。「秒=横位置(0〜1)」をカンマ区切り。例 0=0.5 / 0=0.5,10=0.3 */
 const KF_RE = /^\d+(\.\d+)?=(0(\.\d+)?|1(\.0+)?)(,\d+(\.\d+)?=(0(\.\d+)?|1(\.0+)?))*$/;
 
+/**
+ * 発表会リールの自動キャプション。Mac側 reel_pipeline.mjs の buildStageCaption と同じ型。
+ * 「自動文面に戻す」を review 状態で押しても即座に文面が入るようにサーバ側でも組む
+ * (投稿直前に生成される訳ではないため、空のまま予約されるのを防ぐ)。
+ */
+async function buildStageCaption(title: string, instructor: string | null, className: string | null): Promise<string> {
+  const tags = '#仙台ダンススクール #ダンススクール #ストリートダンス #仙台 #ダンス発表会 #仙台ダンス #ダンス好きな人と繋がりたい';
+  let handle = '';
+  if (instructor) {
+    const who = instructor.trim().toUpperCase();
+    const rows = await getAll('SELECT name, instagram_handle FROM instructors');
+    const hit = rows.find((r) => String(r.name).trim().toUpperCase() === who)
+      ?? rows.find((r) => String(r.name).trim().toUpperCase().includes(who) || who.includes(String(r.name).trim().toUpperCase()));
+    if (hit?.instagram_handle) handle = String(hit.instagram_handle).trim();
+  }
+  return [
+    `【BOOM WOP vol.5】${title} 🕺`,
+    className
+      ? `仙台のダンススクールBOOM「${className}」クラスによるステージナンバーです。`
+      : '仙台のダンススクールBOOMの発表会ステージナンバーです。',
+    handle ? `講師：@${handle}` : null,
+    '体験・受講の相談はプロフィールの公式LINEから',
+    '',
+    tags,
+  ].filter((l) => l !== null).join('\n');
+}
+
 /** 見せ場の秒指定を検証し、問題があればエラー文を返す(問題なければ null) */
 function validateCut(start: number, end: number): string | null {
   if (!Number.isFinite(start) || !Number.isFinite(end)) return '開始秒・終了秒を数値で入力してください';
@@ -223,14 +250,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, dance_start: ds, dance_end: de, stage_kf: kf, status: 'ready' });
   }
 
-  // キャプションを自動文面に戻す(手直しをやめたい時)。次の生成時に作り直される。
+  // キャプションを自動文面に戻す(手直しをやめたい時)。
+  // ⚠️ NULLにするだけだと、生成の機会が無い review 状態では空のまま予約できてしまい
+  // 「キャプション無しで投稿」事故になる。ここで自動文面を組んで即座に書き戻す。
   if (body.action === 'reset_caption') {
     const id = Number(body.id);
     if (!Number.isFinite(id)) return NextResponse.json({ error: 'id required' }, { status: 400 });
-    const d = await getOne('SELECT reel_queue_id, status FROM reel_draft WHERE id = ?', [id]);
+    const d = await getOne('SELECT * FROM reel_draft WHERE id = ?', [id]);
     if (!d) return NextResponse.json({ error: 'not found' }, { status: 404 });
-    await execute('UPDATE reel_draft SET caption = NULL, updated_at = ? WHERE id = ?', [now, id]);
-    return NextResponse.json({ ok: true, note: '次の生成でキャプションが作り直されます' });
+    if (!isStage(d.kind)) {
+      return NextResponse.json({ error: '自動文面に戻せるのは発表会リールのみです' }, { status: 400 });
+    }
+    const caption = await buildStageCaption(
+      String(d.class_name || d.drive_name || '発表会'),
+      d.instructor ? String(d.instructor) : null,
+      d.daytime ? String(d.daytime) : null
+    );
+    await execute('UPDATE reel_draft SET caption = ?, updated_at = ? WHERE id = ?', [caption, now, id]);
+    // 予約済みなら実際に投稿される文面(reel_queue)にも反映する
+    if (d.reel_queue_id) {
+      const q = await getOne('SELECT status FROM reel_queue WHERE id = ?', [d.reel_queue_id]);
+      if (q && q.status === 'scheduled') {
+        await execute('UPDATE reel_queue SET caption = ? WHERE id = ?', [caption, d.reel_queue_id]);
+      }
+    }
+    return NextResponse.json({ ok: true, caption });
   }
 
   // 投稿予約(手動GO): 投稿待ち(review)の完成リールを reel_queue に scheduled で投入する。
@@ -242,6 +286,13 @@ export async function POST(req: NextRequest) {
     if (!d) return NextResponse.json({ error: 'not found' }, { status: 404 });
     if (d.status !== 'review' || !d.reel_path) {
       return NextResponse.json({ error: '完成した投稿待ちリールのみ予約できます' }, { status: 400 });
+    }
+    // キャプション空のまま投稿されるのを構造的に防ぐ(文面なしの投稿は取り返しがつかない)
+    if (!String(d.caption ?? '').trim()) {
+      return NextResponse.json(
+        { error: 'キャプションが空です。文面を入れてから予約してください' },
+        { status: 400 }
+      );
     }
     let scheduledAt = nextReelSlotIso(String(d.kind ?? 'class'));
     if (body.scheduled_at) {
