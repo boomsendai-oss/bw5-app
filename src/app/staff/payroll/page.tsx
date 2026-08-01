@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { RefreshCw, Landmark, Upload, CheckCircle, Eye, Trash2, FolderOpen, Printer, Loader2, CalendarDays, ArrowUpFromLine, Check, Lock } from 'lucide-react';
+import { RefreshCw, Landmark, Upload, CheckCircle, Eye, Trash2, FolderOpen, Printer, Loader2, CalendarDays, ArrowUpFromLine, Check, Lock, Copy } from 'lucide-react';
 import { yen } from '@/lib/utils';
 import StaffPageHeader from '@/components/StaffPageHeader';
 
@@ -91,6 +91,9 @@ export default function PayrollPage() {
   // A-2: 給与計算の警告(単価未登録・実時間バケット代用・残置draft0円化)を表示するため保持
   const [warnings, setWarnings] = useState<{ instructor_name?: string; reason: string }[]>([]);
   const [err, setErr] = useState('');
+  // 配布後のLINE連絡文（一括アップロード成功後に表示）
+  const [showLineNotice, setShowLineNotice] = useState(false);
+  const [noticeCopied, setNoticeCopied] = useState(false);
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [adjForm, setAdjForm] = useState<{ type: string; amount: string; description: string }>({ type: 'event_bonus', amount: '', description: '' });
 
@@ -125,7 +128,7 @@ export default function PayrollPage() {
     }
   }, []);
 
-  useEffect(() => { load(ym); }, [ym, load]);
+  useEffect(() => { load(ym); setShowLineNotice(false); setNoticeCopied(false); }, [ym, load]);
 
   const calculate = async () => {
     showConfirm(
@@ -228,6 +231,29 @@ export default function PayrollPage() {
     );
   };
 
+  // 配布後に講師グループLINEへ送る連絡文（TARO運用の定型・変わるのは月だけ）
+  const lineNoticeText = (yearMonth: string) => {
+    const m = Number(yearMonth.slice(5, 7));
+    return `【${m}月分の稼動費明細を共有フォルダにアップしました】
+お世話様です🙌
+
+${m}月分の稼働費明細を各イントラの共有フォルダにアップしました。
+
+内容相違ありましたら遠慮なく連絡いただければと思います😊
+
+よろしくお願いします🙇`;
+  };
+
+  const copyLineNotice = async () => {
+    try {
+      await navigator.clipboard.writeText(lineNoticeText(ym));
+      setNoticeCopied(true);
+      setTimeout(() => setNoticeCopied(false), 2500);
+    } catch {
+      setErr('コピーに失敗しました。文面を選択して手動でコピーしてください。');
+    }
+  };
+
   const uploadAll = async () => {
     showConfirm(
       '一括アップロード',
@@ -242,6 +268,8 @@ export default function PayrollPage() {
         setBusy(false);
         await load(ym);
         alert(`アップロード完了: 成功 ${ok} / 失敗 ${ng}`);
+        // 全員成功したら、そのままLINE連絡文をコピーできる状態にする
+        if (ng === 0) setShowLineNotice(true);
       }
     );
   };
@@ -551,6 +579,21 @@ export default function PayrollPage() {
                 )}
                 <p className="text-[11px] text-sand-400 text-center mt-2">{heroNote}</p>
               </div>
+
+              {/* 配布後: 講師グループLINEへ送る連絡文をコピー */}
+              {(showLineNotice || phase === 'transfer') && (
+                <div className="rounded-2xl border border-emerald-300 bg-emerald-50/60 p-4">
+                  <div className="flex items-center gap-2 text-[11px] font-extrabold tracking-wider text-emerald-700">
+                    <span>配布のお知らせ</span>
+                  </div>
+                  <h3 className="text-base font-extrabold mt-1 text-navy-700">講師グループLINEに送る文</h3>
+                  <p className="text-[12px] text-slate-500 mt-1">コピーしてLINEに貼り付けてください。</p>
+                  <pre className="mt-2.5 whitespace-pre-wrap rounded-xl bg-white border border-emerald-200 p-3 text-[13px] leading-relaxed text-navy-700 font-sans">{lineNoticeText(ym)}</pre>
+                  <Button onClick={copyLineNotice} variant={noticeCopied ? 'secondary' : 'default'} className="w-full mt-2.5 h-12 font-extrabold">
+                    {noticeCopied ? <><Check className="size-4" />コピーしました</> : <><Copy className="size-4" />この文をコピー</>}
+                  </Button>
+                </div>
+              )}
 
               <div className="rounded-2xl border border-neutral-200 bg-white overflow-hidden">
                 {STEPS.map(s => {
