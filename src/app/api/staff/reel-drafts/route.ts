@@ -46,11 +46,53 @@ async function lessonSlotText(lessonMasterId: unknown): Promise<string | null> {
   return `${WD[Number(m.dw)]}曜 ${hhmm(m.st)}〜${m.et ? hhmm(m.et) : ''}`.trim();
 }
 
+/** どのクラスでも必ず付ける共通タグ */
+const BASE_TAGS = ['#仙台ダンススクール', '#ダンススクール', '#ストリートダンス', '#仙台', '#ダンス発表会', '#仙台ダンス', '#ダンス好きな人と繋がりたい'];
+
+/**
+ * クラス名から内容タグを足す(TARO 2026-08-01: ハッシュタグはクラスの内容によりけり)。
+ * ⚠️ BOOMはK-POPをやっていないので、K-POP系タグは絶対に足さない。
+ */
+function classTags(label: string | null): string[] {
+  const s = String(label ?? '').toUpperCase();
+  const out: string[] = [];
+  const add = (...t: string[]) => t.forEach((x) => { if (!out.includes(x)) out.push(x); });
+  if (/HIPHOP|HIP HOP|ヒップホップ/.test(s)) add('#ヒップホップ', '#HIPHOP');
+  if (/HOUSE|ハウス/.test(s)) add('#ハウスダンス', '#HOUSEDANCE');
+  if (/JAZZ|ジャズ/.test(s)) add('#ストリートジャズ', '#ジャズダンス');
+  if (/WAACK|ワック/.test(s)) add('#ワック', '#WAACKING');
+  if (/NJS|NEW JACK|ニュージャック/.test(s)) add('#ニュージャックスウィング', '#NEWJACKSWING');
+  if (/FREESTYLE|フリースタイル/.test(s)) add('#フリースタイル');
+  if (/GIRLS|ガールズ/.test(s)) add('#ガールズヒップホップ');
+  if (/入門|基礎|初級|はじめて|ベーシック|BASIC/.test(s)) add('#ダンス初心者歓迎');
+  if (/KIDS|キッズ|こども|子ども/.test(s)) add('#キッズダンス');
+  if (/多賀城/.test(s)) add('#多賀城');
+  if (/長町/.test(s)) add('#長町');
+  if (/七ヶ浜/.test(s)) add('#七ヶ浜');
+  return out;
+}
+
+/**
+ * 発表会リールのキャプション。**この並び・改行位置が正本**(TARO 2026-08-01確定)。
+ *   【BOOM WOP vol.5】演目名 🕺
+ *   (空行)
+ *   仙台のダンススクールBOOM「クラス名」クラスによるステージナンバー。
+ *   (空行)
+ *   📍曜日 時間
+ *   🕺講師：@handle
+ *   (空行)
+ *   CAST : @… @…
+ *   (空行)
+ *   体験レッスンは無料。…
+ *   (空行)
+ *   #タグ(共通 + クラス内容ごと)
+ * 曜日/時間と講師は「/」で1行にまとめず、必ず別行にする。
+ */
 async function buildStageCaption(
   title: string, instructor: string | null, className: string | null, lessonMasterId?: unknown,
   mentionHandles?: unknown
 ): Promise<string> {
-  const tags = '#仙台ダンススクール #ダンススクール #ストリートダンス #仙台 #ダンス発表会 #仙台ダンス #ダンス好きな人と繋がりたい';
+  const tags = [...BASE_TAGS, ...classTags(className)].join(' ');
   let handle = '';
   if (instructor) {
     const who = instructor.trim().toUpperCase();
@@ -62,16 +104,17 @@ async function buildStageCaption(
   // クラスの曜日・時間を入れる(TARO 2026-07-31: 見た人が「いつ行けばいいか」まで分かる方が効く)。
   // 時間はレッスンマスターから引くので、時間割が変われば次の生成から自動で新しくなる。
   const slot = await lessonSlotText(lessonMasterId);
-  const info = [slot ? `📍${slot}` : null, handle ? `講師：@${handle}` : null].filter(Boolean).join(' / ');
   const { handles: mentions } = normalizeHandles(mentionHandles);
   const cast = mentions.length ? `CAST : ${mentions.map((h) => `@${h}`).join(' ')}` : null;
   return [
     `【BOOM WOP vol.5】${title} 🕺`,
+    '',
     className
-      ? `仙台のダンススクールBOOM「${className}」クラスによるステージナンバーです。`
-      : '仙台のダンススクールBOOMの発表会ステージナンバーです。',
-    info ? '' : null,
-    info || null,
+      ? `仙台のダンススクールBOOM「${className}」クラスによるステージナンバー。`
+      : '仙台のダンススクールBOOMの発表会ステージナンバー。',
+    slot || handle ? '' : null,
+    slot ? `📍${slot}` : null,
+    handle ? `🕺講師：@${handle}` : null,
     cast ? '' : null,
     cast,
     '',
