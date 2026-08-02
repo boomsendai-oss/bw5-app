@@ -1,0 +1,37 @@
+# リールの他SNS横展開 (YouTube Shorts / X) cron
+# 毎日 JST 20:00 = UTC 11:00 に1回。Instagram公開済み(reel_queue.status='posted')の
+# リールを1件だけ二次配信する。
+#
+# 20:00 なのは、リール本体の投稿(19:00 JST / instagram-reel-cron.yml)が
+# 確実に終わってから走らせるため。
+#
+# **1回の実行で1件だけ**なので、1日1回で十分(かつ1回が上限)。
+# Xの無料枠は /initialize + /append + /finalize が24時間で計17リクエストしかなく、
+# 30MB級の動画1本で約10リクエストを使う。1日に2本流すと2本目が途中で落ちる。
+#
+# env未設定のプラットフォームは route 側で skipped になるだけで、失敗にはならない。
+# 後から env が入れば pending へ戻る (classifyByEnabled)。
+name: crosspost-reel-cron
+
+on:
+  schedule:
+    # 20:00 JST目標。GH Actionsは0/20/40分に大遅延するため空いている分を使う。
+    - cron: '17 11 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Call /api/cron/crosspost-reel
+        run: |
+          set -e
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            --max-time 600 \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/crosspost-reel)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1
