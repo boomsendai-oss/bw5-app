@@ -25,6 +25,7 @@ import {
   Megaphone,
   Hash,
   Sparkles,
+  TrendingUp,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -92,6 +93,7 @@ const opsNavItems: NavItem[] = [
   { title: '休講申請', href: '/staff/cancel-requests', icon: XCircle },
   { title: 'クチコミ返信', href: '/staff/gbp-reviews', icon: Star },
   { title: 'クチコミ声がけ', href: '/staff/review-outreach', icon: Megaphone },
+  { title: 'SEO順位', href: '/staff/seo', icon: TrendingUp },
   { title: 'イベント', href: '/staff/events', icon: PartyPopper },
 ];
 
