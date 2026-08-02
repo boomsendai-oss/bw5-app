@@ -489,7 +489,7 @@ export default function InstagramStoryPage() {
     <div>
       <StaffPageHeader
         title="インスタ自動投稿"
-        description="ストーリーズ=毎朝8:00に今日の素材を自動投稿。リール=予約日時（基本 毎日19:00枠）にサーバー側cronが自動公開"
+        description="ストーリーズ=毎朝8時台に今日の素材を自動投稿。リール=予約日時（基本 毎日19:00枠）にサーバー側cronが自動公開"
         backHref="/staff"
       />
       <div className="max-w-2xl mx-auto p-4 space-y-4">
