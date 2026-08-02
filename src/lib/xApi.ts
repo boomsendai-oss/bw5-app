@@ -207,3 +207,114 @@ export async function postTweet(
   }
   return id;
 }
+
+// ---- 動画アップロード (チャンク方式) ----
+// リールを X へ横展開するために使う。画像の simple upload とは別APIが必要。
+//
+// 採用API: X API v2 チャンクアップロード
+//   POST /2/media/upload/initialize      {media_type, total_bytes, media_category}
+//   POST /2/media/upload/{id}/append     multipart: media=バイナリ, segment_index=N
+//   POST /2/media/upload/{id}/finalize
+//   GET  /2/media/upload?media_id={id}   処理完了までポーリング
+//   出典: https://docs.x.com/x-api/media/quickstart/media-upload-chunked
+//
+// ⚠️ 無料枠のレート制限が厳しい: /initialize と /finalize が **24時間で17回**、
+//    /append も同じ枠を消費する。1本あたり INIT 1 + APPEND n + FINALIZE 1 なので、
+//    5MBチャンクなら20MBの動画で約6回。**1日1〜2本が現実的な上限**。
+//    リールは1日1本なので足りるが、リトライを重ねると枯れる点に注意
+//    (crosspost.ts の MAX_ATTEMPTS=3 と「1実行1件」はこの制限に合わせている)。
+
+/** APPEND 1回あたりのチャンクサイズ。X の上限は5MBなので少し下げて4MB */
+export const X_VIDEO_CHUNK_BYTES = 4 * 1024 * 1024;
+/** 動画の上限 512MB / 140秒 (X仕様)。リールは十分収まる */
+export const X_VIDEO_MAX_BYTES = 512 * 1024 * 1024;
+
+/** チャンクアップロードの必要リクエスト数を見積もる(レート制限の事前判断用) */
+export function estimateChunkRequests(byteLength: number): number {
+  return 1 + Math.ceil(byteLength / X_VIDEO_CHUNK_BYTES) + 1; // INIT + APPEND* + FINALIZE
+}
+
+async function xJson(
+  method: 'POST' | 'GET',
+  url: string,
+  creds: XCredentials,
+  init?: { json?: unknown; form?: FormData }
+): Promise<Record<string, unknown>> {
+  const headers: Record<string, string> = {
+    Authorization: buildOAuthHeader(method, url, creds),
+  };
+  let body: BodyInit | undefined;
+  if (init?.json !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    body = JSON.stringify(init.json);
+  } else if (init?.form) {
+    // multipart は Content-Type を fetch に任せる(boundary付与のため)
+    body = init.form;
+  }
+  const res = await fetch(url, { method, headers, body });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`X media ${method} ${res.status}: ${raw.slice(0, 300)}`);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    throw new Error(`X media: 非JSONレスポンス: ${raw.slice(0, 200)}`);
+  }
+}
+
+/**
+ * 動画をチャンクアップロードして media id を返す。ツイートは作らない。
+ * 失敗は throw。処理待ちは最大 waitMs までポーリングする。
+ */
+export async function uploadVideo(
+  bytes: Uint8Array,
+  creds: XCredentials = getXCredentials(),
+  opts?: { waitMs?: number; sleep?: (ms: number) => Promise<void> }
+): Promise<string> {
+  if (bytes.byteLength === 0) throw new Error('動画データが空です');
+  if (bytes.byteLength > X_VIDEO_MAX_BYTES) {
+    throw new Error(`動画が512MB上限を超過 (${bytes.byteLength} bytes)`);
+  }
+  const sleep = opts?.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const waitMs = opts?.waitMs ?? 120_000;
+
+  // 1. INITIALIZE
+  const init = await xJson('POST', `${MEDIA_UPLOAD_URL}/initialize`, creds, {
+    json: {
+      media_type: 'video/mp4',
+      total_bytes: bytes.byteLength,
+      media_category: 'tweet_video',
+    },
+  });
+  const mediaId = String((init.data as { id?: string | number } | undefined)?.id ?? '');
+  if (!mediaId) throw new Error(`X media initialize: media idが無い`);
+
+  // 2. APPEND
+  let segment = 0;
+  for (let off = 0; off < bytes.byteLength; off += X_VIDEO_CHUNK_BYTES) {
+    const chunk = bytes.slice(off, off + X_VIDEO_CHUNK_BYTES);
+    const form = new FormData();
+    form.append('media', new Blob([chunk], { type: 'video/mp4' }), 'chunk');
+    form.append('segment_index', String(segment));
+    await xJson('POST', `${MEDIA_UPLOAD_URL}/${mediaId}/append`, creds, { form });
+    segment++;
+  }
+
+  // 3. FINALIZE — 動画は非同期処理に入るので processing_info を見る
+  const fin = await xJson('POST', `${MEDIA_UPLOAD_URL}/${mediaId}/finalize`, creds);
+  let info = (fin.data as { processing_info?: { state?: string; check_after_secs?: number } })
+    ?.processing_info;
+
+  // 4. 処理完了までポーリング
+  const deadline = Date.now() + waitMs;
+  while (info && info.state !== 'succeeded') {
+    if (info.state === 'failed') throw new Error(`X media 処理失敗: ${JSON.stringify(info)}`);
+    if (Date.now() >= deadline) throw new Error('X media 処理がタイムアウト');
+    await sleep(Math.max(1, info.check_after_secs ?? 5) * 1000);
+    const st = await xJson('GET', `${MEDIA_UPLOAD_URL}?media_id=${mediaId}`, creds);
+    info = (st.data as { processing_info?: { state?: string; check_after_secs?: number } })
+      ?.processing_info;
+  }
+
+  return mediaId;
+}
