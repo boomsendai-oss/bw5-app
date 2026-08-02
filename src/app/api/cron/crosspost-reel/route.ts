@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getAll, getOne } from '@/lib/db';
 import { nowUtcIso } from '@/lib/dateJst';
-import { buildXText, buildYouTubeMeta, pickNext, CROSSPOST_PLATFORMS, type CrosspostRow } from '@/lib/crosspost';
+import {
+  buildXText,
+  buildYouTubeMeta,
+  pickNext,
+  classifyByEnabled,
+  CROSSPOST_PLATFORMS,
+  type CrosspostRow,
+} from '@/lib/crosspost';
 import { configured as ytConfigured, uploadShort } from '@/lib/youtube';
 import { xConfigured, uploadVideo, postTweet, estimateChunkRequests } from '@/lib/xApi';
 
@@ -18,7 +25,8 @@ export const maxDuration = 300;
 //  - 配信先ごとに reel_crossposts の行を持ち、状態は独立して進む。
 //    YouTubeが失敗してもXは進むし、その逆も同じ。
 //  - claim (UPDATE ... WHERE status IN ('pending','failed')) で多重発火から保護。
-//  - env未設定のプラットフォームは 'skipped' にして永久に再試行しない。
+//  - env未設定のプラットフォームは 'skipped' にして無駄な再試行を止める。
+//    ただし env が入ったら pending へ戻す(投入順とenv設定順に依存させない)。
 //
 // 認証: post-reel / post-story と同じパターン。
 function cronAuthorized(req: NextRequest): boolean {
@@ -57,31 +65,42 @@ export async function POST(req: NextRequest) {
   const now = nowUtcIso();
   const added = await enqueueMissing(now);
 
+  // skipped も読む。envが後から入った時に pending へ戻すため(classifyByEnabled)
   const rows = (await getAll(
     `SELECT id, reel_id, platform, status, attempts FROM reel_crossposts
-     WHERE status IN ('pending', 'failed')`
+     WHERE status IN ('pending', 'failed', 'skipped')`
   )) as CrosspostRow[];
 
-  // env未設定のプラットフォームは対象から外し、DB上も skipped にして無駄な再試行を止める
   const enabled = new Set<string>();
   if (ytConfigured()) enabled.add('youtube');
   if (xConfigured()) enabled.add('x');
-  const disabled = rows.filter((r) => !enabled.has(r.platform));
-  for (const r of disabled) {
+  const { toSkip, toRevive, actionable } = classifyByEnabled(rows, enabled);
+
+  // env未設定のプラットフォームは skipped にして無駄な再試行を止める
+  for (const r of toSkip) {
     await execute(
       `UPDATE reel_crossposts SET status='skipped', error=?, updated_at=? WHERE id=?`,
       [`${r.platform} の連携envが未設定`, now, r.id]
     );
   }
+  // envが入ったら pending へ戻す。attempts も 0 に戻す —
+  // 止まっていた理由はリールの中身ではなく env なので、試行回数を持ち越さない
+  for (const r of toRevive) {
+    await execute(
+      `UPDATE reel_crossposts SET status='pending', attempts=0, error=NULL, updated_at=? WHERE id=?`,
+      [now, r.id]
+    );
+  }
 
-  const target = pickNext(rows.filter((r) => enabled.has(r.platform)));
+  const target = pickNext(actionable);
   if (!target) {
     return NextResponse.json({
       ok: true,
       posted: false,
       added,
-      skipped: disabled.length,
-      note: '配信対象なし',
+      skipped: toSkip.length,
+      revived: toRevive.length,
+      note: toRevive.length > 0 ? '復活した行を次回実行で処理します' : '配信対象なし',
     });
   }
 

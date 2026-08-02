@@ -7,6 +7,8 @@ import {
   X_TEXT_MAX,
   YT_TITLE_MAX,
   MAX_ATTEMPTS,
+  classifyByEnabled,
+  type CrosspostRow,
 } from '../crosspost';
 
 describe('splitCaption', () => {
@@ -140,5 +142,64 @@ describe('pickNext', () => {
 
   it('対象が無ければ null', () => {
     expect(pickNext([])).toBeNull();
+  });
+
+  it('同条件なら新しいリール(reel_id が大きい方)を先に出す', () => {
+    const got = pickNext([
+      row({ id: 1, reel_id: 1 }),
+      row({ id: 2, reel_id: 7 }),
+      row({ id: 3, reel_id: 4 }),
+    ]);
+    expect(got?.reel_id).toBe(7);
+  });
+
+  it('同じリール内では配信先の順序が安定している(id昇順)', () => {
+    const got = pickNext([
+      row({ id: 9, reel_id: 7, platform: 'x' }),
+      row({ id: 8, reel_id: 7, platform: 'youtube' }),
+    ]);
+    expect(got?.id).toBe(8);
+  });
+});
+
+describe('classifyByEnabled', () => {
+  const row = (o: Partial<CrosspostRow>): CrosspostRow => ({
+    id: 1,
+    reel_id: 1,
+    platform: 'youtube',
+    status: 'pending',
+    attempts: 0,
+    ...o,
+  });
+
+  it('envが未設定のプラットフォームの行は skip 対象になる', () => {
+    const r = row({ id: 1, platform: 'youtube', status: 'pending' });
+    const out = classifyByEnabled([r], new Set(['x']));
+    expect(out.toSkip.map((x) => x.id)).toEqual([1]);
+    expect(out.actionable).toEqual([]);
+  });
+
+  it('すでに skipped の行は再度 skip しない(無駄な更新を打たない)', () => {
+    const r = row({ id: 1, platform: 'youtube', status: 'skipped' });
+    expect(classifyByEnabled([r], new Set(['x'])).toSkip).toEqual([]);
+  });
+
+  it('envが入ったプラットフォームの skipped は復活対象になる', () => {
+    const r = row({ id: 1, platform: 'youtube', status: 'skipped', attempts: 2 });
+    const out = classifyByEnabled([r], new Set(['youtube']));
+    expect(out.toRevive.map((x) => x.id)).toEqual([1]);
+    // 復活直後は actionable に含めない(DB更新後の次回実行で拾う)
+    expect(out.actionable).toEqual([]);
+  });
+
+  it('enabled かつ pending/failed はそのまま処理対象', () => {
+    const rows = [
+      row({ id: 1, platform: 'x', status: 'pending' }),
+      row({ id: 2, platform: 'x', status: 'failed', attempts: 1 }),
+    ];
+    const out = classifyByEnabled(rows, new Set(['x']));
+    expect(out.actionable.map((x) => x.id)).toEqual([1, 2]);
+    expect(out.toSkip).toEqual([]);
+    expect(out.toRevive).toEqual([]);
   });
 });

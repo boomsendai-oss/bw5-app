@@ -119,10 +119,58 @@ export function pickNext(rows: CrosspostRow[]): CrosspostRow | null {
     (r) => r.status === 'pending' || (r.status === 'failed' && r.attempts < MAX_ATTEMPTS)
   );
   if (candidates.length === 0) return null;
-  // pending を先に、次に試行回数の少ないもの
+  // pending を先に、次に試行回数の少ないもの、次に**新しいリールから**。
+  // reel_id で明示的に並べるのは、SQLに ORDER BY が無いと「どのリールが最初に
+  // 公開されるか」が実行ごとに変わってしまうため(初回は過去分がまとめて対象になる)。
+  // 新しい順にするのは、いま出して価値があるのは直近のリールだから。
   candidates.sort((a, b) => {
     if (a.status !== b.status) return a.status === 'pending' ? -1 : 1;
-    return a.attempts - b.attempts;
+    if (a.attempts !== b.attempts) return a.attempts - b.attempts;
+    if (a.reel_id !== b.reel_id) return b.reel_id - a.reel_id;
+    return a.id - b.id;
   });
   return candidates[0];
+}
+
+export type ClassifiedRows = {
+  /** env未設定なので skipped にする行 */
+  toSkip: CrosspostRow[];
+  /** envが入ったので pending に戻す行 */
+  toRevive: CrosspostRow[];
+  /** そのまま pickNext に渡してよい行 */
+  actionable: CrosspostRow[];
+};
+
+/**
+ * envの設定状況で行を仕分ける。
+ *
+ * `skipped` を**復活させる**のが要点。env未設定のプラットフォームは skipped にして
+ * 無駄な再試行を止めるが、これを永続にすると「YouTubeのトークンを後から入れたのに
+ * 既存のリールが1本も上がらない」という無言の穴になる
+ * (enqueueMissing は INSERT OR IGNORE なので行は作り直されない)。
+ * env が入った時点で pending に戻し、投入とenv設定の順序に依存しないようにする。
+ *
+ * 復活した行は actionable に含めない。DBを pending に更新したうえで、次回の実行で
+ * 通常の経路(pickNext)から拾わせる — 復活と投稿を同じ実行に混ぜない。
+ */
+export function classifyByEnabled(
+  rows: CrosspostRow[],
+  enabled: Set<string>
+): ClassifiedRows {
+  const toSkip: CrosspostRow[] = [];
+  const toRevive: CrosspostRow[] = [];
+  const actionable: CrosspostRow[] = [];
+  for (const r of rows) {
+    if (!enabled.has(r.platform)) {
+      // すでに skipped なら触らない(毎回UPDATEを打たない)
+      if (r.status !== 'skipped') toSkip.push(r);
+      continue;
+    }
+    if (r.status === 'skipped') {
+      toRevive.push(r);
+      continue;
+    }
+    actionable.push(r);
+  }
+  return { toSkip, toRevive, actionable };
 }
