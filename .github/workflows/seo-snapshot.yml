@@ -1,0 +1,33 @@
+# SEO順位・GBPパフォーマンスの記録 (WS AC)
+#
+# 週1回。毎週月曜 JST 6:00 = UTC 日曜 21:00。
+# 順位は日々の揺れが大きく、毎日測っても判断材料が増えないので週次で十分。
+# (GSCのデータ確定も2〜3日遅れるため、日次にする意味がない)
+#
+# 2つのソースを取りに行くが、どちらもまだ有効化待ちの期間がある:
+#   - GBPパフォーマンス … Google CloudでAPIを有効化すれば動く(再認可は不要)
+#   - Search Console  … ドメイン移管の完了 + webmasters.readonly の認可が必要
+# 未設定でもルート側は 200 を返し、レスポンスに理由を入れて返す設計なので、
+# ここでは 200 以外だけを失敗として扱う。
+name: seo-snapshot
+
+on:
+  schedule:
+    - cron: '0 21 * * 0'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/seo-snapshot
+        run: |
+          set -e
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/seo-snapshot)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1

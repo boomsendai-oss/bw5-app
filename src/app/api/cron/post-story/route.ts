@@ -3,7 +3,8 @@ import { execute, getOne, getAll } from '@/lib/db';
 import { todayJst, weekdayJst, nowUtcIso } from '@/lib/dateJst';
 import { configured as igConfigured, publishStoryVideo, publishStoryImage, refreshTokenIfStale } from '@/lib/instagram';
 import { pickNextQueueItem, markQueueItemPosted } from '@/lib/storyQueue';
-import { WEEKDAY_FILES, findChainMediaList, loadSidecar, checkSchedule, resolveMentions } from '@/lib/storyPlan';
+import { WEEKDAY_FILES, findChainMediaList, loadSidecar, checkSchedule, resolveMentions, type ChainMedia } from '@/lib/storyPlan';
+import { getDayPlan } from '@/lib/storyDayPlan';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -102,11 +103,27 @@ export async function POST(req: NextRequest) {
 
   const origin = SITE_ORIGIN; // 常に安定した本番エイリアスから素材URLを作る(origin差による二重投稿を防ぐ)
 
+  // その日だけの指示(TARO 2026-08-03)。アプリで「この日は出さない」「これを出す」と決めたら
+  // 自動選択より優先する。プレビュー画面(/staff/instagram)も同じ関数を見るので表示と実際が必ず一致する。
+  const dayPlan = await getDayPlan(date);
+  if (dayPlan?.mode === 'skip') {
+    await logResult(date, weekday, null, 'skipped_by_user', undefined, dayPlan.note ?? undefined);
+    return NextResponse.json({ ok: true, posted: false, note: `${date} はアプリで「投稿しない」に設定されています` });
+  }
+
   // 素材の選択(作り置きをTAROが用意・Claudeは選んで出すだけ。無ければ出さない=ブレーキ):
-  //   ①日付指定 → ②曜日デフォルト → ③承認済み埋め草キュー → ④出さない。
+  //   ⓪その日の指定(pin) → ①日付指定 → ②曜日デフォルト → ③承認済み埋め草キュー → ④出さない。
   // 1日複数本対応: {base}-2.jpg 等の連番があれば朝8:00に順番に連続投稿する(例: 土曜の朝の部+午後の部)。
   // 選択ロジック本体は storyPlan.ts (「明日の投稿予定」プレビューと共用)。
-  const mediaList = await findChainMediaList(origin, date, weekday);
+  // pin はTAROが目で見て選んだものなので、カレンダー照合はかけずそのまま出す。
+  const mediaList: ChainMedia[] = dayPlan?.mode === 'pin' && dayPlan.mediaPath
+    ? [{
+        url: `${origin}${dayPlan.mediaPath}`,
+        type: dayPlan.mediaType === 'video' ? 'video' : 'image',
+        base: `pin:${date}`,
+        source: 'date-file',
+      }]
+    : await findChainMediaList(origin, date, weekday);
 
   if (mediaList.length > 0) {
     const results: Array<Record<string, unknown>> = [];
@@ -133,9 +150,12 @@ export async function POST(req: NextRequest) {
       }
 
       // library-auto は台帳(manifest)由来の宣言/メンションをmediaが直接持つ(sidecar {base}.json は無い)
-      const sidecar = media.source === 'library-auto'
-        ? { lessons: media.lessons, mentions: media.mentions }
-        : await loadSidecar(origin, media.base);
+      // pin(その日の指定)はTAROが目で選んだ1本。sidecarもカレンダー照合も無し。
+      const sidecar = media.base.startsWith('pin:')
+        ? { lessons: undefined, mentions: undefined }
+        : media.source === 'library-auto'
+          ? { lessons: media.lessons, mentions: media.mentions }
+          : await loadSidecar(origin, media.base);
 
       // 正本スケジュール照合: 正本=BOOMのGoogleカレンダー(TAROが直接編集)。
       // 宣言レッスンがカレンダーに揃っていなければ(休講・代講・時間変更)このスロットは出さない。

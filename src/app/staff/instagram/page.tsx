@@ -28,12 +28,28 @@ type QueueRow = {
   times_posted: number;
 };
 
+type DayPlanRow = {
+  date: string;
+  mode: 'skip' | 'pin';
+  mediaPath: string | null;
+  mediaType: 'image' | 'video' | null;
+  note: string | null;
+};
+
+type Candidate = {
+  group: '埋め草' | 'ライブラリ' | 'アップロード';
+  label: string;
+  mediaPath: string;
+  mediaType: 'image' | 'video';
+};
+
 type PlanItem = {
   base: string;
   mediaPath: string;
   mediaType: 'video' | 'image';
   mentions: string[];
   queueTitle?: string | null;
+  pinned?: boolean;
   scheduleCheck?:
     | { result: 'no-declaration' | 'match' | 'check-error'; actual?: string[]; error?: string }
     | { result: 'mismatch'; actual: string[]; declared: string[]; problems: string[] }
@@ -43,7 +59,10 @@ type PlanItem = {
 type Plan = {
   date: string;
   weekday: number;
-  source: 'date-file' | 'weekday-file' | 'queue' | 'none';
+  source: 'date-file' | 'weekday-file' | 'library-auto' | 'queue' | 'none';
+  // その日の結論(サーバ側でcronと同じ判定を通した結果)。画面はこれを最初に大きく出す。
+  verdict?: 'skip' | 'will-post' | 'blocked' | 'no-media';
+  dayPlan?: DayPlanRow | null;
   items: PlanItem[];
 };
 
@@ -73,21 +92,121 @@ function parseHandles(raw: string | null | undefined): string[] {
   }
 }
 
-function PlanDayRow({ plan, isToday, logs }: { plan: Plan; isToday: boolean; logs: LogRow[] }) {
+/** その日の結論バッジ。「本当に投稿されるのか」がひと目で分かることを最優先にする(TARO 2026-08-03)。 */
+function VerdictBadge({ plan, posted }: { plan: Plan; posted: boolean }) {
+  if (posted) {
+    return <span className="rounded-full bg-green-100 text-green-800 px-2.5 py-1 text-xs font-bold">✅ 投稿済み</span>;
+  }
+  const v = plan.verdict ?? (plan.items.length > 0 ? 'will-post' : 'no-media');
+  if (v === 'skip') {
+    return <span className="rounded-full bg-neutral-200 text-neutral-700 px-2.5 py-1 text-xs font-bold">⛔ 投稿しない</span>;
+  }
+  if (v === 'will-post') {
+    const n = plan.items.length;
+    return (
+      <span className="rounded-full bg-brand-100 text-brand-800 px-2.5 py-1 text-xs font-bold">
+        ✅ 投稿されます{n > 1 ? `（${n}本）` : ''}
+      </span>
+    );
+  }
+  if (v === 'blocked') {
+    return <span className="rounded-full bg-amber-100 text-amber-900 px-2.5 py-1 text-xs font-bold">⚠️ 投稿されません（カレンダー不一致）</span>;
+  }
+  return <span className="rounded-full bg-amber-100 text-amber-900 px-2.5 py-1 text-xs font-bold">⚠️ 投稿されません（素材なし）</span>;
+}
+
+function PlanDayRow({
+  plan, isToday, logs, candidates, busy, onSkip, onPin, onClear,
+}: {
+  plan: Plan;
+  isToday: boolean;
+  logs: LogRow[];
+  candidates: Candidate[];
+  busy: boolean;
+  onSkip: (date: string) => void;
+  onPin: (date: string, c: Candidate) => void;
+  onClear: (date: string) => void;
+}) {
+  const [picking, setPicking] = useState(false);
   const postedFor = (mediaPath: string) =>
     logs.some((l) => l.date === plan.date && l.status.startsWith('posted') && l.video_path?.endsWith(mediaPath));
+  const postedToday = logs.some((l) => l.date === plan.date && l.status.startsWith('posted'));
   return (
     <div className="border-t border-sand-100 pt-3 first:border-t-0 first:pt-0">
-      <p className="text-sm font-semibold text-navy-800 mb-1.5">
-        {plan.date.slice(5).replace('-', '/')}（{WEEKDAY_JA[plan.weekday]}）
-        {isToday && (
-          <span className="ml-1.5 rounded-full bg-brand-100 text-brand-700 px-2 py-0.5 text-[11px] font-semibold">本日</span>
-        )}
-        {plan.items.length > 1 && (
-          <span className="ml-2 text-xs font-normal text-neutral-400">{plan.items.length}本連続投稿</span>
-        )}
-      </p>
-      {plan.source === 'none' ? (
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <p className="text-sm font-semibold text-navy-800">
+          {plan.date.slice(5).replace('-', '/')}（{WEEKDAY_JA[plan.weekday]}）
+          {isToday && (
+            <span className="ml-1.5 rounded-full bg-brand-100 text-brand-700 px-2 py-0.5 text-[11px] font-semibold">本日</span>
+          )}
+        </p>
+        <VerdictBadge plan={plan} posted={postedToday} />
+      </div>
+
+      {/* 操作: 出さない / 出すものを選ぶ / 指定を取り消す。投稿済みの日は触っても意味がないので隠す */}
+      {!postedToday && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {plan.dayPlan ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onClear(plan.date)}
+              className="min-h-[36px] rounded-lg border border-sand-300 px-3 text-xs font-semibold text-navy-700 disabled:opacity-50"
+            >
+              指定をやめて自動に戻す
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onSkip(plan.date)}
+              className="min-h-[36px] rounded-lg border border-sand-300 px-3 text-xs font-semibold text-navy-700 disabled:opacity-50"
+            >
+              この日は投稿しない
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => setPicking((v) => !v)}
+            className="min-h-[36px] rounded-lg border border-brand-300 bg-brand-50 px-3 text-xs font-semibold text-brand-800 disabled:opacity-50"
+          >
+            {picking ? '閉じる' : '出すものを選ぶ'}
+          </button>
+        </div>
+      )}
+
+      {picking && (
+        <div className="mb-2 rounded-lg border border-sand-200 bg-sand-50 p-2 max-h-64 overflow-y-auto space-y-1">
+          {candidates.length === 0 && <p className="text-xs text-neutral-500">選べる素材がありません</p>}
+          {candidates.map((c) => (
+            <button
+              key={c.mediaPath}
+              type="button"
+              disabled={busy}
+              onClick={() => { onPin(plan.date, c); setPicking(false); }}
+              className="w-full text-left flex items-center gap-2 rounded-md bg-white border border-sand-200 px-2 py-1.5 disabled:opacity-50"
+            >
+              {c.mediaType === 'image' ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={c.mediaPath} alt="" className="w-7 h-11 object-cover rounded bg-neutral-100 shrink-0" />
+              ) : (
+                <video src={c.mediaPath} muted className="w-7 h-11 object-cover rounded bg-neutral-100 shrink-0" />
+              )}
+              <span className="text-xs min-w-0">
+                <span className="text-neutral-400">[{c.group}]</span>{' '}
+                <span className="text-navy-800 break-all">{c.label}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {plan.verdict === 'skip' ? (
+        <p className="text-xs text-neutral-600 bg-neutral-100 border border-neutral-200 rounded-lg px-2 py-1.5">
+          この日はアプリで「投稿しない」に設定されています（埋め草も出ません）
+        </p>
+      ) : plan.source === 'none' ? (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
           ⚠️ 素材なし — このままだと投稿されません
         </p>
@@ -105,7 +224,7 @@ function PlanDayRow({ plan, isToday, logs }: { plan: Plan; isToday: boolean; log
               </a>
               <div className="text-xs space-y-0.5 min-w-0">
                 <p className="text-navy-800 font-medium">
-                  {PLAN_SOURCE_JA[plan.source]}
+                  {item.pinned ? 'アプリで指定' : PLAN_SOURCE_JA[plan.source]}
                   {item.queueTitle ? `「${item.queueTitle}」` : ''}・{item.mediaType === 'image' ? '画像' : '動画'}
                 </p>
                 <p className="text-neutral-500 truncate">
@@ -188,6 +307,7 @@ function jstLabel(utcIso: string): string {
 const PLAN_SOURCE_JA: Record<Plan['source'], string> = {
   'date-file': '日付指定の素材',
   'weekday-file': '曜日の素材',
+  'library-auto': 'ライブラリ自動選択',
   queue: '埋め草キュー',
   none: '',
 };
@@ -278,6 +398,66 @@ export default function InstagramStoryPage() {
       }
     },
     [load]
+  );
+
+  // --- その日だけの指示(スキップ / 素材の指定 / アップロード) ---
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [dayBusy, setDayBusy] = useState(false);
+  const loadCandidates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/staff/instagram/day-plan', { credentials: 'include' });
+      if (res.ok) setCandidates((await res.json()).candidates ?? []);
+    } catch {
+      // 候補が取れなくても画面は使える
+    }
+  }, []);
+  useEffect(() => {
+    loadCandidates();
+  }, [loadCandidates]);
+
+  const dayPlanAction = useCallback(
+    async (body: Record<string, unknown>) => {
+      setDayBusy(true);
+      try {
+        const res = await fetch('/api/staff/instagram/day-plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => null);
+          throw new Error(j?.error ?? `HTTP ${res.status}`);
+        }
+        await load();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setDayBusy(false);
+      }
+    },
+    [load]
+  );
+
+  const uploadStoryMedia = useCallback(
+    async (file: File) => {
+      setDayBusy(true);
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/staff/instagram/day-plan', { method: 'PUT', credentials: 'include', body: fd });
+        if (!res.ok) {
+          const j = await res.json().catch(() => null);
+          throw new Error(j?.error ?? `HTTP ${res.status}`);
+        }
+        await loadCandidates();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : String(e));
+      } finally {
+        setDayBusy(false);
+      }
+    },
+    [loadCandidates]
   );
 
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -418,10 +598,37 @@ export default function InstagramStoryPage() {
         {data?.plans && tab === 'story' && (
           <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
             <h2 className="font-bold text-navy-800 mb-1">向こう1週間のストーリー予定</h2>
-            <p className="text-xs text-neutral-400 mb-3">毎朝8:00に自動投稿。素材の配置状況とGoogleカレンダー照合の結果です</p>
+            <p className="text-xs text-neutral-400 mb-3">
+              毎朝8:00頃に自動投稿（7:52 / 8:12 / 8:32 の3回試行。混雑時は9時前後にずれることがあります）
+            </p>
+            <label className="mb-3 flex items-center gap-2 text-xs text-navy-700">
+              <span className="rounded-lg border border-sand-300 px-3 py-2 font-semibold cursor-pointer">素材をアップロード</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
+                className="hidden"
+                disabled={dayBusy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadStoryMedia(f);
+                  e.target.value = '';
+                }}
+              />
+              <span className="text-neutral-400">上げたものは各日の「出すものを選ぶ」に出ます（8MBまで）</span>
+            </label>
             <div className="space-y-3">
               {data.plans.map((p, i) => (
-                <PlanDayRow key={p.date} plan={p} isToday={i === 0} logs={data.logs} />
+                <PlanDayRow
+                  key={p.date}
+                  plan={p}
+                  isToday={i === 0}
+                  logs={data.logs}
+                  candidates={candidates}
+                  busy={dayBusy}
+                  onSkip={(date) => dayPlanAction({ date, action: 'skip' })}
+                  onPin={(date, c) => dayPlanAction({ date, action: 'pin', mediaPath: c.mediaPath, mediaType: c.mediaType })}
+                  onClear={(date) => dayPlanAction({ date, action: 'clear' })}
+                />
               ))}
             </div>
           </div>

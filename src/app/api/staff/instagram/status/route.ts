@@ -5,6 +5,7 @@ import { configured, connectionStatus } from '@/lib/instagram';
 import { todayJst, weekdayJst, shiftDays } from '@/lib/dateJst';
 import { findChainMediaList, loadSidecar, checkSchedule } from '@/lib/storyPlan';
 import { peekNextQueueItem } from '@/lib/storyQueue';
+import { getDayPlans, type DayPlan } from '@/lib/storyDayPlan';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -38,9 +39,9 @@ export async function GET(req: NextRequest) {
   // 今日分は投稿済みかどうかを画面側でログと突き合わせて表示する。
   const origin = new URL(req.url).origin;
   const today = todayJst();
-  const plans = await Promise.all(
-    Array.from({ length: 7 }, (_, i) => buildPlanForDate(origin, shiftDays(today, i)))
-  );
+  const dates = Array.from({ length: 7 }, (_, i) => shiftDays(today, i));
+  const dayPlans = await getDayPlans(dates);
+  const plans = await Promise.all(dates.map((d) => buildPlanForDate(origin, d, dayPlans[d] ?? null)));
 
   return NextResponse.json({
     envConfigured: configured(),
@@ -52,9 +53,34 @@ export async function GET(req: NextRequest) {
   });
 }
 
-/** 1日分の投稿予定を評価(cronと同じ選択・照合ロジックを読み取り専用で) */
-async function buildPlanForDate(origin: string, date: string) {
+/**
+ * 1日分の投稿予定を評価(cronと同じ選択・照合ロジックを読み取り専用で)。
+ * verdict = その日の結論。画面はこれ1つ見れば「投稿されるのか」が分かる(TARO 2026-08-03)。
+ *   'skip'     … アプリで「投稿しない」に設定済み
+ *   'will-post'… 投稿される(itemsの本数だけ)
+ *   'blocked'  … 素材はあるがカレンダー不一致で全部止まる
+ *   'no-media' … 出せる素材が無い
+ */
+async function buildPlanForDate(origin: string, date: string, dayPlan: DayPlan | null) {
   const weekday = weekdayJst(date);
+
+  if (dayPlan?.mode === 'skip') {
+    return { date, weekday, source: 'none' as const, verdict: 'skip' as const, dayPlan, items: [] };
+  }
+  if (dayPlan?.mode === 'pin' && dayPlan.mediaPath) {
+    return {
+      date, weekday, source: 'date-file' as const, verdict: 'will-post' as const, dayPlan,
+      items: [{
+        base: `pin:${date}`,
+        mediaPath: dayPlan.mediaPath,
+        mediaType: dayPlan.mediaType ?? 'image',
+        mentions: [] as string[],
+        scheduleCheck: null,
+        pinned: true,
+      }],
+    };
+  }
+
   const chainList = await findChainMediaList(origin, date, weekday);
 
   if (chainList.length > 0) {
@@ -73,7 +99,12 @@ async function buildPlanForDate(origin: string, date: string) {
         scheduleCheck: check,
       });
     }
-    return { date, weekday, source: chainList[0].source, items };
+    const postable = items.filter((i) => i.scheduleCheck?.result !== 'mismatch');
+    return {
+      date, weekday, source: chainList[0].source, dayPlan,
+      verdict: postable.length > 0 ? ('will-post' as const) : ('blocked' as const),
+      items,
+    };
   }
   // 素材なし → 埋め草キューのプレビュー(キュー消化は日々変わるため先の日付ほど参考値)
   const queueItem = await peekNextQueueItem(date);
@@ -82,6 +113,8 @@ async function buildPlanForDate(origin: string, date: string) {
         date,
         weekday,
         source: 'queue' as const,
+        verdict: 'will-post' as const,
+        dayPlan,
         items: [
           {
             base: `queue#${queueItem.id}`,
@@ -93,5 +126,5 @@ async function buildPlanForDate(origin: string, date: string) {
           },
         ],
       }
-    : { date, weekday, source: 'none' as const, items: [] };
+    : { date, weekday, source: 'none' as const, verdict: 'no-media' as const, dayPlan, items: [] };
 }
