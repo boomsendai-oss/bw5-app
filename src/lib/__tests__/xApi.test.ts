@@ -4,6 +4,7 @@ import {
   buildSignatureBaseString,
   signHmacSha1,
   buildOAuthHeader,
+  splitUrlParams,
   type XCredentials,
 } from '../xApi';
 
@@ -92,5 +93,43 @@ describe('OAuth 1.0a HMAC-SHA1 署名 (Xドキュメント既知ベクタ)', () 
     expect(h).toMatch(/oauth_nonce="[0-9a-f]{32}"/);
     expect(h).toMatch(/oauth_timestamp="\d+"/);
     expect(h).toMatch(/oauth_signature="[^"]+"/);
+  });
+});
+
+// RFC 5849 §3.4.1.2: 署名ベース文字列のURIはクエリを含めてはいけない。
+// RFC 5849 §3.4.1.3.1: クエリパラメータは署名対象のパラメータ集合に入れる。
+// この2点を守らないとクエリ付きGET(= media upload の STATUS)が必ず401になる。
+describe('splitUrlParams (クエリ付きURLの署名)', () => {
+  it('URLをパス部分とクエリパラメータに分ける', () => {
+    const { baseUrl, params } = splitUrlParams(
+      'https://api.x.com/2/media/upload?command=STATUS&media_id=1880028106020515840'
+    );
+    expect(baseUrl).toBe('https://api.x.com/2/media/upload');
+    expect(params).toEqual({ command: 'STATUS', media_id: '1880028106020515840' });
+  });
+
+  it('クエリが無ければパラメータは空', () => {
+    const { baseUrl, params } = splitUrlParams('https://api.x.com/2/tweets');
+    expect(baseUrl).toBe('https://api.x.com/2/tweets');
+    expect(params).toEqual({});
+  });
+
+  it('パーセントエンコードされた値をデコードして返す(署名時に再エンコードされるため)', () => {
+    const { params } = splitUrlParams('https://api.x.com/2/x?s=Hello%20Ladies%20%2B%20Gentlemen');
+    expect(params.s).toBe('Hello Ladies + Gentlemen');
+  });
+
+  it('クエリで渡してもドキュメント既知ベクタと同じ署名になる', () => {
+    // OAuth 1.0a はクエリパラメータとフォームパラメータを同じ集合として扱うので、
+    // 既知ベクタのパラメータをクエリに移しても署名は変わらないはず。
+    const url =
+      `${DOC_URL}?include_entities=true&status=` +
+      encodeURIComponent(DOC_BODY_PARAMS.status);
+    const { baseUrl, params } = splitUrlParams(url);
+    const header = buildOAuthHeader('POST', baseUrl, DOC_CREDS, params, {
+      nonce: DOC_NONCE,
+      timestamp: DOC_TIMESTAMP,
+    });
+    expect(header).toContain(`oauth_signature="${percentEncode(DOC_EXPECTED_SIGNATURE)}"`);
   });
 });

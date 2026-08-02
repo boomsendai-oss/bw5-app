@@ -234,14 +234,39 @@ export function estimateChunkRequests(byteLength: number): number {
   return 1 + Math.ceil(byteLength / X_VIDEO_CHUNK_BYTES) + 1; // INIT + APPEND* + FINALIZE
 }
 
+/**
+ * URLを「署名ベース文字列に使うパス部分」と「クエリパラメータ」に分ける。
+ *
+ * OAuth 1.0a では
+ *   - 署名ベース文字列のURIにクエリを含めてはいけない (RFC 5849 §3.4.1.2)
+ *   - クエリパラメータは署名対象のパラメータ集合に入れる (RFC 5849 §3.4.1.3.1)
+ * の両方を満たす必要がある。URLをそのまま buildOAuthHeader に渡すとどちらも破るので、
+ * クエリ付きのリクエスト(media upload の STATUS)が必ず401になる。
+ *
+ * 値はデコードして返す。署名側が改めてパーセントエンコードするため、
+ * ここで生の値に戻しておかないと二重エンコードになる。
+ */
+export function splitUrlParams(url: string): {
+  baseUrl: string;
+  params: Record<string, string>;
+} {
+  const u = new URL(url);
+  const params: Record<string, string> = {};
+  for (const [k, v] of u.searchParams) params[k] = v;
+  u.search = '';
+  return { baseUrl: u.toString(), params };
+}
+
 async function xJson(
   method: 'POST' | 'GET',
   url: string,
   creds: XCredentials,
   init?: { json?: unknown; form?: FormData }
 ): Promise<Record<string, unknown>> {
+  // 署名はクエリを外したURL + クエリパラメータで作り、リクエストは元のURLへ送る
+  const { baseUrl, params } = splitUrlParams(url);
   const headers: Record<string, string> = {
-    Authorization: buildOAuthHeader(method, url, creds),
+    Authorization: buildOAuthHeader(method, baseUrl, creds, params),
   };
   let body: BodyInit | undefined;
   if (init?.json !== undefined) {
@@ -311,7 +336,14 @@ export async function uploadVideo(
     if (info.state === 'failed') throw new Error(`X media 処理失敗: ${JSON.stringify(info)}`);
     if (Date.now() >= deadline) throw new Error('X media 処理がタイムアウト');
     await sleep(Math.max(1, info.check_after_secs ?? 5) * 1000);
-    const st = await xJson('GET', `${MEDIA_UPLOAD_URL}?media_id=${mediaId}`, creds);
+    // GET /2/media/upload?command=STATUS&media_id=...
+    // 出典: https://docs.x.com/x-api/media/quickstart/media-upload-chunked
+    // command=STATUS が無いとSTATUSコマンドとして扱われない
+    const st = await xJson(
+      'GET',
+      `${MEDIA_UPLOAD_URL}?command=STATUS&media_id=${encodeURIComponent(mediaId)}`,
+      creds
+    );
     info = (st.data as { processing_info?: { state?: string; check_after_secs?: number } })
       ?.processing_info;
   }
