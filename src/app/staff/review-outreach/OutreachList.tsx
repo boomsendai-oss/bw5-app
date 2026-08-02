@@ -73,6 +73,11 @@ export default function OutreachList({
             <span className="text-sm font-normal text-muted-foreground"> / {reviewGoal}</span>
           </div>
           <div className="text-[11px] text-muted-foreground">Googleクチコミ(目標=宮城のストリート1位)</div>
+          {reviewTotal >= reviewGoal && (
+            <div className="text-[10px] text-brand-700 mt-1 leading-tight">
+              達成後も止めない（新しさが順位に効く）
+            </div>
+          )}
         </div>
         <div className="rounded-lg border bg-sand-50 p-3">
           <div className="text-2xl font-bold text-navy-700">{buckets.asked.length}</div>
@@ -96,6 +101,10 @@ export default function OutreachList({
         {askedTodayCount >= 5
           ? ' — 本日分は上限です。続きは明日に(スパムフィルタ対策)'
           : ' — 「お時間あるときでOKです」を添えて送る'}
+        <span className="block mt-1 opacity-80">
+          目標件数に届いても続けること。クチコミは<strong>新しさ</strong>が順位に効くので、
+          止めると時間とともに評価が落ちます。
+        </span>
       </div>
 
       {/* タブ */}
