@@ -8,7 +8,36 @@ import {
   isElementaryGrade,
   divisionRemaining,
   ticketRemaining,
+  validateBf6Order,
+  countEntriesByDivision,
+  buildBf6OrderItems,
+  formatReceiptNo,
+  type Bf6OrderInput,
 } from '../bf6';
+
+function validInput(): Bf6OrderInput {
+  return {
+    buyerName: '山田太郎',
+    email: 'taro@example.com',
+    phone: '090-1234-5678',
+    payMethod: 'prepaid',
+    entries: [
+      {
+        performerName: 'ヤマダタロウ',
+        dancerName: 'TARO',
+        dancerKana: 'タロー',
+        grade: 'es4',
+        genre: 'HIPHOP',
+        rep: 'BOOM',
+        instagram: '@taro_dance',
+        isFirstBattle: true,
+        divisions: ['beginner'],
+      },
+    ],
+    adultTickets: 1,
+    childTickets: 0,
+  };
+}
 
 describe('calcEntryFee: バトルエントリー料金(部門数と支払方法で決まる)', () => {
   test('1部門・当日現金は¥2,500', () => {
@@ -131,5 +160,171 @@ describe('ticketRemaining: 観覧残数 = ホール定員200 − 出演者数 �
 
   test('マイナスにはならない', () => {
     expect(ticketRemaining(200, 150, 60)).toBe(0);
+  });
+});
+
+describe('validateBf6Order: 申込入力の検証', () => {
+  test('正しい入力はValidatedで返る', () => {
+    const v = validateBf6Order(validInput());
+    expect(typeof v).not.toBe('string');
+    if (typeof v === 'string') return;
+    expect(v.buyerName).toBe('山田太郎');
+    expect(v.entries[0].dancerName).toBe('TARO');
+    expect(v.entries[0].divisions).toEqual(['beginner']);
+  });
+
+  test('申込者氏名・電話・メールは必須', () => {
+    expect(typeof validateBf6Order({ ...validInput(), buyerName: ' ' })).toBe('string');
+    expect(typeof validateBf6Order({ ...validInput(), phone: '' })).toBe('string');
+    expect(typeof validateBf6Order({ ...validInput(), email: 'not-an-email' })).toBe('string');
+  });
+
+  test('電話番号は数字10〜11桁(ハイフン許容)', () => {
+    expect(typeof validateBf6Order({ ...validInput(), phone: '09012345678' })).not.toBe('string');
+    expect(typeof validateBf6Order({ ...validInput(), phone: '123' })).toBe('string');
+    expect(typeof validateBf6Order({ ...validInput(), phone: 'でんわ' })).toBe('string');
+  });
+
+  test('本名はカタカナ必須', () => {
+    const input = validInput();
+    input.entries[0].performerName = '山田太郎';
+    expect(typeof validateBf6Order(input)).toBe('string');
+  });
+
+  test('ダンサーネーム・呼び方は必須', () => {
+    const a = validInput();
+    a.entries[0].dancerName = '';
+    expect(typeof validateBf6Order(a)).toBe('string');
+    const b = validInput();
+    b.entries[0].dancerKana = '';
+    expect(typeof validateBf6Order(b)).toBe('string');
+  });
+
+  test('初心者部門は小学生+初出場でないとエラー', () => {
+    const notFirst = validInput();
+    notFirst.entries[0].isFirstBattle = false;
+    expect(typeof validateBf6Order(notFirst)).toBe('string');
+    const adult = validInput();
+    adult.entries[0].grade = 'adult';
+    expect(typeof validateBf6Order(adult)).toBe('string');
+  });
+
+  test('小中学生部門は小中学生のみ', () => {
+    const input = validInput();
+    input.entries[0] = { ...input.entries[0], grade: 'adult', isFirstBattle: false, divisions: ['kids'] };
+    expect(typeof validateBf6Order(input)).toBe('string');
+    input.entries[0] = { ...input.entries[0], grade: 'jhs3' };
+    expect(typeof validateBf6Order(input)).not.toBe('string');
+  });
+
+  test('一般部門は学年制限なし', () => {
+    const input = validInput();
+    input.entries[0] = { ...input.entries[0], grade: 'es3', isFirstBattle: false, divisions: ['general'] };
+    expect(typeof validateBf6Order(input)).not.toBe('string');
+  });
+
+  test('部門の重複は除去・未知の部門はエラー', () => {
+    const dup = validInput();
+    dup.entries[0].divisions = ['beginner', 'beginner'];
+    const v = validateBf6Order(dup);
+    if (typeof v === 'string') throw new Error(v);
+    expect(v.entries[0].divisions).toEqual(['beginner']);
+    const bad = validInput();
+    bad.entries[0].divisions = ['pro'];
+    expect(typeof validateBf6Order(bad)).toBe('string');
+  });
+
+  test('Instagramは@を補って正規化・空はそのまま', () => {
+    const noAt = validInput();
+    noAt.entries[0].instagram = 'boom.dance';
+    const v = validateBf6Order(noAt);
+    if (typeof v === 'string') throw new Error(v);
+    expect(v.entries[0].instagram).toBe('@boom.dance');
+    const empty = validInput();
+    empty.entries[0].instagram = '';
+    const v2 = validateBf6Order(empty);
+    if (typeof v2 === 'string') throw new Error(v2);
+    expect(v2.entries[0].instagram).toBe('');
+  });
+
+  test('出場者0人でも観覧枚数があれば通る(観覧のみ購入)', () => {
+    const v = validateBf6Order({ ...validInput(), entries: [], adultTickets: 2, childTickets: 0 });
+    expect(typeof v).not.toBe('string');
+  });
+
+  test('出場者0人かつ観覧0枚はエラー', () => {
+    expect(typeof validateBf6Order({ ...validInput(), entries: [], adultTickets: 0, childTickets: 0 })).toBe('string');
+  });
+
+  test('観覧枚数は0〜20の整数のみ', () => {
+    expect(typeof validateBf6Order({ ...validInput(), adultTickets: -1 })).toBe('string');
+    expect(typeof validateBf6Order({ ...validInput(), adultTickets: 21 })).toBe('string');
+    expect(typeof validateBf6Order({ ...validInput(), adultTickets: 1.5 })).toBe('string');
+  });
+
+  test('支払方法はprepaid/onsiteのみ', () => {
+    expect(typeof validateBf6Order({ ...validInput(), payMethod: 'bitcoin' })).toBe('string');
+  });
+});
+
+describe('countEntriesByDivision', () => {
+  test('部門ごとの人数を数える', () => {
+    const counts = countEntriesByDivision([
+      { divisions: ['beginner'] },
+      { divisions: ['kids', 'general'] },
+      { divisions: ['general'] },
+    ]);
+    expect(counts).toEqual({ beginner: 1, kids: 1, general: 2 });
+  });
+});
+
+describe('buildBf6OrderItems: 明細行の生成(単価はサーバ側で確定)', () => {
+  test('エントリー2人+観覧を明細化し、合計がcalcOrderTotalと一致する', () => {
+    const input = validInput();
+    input.entries.push({
+      performerName: 'ヤマダジロウ',
+      dancerName: 'JIRO',
+      dancerKana: 'ジロー',
+      grade: 'jhs1',
+      genre: '',
+      rep: '',
+      instagram: '',
+      isFirstBattle: false,
+      divisions: ['kids', 'general'],
+    });
+    input.childTickets = 2;
+    const v = validateBf6Order(input);
+    if (typeof v === 'string') throw new Error(v);
+    const items = buildBf6OrderItems(v, 'prepaid');
+    const entryItems = items.filter((i) => i.itemType === 'entry');
+    expect(entryItems).toHaveLength(2);
+    expect(entryItems[0].unitAmount).toBe(2000);
+    expect(entryItems[1].unitAmount).toBe(3500);
+    const adult = items.find((i) => i.itemType === 'ticket_adult');
+    expect(adult).toMatchObject({ qty: 1, unitAmount: 2000 });
+    const child = items.find((i) => i.itemType === 'ticket_child');
+    expect(child).toMatchObject({ qty: 2, unitAmount: 1000 });
+    const total = items.reduce((s, i) => s + i.qty * i.unitAmount, 0);
+    expect(total).toBe(
+      calcOrderTotal(
+        { entries: v.entries.map((e) => ({ divisions: e.divisions })), adultTickets: 1, childTickets: 2 },
+        'prepaid'
+      )
+    );
+  });
+
+  test('観覧0枚の明細は作らない', () => {
+    const v = validateBf6Order({ ...validInput(), adultTickets: 0, childTickets: 0 });
+    if (typeof v === 'string') throw new Error(v);
+    const items = buildBf6OrderItems(v, 'onsite');
+    expect(items.every((i) => i.itemType === 'entry')).toBe(true);
+  });
+});
+
+describe('formatReceiptNo', () => {
+  test('BF6-連番3桁', () => {
+    expect(formatReceiptNo(7)).toBe('BF6-007');
+    expect(formatReceiptNo(123)).toBe('BF6-123');
+    expect(formatReceiptNo(1234)).toBe('BF6-1234');
   });
 });

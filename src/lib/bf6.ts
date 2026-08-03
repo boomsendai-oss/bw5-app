@@ -30,6 +30,8 @@ export interface Bf6Settings {
   hallCapacity: number;
   entryOpen: boolean;
   ticketOpen: boolean;
+  entryDeadline: string;
+  ticketDeadline: string;
 }
 
 export const DEFAULT_BF6_SETTINGS: Bf6Settings = {
@@ -47,7 +49,16 @@ export const DEFAULT_BF6_SETTINGS: Bf6Settings = {
   hallCapacity: 200,
   entryOpen: false,
   ticketOpen: false,
+  entryDeadline: '2026-09-24',
+  ticketDeadline: '2026-09-25',
 };
+
+/** JSTの今日の日付(YYYY-MM-DD)が締切を過ぎていたらtrue。 */
+export function isPastDeadlineJst(deadline: string, now: Date = new Date()): boolean {
+  if (!deadline) return false;
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return jst > deadline;
+}
 
 /** バトルエントリー1人分の料金。1部門¥2,500 + 追加部門¥1,500、事前決済は一律−¥500。 */
 export function calcEntryFee(
@@ -116,4 +127,259 @@ export function ticketRemaining(
   soldTickets: number
 ): number {
   return Math.max(0, hallCapacity - performerCount - soldTickets);
+}
+
+export const BF6_DIVISIONS: { key: Bf6Division; label: string }[] = [
+  { key: 'beginner', label: '小学生初心者' },
+  { key: 'kids', label: '小中学生' },
+  { key: 'general', label: '一般' },
+];
+
+export function bf6DivisionLabel(key: string): string {
+  return BF6_DIVISIONS.find((d) => d.key === key)?.label ?? key;
+}
+
+export const BF6_GRADE_OPTIONS: { key: Bf6Grade; label: string }[] = [
+  { key: 'preschool', label: '未就学児' },
+  { key: 'es1', label: '小1' },
+  { key: 'es2', label: '小2' },
+  { key: 'es3', label: '小3' },
+  { key: 'es4', label: '小4' },
+  { key: 'es5', label: '小5' },
+  { key: 'es6', label: '小6' },
+  { key: 'jhs1', label: '中1' },
+  { key: 'jhs2', label: '中2' },
+  { key: 'jhs3', label: '中3' },
+  { key: 'hs1', label: '高1' },
+  { key: 'hs2', label: '高2' },
+  { key: 'hs3', label: '高3' },
+  { key: 'adult', label: '大人' },
+];
+
+export function bf6GradeLabel(key: string): string {
+  return BF6_GRADE_OPTIONS.find((g) => g.key === key)?.label ?? key;
+}
+
+function isBf6Grade(v: string): v is Bf6Grade {
+  return BF6_GRADE_OPTIONS.some((g) => g.key === v);
+}
+
+function isBf6Division(v: string): v is Bf6Division {
+  return BF6_DIVISIONS.some((d) => d.key === v);
+}
+
+/** 小中学生部門の資格 = 小1〜中3。 */
+export function canEnterKids(grade: string): boolean {
+  return isElementaryGrade(grade) || grade === 'jhs1' || grade === 'jhs2' || grade === 'jhs3';
+}
+
+// 本名は全角カタカナのみ(長音符・中点・スペース許容)。当日受付の照合を楽にするため。
+const KATAKANA_NAME_RE = /^[゠-ヿ　\s]+$/;
+
+export interface Bf6EntryInput {
+  performerName: string;
+  dancerName: string;
+  dancerKana: string;
+  grade: string;
+  genre?: string;
+  rep?: string;
+  instagram?: string;
+  isFirstBattle?: boolean;
+  divisions: string[];
+}
+
+export interface Bf6OrderInput {
+  buyerName: string;
+  email: string;
+  phone: string;
+  payMethod: string;
+  entries: Bf6EntryInput[];
+  adultTickets: number;
+  childTickets: number;
+  note?: string;
+}
+
+export interface ValidatedBf6Entry {
+  performerName: string;
+  dancerName: string;
+  dancerKana: string;
+  grade: Bf6Grade;
+  genre: string;
+  rep: string;
+  instagram: string;
+  isFirstBattle: boolean;
+  divisions: Bf6Division[];
+}
+
+export interface ValidatedBf6Order {
+  buyerName: string;
+  email: string;
+  phone: string;
+  payMethod: Bf6PayMethod;
+  entries: ValidatedBf6Entry[];
+  adultTickets: number;
+  childTickets: number;
+  note: string;
+}
+
+function isValidTicketCount(n: number): boolean {
+  return Number.isInteger(n) && n >= 0 && n <= 20;
+}
+
+/** 検証OKなら ValidatedBf6Order、NGなら日本語エラー文字列を返す(太白まつり方式)。 */
+export function validateBf6Order(input: Bf6OrderInput): ValidatedBf6Order | string {
+  const buyerName = (input.buyerName ?? '').trim();
+  if (!buyerName) return '申込者のお名前を入力してください';
+  if (buyerName.length > 50) return '申込者名が長すぎます(50文字以内)';
+
+  const email = (input.email ?? '').trim();
+  if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 100) return 'メールアドレスの形式が正しくありません';
+
+  const phone = (input.phone ?? '').trim();
+  const phoneDigits = phone.replace(/[-‐−ー()（）\s]/g, '');
+  if (!/^0\d{9,10}$/.test(phoneDigits)) return '電話番号は当日連絡が取れる番号を数字で入力してください';
+
+  if (input.payMethod !== 'prepaid' && input.payMethod !== 'onsite') return '支払い方法を選択してください';
+
+  if (!isValidTicketCount(input.adultTickets) || !isValidTicketCount(input.childTickets)) {
+    return '観覧チケットの枚数が正しくありません(0〜20枚)';
+  }
+
+  const rows = Array.isArray(input.entries) ? input.entries : [];
+  const entries: ValidatedBf6Entry[] = [];
+  for (const e of rows) {
+    const performerName = (e?.performerName ?? '').trim();
+    if (!performerName) return '出場者の本名(カタカナ)を入力してください';
+    if (performerName.length > 50) return '出場者名が長すぎます(50文字以内)';
+    if (!KATAKANA_NAME_RE.test(performerName)) return `「${performerName}」はカタカナで入力してください`;
+
+    const dancerName = (e?.dancerName ?? '').trim();
+    if (!dancerName) return `${performerName} さんのダンサーネームを入力してください`;
+    if (dancerName.length > 30) return 'ダンサーネームが長すぎます(30文字以内)';
+
+    const dancerKana = (e?.dancerKana ?? '').trim();
+    if (!dancerKana) return `${dancerName} の呼び方(フリガナ)を入力してください`;
+    if (dancerKana.length > 30) return '呼び方が長すぎます(30文字以内)';
+
+    const grade = (e?.grade ?? '').trim();
+    if (!isBf6Grade(grade)) return `${dancerName} さんの学年を選んでください`;
+
+    const rawDivisions = Array.isArray(e?.divisions) ? e.divisions : [];
+    const divisions: Bf6Division[] = [];
+    for (const d of rawDivisions) {
+      if (!isBf6Division(d)) return '出場部門の指定が正しくありません';
+      if (!divisions.includes(d)) divisions.push(d);
+    }
+    if (divisions.length === 0) return `${dancerName} さんの出場部門を1つ以上選んでください`;
+
+    const isFirstBattle = Boolean(e?.isFirstBattle);
+    if (divisions.includes('beginner') && !canEnterBeginner(grade, isFirstBattle)) {
+      return `小学生初心者部門は「小学生」かつ「バトル初出場」の方のみエントリーできます(${dancerName} さん)`;
+    }
+    if (divisions.includes('kids') && !canEnterKids(grade)) {
+      return `小中学生部門は小学生・中学生のみエントリーできます(${dancerName} さん)`;
+    }
+
+    let instagram = (e?.instagram ?? '').trim();
+    if (instagram && !instagram.startsWith('@')) instagram = `@${instagram}`;
+    if (instagram.length > 50) return 'Instagramアカウントが長すぎます(50文字以内)';
+
+    entries.push({
+      performerName,
+      dancerName,
+      dancerKana,
+      grade,
+      genre: (e?.genre ?? '').trim().slice(0, 50),
+      rep: (e?.rep ?? '').trim().slice(0, 50),
+      instagram,
+      isFirstBattle,
+      divisions,
+    });
+  }
+
+  if (entries.length > 5) return '一度にエントリーできるのは5人までです';
+  if (entries.length === 0 && input.adultTickets === 0 && input.childTickets === 0) {
+    return '出場者または観覧チケットを1つ以上入力してください';
+  }
+
+  return {
+    buyerName,
+    email,
+    phone,
+    payMethod: input.payMethod,
+    entries,
+    adultTickets: input.adultTickets,
+    childTickets: input.childTickets,
+    note: (input.note ?? '').trim().slice(0, 500),
+  };
+}
+
+/** 部門ごとのエントリー人数を数える(残枠チェック用)。 */
+export function countEntriesByDivision(entries: { divisions: Bf6Division[] }[]): Record<Bf6Division, number> {
+  const out: Record<Bf6Division, number> = { beginner: 0, kids: 0, general: 0 };
+  for (const e of entries) {
+    for (const d of e.divisions) out[d] += 1;
+  }
+  return out;
+}
+
+export interface Bf6OrderItemRow {
+  itemType: 'entry' | 'ticket_adult' | 'ticket_child';
+  performerName: string;
+  dancerName: string;
+  dancerKana: string;
+  grade: string;
+  genre: string;
+  rep: string;
+  instagram: string;
+  isFirstBattle: boolean;
+  divisions: Bf6Division[];
+  qty: number;
+  unitAmount: number;
+}
+
+/** 明細行を生成する。単価は必ずサーバ側(この関数)で確定し、クライアント申告額は使わない。 */
+export function buildBf6OrderItems(
+  order: ValidatedBf6Order,
+  payMethod: Bf6PayMethod,
+  pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing
+): Bf6OrderItemRow[] {
+  const items: Bf6OrderItemRow[] = order.entries.map((e) => ({
+    itemType: 'entry' as const,
+    performerName: e.performerName,
+    dancerName: e.dancerName,
+    dancerKana: e.dancerKana,
+    grade: e.grade,
+    genre: e.genre,
+    rep: e.rep,
+    instagram: e.instagram,
+    isFirstBattle: e.isFirstBattle,
+    divisions: e.divisions,
+    qty: 1,
+    unitAmount: calcEntryFee(e.divisions.length, payMethod, pricing),
+  }));
+  const emptyPerformer = {
+    performerName: '', dancerName: '', dancerKana: '', grade: '',
+    genre: '', rep: '', instagram: '', isFirstBattle: false, divisions: [] as Bf6Division[],
+  };
+  if (order.adultTickets > 0) {
+    items.push({
+      itemType: 'ticket_adult', ...emptyPerformer,
+      qty: order.adultTickets,
+      unitAmount: calcTicketUnitPrice('ticket_adult', payMethod, pricing),
+    });
+  }
+  if (order.childTickets > 0) {
+    items.push({
+      itemType: 'ticket_child', ...emptyPerformer,
+      qty: order.childTickets,
+      unitAmount: calcTicketUnitPrice('ticket_child', payMethod, pricing),
+    });
+  }
+  return items;
+}
+
+/** 受付番号の表記(完了画面・完了メール・スタッフ画面で共通)。 */
+export function formatReceiptNo(orderId: number): string {
+  return `BF6-${String(orderId).padStart(3, '0')}`;
 }
