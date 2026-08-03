@@ -1,25 +1,184 @@
 {
   "_note": "ライブラリ各画像が告知するレッスン内容の台帳。post-storyがカレンダー(正本)と突合し、当日一致する画像を自動選択して投稿する。weekday=0日..6土。日付固有(0718/0808/0719)や時刻ズレ(15おっちゃん14:00)の素材は自動選択の対象外にするため未掲載。",
   "entries": [
-    { "file": "04_土曜_朝基本.jpg", "weekday": 6, "mentions": ["taro_bsb", "kattsu_ziel"],
-      "lessons": [ { "start": "10:00", "instructor": "TARO" }, { "start": "11:30", "instructor": "K@TTSU" } ] },
-    { "file": "06_土曜_多賀城AOI.jpg", "weekday": 6, "mentions": ["aoi.w_0530"],
-      "lessons": [ { "start": "11:00", "instructor": "AOI" } ] },
-    { "file": "07_土曜_多賀城KATTSU.jpg", "weekday": 6, "mentions": ["kattsu_ziel"],
-      "lessons": [ { "start": "11:00", "instructor": "K@TTSU" } ] },
-    { "file": "08_土曜_午後2人.jpg", "weekday": 6, "mentions": ["yurillo7fancy", "m55keiko"],
-      "lessons": [ { "start": "15:30", "instructor": "YURI" }, { "start": "16:30", "instructor": "KEIKO" } ] },
-    { "file": "09_土曜_午後KEIKOソロ.jpg", "weekday": 6, "mentions": ["m55keiko"],
-      "lessons": [ { "start": "15:30", "instructor": "KEIKO" }, { "start": "16:30", "instructor": "KEIKO" } ] },
-    { "file": "11_日曜_多賀城AOI.jpg", "weekday": 0, "mentions": ["aoi.w_0530"],
-      "lessons": [ { "start": "11:00", "instructor": "AOI" }, { "start": "12:45", "instructor": "AOI" } ] },
-    { "file": "12_日曜_仙台昼.jpg", "weekday": 0, "mentions": ["m55keiko", "takaryu_1203"],
-      "lessons": [ { "start": "11:00", "instructor": "KEIKO" }, { "start": "12:15", "instructor": "Ryuki" }, { "start": "13:30", "instructor": "Ryuki" }, { "start": "15:00", "instructor": "KEIKO" } ] },
-    { "file": "13_日曜SP_ちゃんなつ.jpg", "weekday": 0, "mentions": ["chamnatsu"],
-      "lessons": [ { "start": "14:00", "instructor": "ちゃんなつ" } ] },
-    { "file": "14_日曜SP_サユキ.jpg", "weekday": 0, "mentions": ["sayu_sayuki"],
-      "lessons": [ { "start": "14:00", "instructor": "SAYUKI" } ] },
-    { "file": "16_日曜SP_サユキおっちゃん.jpg", "weekday": 0, "mentions": ["sayu_sayuki", "occhan.88"],
-      "lessons": [ { "start": "14:00", "instructor": "SAYUKI" }, { "start": "15:45", "instructor": "おっちゃん" } ] }
+    {
+      "file": "04_土曜_朝基本.jpg",
+      "weekday": 6,
+      "mentions": [
+        "taro_bsb",
+        "kattsu_ziel"
+      ],
+      "lessons": [
+        {
+          "start": "10:00",
+          "instructor": "TARO"
+        },
+        {
+          "start": "11:30",
+          "instructor": "K@TTSU"
+        }
+      ]
+    },
+    {
+      "file": "06_土曜_多賀城AOI.jpg",
+      "weekday": 6,
+      "mentions": [
+        "aoi.w_0530"
+      ],
+      "lessons": [
+        {
+          "start": "11:00",
+          "instructor": "AOI"
+        }
+      ]
+    },
+    {
+      "file": "07_土曜_多賀城KATTSU.jpg",
+      "weekday": 6,
+      "mentions": [
+        "kattsu_ziel"
+      ],
+      "lessons": [
+        {
+          "start": "11:00",
+          "instructor": "K@TTSU"
+        }
+      ]
+    },
+    {
+      "file": "08_土曜_午後2人.jpg",
+      "weekday": 6,
+      "mentions": [
+        "yurillo7fancy",
+        "m55keiko"
+      ],
+      "lessons": [
+        {
+          "start": "15:30",
+          "instructor": "YURI"
+        },
+        {
+          "start": "16:30",
+          "instructor": "KEIKO"
+        }
+      ]
+    },
+    {
+      "file": "09_土曜_午後KEIKOソロ.jpg",
+      "weekday": 6,
+      "mentions": [
+        "m55keiko"
+      ],
+      "lessons": [
+        {
+          "start": "15:30",
+          "instructor": "KEIKO"
+        },
+        {
+          "start": "16:30",
+          "instructor": "KEIKO"
+        }
+      ]
+    },
+    {
+      "file": "11_日曜_多賀城AOI.jpg",
+      "weekday": 0,
+      "mentions": [
+        "aoi.w_0530"
+      ],
+      "lessons": [
+        {
+          "start": "11:00",
+          "instructor": "AOI"
+        },
+        {
+          "start": "12:45",
+          "instructor": "AOI"
+        }
+      ]
+    },
+    {
+      "file": "12_日曜_仙台昼.jpg",
+      "weekday": 0,
+      "mentions": [
+        "m55keiko",
+        "takaryu_1203"
+      ],
+      "lessons": [
+        {
+          "start": "11:00",
+          "instructor": "KEIKO"
+        },
+        {
+          "start": "12:15",
+          "instructor": "Ryuki"
+        },
+        {
+          "start": "13:30",
+          "instructor": "Ryuki"
+        },
+        {
+          "start": "15:00",
+          "instructor": "KEIKO"
+        }
+      ]
+    },
+    {
+      "file": "13_日曜SP_ちゃんなつ.jpg",
+      "weekday": 0,
+      "mentions": [
+        "chamnatsu"
+      ],
+      "lessons": [
+        {
+          "start": "14:00",
+          "instructor": "ちゃんなつ"
+        }
+      ]
+    },
+    {
+      "file": "14_日曜SP_サユキ.jpg",
+      "weekday": 0,
+      "mentions": [
+        "sayu_sayuki"
+      ],
+      "lessons": [
+        {
+          "start": "14:00",
+          "instructor": "SAYUKI"
+        }
+      ]
+    },
+    {
+      "file": "16_日曜SP_サユキおっちゃん.jpg",
+      "weekday": 0,
+      "mentions": [
+        "sayu_sayuki",
+        "occhan.88"
+      ],
+      "lessons": [
+        {
+          "start": "14:00",
+          "instructor": "SAYUKI"
+        },
+        {
+          "start": "15:45",
+          "instructor": "おっちゃん"
+        }
+      ]
+    },
+    {
+      "file": "18_木曜_Ryuki.jpg",
+      "weekday": 4,
+      "mentions": [
+        "takaryu_1203"
+      ],
+      "lessons": [
+        {
+          "start": "19:00",
+          "instructor": "Ryuki"
+        }
+      ]
+    }
   ]
 }
