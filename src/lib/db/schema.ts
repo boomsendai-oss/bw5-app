@@ -978,5 +978,81 @@ export function getSchemaStatements(): InStatement[] {
       sql: `CREATE INDEX IF NOT EXISTS idx_event_signup_audit_event ON event_signup_audit (event_id)`,
       args: [],
     },
+    // BOOMER'S FIGHT vol.6 (本番は台帳 20260803_bf6_tables.sql)
+    {
+      sql: `CREATE TABLE IF NOT EXISTS bf_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      buyer_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      line_name TEXT DEFAULT '',
+      pay_method TEXT NOT NULL DEFAULT 'prepaid',
+      payment_status TEXT NOT NULL DEFAULT 'pending',
+      amount_total INTEGER NOT NULL DEFAULT 0,
+      stripe_session_id TEXT DEFAULT '',
+      edit_token TEXT NOT NULL UNIQUE,
+      expires_at TEXT DEFAULT '',
+      note TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_bf_orders_session ON bf_orders (stripe_session_id)`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_bf_orders_status ON bf_orders (payment_status)`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS bf_order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL,
+      item_type TEXT NOT NULL,
+      performer_name TEXT DEFAULT '',
+      dancer_name TEXT DEFAULT '',
+      grade TEXT DEFAULT '',
+      affiliation TEXT DEFAULT '',
+      school_name TEXT DEFAULT '',
+      is_first_battle INTEGER NOT NULL DEFAULT 0,
+      divisions TEXT NOT NULL DEFAULT '[]',
+      qty INTEGER NOT NULL DEFAULT 1,
+      unit_amount INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_bf_order_items_order ON bf_order_items (order_id)`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS bf_payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      stripe_event_id TEXT NOT NULL UNIQUE,
+      event_type TEXT NOT NULL,
+      stripe_session_id TEXT DEFAULT '',
+      payment_intent_id TEXT DEFAULT '',
+      order_id INTEGER,
+      amount INTEGER NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'jpy',
+      payload TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_bf_payments_session ON bf_payments (stripe_session_id)`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS bf_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT ''
+    )`,
+      args: [],
+    },
   ];
 }
