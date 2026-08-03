@@ -75,6 +75,18 @@ export function buildXText(caption: string, opts?: { maxTags?: number }): string
 }
 
 /**
+ * X用の導線テキスト。**本文ではなくリプライに投げる**前提。
+ *
+ * Xは外部リンクを含む投稿の表示が伸びにくい(プラットフォーム外へ人を出すため)。
+ * 一方でリンクが無いと、見た人が申込に辿り着けない。
+ * 本体はリンク無しで出し、直後に自分へのリプライでリンクを足すと、
+ * 本体の表示を犠牲にせずに導線を確保できる。
+ */
+export function buildXReplyCta(): string {
+  return ['体験レッスン(無料)のご予約・ご相談は公式LINEからどうぞ。', OFFICIAL_LINE_URL].join('\n');
+}
+
+/**
  * Instagram向けの文言をYouTube向けに言い換える。
  *
  * キャプションは「プロフィールの公式LINEから」のようにInstagram前提で書かれている。
