@@ -5,9 +5,13 @@
 # 20:00 なのは、リール本体の投稿(19:00 JST / instagram-reel-cron.yml)が
 # 確実に終わってから走らせるため。
 #
-# **1回の実行で1件だけ**なので、1日1回で十分(かつ1回が上限)。
-# Xの無料枠は /initialize + /append + /finalize が24時間で計17リクエストしかなく、
-# 30MB級の動画1本で約10リクエストを使う。1日に2本流すと2本目が途中で落ちる。
+# **1回の実行で1件だけ**処理する。1日2回にしているのは、
+# 新しいリールが Instagram → YouTube → X と**同じ晩のうちに**出そろうようにするため
+# (pickNextは同じリールならYouTube→Xの順に選ぶので、2回で1本ぶんが完結する)。
+#
+# 1日3回以上にはしない。Xの無料枠は /initialize + /append + /finalize が
+# 24時間で計17リクエストしかなく、30MB級の動画1本で約11リクエストを使う。
+# X動画は実質**1日1本が上限**で、2回/日ならその範囲に収まる。
 #
 # env未設定のプラットフォームは route 側で skipped になるだけで、失敗にはならない。
 # 後から env が入れば pending へ戻る (classifyByEnabled)。
@@ -15,8 +19,9 @@ name: crosspost-reel-cron
 
 on:
   schedule:
-    # 20:00 JST目標。GH Actionsは0/20/40分に大遅延するため空いている分を使う。
+    # 20:17 / 21:37 JST。GH Actionsは0/20/40分に大遅延するため空いている分を使う。
     - cron: '17 11 * * *'
+    - cron: '37 12 * * *'
   workflow_dispatch: {}
 
 jobs:
