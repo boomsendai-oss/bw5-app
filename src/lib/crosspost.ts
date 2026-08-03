@@ -5,6 +5,8 @@
 //   - YouTube: タイトルと説明が別。#Shorts が無いとShortsとして扱われないことがある
 // ここでプラットフォームごとに整形する。
 
+import { OFFICIAL_LINE_URL, WEBSITE_URL } from './links';
+
 /** 横展開する配信先 */
 export const CROSSPOST_PLATFORMS = ['youtube', 'x'] as const;
 export type Platform = (typeof CROSSPOST_PLATFORMS)[number];
@@ -73,9 +75,33 @@ export function buildXText(caption: string, opts?: { maxTags?: number }): string
 }
 
 /**
+ * Instagram向けの文言をYouTube向けに言い換える。
+ *
+ * キャプションは「プロフィールの公式LINEから」のようにInstagram前提で書かれている。
+ * Instagramはリンクが貼れないので"プロフィール(bio)を見て"と誘導するしかないが、
+ * YouTubeでは説明欄のURLがそのまま押せる。文言をYouTubeの用語に合わせる。
+ */
+function localizeForYouTube(body: string): string {
+  return body.replace(/プロフィール/g, '概要欄');
+}
+
+/** 説明欄の末尾に付ける導線。YouTubeは説明のURLがリンクになる */
+function buildCtaBlock(): string {
+  return [
+    '▼ 体験レッスン(無料)のご予約・ご相談はこちら',
+    `公式LINE: ${OFFICIAL_LINE_URL}`,
+    `ホームページ: ${WEBSITE_URL}`,
+  ].join('\n');
+}
+
+/**
  * YouTube Shorts用のタイトルと説明を作る。
  * タイトル = キャプション1行目(【】があれば中身を優先)。
- * 説明     = 本文全体 + タグ + #Shorts。
+ * 説明     = 本文 + 導線(公式LINE/HP) + タグ + #Shorts。
+ *
+ * 導線を入れるのは、YouTubeから来た人が体験申込に辿り着けるようにするため。
+ * チャンネルの概要欄にもリンクはあるが、動画→チャンネル→概要→リンクと
+ * 3タップかかる。説明欄に置けば1タップで届く。
  */
 export function buildYouTubeMeta(
   title: string,
@@ -90,7 +116,14 @@ export function buildYouTubeMeta(
 
   // #Shorts はShortsとして認識させるための保険(縦動画かつ3分以内が本来の条件)
   const tagLine = [...new Set([...tags, '#Shorts'])].join(' ');
-  const description = truncate(`${body}\n\n${tagLine}`.trim(), YT_DESCRIPTION_MAX);
+  const cta = buildCtaBlock();
+
+  // 導線とタグの分を先に確保してから本文を詰める。
+  // 全部つないでから切ると、本文が長い回だけ導線が消えるという最悪の壊れ方をする
+  const fixed = `\n\n${cta}\n\n${tagLine}`;
+  const bodyBudget = YT_DESCRIPTION_MAX - [...fixed].length;
+  const bodyText = truncate(localizeForYouTube(body).trim(), Math.max(0, bodyBudget));
+  const description = `${bodyText}${fixed}`.trim();
 
   // YouTubeのtagsフィールドは # を含めない
   const ytTags = tags.map((t) => t.replace(/^#/, '')).filter(Boolean).slice(0, 15);

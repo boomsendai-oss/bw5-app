@@ -7,9 +7,11 @@ import {
   X_TEXT_MAX,
   YT_TITLE_MAX,
   MAX_ATTEMPTS,
+  YT_DESCRIPTION_MAX,
   classifyByEnabled,
   type CrosspostRow,
 } from '../crosspost';
+import { OFFICIAL_LINE_URL, WEBSITE_URL } from '../links';
 
 describe('splitCaption', () => {
   it('末尾のハッシュタグ行を本文から切り離す', () => {
@@ -96,6 +98,36 @@ describe('buildYouTubeMeta', () => {
   it('tagsフィールドからは # を外す', () => {
     const m = buildYouTubeMeta('t', '本文\n\n#仙台ダンス #キッズ');
     expect(m.tags).toEqual(['仙台ダンス', 'キッズ']);
+  });
+
+  it('公式LINEのURLを必ず入れる(YouTubeは説明のリンクが押せる)', () => {
+    const m = buildYouTubeMeta('t', '本文\n\n#仙台ダンス');
+    expect(m.description).toContain(OFFICIAL_LINE_URL);
+  });
+
+  it('ホームページのURLも入れる', () => {
+    const m = buildYouTubeMeta('t', '本文');
+    expect(m.description).toContain(WEBSITE_URL);
+  });
+
+  it('Instagram向けの「プロフィール」をYouTubeの「概要欄」に言い換える', () => {
+    const m = buildYouTubeMeta('t', '体験レッスンは無料。ご予約はプロフィールの公式LINEから');
+    expect(m.description).toContain('概要欄');
+    expect(m.description).not.toContain('プロフィール');
+  });
+
+  it('本文が極端に長くても導線は削られない', () => {
+    const m = buildYouTubeMeta('t', 'あ'.repeat(8000) + '\n\n#仙台ダンス');
+    expect([...m.description].length).toBeLessThanOrEqual(YT_DESCRIPTION_MAX);
+    expect(m.description).toContain(OFFICIAL_LINE_URL);
+    expect(m.description).toContain('#Shorts');
+  });
+
+  it('導線はハッシュタグより前に置く(タグに埋もれさせない)', () => {
+    const m = buildYouTubeMeta('t', '本文\n\n#仙台ダンス');
+    expect(m.description.indexOf(OFFICIAL_LINE_URL)).toBeLessThan(
+      m.description.indexOf('#仙台ダンス')
+    );
   });
 
   it('タイトルは100文字を超えない', () => {
