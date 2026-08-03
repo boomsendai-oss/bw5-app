@@ -67,21 +67,16 @@ export async function GET(req: NextRequest) {
 async function buildPlanForDate(origin: string, date: string, dayPlan: DayPlan | null, slots: DaySlot[]) {
   const weekday = weekdayJst(date);
 
-  // 時間帯別の枠がある日は、それが全て(自動選択にも埋め草にも落とさない)
-  if (slots.length > 0) {
-    return {
-      date, weekday, source: 'date-file' as const, verdict: 'will-post' as const, dayPlan, slots,
-      items: slots.map((sl) => ({
-        base: `slot:${date}:${sl.slotTime}`,
-        mediaPath: sl.mediaPath,
-        mediaType: sl.mediaType,
-        mentions: [] as string[],
-        scheduleCheck: null,
-        pinned: true,
-        slotTime: sl.slotTime,
-      })),
-    };
-  }
+  // 枠(slot)は通常の投稿に「足す」もの。画面でも同じ扱いにして、実際の投稿と一致させる。
+  const slotItems = slots.map((sl) => ({
+    base: `slot:${date}:${sl.slotTime}`,
+    mediaPath: sl.mediaPath,
+    mediaType: sl.mediaType,
+    mentions: [] as string[],
+    scheduleCheck: null,
+    pinned: true,
+    slotTime: sl.slotTime,
+  }));
 
   if (dayPlan?.mode === 'skip') {
     return { date, weekday, source: 'none' as const, verdict: 'skip' as const, dayPlan, slots, items: [] };
@@ -96,7 +91,7 @@ async function buildPlanForDate(origin: string, date: string, dayPlan: DayPlan |
         mentions: [] as string[],
         scheduleCheck: null,
         pinned: true,
-      }],
+      }, ...slotItems],
     };
   }
 
@@ -118,12 +113,17 @@ async function buildPlanForDate(origin: string, date: string, dayPlan: DayPlan |
         scheduleCheck: check,
       });
     }
-    const postable = items.filter((i) => i.scheduleCheck?.result !== 'mismatch');
+    const all = [...items, ...slotItems];
+    const postable = all.filter((i) => i.scheduleCheck?.result !== 'mismatch');
     return {
       date, weekday, source: chainList[0].source, dayPlan, slots,
       verdict: postable.length > 0 ? ('will-post' as const) : ('blocked' as const),
-      items,
+      items: all,
     };
+  }
+  // 枠を置いた日は埋め草を混ぜない(cronと同じ判断)
+  if (slotItems.length > 0) {
+    return { date, weekday, source: 'date-file' as const, verdict: 'will-post' as const, dayPlan, slots, items: slotItems };
   }
   // 素材なし → 埋め草キューのプレビュー(キュー消化は日々変わるため先の日付ほど参考値)
   const queueItem = await peekNextQueueItem(date);

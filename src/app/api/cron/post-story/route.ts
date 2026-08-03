@@ -125,32 +125,29 @@ export async function POST(req: NextRequest) {
   // 1日複数本対応: {base}-2.jpg 等の連番があれば朝8:00に順番に連続投稿する(例: 土曜の朝の部+午後の部)。
   // 選択ロジック本体は storyPlan.ts (「明日の投稿予定」プレビューと共用)。
   // pin はTAROが目で見て選んだものなので、カレンダー照合はかけずそのまま出す。
-  let mediaList: ChainMedia[];
-  if (slots.length > 0) {
-    // 枠が1つでもある日は完全に手動指定。自動選択にも埋め草にも落とさない。
-    const due = slots.filter((sl) => sl.slotTime <= nowHhmm);
-    if (due.length === 0) {
-      return NextResponse.json({
-        ok: true, posted: false,
-        note: `${date} の次の枠は ${slots[0].slotTime}(現在 ${nowHhmm})`,
-      });
-    }
-    mediaList = due.map((sl) => ({
+  // 枠は「通常の投稿に足す」もの(TARO 2026-08-04)。
+  //   pin  = その日はこれ1本だけ(通常の自動選択を置き換える)
+  //   slot = 通常どおりの朝の投稿に加えて、その時刻にもう1本出す
+  // こうしないと「21時にお知らせも出す」を設定した瞬間に朝のレッスン告知が消えてしまう。
+  const base: ChainMedia[] = dayPlan?.mode === 'pin' && dayPlan.mediaPath
+    ? [{
+        url: `${origin}${dayPlan.mediaPath}`,
+        type: dayPlan.mediaType === 'video' ? 'video' : 'image',
+        base: `pin:${date}`,
+        source: 'date-file',
+      }]
+    : await findChainMediaList(origin, date, weekday);
+
+  const dueSlots = slots.filter((sl) => sl.slotTime <= nowHhmm);
+  const mediaList: ChainMedia[] = [
+    ...base,
+    ...dueSlots.map((sl) => ({
       url: `${origin}${sl.mediaPath}`,
       type: sl.mediaType,
       base: `slot:${date}:${sl.slotTime}`,
       source: 'date-file' as const,
-    }));
-  } else if (dayPlan?.mode === 'pin' && dayPlan.mediaPath) {
-    mediaList = [{
-      url: `${origin}${dayPlan.mediaPath}`,
-      type: dayPlan.mediaType === 'video' ? 'video' : 'image',
-      base: `pin:${date}`,
-      source: 'date-file',
-    }];
-  } else {
-    mediaList = await findChainMediaList(origin, date, weekday);
-  }
+    })),
+  ];
 
   if (mediaList.length > 0) {
     const results: Array<Record<string, unknown>> = [];
@@ -247,6 +244,15 @@ export async function POST(req: NextRequest) {
       { ok: errorCount === 0, posted: postedCount > 0, slots: mediaList.length, results },
       { status: errorCount === 0 ? 200 : 500 }
     );
+  }
+
+  // 枠を置いた日は「出すものを決めた日」なので、埋め草は混ぜない。
+  if (slots.length > 0) {
+    const next = slots.find((sl) => sl.slotTime > nowHhmm);
+    return NextResponse.json({
+      ok: true, posted: false,
+      note: next ? `${date} の次の枠は ${next.slotTime}(現在 ${nowHhmm})` : `${date} の枠は消化済み`,
+    });
   }
 
   // 通常素材が1本も無い日のみ埋め草へ。既に今日何か投稿済みなら重複させない(1日1本)。
