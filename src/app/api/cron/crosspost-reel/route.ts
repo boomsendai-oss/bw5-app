@@ -3,6 +3,7 @@ import { execute, getAll, getOne } from '@/lib/db';
 import { nowUtcIso } from '@/lib/dateJst';
 import {
   buildXText,
+  buildXReplyCta,
   buildYouTubeMeta,
   pickNext,
   classifyByEnabled,
@@ -166,6 +167,16 @@ export async function POST(req: NextRequest) {
       const tweetId = await postTweet(buildXText(reel.caption), undefined, undefined, [mediaId]);
       externalId = tweetId;
       permalink = `https://x.com/i/status/${tweetId}`;
+
+      // 導線は本文ではなく**自分へのリプライ**に置く。
+      // Xは外部リンク入りの投稿が伸びにくいので、本体はリンク無しで出し、
+      // 直後のリプライでLINEへの導線を足す(本体の表示を犠牲にしない)。
+      // ここが失敗しても動画本体は公開済みなので、全体を失敗にはしない。
+      try {
+        await postTweet(buildXReplyCta(), tweetId);
+      } catch (e) {
+        console.warn('[crosspost] Xの導線リプライに失敗(本体は投稿済み):', e);
+      }
     }
 
     await execute(

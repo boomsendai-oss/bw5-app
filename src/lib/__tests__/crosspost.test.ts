@@ -8,6 +8,7 @@ import {
   YT_TITLE_MAX,
   MAX_ATTEMPTS,
   YT_DESCRIPTION_MAX,
+  buildXReplyCta,
   classifyByEnabled,
   type CrosspostRow,
 } from '../crosspost';
@@ -191,6 +192,20 @@ describe('pickNext', () => {
       row({ id: 8, reel_id: 7, platform: 'youtube' }),
     ]);
     expect(got?.id).toBe(8);
+  });
+});
+
+describe('buildXReplyCta', () => {
+  it('公式LINEのURLを含む', () => {
+    expect(buildXReplyCta()).toContain(OFFICIAL_LINE_URL);
+  });
+
+  it('280文字に収まる', () => {
+    expect([...buildXReplyCta()].length).toBeLessThanOrEqual(X_TEXT_MAX);
+  });
+
+  it('何をするリンクなのかが分かる文言を添える', () => {
+    expect(buildXReplyCta()).toContain('体験');
   });
 });
 
