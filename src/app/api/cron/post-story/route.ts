@@ -4,7 +4,7 @@ import { todayJst, weekdayJst, nowUtcIso } from '@/lib/dateJst';
 import { configured as igConfigured, publishStoryVideo, publishStoryImage, refreshTokenIfStale } from '@/lib/instagram';
 import { pickNextQueueItem, markQueueItemPosted } from '@/lib/storyQueue';
 import { WEEKDAY_FILES, findChainMediaList, loadSidecar, checkSchedule, resolveMentions, type ChainMedia } from '@/lib/storyPlan';
-import { getDayPlan } from '@/lib/storyDayPlan';
+import { getDayPlan, listDaySlots } from '@/lib/storyDayPlan';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -114,19 +114,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, posted: false, note: `${date} はアプリで「投稿しない」に設定されています` });
   }
 
+  // 時間帯別の枠(TARO 2026-08-03)。1日2〜3本を時間をずらして出す。
+  // 「予定時刻を過ぎていてまだ出していない枠」を出す期限方式なので、cronの呼び出し時刻が
+  // 枠の時刻とぴったり合っていなくても取りこぼさない(GH側の遅延発火でも拾える)。
+  const slots = await listDaySlots(date);
+  const nowHhmm = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(11, 16);
+
   // 素材の選択(作り置きをTAROが用意・Claudeは選んで出すだけ。無ければ出さない=ブレーキ):
-  //   ⓪その日の指定(pin) → ①日付指定 → ②曜日デフォルト → ③承認済み埋め草キュー → ④出さない。
+  //   ⓪時間帯別の枠 → ⓪その日の指定(pin) → ①日付指定 → ②曜日デフォルト → ③承認済み埋め草キュー → ④出さない。
   // 1日複数本対応: {base}-2.jpg 等の連番があれば朝8:00に順番に連続投稿する(例: 土曜の朝の部+午後の部)。
   // 選択ロジック本体は storyPlan.ts (「明日の投稿予定」プレビューと共用)。
   // pin はTAROが目で見て選んだものなので、カレンダー照合はかけずそのまま出す。
-  const mediaList: ChainMedia[] = dayPlan?.mode === 'pin' && dayPlan.mediaPath
-    ? [{
-        url: `${origin}${dayPlan.mediaPath}`,
-        type: dayPlan.mediaType === 'video' ? 'video' : 'image',
-        base: `pin:${date}`,
-        source: 'date-file',
-      }]
-    : await findChainMediaList(origin, date, weekday);
+  let mediaList: ChainMedia[];
+  if (slots.length > 0) {
+    // 枠が1つでもある日は完全に手動指定。自動選択にも埋め草にも落とさない。
+    const due = slots.filter((sl) => sl.slotTime <= nowHhmm);
+    if (due.length === 0) {
+      return NextResponse.json({
+        ok: true, posted: false,
+        note: `${date} の次の枠は ${slots[0].slotTime}(現在 ${nowHhmm})`,
+      });
+    }
+    mediaList = due.map((sl) => ({
+      url: `${origin}${sl.mediaPath}`,
+      type: sl.mediaType,
+      base: `slot:${date}:${sl.slotTime}`,
+      source: 'date-file' as const,
+    }));
+  } else if (dayPlan?.mode === 'pin' && dayPlan.mediaPath) {
+    mediaList = [{
+      url: `${origin}${dayPlan.mediaPath}`,
+      type: dayPlan.mediaType === 'video' ? 'video' : 'image',
+      base: `pin:${date}`,
+      source: 'date-file',
+    }];
+  } else {
+    mediaList = await findChainMediaList(origin, date, weekday);
+  }
 
   if (mediaList.length > 0) {
     const results: Array<Record<string, unknown>> = [];
@@ -154,7 +178,7 @@ export async function POST(req: NextRequest) {
 
       // library-auto は台帳(manifest)由来の宣言/メンションをmediaが直接持つ(sidecar {base}.json は無い)
       // pin(その日の指定)はTAROが目で選んだ1本。sidecarもカレンダー照合も無し。
-      const sidecar = media.base.startsWith('pin:')
+      const sidecar = media.base.startsWith('pin:') || media.base.startsWith('slot:')
         ? { lessons: undefined, mentions: undefined }
         : media.source === 'library-auto'
           ? { lessons: media.lessons, mentions: media.mentions }

@@ -5,7 +5,7 @@ import { configured, connectionStatus } from '@/lib/instagram';
 import { todayJst, weekdayJst, shiftDays } from '@/lib/dateJst';
 import { findChainMediaList, loadSidecar, checkSchedule } from '@/lib/storyPlan';
 import { peekNextQueueItem } from '@/lib/storyQueue';
-import { getDayPlans, type DayPlan } from '@/lib/storyDayPlan';
+import { getDayPlans, listDaySlotsFor, type DayPlan, type DaySlot } from '@/lib/storyDayPlan';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -41,7 +41,10 @@ export async function GET(req: NextRequest) {
   const today = todayJst();
   const dates = Array.from({ length: 7 }, (_, i) => shiftDays(today, i));
   const dayPlans = await getDayPlans(dates);
-  const plans = await Promise.all(dates.map((d) => buildPlanForDate(origin, d, dayPlans[d] ?? null)));
+  const daySlots = await listDaySlotsFor(dates);
+  const plans = await Promise.all(
+    dates.map((d) => buildPlanForDate(origin, d, dayPlans[d] ?? null, daySlots[d] ?? []))
+  );
 
   return NextResponse.json({
     envConfigured: configured(),
@@ -61,15 +64,31 @@ export async function GET(req: NextRequest) {
  *   'blocked'  … 素材はあるがカレンダー不一致で全部止まる
  *   'no-media' … 出せる素材が無い
  */
-async function buildPlanForDate(origin: string, date: string, dayPlan: DayPlan | null) {
+async function buildPlanForDate(origin: string, date: string, dayPlan: DayPlan | null, slots: DaySlot[]) {
   const weekday = weekdayJst(date);
 
+  // 時間帯別の枠がある日は、それが全て(自動選択にも埋め草にも落とさない)
+  if (slots.length > 0) {
+    return {
+      date, weekday, source: 'date-file' as const, verdict: 'will-post' as const, dayPlan, slots,
+      items: slots.map((sl) => ({
+        base: `slot:${date}:${sl.slotTime}`,
+        mediaPath: sl.mediaPath,
+        mediaType: sl.mediaType,
+        mentions: [] as string[],
+        scheduleCheck: null,
+        pinned: true,
+        slotTime: sl.slotTime,
+      })),
+    };
+  }
+
   if (dayPlan?.mode === 'skip') {
-    return { date, weekday, source: 'none' as const, verdict: 'skip' as const, dayPlan, items: [] };
+    return { date, weekday, source: 'none' as const, verdict: 'skip' as const, dayPlan, slots, items: [] };
   }
   if (dayPlan?.mode === 'pin' && dayPlan.mediaPath) {
     return {
-      date, weekday, source: 'date-file' as const, verdict: 'will-post' as const, dayPlan,
+      date, weekday, source: 'date-file' as const, verdict: 'will-post' as const, dayPlan, slots,
       items: [{
         base: `pin:${date}`,
         mediaPath: dayPlan.mediaPath,
@@ -101,7 +120,7 @@ async function buildPlanForDate(origin: string, date: string, dayPlan: DayPlan |
     }
     const postable = items.filter((i) => i.scheduleCheck?.result !== 'mismatch');
     return {
-      date, weekday, source: chainList[0].source, dayPlan,
+      date, weekday, source: chainList[0].source, dayPlan, slots,
       verdict: postable.length > 0 ? ('will-post' as const) : ('blocked' as const),
       items,
     };
@@ -115,6 +134,7 @@ async function buildPlanForDate(origin: string, date: string, dayPlan: DayPlan |
         source: 'queue' as const,
         verdict: 'will-post' as const,
         dayPlan,
+        slots,
         items: [
           {
             base: `queue#${queueItem.id}`,
@@ -126,5 +146,5 @@ async function buildPlanForDate(origin: string, date: string, dayPlan: DayPlan |
           },
         ],
       }
-    : { date, weekday, source: 'none' as const, verdict: 'no-media' as const, dayPlan, items: [] };
+    : { date, weekday, source: 'none' as const, verdict: 'no-media' as const, dayPlan, slots, items: [] };
 }

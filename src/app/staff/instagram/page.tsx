@@ -43,6 +43,8 @@ type Candidate = {
   mediaType: 'image' | 'video';
 };
 
+type DaySlotRow = { id: number; date: string; slotTime: string; mediaPath: string; mediaType: 'image' | 'video'; note: string | null };
+
 type PlanItem = {
   base: string;
   mediaPath: string;
@@ -50,6 +52,7 @@ type PlanItem = {
   mentions: string[];
   queueTitle?: string | null;
   pinned?: boolean;
+  slotTime?: string;
   scheduleCheck?:
     | { result: 'no-declaration' | 'match' | 'check-error'; actual?: string[]; error?: string }
     | { result: 'mismatch'; actual: string[]; declared: string[]; problems: string[] }
@@ -63,6 +66,7 @@ type Plan = {
   // その日の結論(サーバ側でcronと同じ判定を通した結果)。画面はこれを最初に大きく出す。
   verdict?: 'skip' | 'will-post' | 'blocked' | 'no-media';
   dayPlan?: DayPlanRow | null;
+  slots?: DaySlotRow[];
   items: PlanItem[];
 };
 
@@ -116,7 +120,7 @@ function VerdictBadge({ plan, posted }: { plan: Plan; posted: boolean }) {
 }
 
 function PlanDayRow({
-  plan, isToday, logs, candidates, busy, onSkip, onPin, onClear,
+  plan, isToday, logs, candidates, busy, onSkip, onPin, onClear, onSlotSet, onSlotDelete,
 }: {
   plan: Plan;
   isToday: boolean;
@@ -126,8 +130,12 @@ function PlanDayRow({
   onSkip: (date: string) => void;
   onPin: (date: string, c: Candidate) => void;
   onClear: (date: string) => void;
+  onSlotSet: (date: string, time: string, c: Candidate) => void;
+  onSlotDelete: (date: string, time: string) => void;
 }) {
   const [picking, setPicking] = useState(false);
+  // null = 「その日の1本」として指定 / '08:00'等 = その時間帯の枠として指定
+  const [pickTime, setPickTime] = useState<string | null>(null);
   const postedFor = (mediaPath: string) =>
     logs.some((l) => l.date === plan.date && l.status.startsWith('posted') && l.video_path?.endsWith(mediaPath));
   const postedToday = logs.some((l) => l.date === plan.date && l.status.startsWith('posted'));
@@ -177,14 +185,31 @@ function PlanDayRow({
       )}
 
       {picking && (
-        <div className="mb-2 rounded-lg border border-sand-200 bg-sand-50 p-2 max-h-64 overflow-y-auto space-y-1">
+        <div className="mb-2 rounded-lg border border-sand-200 bg-sand-50 p-2 max-h-72 overflow-y-auto space-y-1">
+          <div className="flex flex-wrap gap-1.5 pb-2 mb-1 border-b border-sand-200">
+            <span className="text-[11px] text-neutral-500 self-center mr-1">いつ出す:</span>
+            <button type="button" onClick={() => setPickTime(null)}
+              className={`min-h-[32px] rounded-md px-2.5 text-xs font-semibold border ${pickTime === null ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-navy-700 border-sand-300'}`}>
+              朝の1本
+            </button>
+            {SLOT_TIMES.map((t) => (
+              <button key={t} type="button" onClick={() => setPickTime(t)}
+                className={`min-h-[32px] rounded-md px-2.5 text-xs font-semibold border ${pickTime === t ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-navy-700 border-sand-300'}`}>
+                {t}
+              </button>
+            ))}
+          </div>
           {candidates.length === 0 && <p className="text-xs text-neutral-500">選べる素材がありません</p>}
           {candidates.map((c) => (
             <button
               key={c.mediaPath}
               type="button"
               disabled={busy}
-              onClick={() => { onPin(plan.date, c); setPicking(false); }}
+              onClick={() => {
+              if (pickTime) onSlotSet(plan.date, pickTime, c);
+              else onPin(plan.date, c);
+              setPicking(false);
+            }}
               className="w-full text-left flex items-center gap-2 rounded-md bg-white border border-sand-200 px-2 py-1.5 disabled:opacity-50"
             >
               {c.mediaType === 'image' ? (
@@ -197,6 +222,18 @@ function PlanDayRow({
                 <span className="text-neutral-400">[{c.group}]</span>{' '}
                 <span className="text-navy-800 break-all">{c.label}</span>
               </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(plan.slots?.length ?? 0) > 0 && !postedToday && (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {plan.slots!.map((sl) => (
+            <button key={sl.slotTime} type="button" disabled={busy}
+              onClick={() => onSlotDelete(plan.date, sl.slotTime)}
+              className="min-h-[32px] rounded-md border border-brand-300 bg-brand-50 px-2.5 text-xs font-semibold text-brand-800 disabled:opacity-50">
+              {sl.slotTime} の枠を外す
             </button>
           ))}
         </div>
@@ -224,7 +261,7 @@ function PlanDayRow({
               </a>
               <div className="text-xs space-y-0.5 min-w-0">
                 <p className="text-navy-800 font-medium">
-                  {item.pinned ? 'アプリで指定' : PLAN_SOURCE_JA[plan.source]}
+                  {item.slotTime ? `${item.slotTime} に投稿` : item.pinned ? 'アプリで指定' : PLAN_SOURCE_JA[plan.source]}
                   {item.queueTitle ? `「${item.queueTitle}」` : ''}・{item.mediaType === 'image' ? '画像' : '動画'}
                 </p>
                 <p className="text-neutral-500 truncate">
@@ -313,6 +350,9 @@ const PLAN_SOURCE_JA: Record<Plan['source'], string> = {
 };
 
 const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'];
+
+/** 1日に分けて出すときの標準の時間帯。朝=通学前 / 昼=昼休み / 夜=子が寝たあと。 */
+const SLOT_TIMES = ['08:00', '12:30', '21:00'];
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   posted: { label: '投稿済み', cls: 'bg-green-100 text-green-700' },
@@ -628,6 +668,8 @@ export default function InstagramStoryPage() {
                   onSkip={(date) => dayPlanAction({ date, action: 'skip' })}
                   onPin={(date, c) => dayPlanAction({ date, action: 'pin', mediaPath: c.mediaPath, mediaType: c.mediaType })}
                   onClear={(date) => dayPlanAction({ date, action: 'clear' })}
+                  onSlotSet={(date, time, c) => dayPlanAction({ date, action: 'slot_set', time, mediaPath: c.mediaPath, mediaType: c.mediaType })}
+                  onSlotDelete={(date, time) => dayPlanAction({ date, action: 'slot_delete', time })}
                 />
               ))}
             </div>

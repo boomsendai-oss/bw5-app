@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/eventAuth';
 import { execute, getAll } from '@/lib/db';
 import { isIsoDate, nowUtcIso, todayJst } from '@/lib/dateJst';
-import { setDayPlan, clearDayPlan, getDayPlan } from '@/lib/storyDayPlan';
+import { setDayPlan, clearDayPlan, getDayPlan, upsertDaySlot, deleteDaySlot, listDaySlots } from '@/lib/storyDayPlan';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -105,7 +105,30 @@ export const POST = withAuth(async (req: NextRequest) => {
     await setDayPlan(date, 'pin', mediaPath, mediaType, body.note ? String(body.note) : null);
     return NextResponse.json({ ok: true, plan: await getDayPlan(date) });
   }
-  return NextResponse.json({ error: 'action は skip / pin / clear のいずれかです' }, { status: 400 });
+  // 時間帯別の枠(1日2〜3本を時間をずらして出す)
+  if (action === 'slot_set' || action === 'slot_delete') {
+    const time = String(body.time ?? '').trim();
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+      return NextResponse.json({ error: '時刻は HH:MM で指定してください' }, { status: 400 });
+    }
+    if (action === 'slot_delete') {
+      await deleteDaySlot(date, time);
+      return NextResponse.json({ ok: true, slots: await listDaySlots(date) });
+    }
+    const mediaPath = String(body.mediaPath ?? '').trim();
+    if (!/^\/(stories|api\/story-media)\//.test(mediaPath)) {
+      return NextResponse.json({ error: '素材のパスが不正です' }, { status: 400 });
+    }
+    const slots = await listDaySlots(date);
+    if (slots.length >= 3 && !slots.some((sl) => sl.slotTime === time)) {
+      return NextResponse.json({ error: '1日に置ける枠は3つまでです' }, { status: 400 });
+    }
+    await upsertDaySlot(date, time, mediaPath, body.mediaType === 'video' ? 'video' : 'image',
+      body.note ? String(body.note) : null);
+    return NextResponse.json({ ok: true, slots: await listDaySlots(date) });
+  }
+
+  return NextResponse.json({ error: 'action は skip / pin / clear / slot_set / slot_delete のいずれかです' }, { status: 400 });
 });
 
 export const PUT = withAuth(async (req: NextRequest) => {

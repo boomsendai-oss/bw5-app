@@ -8,6 +8,12 @@ const JOBS = [
   // ストーリー: 毎朝8時ちょうどに出したい。publishに30〜60秒かかるので07:59に着火する。
   { at: '07:59', path: '/api/cron/post-story', label: 'story' },
   { at: '08:15', path: '/api/cron/post-story', label: 'story-retry' },
+  // 昼と夜の枠(TARO 2026-08-03: 1日2〜3本を時間をずらして出す)。
+  // 枠が設定されていない日は「次の枠は…」で何もせず返るだけなので、毎日叩いても無害。
+  { at: '12:30', path: '/api/cron/post-story', label: 'story-noon' },
+  { at: '12:45', path: '/api/cron/post-story', label: 'story-noon-retry' },
+  { at: '21:00', path: '/api/cron/post-story', label: 'story-night' },
+  { at: '21:15', path: '/api/cron/post-story', label: 'story-night-retry' },
   // リール: 19:00枠(クラス)と20:00枠(発表会)。予約時刻を過ぎたものを投稿する実装なので定刻に叩く。
   { at: '19:00', path: '/api/cron/post-reel', label: 'reel-19' },
   { at: '19:12', path: '/api/cron/post-reel', label: 'reel-19-retry' },
