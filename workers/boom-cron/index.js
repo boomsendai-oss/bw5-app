@@ -1,5 +1,5 @@
 // BOOM 自動投稿トリガー。毎分起動し、JSTの時刻表に一致する仕事だけアプリのcron APIを叩く。
-// 秘密(CRON_SECRET)は wrangler secret で登録済み。アプリ側は x-cron-secret ヘッダで認可する。
+// 秘密(CRON_SECRET_CF)は wrangler secret で登録済み。アプリ側は x-cron-secret ヘッダで認可する。
 //
 // 冪等性はアプリ側が担保している(story_post_claim / reel_queue のatomic claim)ので、
 // GitHub Actions側の遅延発火と重なっても二重投稿にはならない。
@@ -25,7 +25,7 @@ async function runJob(job, env) {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'x-cron-secret': env.CRON_SECRET, 'content-type': 'application/json' },
+      headers: { 'x-cron-secret': env.CRON_SECRET_CF, 'content-type': 'application/json' },
     });
     const body = await res.text();
     console.log(`[${job.label}] ${res.status} ${body.slice(0, 300)}`);
