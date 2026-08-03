@@ -191,12 +191,21 @@ describe('validateBf6Order: 申込入力の検証', () => {
     expect(typeof validateBf6Order(input)).toBe('string');
   });
 
-  test('ダンサーネーム・呼び方は必須', () => {
+  test('ダンサーネーム・フリガナは必須', () => {
     const a = validInput();
     a.entries[0].dancerName = '';
     expect(typeof validateBf6Order(a)).toBe('string');
     const b = validInput();
     b.entries[0].dancerKana = '';
+    expect(typeof validateBf6Order(b)).toBe('string');
+  });
+
+  test('エントリージャンル・レペゼンは必須(TARO 2026-08-04)', () => {
+    const a = validInput();
+    a.entries[0].genre = '';
+    expect(typeof validateBf6Order(a)).toBe('string');
+    const b = validInput();
+    b.entries[0].rep = ' ';
     expect(typeof validateBf6Order(b)).toBe('string');
   });
 
@@ -286,8 +295,8 @@ describe('buildBf6OrderItems: 明細行の生成(単価はサーバ側で確定)
       dancerName: 'JIRO',
       dancerKana: 'ジロー',
       grade: 'jhs1',
-      genre: '',
-      rep: '',
+      genre: 'BREAK',
+      rep: 'BOOM',
       instagram: '',
       isFirstBattle: false,
       divisions: ['kids', 'general'],

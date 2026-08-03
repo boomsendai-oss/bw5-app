@@ -129,10 +129,10 @@ export function ticketRemaining(
   return Math.max(0, hallCapacity - performerCount - soldTickets);
 }
 
-export const BF6_DIVISIONS: { key: Bf6Division; label: string }[] = [
-  { key: 'beginner', label: '小学生初心者' },
-  { key: 'kids', label: '小中学生' },
-  { key: 'general', label: '一般' },
+export const BF6_DIVISIONS: { key: Bf6Division; label: string; note: string }[] = [
+  { key: 'beginner', label: 'ビギナー部門', note: '小学生・バトル初出場限定' },
+  { key: 'kids', label: '小中学生部門', note: '小学生・中学生' },
+  { key: 'general', label: '一般部門', note: '年齢制限なし' },
 ];
 
 export function bf6DivisionLabel(key: string): string {
@@ -274,7 +274,7 @@ export function validateBf6Order(input: Bf6OrderInput): ValidatedBf6Order | stri
 
     const isFirstBattle = Boolean(e?.isFirstBattle);
     if (divisions.includes('beginner') && !canEnterBeginner(grade, isFirstBattle)) {
-      return `小学生初心者部門は「小学生」かつ「バトル初出場」の方のみエントリーできます(${dancerName} さん)`;
+      return `ビギナー部門は「小学生」かつ「バトル初出場」の方のみエントリーできます(${dancerName} さん)`;
     }
     if (divisions.includes('kids') && !canEnterKids(grade)) {
       return `小中学生部門は小学生・中学生のみエントリーできます(${dancerName} さん)`;
@@ -284,13 +284,18 @@ export function validateBf6Order(input: Bf6OrderInput): ValidatedBf6Order | stri
     if (instagram && !instagram.startsWith('@')) instagram = `@${instagram}`;
     if (instagram.length > 50) return 'Instagramアカウントが長すぎます(50文字以内)';
 
+    const genre = (e?.genre ?? '').trim();
+    if (!genre) return `${dancerName} さんのエントリージャンルを入力してください`;
+    const rep = (e?.rep ?? '').trim();
+    if (!rep) return `${dancerName} さんのレペゼン(チーム名・地域・スクールなど)を入力してください`;
+
     entries.push({
       performerName,
       dancerName,
       dancerKana,
       grade,
-      genre: (e?.genre ?? '').trim().slice(0, 50),
-      rep: (e?.rep ?? '').trim().slice(0, 50),
+      genre: genre.slice(0, 50),
+      rep: rep.slice(0, 50),
       instagram,
       isFirstBattle,
       divisions,

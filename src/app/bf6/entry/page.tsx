@@ -3,6 +3,7 @@
 // ⚠️ 公開ページ(認証なし)。理由: BOOMER'S FIGHT vol.6 の外部参加者向けエントリーフォーム。
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   getBf6Context,
   submitBf6Order,
@@ -22,6 +23,7 @@ import {
   isElementaryGrade,
   type Bf6Division,
 } from '@/lib/bf6';
+import { Bf6Hero, Bf6Card, Bf6SectionTitle, Bf6Field, Bf6NumberSelect, inputCls } from '../ui';
 
 const TOKEN_KEY = 'bf6_order_token';
 
@@ -35,13 +37,12 @@ type PerformerRow = {
   instagram: string;
   isFirstBattle: boolean;
   divisions: Bf6Division[];
-  sameAsBuyer: boolean;
 };
 
 function emptyPerformer(): PerformerRow {
   return {
     performerName: '', dancerName: '', dancerKana: '', grade: '',
-    genre: '', rep: '', instagram: '', isFirstBattle: false, divisions: [], sameAsBuyer: false,
+    genre: '', rep: '', instagram: '', isFirstBattle: false, divisions: [],
   };
 }
 
@@ -74,23 +75,15 @@ export default function Bf6EntryPage() {
   }, []);
 
   const pricing = ctx?.pricing;
-  const total = useMemo(() => {
-    if (!pricing) return 0;
-    return calcOrderTotal(
-      { entries: rows.map((r) => ({ divisions: r.divisions })), adultTickets, childTickets },
-      payMethod,
-      pricing
-    );
-  }, [pricing, rows, adultTickets, childTickets, payMethod]);
-
-  const totalOther = useMemo(() => {
-    if (!pricing) return 0;
-    return calcOrderTotal(
-      { entries: rows.map((r) => ({ divisions: r.divisions })), adultTickets, childTickets },
-      payMethod === 'prepaid' ? 'onsite' : 'prepaid',
-      pricing
-    );
-  }, [pricing, rows, adultTickets, childTickets, payMethod]);
+  const cart = useMemo(
+    () => ({ entries: rows.map((r) => ({ divisions: r.divisions })), adultTickets, childTickets }),
+    [rows, adultTickets, childTickets]
+  );
+  const total = useMemo(() => (pricing ? calcOrderTotal(cart, payMethod, pricing) : 0), [pricing, cart, payMethod]);
+  const totalOther = useMemo(
+    () => (pricing ? calcOrderTotal(cart, payMethod === 'prepaid' ? 'onsite' : 'prepaid', pricing) : 0),
+    [pricing, cart, payMethod]
+  );
 
   function updateRow(i: number, patch: Partial<PerformerRow>) {
     setRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -111,7 +104,7 @@ export default function Bf6EntryPage() {
     if (!row.divisions.includes(d) && ctx.remaining.divisions[d] <= 0) return '満枠';
     if (d === 'beginner') {
       if (row.grade && !isElementaryGrade(row.grade)) return '小学生のみ';
-      if (row.grade && !row.isFirstBattle) return '初出場のみ';
+      if (row.grade && !row.isFirstBattle) return '下の「バトル初出場」にチェックすると選べます';
     }
     if (d === 'kids' && row.grade && !canEnterKids(row.grade)) return '小・中学生のみ';
     return '';
@@ -122,13 +115,15 @@ export default function Bf6EntryPage() {
     if (!email.trim()) return 'メールアドレスを入力してください';
     if (!phone.trim()) return '電話番号を入力してください';
     for (const r of rows) {
-      if (!r.performerName.trim()) return '出場者の本名(カタカナ)を入力してください';
       if (!r.dancerName.trim()) return 'ダンサーネームを入力してください';
-      if (!r.dancerKana.trim()) return 'ダンサーネームの呼び方(フリガナ)を入力してください';
+      if (!r.dancerKana.trim()) return 'ダンサーネームのフリガナを入力してください';
+      if (!r.performerName.trim()) return '本名(カタカナ)を入力してください';
       if (!r.grade) return '学年を選んでください';
+      if (!r.genre.trim()) return 'エントリージャンルを入力してください';
+      if (!r.rep.trim()) return 'レペゼン(チーム名・地域・スクールなど)を入力してください';
       if (r.divisions.length === 0) return '出場部門を1つ以上選んでください';
       if (r.divisions.includes('beginner') && !canEnterBeginner(r.grade, r.isFirstBattle)) {
-        return '小学生初心者部門は「小学生」かつ「バトル初出場」の方のみです';
+        return 'ビギナー部門は「小学生」かつ「バトル初出場」の方のみです';
       }
     }
     return '';
@@ -157,6 +152,7 @@ export default function Bf6EntryPage() {
     setAmountTotal(res.amountTotal);
     if (res.payMethod === 'prepaid') {
       setStep('pay');
+      window.scrollTo({ top: 0 });
     } else {
       router.push(`/bf6/complete?t=${res.token}`);
     }
@@ -167,108 +163,119 @@ export default function Bf6EntryPage() {
     setError('');
     const res = await startBf6Checkout(doneToken);
     setSubmitting(false);
-    if (res.ok) {
-      window.location.href = res.url;
-    } else {
-      setError(res.error);
-    }
+    if (res.ok) window.location.href = res.url;
+    else setError(res.error);
   }
 
   if (loading) {
-    return <Shell><p className="text-zinc-400">読み込み中…</p></Shell>;
+    return <Shell><p className="py-16 text-center text-neutral-400">読み込み中…</p></Shell>;
   }
   if (!ctx || !ctx.entryOpen) {
     return (
       <Shell>
-        <h1 className="text-2xl font-black text-white">バトルエントリー</h1>
-        <p className="mt-4 rounded-lg bg-zinc-800 p-4 text-zinc-200">
-          現在エントリーは受け付けていません。受付期間: 8/8(土)〜9/24(木)
-        </p>
+        <Bf6Hero title="BATTLE ENTRY" subtitle="バトルエントリー" />
+        <div className="px-4 py-8">
+          <Bf6Card>
+            <p className="text-neutral-700">
+              現在エントリーは受け付けていません。<br />
+              受付期間: <span className="font-bold">8/8(土)〜9/24(木)</span>
+            </p>
+          </Bf6Card>
+        </div>
       </Shell>
     );
   }
 
-  // ===== 確認画面 =====
+  // ===== 確認画面 / 決済確認 =====
   if (step === 'confirm' || step === 'pay') {
     return (
       <Shell>
-        {step === 'confirm' ? (
-          <>
-            <h1 className="text-2xl font-black text-white">入力内容の確認</h1>
-            <p className="mt-1 text-sm text-zinc-400">この内容でエントリーします。よろしいですか?</p>
-          </>
-        ) : (
-          <>
-            <h1 className="text-2xl font-black text-white">申込を受け付けました</h1>
-            <p className="mt-1 text-sm text-zinc-400">あと1歩です。決済が完了するとエントリー確定になります。</p>
-          </>
-        )}
-
-        <section className="mt-6 space-y-4">
-          <ConfirmBlock label="申込者">
-            <p>{buyerName}</p>
-            <p className="text-sm text-zinc-400">{email} / {phone}</p>
-          </ConfirmBlock>
-          {rows.map((r, i) => (
-            <ConfirmBlock key={i} label={`出場者 ${rows.length > 1 ? i + 1 : ''}`}>
-              <p className="text-lg font-bold">{r.dancerName} <span className="text-sm font-normal text-zinc-400">({r.dancerKana})</span></p>
-              <p className="text-sm text-zinc-400">{r.performerName} / {bf6GradeLabel(r.grade)}</p>
-              <p className="mt-1">{r.divisions.map(bf6DivisionLabel).join('・')}</p>
-              {(r.genre || r.rep) && <p className="text-sm text-zinc-400">{[r.genre, r.rep].filter(Boolean).join(' / ')}</p>}
-              {r.instagram && <p className="text-sm text-zinc-400">{r.instagram}</p>}
-            </ConfirmBlock>
-          ))}
-          {(adultTickets > 0 || childTickets > 0) && (
-            <ConfirmBlock label="観覧チケット">
-              {adultTickets > 0 && <p>大人 × {adultTickets}</p>}
-              {childTickets > 0 && <p>小学生 × {childTickets}</p>}
-            </ConfirmBlock>
+        <Bf6Hero
+          title={step === 'confirm' ? 'CONFIRM' : 'ONE MORE STEP'}
+          subtitle={step === 'confirm' ? '入力内容の確認' : '申込を受け付けました'}
+        />
+        <div className="space-y-4 px-4 py-6">
+          {step === 'confirm' ? (
+            <p className="text-sm text-neutral-600">この内容でエントリーします。よろしいですか?</p>
+          ) : (
+            <p className="rounded-xl border-2 border-red-600 bg-red-50 p-4 text-sm font-bold text-red-700">
+              あと1歩! 決済が完了するとエントリー確定になり、エントリーリストに掲載されます。
+            </p>
           )}
-          <ConfirmBlock label="お支払い">
-            <p className="text-2xl font-black text-red-400">{yen(step === 'pay' ? amountTotal : total)}</p>
-            <p className="text-sm text-zinc-400">
+
+          <Bf6Card label="申込者">
+            <p className="font-bold text-neutral-900">{buyerName}</p>
+            <p className="text-sm text-neutral-500">{email} / {phone}</p>
+          </Bf6Card>
+
+          {rows.map((r, i) => (
+            <Bf6Card key={i} label={`出場者${rows.length > 1 ? ` ${i + 1}` : ''}`}>
+              <p className="text-xl font-black text-neutral-900">
+                {r.dancerName} <span className="text-sm font-bold text-neutral-400">{r.dancerKana}</span>
+              </p>
+              <p className="mt-0.5 text-sm text-neutral-500">{r.performerName} / {bf6GradeLabel(r.grade)}</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {r.divisions.map((d) => (
+                  <span key={d} className="rounded-full bg-neutral-900 px-3 py-1 text-xs font-bold text-white">
+                    {bf6DivisionLabel(d)}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-2 text-sm text-neutral-600">{r.genre} / REP: {r.rep}</p>
+              {r.instagram && <p className="text-sm text-neutral-500">{r.instagram.startsWith('@') ? r.instagram : `@${r.instagram}`}</p>}
+            </Bf6Card>
+          ))}
+
+          {(adultTickets > 0 || childTickets > 0) && (
+            <Bf6Card label="観覧チケット">
+              {adultTickets > 0 && <p className="text-neutral-900">大人 × {adultTickets}</p>}
+              {childTickets > 0 && <p className="text-neutral-900">小学生 × {childTickets}</p>}
+            </Bf6Card>
+          )}
+
+          <div className="rounded-2xl bg-neutral-900 p-5 text-center">
+            <p className="text-xs font-bold tracking-widest text-neutral-400">
               {payMethod === 'prepaid' ? '事前カード決済(割引適用済み)' : '当日会場でのお支払い(現金)'}
             </p>
-          </ConfirmBlock>
-        </section>
-
-        {error && <p className="mt-4 rounded-lg bg-red-900/40 p-3 text-red-300">{error}</p>}
-
-        {step === 'confirm' ? (
-          <div className="mt-6 space-y-3">
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="w-full rounded-xl bg-red-600 py-4 text-lg font-black text-white disabled:opacity-50"
-            >
-              {submitting ? '送信中…' : payMethod === 'prepaid' ? 'この内容で申し込む(次で決済)' : 'この内容でエントリーする'}
-            </button>
-            <button onClick={() => setStep('input')} disabled={submitting} className="w-full rounded-xl border border-zinc-600 py-3 text-zinc-300">
-              入力に戻る
-            </button>
+            <p className="mt-1 text-4xl font-black text-white">{yen(step === 'pay' ? amountTotal : total)}</p>
           </div>
-        ) : (
-          <div className="mt-6 space-y-3">
-            <p className="text-center font-bold text-white">決済に進みますか?</p>
-            <button
-              onClick={handleGoCheckout}
-              disabled={submitting}
-              className="w-full rounded-xl bg-red-600 py-4 text-lg font-black text-white disabled:opacity-50"
-            >
-              {submitting ? '接続中…' : `はい、決済に進む(${yen(amountTotal)})`}
-            </button>
-            <button
-              onClick={() => router.push(`/bf6/complete?t=${doneToken}`)}
-              disabled={submitting}
-              className="w-full rounded-xl border border-zinc-600 py-3 text-zinc-300"
-            >
-              いいえ、あとで決済する
-            </button>
-            <p className="text-center text-xs text-zinc-500">
-              ※ 30分以内に決済が完了しない場合、この申込は無効になります
-            </p>
-          </div>
-        )}
+
+          {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-600">{error}</p>}
+
+          {step === 'confirm' ? (
+            <div className="space-y-3 pt-2">
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="w-full rounded-2xl bg-red-600 py-4 text-lg font-black text-white shadow-lg shadow-red-600/30 active:scale-[0.99] disabled:opacity-50"
+              >
+                {submitting ? '送信中…' : payMethod === 'prepaid' ? 'この内容で申し込む(次で決済)' : 'この内容でエントリーする'}
+              </button>
+              <button onClick={() => setStep('input')} disabled={submitting} className="w-full rounded-2xl border-2 border-neutral-300 bg-white py-3.5 font-bold text-neutral-600">
+                入力に戻る
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3 pt-2">
+              <p className="text-center text-lg font-black text-neutral-900">決済に進みますか?</p>
+              <button
+                onClick={handleGoCheckout}
+                disabled={submitting}
+                className="w-full rounded-2xl bg-red-600 py-4 text-lg font-black text-white shadow-lg shadow-red-600/30 active:scale-[0.99] disabled:opacity-50"
+              >
+                {submitting ? '接続中…' : `はい、決済に進む(${yen(amountTotal)})`}
+              </button>
+              <button
+                onClick={() => router.push(`/bf6/complete?t=${doneToken}`)}
+                disabled={submitting}
+                className="w-full rounded-2xl border-2 border-neutral-300 bg-white py-3.5 font-bold text-neutral-600"
+              >
+                いいえ、あとで決済する
+              </button>
+              <p className="text-center text-xs text-neutral-500">※ 30分以内に決済が完了しない場合、この申込は無効になります</p>
+            </div>
+          )}
+        </div>
       </Shell>
     );
   }
@@ -276,225 +283,207 @@ export default function Bf6EntryPage() {
   // ===== 入力画面 =====
   return (
     <Shell>
-      <h1 className="text-2xl font-black text-white">バトルエントリー</h1>
-      <p className="mt-1 text-sm text-zinc-400">
-        BOOMER&apos;S FIGHT!!! vol.6 — 2026.9.26(土) SSM 9階ホール
-      </p>
+      <Bf6Hero title="BATTLE ENTRY" subtitle="バトルエントリー / 2026.9.26 SAT — SSM 9階ホール" />
+      <div className="px-4 py-6">
+        <section>
+          <Bf6SectionTitle no="1" title="申込者" note="保護者の方でもOK" />
+          <Bf6Card>
+            <div className="space-y-4">
+              <Bf6Field label="お名前" required>
+                <input value={buyerName} onChange={(e) => setBuyerName(e.target.value)} className={inputCls} />
+              </Bf6Field>
+              <Bf6Field label="メールアドレス" required hint="エントリー完了のご連絡が届きます">
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+              </Bf6Field>
+              <Bf6Field label="電話番号" required hint="必ず当日連絡が取れる番号を入力してください">
+                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} />
+              </Bf6Field>
+            </div>
+          </Bf6Card>
+        </section>
 
-      <section className="mt-6">
-        <h2 className="font-bold text-red-400">申込者(保護者の方でもOK)</h2>
-        <div className="mt-2 space-y-3">
-          <Field label="お名前" required>
-            <input value={buyerName} onChange={(e) => setBuyerName(e.target.value)} className={inputCls} />
-          </Field>
-          <Field label="メールアドレス" required hint="エントリー完了のご連絡が届きます">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
-          </Field>
-          <Field label="電話番号" required hint="必ず当日連絡が取れる番号を入力してください">
-            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} />
-          </Field>
-        </div>
-      </section>
+        <section className="mt-8">
+          <Bf6SectionTitle no="2" title="出場者" note="きょうだい等は「追加」でまとめて申込OK" />
+          {rows.map((row, i) => (
+            <div key={i} className="mt-3 first:mt-0">
+              <Bf6Card>
+                {rows.length > 1 && (
+                  <div className="mb-3 flex items-center justify-between border-b border-neutral-100 pb-2">
+                    <p className="font-black text-red-600">出場者 {i + 1}</p>
+                    <button onClick={() => setRows((p) => p.filter((_, j) => j !== i))} className="text-sm text-neutral-400 underline">
+                      削除
+                    </button>
+                  </div>
+                )}
+                <div className="space-y-4">
+                  <Bf6Field label="ダンサーネーム(エントリーネーム)" required hint="エントリーリスト・トーナメント表に載る名前です">
+                    <input value={row.dancerName} onChange={(e) => updateRow(i, { dancerName: e.target.value })} placeholder="例: TARO" className={inputCls} />
+                  </Bf6Field>
+                  <Bf6Field label="ダンサーネームのフリガナ" required hint="当日MCがお呼びする読み方です">
+                    <input value={row.dancerKana} onChange={(e) => updateRow(i, { dancerKana: e.target.value })} placeholder="例: タロー" className={inputCls} />
+                  </Bf6Field>
+                  <Bf6Field label="本名(カタカナ)" required hint="受付での本人確認用。公開されません">
+                    <input value={row.performerName} onChange={(e) => updateRow(i, { performerName: e.target.value })} placeholder="例: ヤマダタロウ" className={inputCls} />
+                  </Bf6Field>
+                  <Bf6Field label="学年" required>
+                    <select value={row.grade} onChange={(e) => updateRow(i, { grade: e.target.value })} className={inputCls}>
+                      <option value="">選択してください</option>
+                      {BF6_GRADE_OPTIONS.map((g) => (
+                        <option key={g.key} value={g.key}>{g.label}</option>
+                      ))}
+                    </select>
+                  </Bf6Field>
+                  <Bf6Field label="エントリージャンル" required hint="例: HIPHOP / BREAK / FREESTYLE など">
+                    <input value={row.genre} onChange={(e) => updateRow(i, { genre: e.target.value })} placeholder="例: HIPHOP" className={inputCls} />
+                  </Bf6Field>
+                  <Bf6Field label="レペゼン(チーム名・地域・スクールなど)" required hint="エントリーリストに載ります">
+                    <input value={row.rep} onChange={(e) => updateRow(i, { rep: e.target.value })} placeholder="例: BOOM / 仙台" className={inputCls} />
+                  </Bf6Field>
+                  <Bf6Field label="Instagram" hint="結果発表やレポートでタグ付けします。なるべくご入力ください">
+                    <input value={row.instagram} onChange={(e) => updateRow(i, { instagram: e.target.value })} placeholder="@boom_dance_school" className={inputCls} />
+                  </Bf6Field>
 
-      {rows.map((row, i) => (
-        <section key={i} className="mt-6 rounded-xl border border-zinc-700 bg-zinc-900 p-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold text-red-400">出場者{rows.length > 1 ? ` ${i + 1}` : ''}</h2>
-            {rows.length > 1 && (
-              <button onClick={() => setRows((p) => p.filter((_, j) => j !== i))} className="text-sm text-zinc-500 underline">
-                削除
-              </button>
-            )}
-          </div>
-          <div className="mt-2 space-y-3">
-            <Field label="本名(カタカナ)" required hint="受付での確認用。公開されません">
-              <input
-                value={row.performerName}
-                onChange={(e) => updateRow(i, { performerName: e.target.value, sameAsBuyer: false })}
-                placeholder="ヤマダタロウ"
-                className={inputCls}
-              />
-            </Field>
-            <Field label="ダンサーネーム(エントリーネーム)" required hint="エントリーリスト・トーナメント表に載ります">
-              <input value={row.dancerName} onChange={(e) => updateRow(i, { dancerName: e.target.value })} className={inputCls} />
-            </Field>
-            <Field label="呼び方(フリガナ)" required hint="当日MCがお呼びする読み方">
-              <input value={row.dancerKana} onChange={(e) => updateRow(i, { dancerKana: e.target.value })} className={inputCls} />
-            </Field>
-            <Field label="学年" required>
-              <select value={row.grade} onChange={(e) => updateRow(i, { grade: e.target.value })} className={inputCls}>
-                <option value="">選択してください</option>
-                {BF6_GRADE_OPTIONS.map((g) => (
-                  <option key={g.key} value={g.key}>{g.label}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="エントリージャンル" hint="例: HIPHOP / BREAK / FREESTYLE など(自由記入)">
-              <input value={row.genre} onChange={(e) => updateRow(i, { genre: e.target.value })} className={inputCls} />
-            </Field>
-            <Field label="REP(チーム名・地域・スクールなど)" hint="エントリーリストに載ります(任意)">
-              <input value={row.rep} onChange={(e) => updateRow(i, { rep: e.target.value })} className={inputCls} />
-            </Field>
-            <Field label="Instagram" hint="結果発表やレポートでタグ付けします。なるべくご入力ください">
-              <input value={row.instagram} onChange={(e) => updateRow(i, { instagram: e.target.value })} placeholder="@boom_dance_school" className={inputCls} />
-            </Field>
-
-            <div>
-              <p className="text-sm font-bold text-zinc-300">出場部門 <span className="text-red-400">*</span> <span className="font-normal text-zinc-500">(複数選択可)</span></p>
-              <div className="mt-2 space-y-2">
-                {BF6_DIVISIONS.map((d) => {
-                  const reason = divisionDisabledReason(row, d.key);
-                  const checked = row.divisions.includes(d.key);
-                  const remaining = ctx.remaining.divisions[d.key];
-                  return (
-                    <label
-                      key={d.key}
-                      className={`flex items-center gap-3 rounded-lg border p-3 ${
-                        checked ? 'border-red-500 bg-red-950/40' : 'border-zinc-700'
-                      } ${reason && !checked ? 'opacity-50' : ''}`}
-                    >
+                  <div>
+                    <p className="text-sm font-bold text-neutral-800">
+                      出場部門 <span className="text-red-600">*</span>
+                      <span className="ml-1 font-normal text-neutral-400">(複数選択可)</span>
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {BF6_DIVISIONS.map((d) => {
+                        const reason = divisionDisabledReason(row, d.key);
+                        const checked = row.divisions.includes(d.key);
+                        const remaining = ctx.remaining.divisions[d.key];
+                        return (
+                          <label
+                            key={d.key}
+                            className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3.5 transition ${
+                              checked ? 'border-red-600 bg-red-50' : 'border-neutral-200 bg-white'
+                            } ${reason && !checked ? 'opacity-60' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={Boolean(reason) && !checked}
+                              onChange={() => toggleDivision(i, d.key)}
+                              className="h-5 w-5 accent-red-600"
+                            />
+                            <span className="flex-1">
+                              <span className="flex items-center gap-2">
+                                <span className="font-black text-neutral-900">{d.label}</span>
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${remaining > 0 ? 'bg-neutral-100 text-neutral-500' : 'bg-yellow-100 text-yellow-700'}`}>
+                                  {remaining > 0 ? `残り${remaining}枠` : '満枠'}
+                                </span>
+                              </span>
+                              <span className="block text-xs text-neutral-400">{d.note}</span>
+                              {reason && reason !== '満枠' && <span className="block text-xs font-bold text-red-500">{reason}</span>}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm font-bold text-neutral-700">
                       <input
                         type="checkbox"
-                        checked={checked}
-                        disabled={Boolean(reason) && !checked}
-                        onChange={() => toggleDivision(i, d.key)}
+                        checked={row.isFirstBattle}
+                        onChange={(e) => updateRow(i, { isFirstBattle: e.target.checked })}
+                        className="h-5 w-5 accent-red-600"
                       />
-                      <span className="flex-1">
-                        <span className="font-bold text-white">{d.label}</span>
-                        <span className="ml-2 text-xs text-zinc-400">残り{remaining}枠</span>
-                        {reason && <span className="ml-2 text-xs text-yellow-500">{reason}</span>}
-                      </span>
+                      バトルに出るのは初めて
+                      <span className="font-normal text-neutral-400">(ビギナー部門は必須)</span>
                     </label>
-                  );
-                })}
-              </div>
-              {row.divisions.length > 0 && pricing && (
-                <p className="mt-2 text-sm text-zinc-400">
-                  この出場者のエントリー料:
-                  <span className="ml-1 font-bold text-white">{yen(calcEntryFee(row.divisions.length, payMethod, pricing))}</span>
-                </p>
-              )}
+                    {row.divisions.length > 0 && pricing && (
+                      <p className="mt-3 rounded-lg bg-neutral-50 px-3 py-2 text-sm text-neutral-600">
+                        この出場者のエントリー料:
+                        <span className="ml-1 text-base font-black text-neutral-900">{yen(calcEntryFee(row.divisions.length, payMethod, pricing))}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </Bf6Card>
             </div>
+          ))}
+          <button
+            onClick={() => setRows((p) => (p.length < 5 ? [...p, emptyPerformer()] : p))}
+            className="mt-3 w-full rounded-2xl border-2 border-dashed border-neutral-300 bg-white py-3.5 font-bold text-neutral-500"
+          >
+            + 出場者を追加(きょうだい等)
+          </button>
+        </section>
 
-            <label className="flex items-center gap-2 text-sm text-zinc-300">
-              <input
-                type="checkbox"
-                checked={row.isFirstBattle}
-                onChange={(e) => updateRow(i, { isFirstBattle: e.target.checked })}
-              />
-              バトルに出るのは初めて(小学生初心者部門に出る場合は必須)
+        <section className="mt-8">
+          <Bf6SectionTitle no="3" title="観覧チケットも一緒に購入" note={`出場者本人と未就学児は無料 / 残り${ctx.remaining.tickets}枚`} />
+          <Bf6Card>
+            <div className="grid grid-cols-2 gap-4">
+              <Bf6Field label={`大人 ${pricing ? `${yen(calcTicketUnitPrice('ticket_adult', payMethod, pricing))}/枚` : ''}`}>
+                <Bf6NumberSelect value={adultTickets} onChange={setAdultTickets} />
+              </Bf6Field>
+              <Bf6Field label={`小学生 ${pricing ? `${yen(calcTicketUnitPrice('ticket_child', payMethod, pricing))}/枚` : ''}`}>
+                <Bf6NumberSelect value={childTickets} onChange={setChildTickets} />
+              </Bf6Field>
+            </div>
+          </Bf6Card>
+        </section>
+
+        <section className="mt-8">
+          <Bf6SectionTitle no="4" title="お支払い方法" />
+          <div className="space-y-2">
+            <label className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 bg-white p-4 ${payMethod === 'prepaid' ? 'border-red-600 bg-red-50' : 'border-neutral-200'}`}>
+              <input type="radio" checked={payMethod === 'prepaid'} onChange={() => setPayMethod('prepaid')} className="h-5 w-5 accent-red-600" />
+              <span className="flex-1">
+                <span className="font-black text-neutral-900">事前カード決済</span>
+                <span className="ml-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">1人¥500引き</span>
+                <span className="block text-xs text-neutral-400">クレジットカード等でいま支払い</span>
+              </span>
+            </label>
+            <label className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 bg-white p-4 ${payMethod === 'onsite' ? 'border-red-600 bg-red-50' : 'border-neutral-200'}`}>
+              <input type="radio" checked={payMethod === 'onsite'} onChange={() => setPayMethod('onsite')} className="h-5 w-5 accent-red-600" />
+              <span className="flex-1">
+                <span className="font-black text-neutral-900">当日会場でお支払い</span>
+                <span className="block text-xs text-neutral-400">受付にて現金でお支払い</span>
+              </span>
             </label>
           </div>
         </section>
-      ))}
 
-      <button
-        onClick={() => setRows((p) => (p.length < 5 ? [...p, emptyPerformer()] : p))}
-        className="mt-4 w-full rounded-xl border border-dashed border-zinc-600 py-3 text-zinc-300"
-      >
-        + 出場者を追加(きょうだい等)
-      </button>
-
-      <section className="mt-6 rounded-xl border border-zinc-700 bg-zinc-900 p-4">
-        <h2 className="font-bold text-red-400">観覧チケットも一緒に購入</h2>
-        <p className="mt-1 text-xs text-zinc-500">
-          出場者本人と未就学児は無料です。残り{ctx.remaining.tickets}枚
-        </p>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <Field label={`大人 ${pricing ? `(${yen(calcTicketUnitPrice('ticket_adult', payMethod, pricing))}/枚)` : ''}`}>
-            <NumberSelect value={adultTickets} onChange={setAdultTickets} />
-          </Field>
-          <Field label={`小学生 ${pricing ? `(${yen(calcTicketUnitPrice('ticket_child', payMethod, pricing))}/枚)` : ''}`}>
-            <NumberSelect value={childTickets} onChange={setChildTickets} />
-          </Field>
+        <div className="mt-8 rounded-2xl bg-neutral-900 p-5 text-center">
+          <p className="text-xs font-bold tracking-widest text-neutral-400">合計金額</p>
+          <p className="mt-1 text-5xl font-black text-white">{yen(total)}</p>
+          {total !== totalOther && (
+            <p className="mt-2 text-xs text-neutral-400">
+              {payMethod === 'prepaid' ? `当日払いだと ${yen(totalOther)}` : `事前決済なら ${yen(totalOther)} でお得`}
+            </p>
+          )}
         </div>
-      </section>
 
-      <section className="mt-6 rounded-xl border border-zinc-700 bg-zinc-900 p-4">
-        <h2 className="font-bold text-red-400">お支払い方法</h2>
-        <div className="mt-3 space-y-2">
-          <label className={`flex items-center gap-3 rounded-lg border p-3 ${payMethod === 'prepaid' ? 'border-red-500 bg-red-950/40' : 'border-zinc-700'}`}>
-            <input type="radio" checked={payMethod === 'prepaid'} onChange={() => setPayMethod('prepaid')} />
-            <span>
-              <span className="font-bold text-white">事前カード決済</span>
-              <span className="ml-2 rounded bg-red-600 px-2 py-0.5 text-xs font-bold text-white">エントリー1人あたり¥500引き</span>
-            </span>
-          </label>
-          <label className={`flex items-center gap-3 rounded-lg border p-3 ${payMethod === 'onsite' ? 'border-red-500 bg-red-950/40' : 'border-zinc-700'}`}>
-            <input type="radio" checked={payMethod === 'onsite'} onChange={() => setPayMethod('onsite')} />
-            <span className="font-bold text-white">当日会場でお支払い(現金)</span>
-          </label>
-        </div>
-      </section>
+        {error && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-600">{error}</p>}
 
-      <section className="mt-6 rounded-xl bg-zinc-800 p-4 text-center">
-        <p className="text-sm text-zinc-400">合計金額</p>
-        <p className="text-4xl font-black text-red-400">{yen(total)}</p>
-        <p className="mt-1 text-xs text-zinc-500">
-          {payMethod === 'prepaid' ? `当日払いの場合 ${yen(totalOther)}` : `事前決済なら ${yen(totalOther)}`}
+        <button
+          onClick={() => {
+            const e = localCheck();
+            if (e) { setError(e); return; }
+            setError('');
+            setStep('confirm');
+            window.scrollTo({ top: 0 });
+          }}
+          className="mt-5 w-full rounded-2xl bg-red-600 py-4 text-lg font-black text-white shadow-lg shadow-red-600/30 active:scale-[0.99]"
+        >
+          入力内容を確認する
+        </button>
+
+        <p className="mt-5 text-center text-xs text-neutral-400">
+          <Link href="/bf6/entries" className="underline">エントリーリスト</Link>
+          <span className="mx-2">·</span>
+          <Link href="/bf6/legal" className="underline">特商法表記・キャンセルポリシー</Link>
         </p>
-      </section>
-
-      {error && <p className="mt-4 rounded-lg bg-red-900/40 p-3 text-red-300">{error}</p>}
-
-      <button
-        onClick={() => {
-          const e = localCheck();
-          if (e) { setError(e); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-          setError('');
-          setStep('confirm');
-          window.scrollTo({ top: 0 });
-        }}
-        className="mt-6 w-full rounded-xl bg-red-600 py-4 text-lg font-black text-white"
-      >
-        入力内容を確認する
-      </button>
-
-      <p className="mt-4 text-center text-xs text-zinc-500">
-        <a href="/bf6/entries" className="underline">エントリーリストを見る</a> ・ <a href="/bf6/legal" className="underline">特商法表記・キャンセルポリシー</a>
-      </p>
+      </div>
     </Shell>
   );
 }
 
-const inputCls =
-  'w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-white placeholder-zinc-600 focus:border-red-500 focus:outline-none';
-
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto max-w-lg px-4 py-8">{children}</div>
-    </div>
-  );
-}
-
-function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="text-sm font-bold text-zinc-300">
-        {label} {required && <span className="text-red-400">*</span>}
-      </span>
-      {hint && <span className="block text-xs text-zinc-500">{hint}</span>}
-      <div className="mt-1">{children}</div>
-    </label>
-  );
-}
-
-function NumberSelect({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-  return (
-    <select value={value} onChange={(e) => onChange(Number(e.target.value))} className={inputCls}>
-      {Array.from({ length: 11 }, (_, n) => (
-        <option key={n} value={n}>{n}枚</option>
-      ))}
-    </select>
-  );
-}
-
-function ConfirmBlock({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-4">
-      <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">{label}</p>
-      <div className="mt-1 text-white">{children}</div>
+    <div className="min-h-screen bg-neutral-100">
+      <div className="mx-auto max-w-lg pb-12">{children}</div>
     </div>
   );
 }
