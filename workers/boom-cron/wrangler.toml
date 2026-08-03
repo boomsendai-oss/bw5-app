@@ -1,0 +1,20 @@
+# BOOM 自動投稿トリガー (Cloudflare Workers)
+#
+# なぜ作ったか(2026-08-03):
+#   GitHub Actionsのcronが常時1〜2.5時間遅れて発火しており、
+#     - ストーリー: 8:00予定 → 実際8:45頃
+#     - リール:    19:00予約 → 実際20:27〜21:37
+#   さらに7/29には全runが丸ごと落ちてリールが投稿されなかった。
+#   Cloudflareのcronは分単位で正確なので、こちらを一次トリガーにする。
+#   GitHub Actions側は残す(二重に叩いても投稿側が冪等なので安全な二重化になる)。
+name = "boom-cron"
+main = "index.js"
+compatibility_date = "2026-08-01"
+
+# 毎分起動し、JSTの時刻を見て該当する仕事だけ叩く。
+# (cronトリガーを時刻ごとに並べるより、時刻表をコードで持つ方が変更が1箇所で済む)
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+APP_ORIGIN = "https://bw5-app.vercel.app"

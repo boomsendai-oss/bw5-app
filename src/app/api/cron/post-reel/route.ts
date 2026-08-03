@@ -13,13 +13,16 @@ export const maxDuration = 300;
 // リトライcronが後続を拾う)。
 // 冪等性: UPDATE ... WHERE status='scheduled' のclaimで多重発火・リトライから保護。
 // 認証: post-story と同パターン (Bearer CRON_SECRET / x-cron-secret)
+// Cloudflare Workers(boom-cron)からの起動用に、第2の鍵 CRON_SECRET_CF も受け付ける。
+// 既存の CRON_SECRET は GitHub Actions の全ワークフローが使っており、値が読み出せない
+// (Vercelは[SENSITIVE]としてマスクする / GH Secretsは書き込み専用)ため、
+// 鍵を回さずに増やす方式にした(2026-08-03)。どちらか一方が一致すれば通す。
 function cronAuthorized(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
+  const secrets = [process.env.CRON_SECRET, process.env.CRON_SECRET_CF].filter(Boolean) as string[];
+  if (secrets.length === 0) return false;
   const bearer = req.headers.get('authorization');
-  if (bearer === `Bearer ${secret}`) return true;
-  if (req.headers.get('x-cron-secret') === secret) return true;
-  return false;
+  const header = req.headers.get('x-cron-secret');
+  return secrets.some((s) => bearer === `Bearer ${s}` || header === s);
 }
 
 export async function POST(req: NextRequest) {

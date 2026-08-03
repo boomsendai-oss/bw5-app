@@ -22,13 +22,16 @@ function slotKey(u: string): string {
 // 日次ストーリー自動投稿 (毎朝 JST 8:00 に GitHub Actions cron から叩かれる)。
 // 8時=全曜日レッスン前＋フォロワー朝の活動帯。「今日のレッスン」告知を朝に出す方針。
 // 認証: Authorization: Bearer <CRON_SECRET> または x-cron-secret ヘッダ (gbp-reviewsと同パターン)
+// Cloudflare Workers(boom-cron)からの起動用に、第2の鍵 CRON_SECRET_CF も受け付ける。
+// 既存の CRON_SECRET は GitHub Actions の全ワークフローが使っており、値が読み出せない
+// (Vercelは[SENSITIVE]としてマスクする / GH Secretsは書き込み専用)ため、
+// 鍵を回さずに増やす方式にした(2026-08-03)。どちらか一方が一致すれば通す。
 function cronAuthorized(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
+  const secrets = [process.env.CRON_SECRET, process.env.CRON_SECRET_CF].filter(Boolean) as string[];
+  if (secrets.length === 0) return false;
   const bearer = req.headers.get('authorization');
-  if (bearer === `Bearer ${secret}`) return true;
-  if (req.headers.get('x-cron-secret') === secret) return true;
-  return false;
+  const header = req.headers.get('x-cron-secret');
+  return secrets.some((s) => bearer === `Bearer ${s}` || header === s);
 }
 
 async function logResult(
