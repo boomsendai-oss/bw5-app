@@ -22,26 +22,18 @@ export default async function Bf6TopPage() {
   return (
     <Bf6Shell wide>
       <div>
-        {/* ヒーロー */}
-        <header className="bg-neutral-950 px-4 pb-8 pt-10 text-center text-white">
+        {/* ヒーロー = フライヤー本体(タイトルは画像側が担う。テキストの重複を避ける) */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- 静的フライヤー1枚のためnext/image不使用 */}
+        <img src="/bf6/flyer.jpg" alt="BOOMER'S FIGHT!!! vol.6 - BATTLE & SHOWCASE" className="w-full" />
+        <header className="bg-neutral-950 px-4 pb-7 pt-2 text-center text-white">
           <p className="inline-block bg-red-600 px-3 py-1 text-[11px] font-black tracking-[0.2em]">
             BATTLE &amp; SHOWCASE
           </p>
-          <h1 className="mt-4 text-5xl font-black italic leading-[0.95] tracking-tight">
-            BOOMER&apos;S<br />FIGHT!!!<span className="text-red-500"> vol.6</span>
-          </h1>
-          <p className="mt-3 text-xs font-bold tracking-[0.25em] text-neutral-400">
-            BOOM DANCE SCHOOL PRESENTS
-          </p>
-          <p className="mt-5 text-4xl font-black italic">
-            9.26 <span className="text-xl">SAT</span>
+          <p className="mt-4 text-4xl font-black italic">
+            2026.9.26 <span className="text-xl">SAT</span>
           </p>
           <p className="mt-1 text-xs font-bold text-neutral-400">OPEN 14:30(予定)</p>
         </header>
-
-        {/* キービジュアル */}
-        {/* eslint-disable-next-line @next/next/no-img-element -- 静的フライヤー1枚のためnext/image不使用 */}
-        <img src="/bf6/flyer.jpg" alt="BOOMER'S FIGHT!!! vol.6 フライヤー" className="w-full" />
 
         {/* DETAIL */}
         <section className="px-4 pt-8">
@@ -51,12 +43,20 @@ export default async function Bf6TopPage() {
               <p className="text-lg font-black text-neutral-900">2026.9.26 <span className="text-sm">SAT</span></p>
             </Bf6DetailBlock>
             <Bf6DetailBlock en="TIME">
-              <p className="font-bold text-neutral-800">OPEN 14:30(予定) / CLOSE 18:00頃</p>
-              <p className="mt-1 text-xs text-neutral-500">※ タイムテーブルはエントリー締切後に発表します</p>
+              <p className="font-bold text-neutral-800">OPEN 14:30(予定)</p>
+              <p className="font-bold text-neutral-800">CLOSE 18:00頃</p>
+              <p className="mt-2 text-xs text-neutral-500">※ タイムテーブルはエントリー締切後に発表します</p>
             </Bf6DetailBlock>
             <Bf6DetailBlock en="FEE">
               <p className="text-xs font-black text-neutral-400">バトルエントリー</p>
-              <table className="mt-1 w-full text-sm">
+              <table className="mt-2 w-full text-sm">
+                <thead>
+                  <tr className="border-b border-neutral-200 text-xs text-neutral-400">
+                    <th className="py-1 text-left font-bold">部門数</th>
+                    <th className="py-1 text-right font-bold">当日現金</th>
+                    <th className="py-1 text-right font-bold text-red-600">事前カード決済</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {[
                     ['1部門', 2500],
@@ -65,24 +65,41 @@ export default async function Bf6TopPage() {
                   ].map(([label, price]) => (
                     <tr key={label} className="border-b border-neutral-100 last:border-b-0">
                       <td className="py-1.5 font-bold text-neutral-800">{label}</td>
-                      <td className="py-1.5 text-right text-neutral-500">当日 ¥{Number(price).toLocaleString()}</td>
+                      <td className="py-1.5 text-right text-neutral-500">¥{Number(price).toLocaleString()}</td>
                       <td className="py-1.5 text-right font-black text-red-600">
-                        事前 ¥{(Number(price) - 500).toLocaleString()}
+                        ¥{(Number(price) - 500).toLocaleString()}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <p className="mt-1 text-xs font-bold text-red-600">※ 事前カード決済で1人¥500引き</p>
-              <p className="mt-3 text-xs font-black text-neutral-400">観覧チケット</p>
-              <p className="mt-1 text-sm font-bold text-neutral-800">
-                大人 前売¥2,000 / 当日¥2,500・小学生¥1,000
-              </p>
-              <p className="text-xs text-neutral-500">※ 未就学児・出場者本人は無料</p>
+              <p className="mt-2 text-xs text-neutral-500">事前カード決済 = 申込と同時にカードでお支払い(1人¥500引き)</p>
+              <p className="text-xs text-neutral-500">当日現金 = 当日、会場受付でお支払い</p>
+              <p className="mt-4 text-xs font-black text-neutral-400">観覧チケット</p>
+              <ul className="mt-2 space-y-1.5 text-sm">
+                <li className="flex justify-between border-b border-neutral-100 pb-1.5">
+                  <span className="font-bold text-neutral-800">大人(事前カード決済)</span>
+                  <span className="font-black text-red-600">¥2,000</span>
+                </li>
+                <li className="flex justify-between border-b border-neutral-100 pb-1.5">
+                  <span className="font-bold text-neutral-800">大人(当日現金)</span>
+                  <span className="text-neutral-600">¥2,500</span>
+                </li>
+                <li className="flex justify-between border-b border-neutral-100 pb-1.5">
+                  <span className="font-bold text-neutral-800">小学生</span>
+                  <span className="text-neutral-600">¥1,000(事前・当日共通)</span>
+                </li>
+                <li className="flex justify-between">
+                  <span className="font-bold text-neutral-800">未就学児・出場者本人</span>
+                  <span className="text-neutral-600">無料</span>
+                </li>
+              </ul>
             </Bf6DetailBlock>
             <Bf6DetailBlock en="VENUE">
               <p className="font-bold text-neutral-800">SSM 9階ホール</p>
-              <p className="text-xs text-neutral-500">仙台スクールオブミュージック&amp;ダンス専門学校(仙台市太白区あすと長町)</p>
+              <p className="text-sm text-neutral-600">仙台スクールオブミュージック&amp;ダンス専門学校</p>
+              <p className="mt-1 text-xs text-neutral-500">仙台市若林区新寺2-1-11</p>
+              <p className="text-xs text-neutral-500">JR仙台駅 東口より徒歩5分</p>
             </Bf6DetailBlock>
             <Bf6DetailBlock en="DIVISION">
               <ul className="space-y-1.5">

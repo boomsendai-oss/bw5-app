@@ -49,6 +49,7 @@ export default function RootLayout({
               function setup() { try {
                 var p = location.pathname;
                 var isStaff = p.indexOf('/staff/') === 0 || p === '/staff' || p.indexOf('/admin') === 0;
+                var isBf6 = p.indexOf('/bf6') === 0;
                 var d = document, head = d.head;
                 function rm(sel){var ns=head.querySelectorAll(sel);for(var i=0;i<ns.length;i++){ns[i].parentNode.removeChild(ns[i]);}}
                 // Next.js が自動注入する manifest を含めて全削除 → 必要なものだけを再注入
@@ -58,9 +59,9 @@ export default function RootLayout({
                 rm('meta[name="apple-mobile-web-app-title"]');
                 rm('link[rel="apple-touch-icon"]');
                 function add(tag, attrs){var e = d.createElement(tag); for(var k in attrs){e.setAttribute(k, attrs[k]);} head.appendChild(e); return e;}
-                // theme-color もパス別: スタッフ=ブランドネイビー / それ以外=BW5オレンジ (2026-07-10)
+                // theme-color もパス別: スタッフ=ネイビー / BF6=黒(イベント配色) / それ以外=BW5オレンジ
                 rm('meta[name="theme-color"]');
-                add('meta', {name: 'theme-color', content: isStaff ? '#101040' : '#f27a1a'});
+                add('meta', {name: 'theme-color', content: isStaff ? '#101040' : isBf6 ? '#0a0a0a' : '#f27a1a'});
                 if (!isStaff) {
                   add('link', {rel: 'manifest', href: '/main-manifest.webmanifest'});
                   add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});

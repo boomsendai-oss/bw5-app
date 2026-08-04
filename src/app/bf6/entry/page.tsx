@@ -478,7 +478,7 @@ export default function Bf6EntryPage() {
                 <span className="font-black text-neutral-900">事前カード決済</span>
                 <span className="ml-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">おトク</span>
                 <span className="block text-xs text-neutral-400">
-                  割引対象: エントリー料(出場者1人につき¥500引き)と大人観覧(前売¥2,000/当日¥2,500)。
+                  割引対象: エントリー料(出場者1人につき¥500引き)と大人観覧(事前¥2,000/当日¥2,500)。
                   小学生観覧は一律¥1,000(割引対象外)
                 </span>
               </span>

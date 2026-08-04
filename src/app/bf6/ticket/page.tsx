@@ -211,7 +211,7 @@ export default function Bf6TicketPage() {
                 <span className="font-black text-neutral-900">事前カード決済</span>
                 <span className="ml-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">おトク</span>
                 <span className="block text-xs text-neutral-400">
-                  大人は前売価格¥2,000(当日¥2,500)。小学生は一律¥1,000(割引対象外)
+                  大人は¥2,000(当日現金だと¥2,500)。小学生は一律¥1,000(割引対象外)
                 </span>
               </span>
             </label>
