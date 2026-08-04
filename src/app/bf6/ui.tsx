@@ -73,6 +73,30 @@ export function Bf6Field({
   );
 }
 
+/** DANCEALIVE風の英字大見出し(DETAIL / ENTRY / ENTRY LIST)。 */
+export function Bf6SectionHead({ en, ja }: { en: string; ja?: string }) {
+  return (
+    <div className="mb-5 pt-2 text-center">
+      <h2 className="text-3xl font-black italic tracking-tight text-neutral-900">
+        {en}
+        <span className="text-red-600">.</span>
+      </h2>
+      {ja && <p className="mt-0.5 text-xs font-bold text-neutral-500">{ja}</p>}
+      <div className="mx-auto mt-3 h-1 w-12 bg-red-600" />
+    </div>
+  );
+}
+
+/** DETAIL内の小見出し(DATE / TIME / FEE ...)。 */
+export function Bf6DetailBlock({ en, children }: { en: string; children: ReactNode }) {
+  return (
+    <div className="border-b border-neutral-200 py-4 last:border-b-0">
+      <h3 className="text-sm font-black italic tracking-widest text-neutral-400">{en}</h3>
+      <div className="mt-2">{children}</div>
+    </div>
+  );
+}
+
 export function Bf6NumberSelect({ value, onChange }: { value: number; onChange: (n: number) => void }) {
   return (
     <select value={value} onChange={(e) => onChange(Number(e.target.value))} className={inputCls}>

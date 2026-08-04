@@ -13,6 +13,13 @@ export const metadata = {
   description: '2026.9.26(土) SSM 9階ホール — 各部門のエントリーリスト(リアルタイム更新)',
 };
 
+// 黒ヘッダー上で読める明るめの部門カラー(Tailwind JITのためリテラルで保持)
+const DARK_ACCENT: Record<string, string> = {
+  beginner: 'text-emerald-400',
+  kids: 'text-orange-400',
+  general: 'text-red-500',
+};
+
 export default async function Bf6EntriesPage() {
   const [settings, usage, entries] = await Promise.all([
     getBf6Settings(),
@@ -43,7 +50,7 @@ export default async function Bf6EntriesPage() {
                     <p className="text-[10px] text-neutral-400">{d.note}</p>
                   </div>
                   <p className="text-sm font-bold text-neutral-300">
-                    <span className="text-xl font-black text-red-500">{list.length}</span>
+                    <span className={`text-xl font-black ${DARK_ACCENT[d.key]}`}>{list.length}</span>
                     <span className="text-neutral-500">/{cap}</span>
                     {remaining.divisions[d.key] === 0 && (
                       <span className="ml-2 rounded-full bg-yellow-400 px-2 py-0.5 text-[10px] font-black text-neutral-900">満枠</span>
