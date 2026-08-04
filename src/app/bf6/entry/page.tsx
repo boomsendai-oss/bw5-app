@@ -478,7 +478,8 @@ export default function Bf6EntryPage() {
                 <span className="font-black text-neutral-900">事前カード決済</span>
                 <span className="ml-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">おトク</span>
                 <span className="block text-xs text-neutral-400">
-                  エントリー出場者1人につき¥500引き・大人観覧は前売価格¥2,000(当日¥2,500)
+                  割引対象: エントリー料(出場者1人につき¥500引き)と大人観覧(前売¥2,000/当日¥2,500)。
+                  小学生観覧は一律¥1,000(割引対象外)
                 </span>
               </span>
             </label>
@@ -516,7 +517,10 @@ export default function Bf6EntryPage() {
               )}
               {childTickets > 0 && (
                 <li className="flex items-baseline justify-between gap-2 text-neutral-300">
-                  <span>観覧 小学生 {yen(calcTicketUnitPrice('ticket_child', payMethod, pricing))} × {childTickets}枚</span>
+                  <span>
+                    観覧 小学生 {yen(calcTicketUnitPrice('ticket_child', payMethod, pricing))} × {childTickets}枚
+                    <span className="ml-1 text-xs text-neutral-500">(一律)</span>
+                  </span>
                   <span className="font-bold text-white">{yen(calcTicketUnitPrice('ticket_child', payMethod, pricing) * childTickets)}</span>
                 </li>
               )}
@@ -526,8 +530,10 @@ export default function Bf6EntryPage() {
             <p className="text-xs font-bold tracking-widest text-neutral-400">合計金額</p>
             <p className="mt-1 text-5xl font-black text-white">{yen(total)}</p>
             {total !== totalOther && (
-              <p className="mt-2 text-xs text-neutral-400">
-                {payMethod === 'prepaid' ? `当日払いだと ${yen(totalOther)}` : `事前決済なら ${yen(totalOther)} でお得`}
+              <p className={`mt-2 text-xs font-bold ${payMethod === 'prepaid' ? 'text-red-400' : 'text-neutral-400'}`}>
+                {payMethod === 'prepaid'
+                  ? `事前決済で ${yen(totalOther - total)} お得になっています(当日払いだと ${yen(totalOther)})`
+                  : `事前カード決済にすると ${yen(total - totalOther)} お得(合計 ${yen(totalOther)})`}
               </p>
             )}
           </div>

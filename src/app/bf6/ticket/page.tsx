@@ -51,6 +51,14 @@ export default function Bf6TicketPage() {
     if (!pricing) return 0;
     return calcOrderTotal({ entries: [], adultTickets, childTickets }, payMethod, pricing);
   }, [pricing, adultTickets, childTickets, payMethod]);
+  const totalOther = useMemo(() => {
+    if (!pricing) return 0;
+    return calcOrderTotal(
+      { entries: [], adultTickets, childTickets },
+      payMethod === 'prepaid' ? 'onsite' : 'prepaid',
+      pricing
+    );
+  }, [pricing, adultTickets, childTickets, payMethod]);
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -201,7 +209,10 @@ export default function Bf6TicketPage() {
               <input type="radio" checked={payMethod === 'prepaid'} onChange={() => setPayMethod('prepaid')} className="h-5 w-5 accent-red-600" />
               <span className="flex-1">
                 <span className="font-black text-neutral-900">事前カード決済</span>
-                <span className="ml-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">大人¥500引き</span>
+                <span className="ml-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">おトク</span>
+                <span className="block text-xs text-neutral-400">
+                  大人は前売価格¥2,000(当日¥2,500)。小学生は一律¥1,000(割引対象外)
+                </span>
               </span>
             </label>
             <label className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 bg-white p-4 ${payMethod === 'onsite' ? 'border-red-600 bg-red-50' : 'border-neutral-200'}`}>
@@ -214,6 +225,13 @@ export default function Bf6TicketPage() {
         <div className="mt-8 rounded-2xl bg-neutral-900 p-5 text-center">
           <p className="text-xs font-bold tracking-widest text-neutral-400">合計金額</p>
           <p className="mt-1 text-5xl font-black text-white">{yen(total)}</p>
+          {total !== totalOther && (
+            <p className={`mt-2 text-xs font-bold ${payMethod === 'prepaid' ? 'text-red-400' : 'text-neutral-400'}`}>
+              {payMethod === 'prepaid'
+                ? `事前決済で ${yen(totalOther - total)} お得になっています(当日払いだと ${yen(totalOther)})`
+                : `事前カード決済にすると ${yen(total - totalOther)} お得(合計 ${yen(totalOther)})`}
+            </p>
+          )}
         </div>
 
         {error && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-600">{error}</p>}
