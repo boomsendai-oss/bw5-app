@@ -20,8 +20,16 @@ import {
   getBf6Settings,
   getBf6Usage,
   getPublicBf6Entries,
+  loadBf6OrderByToken,
+  saveBf6StripeSession,
   type PublicBf6Entry,
 } from '@/lib/bf6Db';
+import {
+  buildBf6LineItems,
+  buildCheckoutFormParams,
+  createBf6CheckoutSession,
+} from '@/lib/bf6Stripe';
+import { sendBf6OrderEmail } from '@/lib/bf6Email';
 
 async function clientIp(): Promise<string> {
   const h = await headers();
@@ -76,6 +84,12 @@ export async function submitBf6Order(payload: Bf6OrderInput): Promise<Bf6SubmitR
   }
   const created = await createBf6Order(validated);
   if (!created.ok) return { ok: false, error: created.error };
+  if (validated.payMethod === 'onsite') {
+    // 当日現金は申込した時点で確定=このタイミングで受付メールを送る
+    // (カード決済はWebhookでpaidになった瞬間に送る)
+    const order = await loadBf6OrderByToken(created.editToken);
+    if (order) await sendBf6OrderEmail(order, created.editToken);
+  }
   return {
     ok: true,
     token: created.editToken,
@@ -91,12 +105,44 @@ export async function getBf6EntryList(): Promise<PublicBf6Entry[]> {
 
 export type Bf6CheckoutResult = { ok: true; url: string } | { ok: false; error: string };
 
-// 決済への遷移。Stripe Checkout実装(8/5)までは準備中を返す。
+/**
+ * Stripe Checkoutへの遷移。金額・明細はDBに保存済みの注文からサーバ側で組み立てる
+ * (クライアント申告額は一切使わない)。決済確定はWebhook側が正本。
+ */
 export async function startBf6Checkout(token: string): Promise<Bf6CheckoutResult> {
   const ip = await clientIp();
   if (!(await checkRateLimit(`bf6pay:${ip}`, 30, 3600))) {
     return { ok: false, error: '操作が多すぎます。しばらくしてからお試しください' };
   }
   if (!token) return { ok: false, error: '申込が見つかりません' };
-  return { ok: false, error: 'カード決済は現在準備中です。恐れ入りますが、しばらくしてからこのページを開き直してください(申込は保存されています)' };
+  const order = await loadBf6OrderByToken(token);
+  if (!order) return { ok: false, error: '申込が見つかりません' };
+  if (order.paymentStatus === 'paid') return { ok: false, error: 'この申込はお支払い済みです' };
+  if (order.paymentStatus === 'expired') {
+    return { ok: false, error: '30分以内に決済が完了しなかったため、この申込は無効になりました。お手数ですがもう一度エントリーしてください' };
+  }
+  if (order.payMethod !== 'prepaid' || order.paymentStatus !== 'pending') {
+    return { ok: false, error: 'この申込はカード決済の対象ではありません' };
+  }
+
+  const h = await headers();
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'bw5-app.vercel.app';
+  const proto = h.get('x-forwarded-proto') ?? 'https';
+  const completeUrl = `${proto}://${host}/bf6/complete?t=${token}`;
+
+  try {
+    const params = buildCheckoutFormParams({
+      lineItems: buildBf6LineItems(order),
+      successUrl: completeUrl,
+      cancelUrl: completeUrl,
+      customerEmail: order.email,
+      orderId: order.orderId,
+      expiresAtEpochSec: Math.floor(Date.now() / 1000) + 30 * 60,
+    });
+    const session = await createBf6CheckoutSession(params);
+    await saveBf6StripeSession(order.orderId, session.id);
+    return { ok: true, url: session.url };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : '決済ページの作成に失敗しました' };
+  }
 }

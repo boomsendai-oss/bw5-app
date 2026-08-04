@@ -245,6 +245,11 @@ export async function loadBf6OrderByToken(token: string): Promise<OwnBf6Order | 
   const rows = await getAll('SELECT * FROM bf_orders WHERE edit_token = ? LIMIT 1', [token]);
   const o = rows[0];
   if (!o) return null;
+  return rowToOwnOrder(o);
+}
+
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any -- DB行 */
+async function rowToOwnOrder(o: any): Promise<OwnBf6Order> {
   const items = await getAll(
     'SELECT * FROM bf_order_items WHERE order_id = ? ORDER BY sort_order ASC, id ASC',
     [Number(o.id)]
@@ -273,5 +278,74 @@ export async function loadBf6OrderByToken(token: string): Promise<OwnBf6Order | 
       qty: Number(i.qty),
       unitAmount: Number(i.unit_amount),
     })),
+  };
+}
+
+/** Checkout Session作成後にIDを控える(突合・再入場用)。 */
+export async function saveBf6StripeSession(orderId: number, sessionId: string): Promise<void> {
+  await execute('UPDATE bf_orders SET stripe_session_id = ?, updated_at = ? WHERE id = ?', [
+    sessionId,
+    nowIso(),
+    orderId,
+  ]);
+}
+
+export type ApplyWebhookResult =
+  | { status: 'paid'; order: OwnBf6Order; editToken: string; amountMismatch: boolean }
+  | { status: 'duplicate' | 'ignored' | 'order_not_found' | 'not_updated' };
+
+/**
+ * 検証済みWebhookイベントを適用する(決済の正本)。
+ * - bf_payments に stripe_event_id UNIQUE で記録=同一イベント再送は何もしない(冪等)
+ * - checkout.session.completed で注文を paid 化。30分超過で expired になった後の
+ *   決済完了も paid に戻す(入金済みを無効にしない。枠の重複はスタッフ突合で検知)
+ * - 金額不一致でも paid にはする(入金事実を優先)が、フラグを返しスタッフ画面で検知する
+ */
+export async function applyBf6WebhookEvent(
+  ev: {
+    eventId: string;
+    type: string;
+    sessionId: string;
+    paymentIntentId: string;
+    orderId: number | null;
+    amountTotal: number | null;
+    currency: string;
+  },
+  rawPayload: string
+): Promise<ApplyWebhookResult> {
+  const inserted = await execute(
+    'INSERT OR IGNORE INTO bf_payments (stripe_event_id, event_type, stripe_session_id, payment_intent_id, order_id, amount, currency, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      ev.eventId,
+      ev.type,
+      ev.sessionId,
+      ev.paymentIntentId,
+      ev.orderId,
+      ev.amountTotal ?? 0,
+      ev.currency || 'jpy',
+      rawPayload.slice(0, 20000),
+      nowIso(),
+    ]
+  );
+  if (Number(inserted.rowsAffected ?? 0) === 0) return { status: 'duplicate' };
+  if (ev.type !== 'checkout.session.completed') return { status: 'ignored' };
+
+  const row = ev.orderId != null
+    ? (await getAll('SELECT * FROM bf_orders WHERE id = ? LIMIT 1', [ev.orderId]))[0]
+    : (await getAll('SELECT * FROM bf_orders WHERE stripe_session_id = ? LIMIT 1', [ev.sessionId]))[0];
+  if (!row) return { status: 'order_not_found' };
+
+  const updated = await execute(
+    "UPDATE bf_orders SET payment_status = 'paid', stripe_session_id = ?, updated_at = ? WHERE id = ? AND payment_status IN ('pending', 'expired')",
+    [ev.sessionId, nowIso(), Number(row.id)]
+  );
+  if (Number(updated.rowsAffected ?? 0) === 0) return { status: 'not_updated' };
+
+  const order = await rowToOwnOrder({ ...row, payment_status: 'paid', stripe_session_id: ev.sessionId });
+  return {
+    status: 'paid',
+    order,
+    editToken: String(row.edit_token),
+    amountMismatch: ev.amountTotal != null && ev.amountTotal !== Number(row.amount_total),
   };
 }
