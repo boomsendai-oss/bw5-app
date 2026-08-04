@@ -238,6 +238,104 @@ export interface OwnBf6Order {
   items: OwnBf6Item[];
 }
 
+// ───────────────────────── スタッフ用(認証必須の画面からのみ呼ぶ) ─────────────────────────
+
+export interface StaffBf6Order {
+  orderId: number;
+  buyerName: string;
+  email: string;
+  phone: string;
+  payMethod: Bf6PayMethod;
+  paymentStatus: string;
+  amountTotal: number;
+  stripeSessionId: string;
+  editToken: string;
+  createdAt: string;
+  items: OwnBf6Item[];
+}
+
+/** 全申込+明細(PII込み)。/staff配下(proxy認証)からのみ使用すること。 */
+export async function listBf6OrdersStaff(): Promise<StaffBf6Order[]> {
+  await sweepExpiredBf6Orders();
+  const orders = await getAll('SELECT * FROM bf_orders ORDER BY id DESC');
+  const items = await getAll('SELECT * FROM bf_order_items ORDER BY order_id, sort_order, id');
+  /* eslint-disable @typescript-eslint/no-explicit-any -- DB行 */
+  const byOrder = new Map<number, any[]>();
+  for (const i of items) {
+    const list = byOrder.get(Number(i.order_id)) ?? [];
+    list.push(i);
+    byOrder.set(Number(i.order_id), list);
+  }
+  return orders.map((o: any) => ({
+    orderId: Number(o.id),
+    buyerName: String(o.buyer_name),
+    email: String(o.email),
+    phone: String(o.phone),
+    payMethod: (o.pay_method === 'onsite' ? 'onsite' : 'prepaid') as Bf6PayMethod,
+    paymentStatus: String(o.payment_status),
+    amountTotal: Number(o.amount_total),
+    stripeSessionId: String(o.stripe_session_id ?? ''),
+    editToken: String(o.edit_token),
+    createdAt: String(o.created_at),
+    items: (byOrder.get(Number(o.id)) ?? []).map((i: any) => ({
+      itemType: String(i.item_type),
+      performerName: String(i.performer_name ?? ''),
+      dancerName: String(i.dancer_name ?? ''),
+      dancerKana: String(i.dancer_kana ?? ''),
+      grade: String(i.grade ?? ''),
+      genre: String(i.genre ?? ''),
+      rep: String(i.rep ?? ''),
+      instagram: String(i.instagram ?? ''),
+      isFirstBattle: Number(i.is_first_battle) === 1,
+      divisions: parseDivisions(i.divisions),
+      qty: Number(i.qty),
+      unitAmount: Number(i.unit_amount),
+    })),
+  }));
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
+export interface StaffBf6Payment {
+  id: number;
+  stripeEventId: string;
+  eventType: string;
+  stripeSessionId: string;
+  orderId: number | null;
+  amount: number;
+  orderAmount: number | null;
+  orderStatus: string;
+  createdAt: string;
+}
+
+/** Stripe突合ビュー: Webhook記録(bf_payments)と注文の金額・状態を並べる。 */
+export async function listBf6PaymentsStaff(): Promise<StaffBf6Payment[]> {
+  const rows = await getAll(
+    'SELECT p.*, o.amount_total AS order_amount, o.payment_status AS order_status FROM bf_payments p LEFT JOIN bf_orders o ON o.id = p.order_id ORDER BY p.id DESC'
+  );
+  return rows.map((r) => ({
+    id: Number(r.id),
+    stripeEventId: String(r.stripe_event_id),
+    eventType: String(r.event_type),
+    stripeSessionId: String(r.stripe_session_id ?? ''),
+    orderId: r.order_id == null ? null : Number(r.order_id),
+    amount: Number(r.amount),
+    orderAmount: r.order_amount == null ? null : Number(r.order_amount),
+    orderStatus: String(r.order_status ?? ''),
+    createdAt: String(r.created_at),
+  }));
+}
+
+/** 手動ステータス変更(スタッフ操作: 当日現金の入金確認・キャンセル・返金)。 */
+export async function setBf6OrderStatusStaff(orderId: number, status: string): Promise<boolean> {
+  if (!['paid', 'cash_due', 'canceled', 'refunded'].includes(status)) return false;
+  const r = await execute('UPDATE bf_orders SET payment_status = ?, updated_at = ? WHERE id = ?', [
+    status,
+    nowIso(),
+    orderId,
+  ]);
+  return Number(r.rowsAffected ?? 0) > 0;
+}
+
 /** 自分の申込1件をトークン完全一致で返す(列挙不可)。 */
 export async function loadBf6OrderByToken(token: string): Promise<OwnBf6Order | null> {
   if (!token) return null;
