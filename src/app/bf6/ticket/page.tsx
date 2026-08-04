@@ -5,8 +5,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getBf6Context, submitBf6Order, startBf6Checkout, type Bf6PublicContext } from '../actions';
-import { calcOrderTotal, calcTicketUnitPrice } from '@/lib/bf6';
-import { Bf6Card, Bf6Field, Bf6Hero, Bf6NumberSelect, Bf6SectionTitle, inputCls } from '../ui';
+import { calcOrderTotal, calcTicketUnitPrice, isValidBf6Email, isValidBf6Phone } from '@/lib/bf6';
+import { Bf6Card, Bf6Field, Bf6Hero, Bf6NumberSelect, Bf6SectionTitle, inputCls, inputClsWith } from '../ui';
 
 const TOKEN_KEY = 'bf6_order_token';
 const yen = (n: number) => `¥${n.toLocaleString()}`;
@@ -28,6 +28,16 @@ export default function Bf6TicketPage() {
   const [submitting, setSubmitting] = useState(false);
   const [doneToken, setDoneToken] = useState('');
   const [amountTotal, setAmountTotal] = useState(0);
+
+  // 欄を離れた時点で形式エラーを赤字表示
+  const [blurred, setBlurred] = useState<Record<string, boolean>>({});
+  const markBlurred = (key: string) => setBlurred((p) => ({ ...p, [key]: true }));
+  const emailError =
+    blurred.email && email.trim() && !isValidBf6Email(email) ? 'メールアドレスの形式が正しくありません' : '';
+  const phoneError =
+    blurred.phone && phone.trim() && !isValidBf6Phone(phone)
+      ? '電話番号は数字10〜11桁で入力してください(例: 090-1234-5678)'
+      : '';
 
   useEffect(() => {
     (async () => {
@@ -148,11 +158,23 @@ export default function Bf6TicketPage() {
               <Bf6Field label="お名前" required>
                 <input value={buyerName} onChange={(e) => setBuyerName(e.target.value)} className={inputCls} />
               </Bf6Field>
-              <Bf6Field label="メールアドレス" required hint="ご予約確認のご連絡が届きます">
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+              <Bf6Field label="メールアドレス" required hint="ご予約確認のご連絡が届きます" error={emailError}>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => markBlurred('email')}
+                  className={inputClsWith(emailError)}
+                />
               </Bf6Field>
-              <Bf6Field label="電話番号" required hint="必ず当日連絡が取れる番号を入力してください">
-                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} />
+              <Bf6Field label="電話番号" required hint="必ず当日連絡が取れる番号を入力してください" error={phoneError}>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  onBlur={() => markBlurred('phone')}
+                  className={inputClsWith(phoneError)}
+                />
               </Bf6Field>
             </div>
           </Bf6Card>

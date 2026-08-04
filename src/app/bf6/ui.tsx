@@ -55,11 +55,13 @@ export function Bf6Field({
   label,
   required,
   hint,
+  error,
   children,
 }: {
   label: string;
   required?: boolean;
   hint?: string;
+  error?: string;
   children: ReactNode;
 }) {
   return (
@@ -69,8 +71,14 @@ export function Bf6Field({
       </span>
       {hint && <span className="block text-xs text-neutral-400">{hint}</span>}
       <div className="mt-1.5">{children}</div>
+      {error && <span className="mt-1 block text-xs font-bold text-red-600">⚠ {error}</span>}
     </label>
   );
+}
+
+/** エラー時は赤枠にする入力欄クラス。 */
+export function inputClsWith(error?: string): string {
+  return error ? `${inputCls} !border-red-500` : inputCls;
 }
 
 /** DANCEALIVE風の英字大見出し(DETAIL / ENTRY / ENTRY LIST)。 */

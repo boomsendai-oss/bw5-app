@@ -174,8 +174,24 @@ export function canEnterKids(grade: string): boolean {
   return isElementaryGrade(grade) || grade === 'jhs1' || grade === 'jhs2' || grade === 'jhs3';
 }
 
-// 本名は全角カタカナのみ(長音符・中点・スペース許容)。当日受付の照合を楽にするため。
+// 本名・フリガナは全角カタカナのみ(長音符・中点・スペース許容)。
+// 当日受付の照合とMC読み上げを楽にするため。
 const KATAKANA_NAME_RE = /^[゠-ヿ　\s]+$/;
+
+/** 全角カタカナか(クライアントの即時バリデーションでも使う)。 */
+export function isKatakanaText(v: string): boolean {
+  return KATAKANA_NAME_RE.test(v);
+}
+
+export function isValidBf6Email(v: string): boolean {
+  const s = v.trim();
+  return /^\S+@\S+\.\S+$/.test(s) && s.length <= 100;
+}
+
+export function isValidBf6Phone(v: string): boolean {
+  const digits = v.trim().replace(/[-‐−ー()（）\s]/g, '');
+  return /^0\d{9,10}$/.test(digits);
+}
 
 export interface Bf6EntryInput {
   performerName: string;
@@ -234,11 +250,10 @@ export function validateBf6Order(input: Bf6OrderInput): ValidatedBf6Order | stri
   if (buyerName.length > 50) return '申込者名が長すぎます(50文字以内)';
 
   const email = (input.email ?? '').trim();
-  if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 100) return 'メールアドレスの形式が正しくありません';
+  if (!isValidBf6Email(email)) return 'メールアドレスの形式が正しくありません';
 
   const phone = (input.phone ?? '').trim();
-  const phoneDigits = phone.replace(/[-‐−ー()（）\s]/g, '');
-  if (!/^0\d{9,10}$/.test(phoneDigits)) return '電話番号は当日連絡が取れる番号を数字で入力してください';
+  if (!isValidBf6Phone(phone)) return '電話番号は当日連絡が取れる番号を数字で入力してください';
 
   if (input.payMethod !== 'prepaid' && input.payMethod !== 'onsite') return '支払い方法を選択してください';
 
@@ -261,6 +276,7 @@ export function validateBf6Order(input: Bf6OrderInput): ValidatedBf6Order | stri
     const dancerKana = (e?.dancerKana ?? '').trim();
     if (!dancerKana) return `${dancerName} の呼び方(フリガナ)を入力してください`;
     if (dancerKana.length > 30) return '呼び方が長すぎます(30文字以内)';
+    if (!isKatakanaText(dancerKana)) return `フリガナ「${dancerKana}」はカタカナで入力してください`;
 
     const grade = (e?.grade ?? '').trim();
     if (!isBf6Grade(grade)) return `${dancerName} さんの学年を選んでください`;

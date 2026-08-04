@@ -330,6 +330,48 @@ describe('buildBf6OrderItems: 明細行の生成(単価はサーバ側で確定)
   });
 });
 
+describe('フィールド単体バリデーション(クライアント側の即時表示にも使う)', () => {
+  test('isValidBf6Email', async () => {
+    const { isValidBf6Email } = await import('../bf6');
+    expect(isValidBf6Email('a@b.co')).toBe(true);
+    expect(isValidBf6Email('not-an-email')).toBe(false);
+    expect(isValidBf6Email('a@b')).toBe(false);
+  });
+
+  test('isValidBf6Phone: 0始まり10〜11桁(ハイフン許容)', async () => {
+    const { isValidBf6Phone } = await import('../bf6');
+    expect(isValidBf6Phone('090-1234-5678')).toBe(true);
+    expect(isValidBf6Phone('0221234567')).toBe(true);
+    expect(isValidBf6Phone('123')).toBe(false);
+    expect(isValidBf6Phone('でんわ')).toBe(false);
+  });
+
+  test('isKatakanaText: 全角カタカナ(長音・スペース許容)のみ', async () => {
+    const { isKatakanaText } = await import('../bf6');
+    expect(isKatakanaText('ヤマダ タロウ')).toBe(true);
+    expect(isKatakanaText('タロー')).toBe(true);
+    expect(isKatakanaText('山田太郎')).toBe(false);
+    expect(isKatakanaText('yamada')).toBe(false);
+  });
+});
+
+describe('フリガナ(dancerKana)はカタカナ必須(TARO 2026-08-04)', () => {
+  test('ひらがな・漢字のフリガナはエラー', () => {
+    const a = validInput();
+    a.entries[0].dancerKana = 'たろー';
+    expect(typeof validateBf6Order(a)).toBe('string');
+    const b = validInput();
+    b.entries[0].dancerKana = '太郎';
+    expect(typeof validateBf6Order(b)).toBe('string');
+  });
+
+  test('カタカナならOK', () => {
+    const a = validInput();
+    a.entries[0].dancerKana = 'タロー';
+    expect(typeof validateBf6Order(a)).not.toBe('string');
+  });
+});
+
 describe('formatReceiptNo', () => {
   test('BF6-連番3桁', () => {
     expect(formatReceiptNo(7)).toBe('BF6-007');

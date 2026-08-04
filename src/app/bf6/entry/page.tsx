@@ -21,9 +21,12 @@ import {
   canEnterBeginner,
   canEnterKids,
   isElementaryGrade,
+  isKatakanaText,
+  isValidBf6Email,
+  isValidBf6Phone,
   type Bf6Division,
 } from '@/lib/bf6';
-import { Bf6Hero, Bf6Card, Bf6SectionTitle, Bf6Field, Bf6NumberSelect, inputCls } from '../ui';
+import { Bf6Hero, Bf6Card, Bf6SectionTitle, Bf6Field, Bf6NumberSelect, inputCls, inputClsWith } from '../ui';
 
 const TOKEN_KEY = 'bf6_order_token';
 
@@ -66,6 +69,18 @@ export default function Bf6EntryPage() {
   const [submitting, setSubmitting] = useState(false);
   const [doneToken, setDoneToken] = useState('');
   const [amountTotal, setAmountTotal] = useState(0);
+
+  // 欄を離れた時点で形式エラーをその場に赤字表示する(TARO 2026-08-04)
+  const [blurred, setBlurred] = useState<Record<string, boolean>>({});
+  const markBlurred = (key: string) => setBlurred((p) => ({ ...p, [key]: true }));
+  const emailError =
+    blurred.email && email.trim() && !isValidBf6Email(email) ? 'メールアドレスの形式が正しくありません' : '';
+  const phoneError =
+    blurred.phone && phone.trim() && !isValidBf6Phone(phone)
+      ? '電話番号は数字10〜11桁で入力してください(例: 090-1234-5678)'
+      : '';
+  const kanaError = (key: string, v: string) =>
+    blurred[key] && v.trim() && !isKatakanaText(v) ? 'カタカナで入力してください' : '';
 
   useEffect(() => {
     (async () => {
@@ -188,6 +203,26 @@ export default function Bf6EntryPage() {
 
   // ===== 確認画面 / 決済確認 =====
   if (step === 'confirm' || step === 'pay') {
+    const payCta = (
+      <div className="space-y-3 rounded-2xl border-2 border-red-600 bg-white p-4">
+        <p className="text-center text-lg font-black text-neutral-900">決済に進みますか?</p>
+        <button
+          onClick={handleGoCheckout}
+          disabled={submitting}
+          className="w-full rounded-2xl bg-red-600 py-4 text-lg font-black text-white shadow-lg shadow-red-600/30 active:scale-[0.99] disabled:opacity-50"
+        >
+          {submitting ? '接続中…' : `はい、決済に進む(${yen(amountTotal)})`}
+        </button>
+        <button
+          onClick={() => router.push(`/bf6/complete?t=${doneToken}`)}
+          disabled={submitting}
+          className="w-full rounded-2xl border-2 border-neutral-300 bg-white py-3.5 font-bold text-neutral-600"
+        >
+          いいえ、あとで決済する
+        </button>
+        <p className="text-center text-xs text-neutral-500">※ 30分以内に決済が完了しない場合、この申込は無効になります</p>
+      </div>
+    );
     return (
       <Shell>
         <Bf6Hero
@@ -198,9 +233,13 @@ export default function Bf6EntryPage() {
           {step === 'confirm' ? (
             <p className="text-sm text-neutral-600">この内容でエントリーします。よろしいですか?</p>
           ) : (
-            <p className="rounded-xl border-2 border-red-600 bg-red-50 p-4 text-sm font-bold text-red-700">
-              あと1歩! 決済が完了するとエントリー確定になり、エントリーリストに掲載されます。
-            </p>
+            <>
+              <p className="rounded-xl bg-red-50 p-4 text-sm font-bold text-red-700">
+                あと1歩! 決済が完了するとエントリー確定になり、エントリーリストに掲載されます。
+              </p>
+              {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-600">{error}</p>}
+              {payCta}
+            </>
           )}
 
           <Bf6Card label="申込者">
@@ -240,40 +279,22 @@ export default function Bf6EntryPage() {
             <p className="mt-1 text-4xl font-black text-white">{yen(step === 'pay' ? amountTotal : total)}</p>
           </div>
 
-          {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-600">{error}</p>}
-
-          {step === 'confirm' ? (
-            <div className="space-y-3 pt-2">
-              <button
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="w-full rounded-2xl bg-red-600 py-4 text-lg font-black text-white shadow-lg shadow-red-600/30 active:scale-[0.99] disabled:opacity-50"
-              >
-                {submitting ? '送信中…' : payMethod === 'prepaid' ? 'この内容で申し込む(次で決済)' : 'この内容でエントリーする'}
-              </button>
-              <button onClick={() => setStep('input')} disabled={submitting} className="w-full rounded-2xl border-2 border-neutral-300 bg-white py-3.5 font-bold text-neutral-600">
-                入力に戻る
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3 pt-2">
-              <p className="text-center text-lg font-black text-neutral-900">決済に進みますか?</p>
-              <button
-                onClick={handleGoCheckout}
-                disabled={submitting}
-                className="w-full rounded-2xl bg-red-600 py-4 text-lg font-black text-white shadow-lg shadow-red-600/30 active:scale-[0.99] disabled:opacity-50"
-              >
-                {submitting ? '接続中…' : `はい、決済に進む(${yen(amountTotal)})`}
-              </button>
-              <button
-                onClick={() => router.push(`/bf6/complete?t=${doneToken}`)}
-                disabled={submitting}
-                className="w-full rounded-2xl border-2 border-neutral-300 bg-white py-3.5 font-bold text-neutral-600"
-              >
-                いいえ、あとで決済する
-              </button>
-              <p className="text-center text-xs text-neutral-500">※ 30分以内に決済が完了しない場合、この申込は無効になります</p>
-            </div>
+            {step === 'confirm' && (
+            <>
+              {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-bold text-red-600">{error}</p>}
+              <div className="space-y-3 pt-2">
+                <button
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                  className="w-full rounded-2xl bg-red-600 py-4 text-lg font-black text-white shadow-lg shadow-red-600/30 active:scale-[0.99] disabled:opacity-50"
+                >
+                  {submitting ? '送信中…' : payMethod === 'prepaid' ? 'この内容で申し込む(次で決済)' : 'この内容でエントリーする'}
+                </button>
+                <button onClick={() => setStep('input')} disabled={submitting} className="w-full rounded-2xl border-2 border-neutral-300 bg-white py-3.5 font-bold text-neutral-600">
+                  入力に戻る
+                </button>
+              </div>
+            </>
           )}
         </div>
       </Shell>
@@ -292,11 +313,23 @@ export default function Bf6EntryPage() {
               <Bf6Field label="お名前" required>
                 <input value={buyerName} onChange={(e) => setBuyerName(e.target.value)} className={inputCls} />
               </Bf6Field>
-              <Bf6Field label="メールアドレス" required hint="エントリー完了のご連絡が届きます">
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+              <Bf6Field label="メールアドレス" required hint="エントリー完了のご連絡が届きます" error={emailError}>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => markBlurred('email')}
+                  className={inputClsWith(emailError)}
+                />
               </Bf6Field>
-              <Bf6Field label="電話番号" required hint="必ず当日連絡が取れる番号を入力してください">
-                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} />
+              <Bf6Field label="電話番号" required hint="必ず当日連絡が取れる番号を入力してください" error={phoneError}>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  onBlur={() => markBlurred('phone')}
+                  className={inputClsWith(phoneError)}
+                />
               </Bf6Field>
             </div>
           </Bf6Card>
@@ -319,11 +352,23 @@ export default function Bf6EntryPage() {
                   <Bf6Field label="ダンサーネーム(エントリーネーム)" required hint="エントリーリスト・トーナメント表に載る名前です">
                     <input value={row.dancerName} onChange={(e) => updateRow(i, { dancerName: e.target.value })} placeholder="例: TARO" className={inputCls} />
                   </Bf6Field>
-                  <Bf6Field label="ダンサーネームのフリガナ" required hint="当日MCがお呼びする読み方です">
-                    <input value={row.dancerKana} onChange={(e) => updateRow(i, { dancerKana: e.target.value })} placeholder="例: タロー" className={inputCls} />
+                  <Bf6Field label="ダンサーネームのフリガナ" required hint="当日MCがお呼びする読み方です" error={kanaError(`kana${i}`, row.dancerKana)}>
+                    <input
+                      value={row.dancerKana}
+                      onChange={(e) => updateRow(i, { dancerKana: e.target.value })}
+                      onBlur={() => markBlurred(`kana${i}`)}
+                      placeholder="例: タロー"
+                      className={inputClsWith(kanaError(`kana${i}`, row.dancerKana))}
+                    />
                   </Bf6Field>
-                  <Bf6Field label="本名(カタカナ)" required hint="受付での本人確認用。公開されません">
-                    <input value={row.performerName} onChange={(e) => updateRow(i, { performerName: e.target.value })} placeholder="例: ヤマダタロウ" className={inputCls} />
+                  <Bf6Field label="本名(カタカナ)" required hint="受付での本人確認用。公開されません" error={kanaError(`pname${i}`, row.performerName)}>
+                    <input
+                      value={row.performerName}
+                      onChange={(e) => updateRow(i, { performerName: e.target.value })}
+                      onBlur={() => markBlurred(`pname${i}`)}
+                      placeholder="例: ヤマダタロウ"
+                      className={inputClsWith(kanaError(`pname${i}`, row.performerName))}
+                    />
                   </Bf6Field>
                   <Bf6Field label="学年" required>
                     <select value={row.grade} onChange={(e) => updateRow(i, { grade: e.target.value })} className={inputCls}>
@@ -431,8 +476,10 @@ export default function Bf6EntryPage() {
               <input type="radio" checked={payMethod === 'prepaid'} onChange={() => setPayMethod('prepaid')} className="h-5 w-5 accent-red-600" />
               <span className="flex-1">
                 <span className="font-black text-neutral-900">事前カード決済</span>
-                <span className="ml-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">1人¥500引き</span>
-                <span className="block text-xs text-neutral-400">クレジットカード等でいま支払い</span>
+                <span className="ml-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">おトク</span>
+                <span className="block text-xs text-neutral-400">
+                  エントリー出場者1人につき¥500引き・大人観覧は前売価格¥2,000(当日¥2,500)
+                </span>
               </span>
             </label>
             <label className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 bg-white p-4 ${payMethod === 'onsite' ? 'border-red-600 bg-red-50' : 'border-neutral-200'}`}>
@@ -445,14 +492,45 @@ export default function Bf6EntryPage() {
           </div>
         </section>
 
-        <div className="mt-8 rounded-2xl bg-neutral-900 p-5 text-center">
-          <p className="text-xs font-bold tracking-widest text-neutral-400">合計金額</p>
-          <p className="mt-1 text-5xl font-black text-white">{yen(total)}</p>
-          {total !== totalOther && (
-            <p className="mt-2 text-xs text-neutral-400">
-              {payMethod === 'prepaid' ? `当日払いだと ${yen(totalOther)}` : `事前決済なら ${yen(totalOther)} でお得`}
-            </p>
+        <div className="mt-8 rounded-2xl bg-neutral-900 p-5">
+          {pricing && (rows.some((r) => r.divisions.length > 0) || adultTickets > 0 || childTickets > 0) && (
+            <ul className="space-y-2 border-b border-neutral-700 pb-3 text-sm">
+              {rows.map((r, i) =>
+                r.divisions.length > 0 ? (
+                  <li key={i} className="flex items-baseline justify-between gap-2 text-neutral-300">
+                    <span>
+                      エントリー {r.dancerName.trim() || `出場者${i + 1}`}({r.divisions.length}部門)
+                      {payMethod === 'prepaid' && (
+                        <span className="ml-1 whitespace-nowrap text-xs text-red-400">¥500引き適用</span>
+                      )}
+                    </span>
+                    <span className="font-bold text-white">{yen(calcEntryFee(r.divisions.length, payMethod, pricing))}</span>
+                  </li>
+                ) : null
+              )}
+              {adultTickets > 0 && (
+                <li className="flex items-baseline justify-between gap-2 text-neutral-300">
+                  <span>観覧 大人 {yen(calcTicketUnitPrice('ticket_adult', payMethod, pricing))} × {adultTickets}枚</span>
+                  <span className="font-bold text-white">{yen(calcTicketUnitPrice('ticket_adult', payMethod, pricing) * adultTickets)}</span>
+                </li>
+              )}
+              {childTickets > 0 && (
+                <li className="flex items-baseline justify-between gap-2 text-neutral-300">
+                  <span>観覧 小学生 {yen(calcTicketUnitPrice('ticket_child', payMethod, pricing))} × {childTickets}枚</span>
+                  <span className="font-bold text-white">{yen(calcTicketUnitPrice('ticket_child', payMethod, pricing) * childTickets)}</span>
+                </li>
+              )}
+            </ul>
           )}
+          <div className="pt-3 text-center">
+            <p className="text-xs font-bold tracking-widest text-neutral-400">合計金額</p>
+            <p className="mt-1 text-5xl font-black text-white">{yen(total)}</p>
+            {total !== totalOther && (
+              <p className="mt-2 text-xs text-neutral-400">
+                {payMethod === 'prepaid' ? `当日払いだと ${yen(totalOther)}` : `事前決済なら ${yen(totalOther)} でお得`}
+              </p>
+            )}
+          </div>
         </div>
 
         {error && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-600">{error}</p>}
