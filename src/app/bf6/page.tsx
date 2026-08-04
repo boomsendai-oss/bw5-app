@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { BF6_DIVISIONS } from '@/lib/bf6';
 import { calcBf6Remaining, getBf6Settings, getBf6Usage, getPublicBf6Entries } from '@/lib/bf6Db';
-import { Bf6DetailBlock, Bf6SectionHead } from './ui';
+import { Bf6DetailBlock, Bf6SectionHead, Bf6Shell } from './ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,8 +20,8 @@ export default async function Bf6TopPage() {
   );
 
   return (
-    <div className="min-h-screen bg-neutral-100">
-      <div className="mx-auto max-w-lg pb-12">
+    <Bf6Shell wide>
+      <div>
         {/* ヒーロー */}
         <header className="bg-neutral-950 px-4 pb-8 pt-10 text-center text-white">
           <p className="inline-block bg-red-600 px-3 py-1 text-[11px] font-black tracking-[0.2em]">
@@ -170,6 +170,6 @@ export default async function Bf6TopPage() {
           <Link href="/bf6/legal" className="underline">特商法表記・キャンセルポリシー</Link>
         </p>
       </div>
-    </div>
+    </Bf6Shell>
   );
 }

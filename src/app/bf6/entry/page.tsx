@@ -26,7 +26,7 @@ import {
   isValidBf6Phone,
   type Bf6Division,
 } from '@/lib/bf6';
-import { Bf6Hero, Bf6Card, Bf6SectionTitle, Bf6Field, Bf6NumberSelect, inputCls, inputClsWith } from '../ui';
+import { Bf6Hero, Bf6Card, Bf6SectionTitle, Bf6Field, Bf6NumberSelect, Bf6Shell, inputCls, inputClsWith } from '../ui';
 
 const TOKEN_KEY = 'bf6_order_token';
 
@@ -565,9 +565,5 @@ export default function Bf6EntryPage() {
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-neutral-100">
-      <div className="mx-auto max-w-lg pb-12">{children}</div>
-    </div>
-  );
+  return <Bf6Shell>{children}</Bf6Shell>;
 }

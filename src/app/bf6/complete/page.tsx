@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { formatReceiptNo, bf6DivisionLabel, bf6GradeLabel } from '@/lib/bf6';
 import { loadBf6OrderByToken } from '@/lib/bf6Db';
-import { Bf6Card, Bf6Hero } from '../ui';
+import { Bf6Card, Bf6Hero, Bf6Shell } from '../ui';
 import CheckoutButton from './CheckoutButton';
 
 export const dynamic = 'force-dynamic';
@@ -144,9 +144,5 @@ export default async function Bf6CompletePage({
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-neutral-100">
-      <div className="mx-auto max-w-lg pb-12">{children}</div>
-    </div>
-  );
+  return <Bf6Shell>{children}</Bf6Shell>;
 }
