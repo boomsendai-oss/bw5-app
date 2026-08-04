@@ -1056,5 +1056,32 @@ export function getSchemaStatements(): InStatement[] {
     )`,
       args: [],
     },
+    // BF6オンライン配信 (本番は台帳 20260805_bf6_stream.sql)
+    {
+      sql: `CREATE TABLE IF NOT EXISTS bf_stream_keys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL,
+      stream_key TEXT NOT NULL UNIQUE,
+      email TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_bf_stream_keys_order ON bf_stream_keys (order_id)`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS bf_stream_sessions (
+      key_id INTEGER PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      user_agent TEXT DEFAULT '',
+      updated_at TEXT NOT NULL
+    )`,
+      args: [],
+    },
   ];
 }
