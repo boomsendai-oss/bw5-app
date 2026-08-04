@@ -177,7 +177,13 @@ export async function GET(req: NextRequest) {
        d.updated_at DESC
      LIMIT 100`
   );
-  const signal = await getOne('SELECT sync_requested_at, generate_requested_at, updated_at FROM reel_pipeline_signal WHERE id = 1').catch(() => null);
+  // Mac常駐の生存記録も返す(TARO 2026-08-04)。Macがスリープしていると常駐が止まり、
+  // 「生成」を押しても何も起きない。画面で気づけるようにするため。
+  const signal = await getOne(
+    'SELECT sync_requested_at, generate_requested_at, updated_at, last_run_at, last_ok_at, last_error FROM reel_pipeline_signal WHERE id = 1'
+  ).catch(() =>
+    getOne('SELECT sync_requested_at, generate_requested_at, updated_at FROM reel_pipeline_signal WHERE id = 1').catch(() => null)
+  );
   // クラス紐づけ用の候補(稼働中で曜日・時間が入っているものだけ)。
   // 表記ゆれで自動一致しない事故を避けるため、アプリでは必ずここから選ばせる。
   const lessons = await getAll(

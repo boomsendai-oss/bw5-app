@@ -42,7 +42,20 @@ type Draft = {
   updated_at: string;
 };
 type Lesson = { id: number; class_name: string; dw: number; st: string; et: string | null; instructor: string | null };
-type Signal = { sync_requested_at: string | null; generate_requested_at: string | null; updated_at: string | null };
+type Signal = {
+  sync_requested_at: string | null; generate_requested_at: string | null; updated_at: string | null;
+  // Mac常駐の生存記録(TARO 2026-08-04)。Macがスリープしていると常駐が止まるので、
+  // 「生成を押したのに何も起きない」を画面で気づけるようにする。
+  last_run_at?: string | null; last_ok_at?: string | null; last_error?: string | null;
+};
+
+/** 常駐が最後に動いてからの分数。記録が無ければ null */
+function minutesSince(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = new Date(iso.endsWith('Z') || iso.includes('+') ? iso : iso.replace(' ', 'T') + 'Z').getTime();
+  if (!Number.isFinite(t)) return null;
+  return Math.floor((Date.now() - t) / 60000);
+}
 
 const STATUS_LABEL: Record<string, string> = {
   new: '取込中', need_input: '入力待ち', ready: '生成待ち', generating: '生成中',
@@ -135,6 +148,27 @@ export default function ReelDraftsPage() {
         {msg && <p className="text-sm text-brand-700 bg-brand-50 border border-brand-200 rounded-md px-3 py-2">{msg}</p>}
         {signal && (signal.sync_requested_at || signal.generate_requested_at) && (
           <p className="text-xs text-amber-700">Mac処理待ち…(要求済み。反映まで最大1分)</p>
+        )}
+        {(() => {
+          // 常駐が10分以上動いていない = Macがスリープ中/停止中。押しても進まないので明示する。
+          const idle = minutesSince(signal?.last_run_at);
+          if (idle == null || idle < 10) return null;
+          const h = Math.floor(idle / 60);
+          const ago = h > 0 ? `${h}時間${idle % 60}分` : `${idle}分`;
+          return (
+            <div className="rounded-lg bg-amber-50 border border-amber-300 px-3 py-2.5 text-xs text-amber-900">
+              <p className="font-bold">⚠️ Macの生成処理が {ago} 動いていません</p>
+              <p className="mt-1">
+                生成はMac上でしか動きません（元動画と変換処理がMacにあるため）。
+                Macがスリープしていると「生成」を押しても進みません。Macを開いて数分待つと自動で進みます。
+              </p>
+            </div>
+          );
+        })()}
+        {signal?.last_error && (
+          <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+            前回の生成でエラー: {signal.last_error}
+          </p>
         )}
         {waiting && (
           <p className="text-xs text-brand-700">⏳ 生成の進み具合を15秒ごとに自動で確認しています（このまま待てば結果が出ます）</p>
