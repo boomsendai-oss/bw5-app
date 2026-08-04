@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { BF6_DIVISIONS, type Bf6Division } from '@/lib/bf6';
 import { calcBf6Remaining, getBf6Settings, getBf6Usage, getPublicBf6Entries } from '@/lib/bf6Db';
-import { Bf6Hero } from '../ui';
+import { Bf6Hero, Bf6Shell } from '../ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,8 +35,8 @@ export default async function Bf6EntriesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-100">
-      <div className="mx-auto max-w-lg pb-12">
+    <Bf6Shell wide>
+      <div>
         <Bf6Hero title="ENTRY LIST" subtitle="2026.9.26 SAT — SSM 9階ホール / リアルタイム更新" />
         <div className="px-4 py-6">
           {BF6_DIVISIONS.map((d) => {
@@ -93,6 +93,6 @@ export default async function Bf6EntriesPage() {
           </p>
         </div>
       </div>
-    </div>
+    </Bf6Shell>
   );
 }

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getBf6Context, submitBf6Order, startBf6Checkout, type Bf6PublicContext } from '../actions';
 import { calcOrderTotal, calcTicketUnitPrice, isValidBf6Email, isValidBf6Phone } from '@/lib/bf6';
-import { Bf6Card, Bf6Field, Bf6Hero, Bf6NumberSelect, Bf6SectionTitle, inputCls, inputClsWith } from '../ui';
+import { Bf6Card, Bf6Field, Bf6Hero, Bf6NumberSelect, Bf6SectionTitle, Bf6Shell, inputCls, inputClsWith } from '../ui';
 
 const TOKEN_KEY = 'bf6_order_token';
 const yen = (n: number) => `¥${n.toLocaleString()}`;
@@ -260,9 +260,5 @@ export default function Bf6TicketPage() {
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-neutral-100">
-      <div className="mx-auto max-w-lg pb-12">{children}</div>
-    </div>
-  );
+  return <Bf6Shell>{children}</Bf6Shell>;
 }

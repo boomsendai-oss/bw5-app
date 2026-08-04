@@ -1,6 +1,36 @@
 // BF6公開ページ共通のUI部品。ライト基調+黒/赤(フライヤー準拠)のイベントデザイン。
 import type { ReactNode } from 'react';
 
+/**
+ * 全公開ページ共通の外枠。スマホ=ライト面がそのまま全幅(従来通り)。
+ * PC=黒いステージ+赤のライティングの上にページが浮かぶ(迫力対策・TARO 2026-08-05)。
+ */
+export function Bf6Shell({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
+  return (
+    <div className="relative min-h-screen bg-neutral-950">
+      {/* 装飾(PCの余白を舞台にする)。pointer-events-noneで操作に影響しない */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 hidden overflow-hidden md:block">
+        <div className="absolute -left-40 top-[-10%] h-[34rem] w-[34rem] rounded-full bg-red-600/25 blur-[140px]" />
+        <div className="absolute -right-48 top-1/3 h-[40rem] w-[40rem] rounded-full bg-red-900/30 blur-[160px]" />
+        <div className="absolute bottom-[-15%] left-1/4 h-[30rem] w-[30rem] rounded-full bg-neutral-700/20 blur-[140px]" />
+        <p className="absolute left-6 top-1/2 -translate-y-1/2 -rotate-90 whitespace-nowrap text-[11rem] font-black italic leading-none tracking-tighter text-white/[0.04] select-none">
+          BOOMER&apos;S FIGHT!!!
+        </p>
+        <p className="absolute right-6 top-1/2 -translate-y-1/2 rotate-90 whitespace-nowrap text-[11rem] font-black italic leading-none tracking-tighter text-white/[0.04] select-none">
+          BATTLE &amp; SHOWCASE
+        </p>
+      </div>
+      <div
+        className={`relative mx-auto min-h-screen bg-neutral-100 pb-12 md:min-h-0 md:overflow-hidden md:rounded-3xl md:shadow-2xl md:shadow-red-950/50 md:ring-1 md:ring-white/10 md:my-10 ${
+          wide ? 'max-w-lg md:max-w-2xl' : 'max-w-lg md:max-w-xl'
+        }`}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export const inputCls =
   'w-full rounded-xl border-2 border-neutral-200 bg-white px-3.5 py-3 text-base text-neutral-900 placeholder-neutral-300 focus:border-red-500 focus:outline-none';
 
