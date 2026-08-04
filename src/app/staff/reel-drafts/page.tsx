@@ -1174,10 +1174,17 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
           </button>
           <span className="text-navy-300 text-xs">または</span>
           {/* 好きな日時で予約。空なら次の投稿枠を初期値にしておく(スマホで打ち直す手間を減らす) */}
+          {/* ⚠️ 入力欄には既定値を表示しているので、TAROが手で触っていなくても
+              「画面に見えている日時」で予約できるようにする(TARO 2026-08-04: 押しても
+              何も起きなかった。dateStrが空のまま「日時を選んでください」で止まっていた)。 */}
           <input type="datetime-local" value={dateStr || defaultSlotLocal(stage)}
             onChange={(e) => setDateStr(e.target.value)}
             className="border border-sand-200 rounded-md px-2 py-1.5 text-sm text-navy-800" />
-          <button onClick={() => dateStr ? schedule(new Date(dateStr).toISOString()) : onMsg('日時を選んでください')} disabled={busy}
+          <button onClick={() => {
+              const v = dateStr || defaultSlotLocal(stage);
+              if (!v) { onMsg('日時を選んでください'); return; }
+              schedule(new Date(v).toISOString());
+            }} disabled={busy}
             className="px-3 py-1.5 text-sm rounded-md border border-brand-300 text-brand-700 hover:bg-brand-50 disabled:opacity-50">
             この日時で投稿
           </button>
