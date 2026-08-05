@@ -19,5 +19,13 @@ export const metadata: Metadata = {
 };
 
 export default function Bf6Layout({ children }: { children: ReactNode }) {
-  return children;
+  return (
+    <>
+      {/* アプリ全体のbody下地はBW5オレンジ(globals.cssの--bg-primary)。
+          iPhoneの上下セーフエリア・オーバースクロールにその色が見えるため、
+          /bf6 配下に限り下地を黒へ上書きする(TARO指摘 2026-08-05)。 */}
+      <style>{'html, body { background: #0a0a0a !important; }'}</style>
+      {children}
+    </>
+  );
 }
