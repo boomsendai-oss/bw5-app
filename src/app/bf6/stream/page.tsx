@@ -55,8 +55,8 @@ export default function Bf6StreamPage() {
       childTickets: 0,
       streamTickets: qty,
     });
-    setSubmitting(false);
     if (!res.ok) {
+      setSubmitting(false);
       setError(res.error);
       setStep('input');
       return;
@@ -64,6 +64,11 @@ export default function Bf6StreamPage() {
     try { localStorage.setItem(TOKEN_KEY, res.token); } catch { /* private mode */ }
     setDoneToken(res.token);
     setAmountTotal(res.amountTotal);
+    // 確認画面の1タップでそのまま決済へ。接続失敗時のみ決済確認ステップに退避
+    const co = await startBf6Checkout(res.token);
+    if (co.ok) { window.location.href = co.url; return; }
+    setSubmitting(false);
+    setError(co.error);
     setStep('pay');
     window.scrollTo({ top: 0 });
   }
@@ -142,8 +147,9 @@ export default function Bf6StreamPage() {
                   disabled={submitting}
                   className={`w-full rounded-2xl py-4 text-lg font-black disabled:opacity-50 ${btnPrimaryCls}`}
                 >
-                  {submitting ? '送信中…' : 'この内容で申し込む(次で決済)'}
+                  {submitting ? '決済画面に接続中…' : `この内容で申し込んで決済に進む(${yen(total)})`}
                 </button>
+                <p className="text-center text-xs text-neutral-400">※ このあとカード決済画面(Stripe)に移動します。30分以内の決済完了で確定です</p>
                 <button onClick={() => setStep('input')} disabled={submitting} className="w-full rounded-2xl border-2 border-neutral-700 bg-neutral-900 py-3.5 font-bold text-neutral-400">
                   入力に戻る
                 </button>
