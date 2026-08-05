@@ -28,7 +28,7 @@ export default async function Bf6CompletePage({
               URLが正しいかご確認ください。30分以内に決済されなかった申込は無効になります。
             </p>
           </Bf6Card>
-          <Link href="/bf6/entry" className="mt-5 block w-full rounded-2xl bg-red-600 py-4 text-center text-lg font-black text-white shadow-lg shadow-red-600/30">
+          <Link href="/bf6/entry" className="mt-5 block w-full rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] py-4 text-center text-lg font-black">
             もう一度エントリーする
           </Link>
         </div>
@@ -92,7 +92,7 @@ export default async function Bf6CompletePage({
                 30分以内に決済が完了しなかったため、枠を解放しました。お手数ですがもう一度エントリーしてください。
               </p>
             </Bf6Card>
-            <Link href="/bf6/entry" className="block w-full rounded-2xl bg-red-600 py-4 text-center text-lg font-black text-white shadow-lg shadow-red-600/30">
+            <Link href="/bf6/entry" className="block w-full rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] py-4 text-center text-lg font-black">
               もう一度エントリーする
             </Link>
           </>

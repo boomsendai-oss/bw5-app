@@ -137,9 +137,9 @@ export const BF6_DIVISIONS: {
   accentText: string;
   accentBg: string;
 }[] = [
-  { key: 'beginner', label: 'ビギナー部門', note: '小学生・バトル初出場限定', accentText: 'text-emerald-600', accentBg: 'bg-emerald-600' },
-  { key: 'kids', label: '小中学生部門', note: '小学生・中学生', accentText: 'text-orange-500', accentBg: 'bg-orange-500' },
-  { key: 'general', label: '一般部門', note: '年齢制限なし', accentText: 'text-red-600', accentBg: 'bg-red-600' },
+  { key: 'beginner', label: 'ビギナー部門', note: '小学生・バトル初出場限定', accentText: 'text-emerald-600', accentBg: 'bg-gradient-to-b from-emerald-500 to-emerald-700' },
+  { key: 'kids', label: '小中学生部門', note: '小学生・中学生', accentText: 'text-orange-500', accentBg: 'bg-gradient-to-b from-orange-400 to-orange-600' },
+  { key: 'general', label: '一般部門', note: '年齢制限なし', accentText: 'text-red-600', accentBg: 'bg-gradient-to-b from-red-500 to-red-700' },
 ];
 
 export function bf6DivisionLabel(key: string): string {
