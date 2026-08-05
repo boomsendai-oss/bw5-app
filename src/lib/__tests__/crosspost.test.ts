@@ -325,3 +325,21 @@ describe('X / YouTube の本文に Instagram のハンドルが残らない', ()
     expect(yt.description).toContain('🕺講師：TARO');
   });
 });
+
+describe('buildXText のX向け言い換え', () => {
+  // Xの導線は本体でなくリプライにある(buildXReplyCta)。「プロフィール」では辿り着けない
+  it('「プロフィール」を「リプライ欄」に言い換える', () => {
+    const out = buildXText('体験レッスンは無料。ご予約はプロフィールの公式LINEから');
+    expect(out).toContain('リプライ欄の公式LINEから');
+    expect(out).not.toContain('プロフィール');
+  });
+
+  it('「プロフィールのリンク（公式LINE）」の形も置き換わる', () => {
+    const out = buildXText('ご予約はプロフィールのリンク（公式LINE）から。');
+    expect(out).toBe('ご予約はリプライ欄のリンク（公式LINE）から。');
+  });
+
+  it('「プロフィール」が無い本文は変えない', () => {
+    expect(buildXText('HIPHOP ／ 日曜 14:00')).toBe('HIPHOP ／ 日曜 14:00');
+  });
+});

@@ -91,6 +91,18 @@ function truncate(s: string, max: number): string {
 }
 
 /**
+ * Instagram向けの文言をX向けに言い換える。
+ *
+ * キャプションは「プロフィールの公式LINEから」のようにInstagram前提で書かれている。
+ * Instagramは本文にリンクが貼れないのでbioへ誘導するしかないが、Xでは事情が違う:
+ * BOOMのX投稿は**本体にリンクを入れず、直後のリプライに導線を置く**(buildXReplyCta参照)。
+ * なので誘導先は「プロフィール」ではなく「リプライ欄」。
+ */
+function localizeForX(body: string): string {
+  return body.replace(/プロフィール/g, 'リプライ欄');
+}
+
+/**
  * X用の本文を作る。
  * - 本文を優先し、余った文字数にだけタグを足す(タグで本文が削れるのを防ぐ)
  * - リンクは呼び出し側で足さない。Xは動画付きポストにリンクを入れると表示が弱くなる
@@ -98,7 +110,7 @@ function truncate(s: string, max: number): string {
 export function buildXText(caption: string, opts?: { maxTags?: number }): string {
   const { body, tags } = splitCaption(caption);
   const maxTags = opts?.maxTags ?? 3;
-  const base = truncate(body, X_TEXT_MAX);
+  const base = truncate(localizeForX(body), X_TEXT_MAX);
   if ([...base].length >= X_TEXT_MAX - 8) return base;
 
   let out = base;
