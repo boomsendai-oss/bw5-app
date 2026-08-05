@@ -139,32 +139,66 @@ export async function exchangeAndListPages(code: string, origin: string): Promis
   }
   const userToken = longJson.access_token as string;
 
-  const pagesRes = await fetch(`${GRAPH}/me/accounts?fields=id,name,access_token&access_token=${userToken}`);
-  const pagesJson = await pagesRes.json();
-  if (!pagesRes.ok || pagesJson.error) {
-    throw new Error(`ページ一覧の取得失敗: ${JSON.stringify(pagesJson.error ?? pagesJson)}`);
-  }
-  const pages = (pagesJson.data ?? []) as FbPage[];
-  if (pages.length === 0) {
-    throw new Error('管理しているFacebookページが見つかりませんでした（ページの管理者権限を確認してください）');
-  }
-
+  // ⚠️ ページ一覧より先にトークンを保存する。ここで失敗しても
+  // /api/staff/facebook/pages から原因を調べられるようにするため
+  // (同意はやり直せるが、毎回やり直すのは手間が大きい)。
   await Promise.all([
     upsertSetting(USER_TOKEN_KEY, userToken),
     upsertSetting(ISSUED_AT_KEY, new Date().toISOString()),
   ]);
+
+  const pages = await listPages(userToken);
+  if (pages.length === 0) {
+    throw new Error('管理しているFacebookページが見つかりませんでした（ページの管理者権限を確認してください）');
+  }
   if (pages.length === 1) await selectPage(pages[0].id);
   return pages;
+}
+
+/**
+ * 投稿できるページの一覧を取る。
+ *
+ * ⚠️ 経路が2つある。「ビジネス向けFacebookログイン」で同意したページは
+ * `/me/accounts` に出ないことがある(ビジネスポートフォリオ配下のページなど)ので、
+ * 空だったらビジネス経由でも探す。**片方だけ見て「ページ無し」と判断しない**。
+ */
+export async function listPages(userToken: string): Promise<FbPage[]> {
+  const direct = await fetch(`${GRAPH}/me/accounts?fields=id,name,access_token&access_token=${userToken}`);
+  const directJson = await direct.json();
+  if (direct.ok && !directJson.error) {
+    const pages = (directJson.data ?? []) as FbPage[];
+    if (pages.length > 0) return pages;
+  }
+
+  // ビジネスポートフォリオ経由。owned(自社所有) と client(代理管理) の両方を見る
+  const bizRes = await fetch(`${GRAPH}/me/businesses?fields=id,name&access_token=${userToken}`);
+  const bizJson = await bizRes.json();
+  const businesses = (bizJson.data ?? []) as { id: string }[];
+  const found: FbPage[] = [];
+  for (const b of businesses) {
+    for (const edge of ['owned_pages', 'client_pages']) {
+      const r = await fetch(`${GRAPH}/${b.id}/${edge}?fields=id,name,access_token&access_token=${userToken}`);
+      const j = await r.json();
+      for (const p of (j.data ?? []) as FbPage[]) {
+        if (p.id && !found.some((x) => x.id === p.id)) found.push(p);
+      }
+    }
+  }
+  // ビジネス経由だとページトークンが付いてこないことがあるので個別に取り直す
+  for (const p of found) {
+    if (p.access_token) continue;
+    const r = await fetch(`${GRAPH}/${p.id}?fields=access_token&access_token=${userToken}`);
+    const j = await r.json();
+    if (j.access_token) p.access_token = String(j.access_token);
+  }
+  return found.filter((p) => p.access_token);
 }
 
 /** 投稿先ページを確定する。ページトークンは保存済みのユーザートークンから引き直す */
 export async function selectPage(pageId: string): Promise<{ id: string; name: string }> {
   const userToken = await getSetting(USER_TOKEN_KEY);
   if (!userToken) throw new Error('Facebook未連携です。先に連携してください');
-  const res = await fetch(`${GRAPH}/me/accounts?fields=id,name,access_token&access_token=${userToken}`);
-  const json = await res.json();
-  if (!res.ok || json.error) throw new Error(`ページ一覧の取得失敗: ${JSON.stringify(json.error ?? json)}`);
-  const hit = ((json.data ?? []) as FbPage[]).find((p) => String(p.id) === String(pageId));
+  const hit = (await listPages(userToken)).find((p) => String(p.id) === String(pageId));
   if (!hit) throw new Error(`ページ ${pageId} は管理対象に見つかりませんでした`);
   await Promise.all([
     upsertSetting(PAGE_ID_KEY, hit.id),
