@@ -66,8 +66,8 @@ export default function Bf6TicketPage() {
     const res = await submitBf6Order({
       buyerName, email, phone, payMethod, entries: [], adultTickets, childTickets,
     });
-    setSubmitting(false);
     if (!res.ok) {
+      setSubmitting(false);
       setError(res.error);
       setStep('input');
       return;
@@ -76,6 +76,11 @@ export default function Bf6TicketPage() {
     setDoneToken(res.token);
     setAmountTotal(res.amountTotal);
     if (res.payMethod === 'prepaid') {
+      // 確認画面の1タップでそのまま決済へ。接続失敗時のみ決済確認ステップに退避
+      const co = await startBf6Checkout(res.token);
+      if (co.ok) { window.location.href = co.url; return; }
+      setSubmitting(false);
+      setError(co.error);
       setStep('pay');
       window.scrollTo({ top: 0 });
     } else {
@@ -130,8 +135,11 @@ export default function Bf6TicketPage() {
           {step === 'confirm' ? (
             <div className="space-y-3 pt-2">
               <button onClick={handleSubmit} disabled={submitting} className="w-full rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] py-4 text-lg font-black disabled:opacity-50">
-                {submitting ? '送信中…' : payMethod === 'prepaid' ? 'この内容で申し込む(次で決済)' : 'この内容で予約する'}
+                {submitting ? (payMethod === 'prepaid' ? '決済画面に接続中…' : '送信中…') : payMethod === 'prepaid' ? `この内容で申し込んで決済に進む(${yen(total)})` : 'この内容で予約する'}
               </button>
+              {payMethod === 'prepaid' && (
+                <p className="text-center text-xs text-neutral-400">※ このあとカード決済画面(Stripe)に移動します。30分以内の決済完了で確定です</p>
+              )}
               <button onClick={() => setStep('input')} disabled={submitting} className="w-full rounded-2xl bg-gradient-to-b from-neutral-700 via-neutral-800 to-black text-white ring-1 ring-neutral-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_25px_-5px_rgba(0,0,0,0.6)] py-3.5 font-bold opacity-90">
                 入力に戻る
               </button>
