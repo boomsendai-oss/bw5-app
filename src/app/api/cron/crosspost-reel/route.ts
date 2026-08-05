@@ -97,7 +97,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const target = pickNext(actionable);
+  // Xの無料枠は24時間で17リクエストしかなく、30MB級の動画1本で約11使う = 実質1日1本。
+  // 配信先が増えて1日の実行回数を増やしても超過しないよう、直近24時間にXへ投稿できて
+  // いたらこの回はXを対象から外す(YouTube/Threadsはそのまま進む)。
+  const recentX = await getOne(
+    `SELECT posted_at FROM reel_crossposts
+     WHERE platform = 'x' AND status = 'posted' AND posted_at > ?
+     ORDER BY posted_at DESC LIMIT 1`,
+    [new Date(Date.now() - 24 * 3600 * 1000).toISOString()]
+  );
+  const pickable = recentX ? actionable.filter((r) => r.platform !== 'x') : actionable;
+
+  const target = pickNext(pickable);
   if (!target) {
     return NextResponse.json({
       ok: true,
@@ -105,7 +116,11 @@ export async function POST(req: NextRequest) {
       added,
       skipped: toSkip.length,
       revived: toRevive.length,
-      note: toRevive.length > 0 ? '復活した行を次回実行で処理します' : '配信対象なし',
+      note: toRevive.length > 0
+        ? '復活した行を次回実行で処理します'
+        : recentX && actionable.length > 0
+          ? 'Xは24時間の無料枠待ち・他は配信対象なし'
+          : '配信対象なし',
     });
   }
 
