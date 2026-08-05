@@ -25,12 +25,15 @@
 // 90秒を超えるものが来たら投稿前に弾く(APIに投げてから失敗するより理由が分かる)。
 // レート上限は24時間で30投稿。週2〜3本の運用では当たらない。
 //
-// 前提(TAROの一度きりの手動セットアップ):
-//   1. Meta for Developers でアプリに「Facebookログイン」を追加
-//   2. リダイレクトURI https://bw5-app.vercel.app/api/staff/facebook/callback を登録
-//   3. env に FACEBOOK_APP_ID / FACEBOOK_APP_SECRET を設定(Vercel環境変数)
-//   4. /staff/instagram の「Facebookページを連携する」で同意(一度きり)
-//      → ページが複数あれば選択画面が出る
+// Meta側のセットアップ(2026-08-06 実施済み・アプリID 1357954775690497):
+//   - ユースケース「ページのすべてを管理」を追加し、
+//     pages_show_list / pages_manage_posts / pages_read_engagement を有効化
+//   - 「ビジネス向けFacebookログイン」の設定「BOOM reel post」を作成(config_id=1083640270989507)
+//   - リダイレクトURI https://bw5-app.vercel.app/api/staff/facebook/callback を登録
+// 残りはTAROの作業:
+//   - env に FACEBOOK_APP_ID(=1357954775690497) / FACEBOOK_APP_SECRET を設定(Vercel環境変数)
+//   - /staff/instagram の「Facebookページを連携する」で同意(一度きり)
+//     → ページが複数あれば選択画面が出る
 
 import { getOne, execute } from './db';
 
@@ -43,8 +46,16 @@ const ISSUED_AT_KEY = 'facebook_token_issued_at';
 const GRAPH = 'https://graph.facebook.com/v25.0';
 const RUPLOAD = 'https://rupload.facebook.com/video-upload/v25.0';
 
-// ページ一覧の取得と、ページとしての投稿に必要な最小限のスコープ
-const SCOPES = ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts'];
+// ⚠️ 「ビジネス向けFacebookログイン」は scope ではなく **config_id** で権限を決める。
+// Metaのコンソールで作った設定(名前: BOOM reel post)に
+// pages_show_list / pages_read_engagement / pages_manage_posts を紐づけてある。
+// 権限を足したいときはコード(ここ)ではなくコンソールの設定を編集する。
+// env で上書きできるようにしてあるのは、設定を作り直したときにデプロイ無しで差し替えるため。
+const DEFAULT_CONFIG_ID = '1083640270989507';
+
+function configId(): string {
+  return process.env.FACEBOOK_LOGIN_CONFIG_ID || DEFAULT_CONFIG_ID;
+}
 
 /** Facebookリールの尺の上限(秒)。これを超える動画はAPIが受け付けない */
 export const FB_REEL_MAX_SECONDS = 90;
@@ -77,7 +88,7 @@ export function buildConsentUrl(origin: string, state?: string): string {
     client_id: appId,
     redirect_uri: getRedirectUri(origin),
     response_type: 'code',
-    scope: SCOPES.join(','),
+    config_id: configId(),
     ...(state ? { state } : {}),
   });
   return `https://www.facebook.com/v25.0/dialog/oauth?${params.toString()}`;
