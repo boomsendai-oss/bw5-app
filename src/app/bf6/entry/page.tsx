@@ -414,7 +414,7 @@ export default function Bf6EntryPage() {
                             />
                             <span className="flex-1">
                               <span className="flex items-center gap-2">
-                                <span className="font-black text-neutral-900">{d.label}</span>
+                                <span className="font-black text-neutral-900">{d.key === 'beginner' && '🔰 '}{d.label}</span>
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${remaining > 0 ? 'bg-neutral-100 text-neutral-500' : 'bg-yellow-100 text-yellow-700'}`}>
                                   {remaining > 0 ? `限定${ctx.capacity[d.key]}名` : '満枠'}
                                 </span>
