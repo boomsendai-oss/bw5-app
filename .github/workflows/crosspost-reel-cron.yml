@@ -1,4 +1,4 @@
-# リールの他SNS横展開 (YouTube Shorts / X / Threads) cron
+# リールの他SNS横展開 (YouTube Shorts / X / Threads / Facebook / TikTok) cron
 # 毎日 JST 20:00 = UTC 11:00 に1回。Instagram公開済み(reel_queue.status='posted')の
 # リールを1件だけ二次配信する。
 #
@@ -6,8 +6,8 @@
 # 確実に終わってから走らせるため。
 #
 # **1回の実行で1件だけ**処理する。配信先の数だけ実行が要るので、
-# YouTube / X / Threads の3つになった今は**1日3回**回す
-# (新しいリールが同じ晩のうちに全部出そろうようにするため)。
+# YouTube / X / Threads / Facebook / TikTok の5つになった今は**1日5回**回す
+# (新しいリールが翌日までに全部出そろうようにするため)。
 #
 # 回数を増やしてもXの無料枠は超えない。/initialize + /append + /finalize が
 # 24時間で計17リクエストしかなく30MB級の動画1本で約11使う = 実質1日1本だが、
@@ -20,10 +20,13 @@ name: crosspost-reel-cron
 
 on:
   schedule:
-    # 20:17 / 21:37 / 22:47 JST。GH Actionsは0/20/40分に大遅延するため空いている分を使う。
+    # 20:17 / 21:37 / 22:47 / 翌0:07 / 翌7:27 JST。
+    # GH Actionsは0/20/40分に大遅延するため、空いている分を使う。
     - cron: '17 11 * * *'
     - cron: '37 12 * * *'
     - cron: '47 13 * * *'
+    - cron: '7 15 * * *'
+    - cron: '27 22 * * *'
   workflow_dispatch: {}
 
 jobs:
