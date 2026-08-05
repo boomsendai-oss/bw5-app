@@ -92,11 +92,12 @@ export type StreamLoginResult =
   | { ok: false; reason: 'invalid' | 'busy' | 'not_ready' | 'closed' };
 
 /**
- * 視聴ログイン。メール+キー照合→同時1端末チェック→セッション確保→再生URL発行。
+ * 視聴ログイン。キー照合→同時1端末チェック→セッション確保→再生URL発行。
+ * キーは高エントロピー(12文字・紛らわしい文字なし)なのでキー単体で認可する。
+ * メール照合を課すと「購入者がキーを家族に渡す」際に購入者のメールも要求してしまうため廃止(TARO 2026-08-06)。
  * 生存TTL内の別セッションがいる場合は 'busy'。
  */
 export async function streamLogin(
-  email: string,
   normalizedKey: string,
   sessionId: string,
   userAgent: string
@@ -107,7 +108,7 @@ export async function streamLogin(
   const row = await getOne("SELECT * FROM bf_stream_keys WHERE stream_key = ? AND status = 'active'", [
     normalizedKey,
   ]);
-  if (!row || String(row.email).trim().toLowerCase() !== email.trim().toLowerCase()) {
+  if (!row) {
     console.warn('[bf6] stream login failed. key digest:', streamKeyDigest(normalizedKey));
     return { ok: false, reason: 'invalid' };
   }

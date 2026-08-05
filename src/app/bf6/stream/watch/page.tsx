@@ -1,7 +1,8 @@
 'use client';
 
 // ⚠️ 公開ページ(認証なし)。理由: BF6オンライン配信の視聴ページ。
-// 実際の視聴にはメール+視聴キーの一致が必要(同時1端末・ハートビート制御)。
+// 実際の視聴には視聴キー(12文字・高エントロピー)の一致が必要(同時1端末・ハートビート制御)。
+// キーを家族に渡す運用を想定し、メールアドレスの入力は求めない(TARO 2026-08-06)。
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { heartbeatBf6Stream, loginBf6Stream } from '../actions';
@@ -22,7 +23,6 @@ function getSessionId(): string {
 }
 
 export default function Bf6StreamWatchPage() {
-  const [email, setEmail] = useState('');
   const [key, setKey] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -34,9 +34,7 @@ export default function Bf6StreamWatchPage() {
   useEffect(() => {
     const t = setTimeout(() => {
       try {
-        const savedEmail = localStorage.getItem('bf6_stream_email');
         const savedKey = localStorage.getItem('bf6_stream_key');
-        if (savedEmail) setEmail(savedEmail);
         if (savedKey) setKey(savedKey);
       } catch { /* private mode */ }
     }, 0);
@@ -53,7 +51,7 @@ export default function Bf6StreamWatchPage() {
     setBusy(true);
     setError('');
     const sessionId = getSessionId();
-    const res = await loginBf6Stream(email, key, sessionId);
+    const res = await loginBf6Stream(key, sessionId);
     setBusy(false);
     if (!res.ok) {
       setError(
@@ -63,12 +61,11 @@ export default function Bf6StreamWatchPage() {
             ? '配信の準備中です。開始までお待ちください'
             : res.reason === 'closed'
               ? 'アーカイブの公開期間が終了しました。ご視聴ありがとうございました!'
-              : 'メールアドレスまたは視聴キーが正しくありません'
+              : '視聴キーが正しくありません。メールに記載のキーをご確認ください'
       );
       return;
     }
     try {
-      localStorage.setItem('bf6_stream_email', email);
       localStorage.setItem('bf6_stream_key', key);
     } catch { /* private mode */ }
     setIframeSrc(res.iframeSrc);
@@ -128,9 +125,6 @@ export default function Bf6StreamWatchPage() {
           )}
           <Bf6Card>
             <div className="space-y-4">
-              <Bf6Field label="メールアドレス" required hint="購入時にご入力いただいたアドレス">
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
-              </Bf6Field>
               <Bf6Field label="視聴キー" required hint="メールで届いた BF6-XXXX-XXXX-XXXX 形式のキー">
                 <input
                   value={key}
@@ -142,7 +136,7 @@ export default function Bf6StreamWatchPage() {
               {error && <p className="rounded-xl bg-red-950/40 p-3 text-sm font-bold text-red-400">{error}</p>}
               <button
                 onClick={handleLogin}
-                disabled={busy || !email.trim() || !key.trim()}
+                disabled={busy || !key.trim()}
                 className={`w-full rounded-2xl py-4 text-lg font-black active:scale-[0.99] disabled:opacity-50 ${btnPrimaryCls}`}
               >
                 {busy ? '確認中…' : '視聴する'}
