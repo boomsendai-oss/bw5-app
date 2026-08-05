@@ -5,7 +5,15 @@ import type { ReactNode } from 'react';
  * 全公開ページ共通の外枠。スマホ=ライト面がそのまま全幅(従来通り)。
  * PC=黒いステージ+赤のライティングの上にページが浮かぶ(迫力対策・TARO 2026-08-05)。
  */
-export function Bf6Shell({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
+export function Bf6Shell({
+  children,
+  wide = false,
+  full = false,
+}: {
+  children: ReactNode;
+  wide?: boolean;
+  full?: boolean;
+}) {
   return (
     <div className="relative min-h-screen bg-neutral-950">
       {/* 装飾(PCの余白を舞台にする)。pointer-events-noneで操作に影響しない */}
@@ -22,7 +30,7 @@ export function Bf6Shell({ children, wide = false }: { children: ReactNode; wide
       </div>
       <div
         className={`relative mx-auto min-h-screen bg-neutral-100 pb-12 md:min-h-0 md:overflow-hidden md:rounded-3xl md:shadow-2xl md:shadow-red-950/50 md:ring-1 md:ring-white/10 md:my-10 ${
-          wide ? 'max-w-lg md:max-w-2xl' : 'max-w-lg md:max-w-xl'
+          full ? 'max-w-lg md:max-w-5xl' : wide ? 'max-w-lg md:max-w-2xl' : 'max-w-lg md:max-w-xl'
         }`}
       >
         {children}
@@ -115,7 +123,7 @@ export function inputClsWith(error?: string): string {
 export function Bf6SectionHead({ en, ja }: { en: string; ja?: string }) {
   return (
     <div className="mb-5 pt-2 text-center">
-      <h2 className="text-3xl font-black italic tracking-tight text-neutral-900">
+      <h2 className="text-3xl font-black italic tracking-tight text-neutral-900 md:text-5xl">
         {en}
         <span className="text-red-600">.</span>
       </h2>
