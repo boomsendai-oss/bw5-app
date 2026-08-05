@@ -3,6 +3,7 @@ import {
   splitCaption,
   buildXText,
   buildYouTubeMeta,
+  sanitizeHandlesForOtherPlatform,
   pickNext,
   X_TEXT_MAX,
   YT_TITLE_MAX,
@@ -248,5 +249,79 @@ describe('classifyByEnabled', () => {
     expect(out.actionable.map((x) => x.id)).toEqual([1, 2]);
     expect(out.toSkip).toEqual([]);
     expect(out.toRevive).toEqual([]);
+  });
+});
+
+// Instagram向けキャプションの @ハンドルを、X/YouTube に流す前に無害化する。
+// ここが抜けると、同名のX/YouTubeアカウントを持つ**赤の他人**に通知が飛ぶ(TARO 2026-08-05)。
+const NAMES = {
+  m55keiko: 'KEIKO',
+  takaryu_1203: 'Ryuki',
+  taro_bsb: 'TARO',
+  kattsu_ziel: 'K@TTSU',
+};
+
+describe('sanitizeHandlesForOtherPlatform', () => {
+  it('講師のInstagramハンドルを名前に置き換える(@を残さない)', () => {
+    const out = sanitizeHandlesForOtherPlatform('🕺講師：@takaryu_1203', NAMES);
+    expect(out).toBe('🕺講師：Ryuki');
+    expect(out).not.toContain('@');
+  });
+
+  it('CAST行(生徒のハンドル)は行ごと落とす', () => {
+    const caption = [
+      '【BOOM WOP vol.5】Sunshine 🕺', '', '🕺講師：@taro_bsb', '',
+      'CAST : @kid_a @kid_b', '', '体験レッスンは無料。',
+    ].join('\n');
+    const out = sanitizeHandlesForOtherPlatform(caption, NAMES);
+    expect(out).not.toContain('CAST');
+    expect(out).not.toContain('kid_a');
+    expect(out).toContain('🕺講師：TARO');
+  });
+
+  it('旧表記の「出演：」も落とす', () => {
+    expect(sanitizeHandlesForOtherPlatform('出演：@testuser1 @testuser2', NAMES)).toBe('');
+  });
+
+  it('登録簿に無いハンドルは名前が付けられないので行ごと落とす', () => {
+    // 間違ったアカウントへのリンクを作るより、講師行が無いほうがまし
+    expect(sanitizeHandlesForOtherPlatform('🕺講師：@unknown_person', NAMES)).toBe('');
+  });
+
+  it('曜日と講師が1行に同居していても壊さない(旧フォーマットのリール)', () => {
+    const out = sanitizeHandlesForOtherPlatform('📍水曜 18:30〜20:00 / 講師：@taro_bsb', NAMES);
+    expect(out).toBe('📍水曜 18:30〜20:00 / 講師：TARO');
+  });
+
+  it('行を落とした跡に空行が3つ以上並ばない', () => {
+    expect(sanitizeHandlesForOtherPlatform('本文\n\nCAST : @a\n\n締め', NAMES)).toBe('本文\n\n締め');
+  });
+
+  it('@が無いキャプションはそのまま', () => {
+    const caption = 'HIPHOP ／ 日曜 14:00\n体験レッスンは無料。';
+    expect(sanitizeHandlesForOtherPlatform(caption, NAMES)).toBe(caption);
+  });
+});
+
+describe('X / YouTube の本文に Instagram のハンドルが残らない', () => {
+  const caption = [
+    '【BOOM WOP vol.5】Sunshine 🕺', '',
+    '仙台のダンススクールBOOM「TARO HIPHOP 初級」クラスによるステージナンバー。', '',
+    '📍水曜 18:30〜20:00', '🕺講師：@taro_bsb', '',
+    'CAST : @kid_a @kid_b', '',
+    '体験レッスンは無料。ご予約はプロフィールの公式LINEから', '',
+    '#仙台ダンススクール #ダンススクール',
+  ].join('\n');
+
+  it('X本文', () => {
+    const x = buildXText(sanitizeHandlesForOtherPlatform(caption, NAMES));
+    expect(x).not.toMatch(/@[A-Za-z0-9._]/);
+    expect(x).toContain('🕺講師：TARO');
+  });
+
+  it('YouTube説明', () => {
+    const yt = buildYouTubeMeta('Sunshine', sanitizeHandlesForOtherPlatform(caption, NAMES));
+    expect(yt.description).not.toMatch(/@[A-Za-z0-9._]/);
+    expect(yt.description).toContain('🕺講師：TARO');
   });
 });

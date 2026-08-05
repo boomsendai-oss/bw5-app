@@ -44,6 +44,45 @@ export function splitCaption(caption: string): { body: string; tags: string[] } 
   return { body: lines.slice(0, end).join('\n').trim(), tags };
 }
 
+/**
+ * Instagram向けキャプションの `@ハンドル` を、Instagram以外で無害な形に直す。
+ *
+ * ⚠️ ここを通さないと**赤の他人にメンションが飛ぶ**(TARO 2026-08-05指摘)。
+ * キャプションの `@m55keiko` などは Instagram のアカウント名だが、
+ * X も YouTube も `@〜` を「自分のところのアカウント」として解釈してリンクにする。
+ * 同じ文字列のX/YouTubeアカウントが実在すれば、その無関係な人に通知が飛ぶ。
+ *
+ * 方針:
+ *  - 講師 … 登録簿で名前が引ければ `🕺講師：RYUKI` のように**名前**へ置き換える。
+ *            引けない場合は @ ごと落とす(間違ったリンクを作るより、無いほうがまし)。
+ *  - CAST … 生徒のInstagramアカウントなので**行ごと落とす**。
+ *            Instagram以外では宛先が存在しないうえ、誤爆すると無関係の人を巻き込む。
+ *
+ * @param nameByHandle Instagramハンドル(小文字・@なし) → 表示名
+ */
+export function sanitizeHandlesForOtherPlatform(
+  caption: string,
+  nameByHandle: Record<string, string> = {}
+): string {
+  const lines = (caption ?? '').split('\n');
+  const out: string[] = [];
+  for (const line of lines) {
+    // CAST行(旧表記の「出演：」も含む)は丸ごと落とす
+    if (/^\s*(CAST\s*[:：]|出演\s*[:：])/i.test(line)) continue;
+
+    const replaced = line.replace(/@([A-Za-z0-9._]+)/g, (_m, h: string) => {
+      const name = nameByHandle[String(h).toLowerCase()];
+      return name ?? '';
+    });
+
+    // 置換の結果「講師：」だけが残った行は、情報が無いので落とす
+    if (replaced !== line && /^\s*(🕺)?\s*講師\s*[:：]\s*$/.test(replaced)) continue;
+    out.push(replaced.replace(/[ \t]+$/, ''));
+  }
+  // 落とした行の跡で空行が3つ以上並ばないようにする
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 /** 全角を2文字として数えない(Xは日本語も1文字=1カウントではないが、実運用は文字数で足りる) */
 function truncate(s: string, max: number): string {
   const chars = [...s];

@@ -5,6 +5,7 @@ import {
   buildXText,
   buildXReplyCta,
   buildYouTubeMeta,
+  sanitizeHandlesForOtherPlatform,
   pickNext,
   classifyByEnabled,
   CROSSPOST_PLATFORMS,
@@ -141,11 +142,24 @@ export async function POST(req: NextRequest) {
     const bytes = new Uint8Array(await vres.arrayBuffer());
     if (bytes.byteLength === 0) return await fail(`動画が空: ${videoUrl}`);
 
+    // キャプションはInstagram向けに書かれていて `@ハンドル` はInstagramのアカウント。
+    // X / YouTube では @ が自分のところのアカウントを指すので、必ずここで無害化する
+    // (詳細は sanitizeHandlesForOtherPlatform のコメント)。
+    const instructors = (await getAll(
+      'SELECT name, instagram_handle FROM instructors WHERE instagram_handle IS NOT NULL'
+    )) as { name: string; instagram_handle: string }[];
+    const nameByHandle = Object.fromEntries(
+      instructors
+        .filter((r) => r.instagram_handle)
+        .map((r) => [String(r.instagram_handle).trim().toLowerCase(), String(r.name).trim()])
+    );
+    const safeCaption = sanitizeHandlesForOtherPlatform(reel.caption, nameByHandle);
+
     let externalId: string;
     let permalink: string;
 
     if (target.platform === 'youtube') {
-      const meta = buildYouTubeMeta(reel.title, reel.caption);
+      const meta = buildYouTubeMeta(reel.title, safeCaption);
       const out = await uploadShort({
         bytes,
         title: meta.title,
@@ -164,7 +178,7 @@ export async function POST(req: NextRequest) {
         return await fail(`動画が大きすぎて無料枠に収まりません (推定${needed}リクエスト/上限17)`);
       }
       const mediaId = await uploadVideo(bytes);
-      const tweetId = await postTweet(buildXText(reel.caption), undefined, undefined, [mediaId]);
+      const tweetId = await postTweet(buildXText(safeCaption), undefined, undefined, [mediaId]);
       externalId = tweetId;
       permalink = `https://x.com/i/status/${tweetId}`;
 
