@@ -29,7 +29,7 @@ export function Bf6Shell({
         </p>
       </div>
       <div
-        className={`relative mx-auto min-h-screen bg-neutral-100 pb-12 md:min-h-0 md:overflow-hidden md:rounded-3xl md:shadow-2xl md:shadow-red-950/50 md:ring-1 md:ring-white/10 md:my-10 ${
+        className={`relative mx-auto min-h-screen bg-neutral-950 pb-12 md:min-h-0 md:overflow-hidden md:rounded-3xl md:shadow-2xl md:shadow-red-950/50 md:ring-1 md:ring-white/10 md:my-10 ${
           full ? 'max-w-lg md:max-w-5xl' : wide ? 'max-w-lg md:max-w-2xl' : 'max-w-lg md:max-w-xl'
         }`}
       >
@@ -40,7 +40,7 @@ export function Bf6Shell({
 }
 
 export const inputCls =
-  'w-full rounded-xl border-2 border-neutral-200 bg-white px-3.5 py-3 text-base text-neutral-900 placeholder-neutral-300 focus:border-red-500 focus:outline-none';
+  'w-full rounded-xl border-2 border-neutral-800 bg-neutral-900 px-3.5 py-3 text-base text-white placeholder-neutral-600 focus:border-red-500 focus:outline-none';
 
 /** 黒帯ヒーロー。バトルイベントのブランド面はここに集約し、本文はライトで読みやすく。 */
 export function Bf6Hero({ title, subtitle }: { title: string; subtitle?: string }) {
@@ -64,9 +64,9 @@ export function Bf6Hero({ title, subtitle }: { title: string; subtitle?: string 
 
 export function Bf6Card({ label, children }: { label?: string; children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-sm">
       {label && (
-        <p className="mb-2 text-[11px] font-black uppercase tracking-widest text-red-600">{label}</p>
+        <p className="mb-2 text-[11px] font-black uppercase tracking-widest text-red-400">{label}</p>
       )}
       {children}
     </div>
@@ -77,13 +77,13 @@ export function Bf6SectionTitle({ no, title, note }: { no?: string; title: strin
   return (
     <div className="mb-3 flex items-baseline gap-2.5">
       {no && (
-        <span className="flex h-7 w-7 shrink-0 translate-y-0.5 items-center justify-center bg-neutral-900 text-sm font-black italic text-white">
+        <span className="flex h-7 w-7 shrink-0 translate-y-0.5 items-center justify-center bg-red-600 text-sm font-black italic text-white">
           {no}
         </span>
       )}
       <div>
-        <h2 className="text-lg font-black text-neutral-900">{title}</h2>
-        {note && <p className="text-xs text-neutral-500">{note}</p>}
+        <h2 className="text-lg font-black text-white">{title}</h2>
+        {note && <p className="text-xs text-neutral-400">{note}</p>}
       </div>
     </div>
   );
@@ -104,12 +104,12 @@ export function Bf6Field({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-bold text-neutral-800">
-        {label} {required && <span className="text-red-600">*</span>}
+      <span className="text-sm font-bold text-neutral-200">
+        {label} {required && <span className="text-red-400">*</span>}
       </span>
       {hint && <span className="block text-xs text-neutral-400">{hint}</span>}
       <div className="mt-1.5">{children}</div>
-      {error && <span className="mt-1 block text-xs font-bold text-red-600">⚠ {error}</span>}
+      {error && <span className="mt-1 block text-xs font-bold text-red-400">⚠ {error}</span>}
     </label>
   );
 }
@@ -129,14 +129,14 @@ export function Bf6SectionHead({ en, ja, img }: { en: string; ja?: string; img?:
       {img ? (
         /* 透過PNG(黒抜き済み)をそのまま置く。ヒーローのタイトルより控えめなサイズに */
         /* eslint-disable-next-line @next/next/no-img-element -- 生成済み静的画像 */
-        <img src={img} alt={en} className="mx-auto w-full max-w-[200px] drop-shadow-sm md:max-w-[280px]" />
+        <img src={img} alt={en} className="mx-auto w-full max-w-[160px] md:max-w-[220px]" />
       ) : (
-        <h2 className="text-3xl font-black italic tracking-tight text-neutral-900 md:text-5xl">
+        <h2 className="text-3xl font-black italic tracking-tight text-white md:text-5xl">
           {en}
-          <span className="text-red-600">.</span>
+          <span className="text-red-400">.</span>
         </h2>
       )}
-      {ja && <p className="mt-2 text-xs font-bold text-neutral-500">{ja}</p>}
+      {ja && <p className="mt-2 text-xs font-bold text-neutral-400">{ja}</p>}
       {!img && <div className="mx-auto mt-3 h-1 w-12 bg-red-600" />}
     </div>
   );
@@ -145,7 +145,7 @@ export function Bf6SectionHead({ en, ja, img }: { en: string; ja?: string; img?:
 /** DETAIL内の小見出し(DATE / TIME / FEE ...)。 */
 export function Bf6DetailBlock({ en, children }: { en: string; children: ReactNode }) {
   return (
-    <div className="border-b border-neutral-200 py-4 last:border-b-0">
+    <div className="border-b border-neutral-800 py-4 last:border-b-0">
       <h3 className="text-sm font-black italic tracking-widest text-neutral-400">{en}</h3>
       <div className="mt-2">{children}</div>
     </div>

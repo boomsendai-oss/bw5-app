@@ -29,7 +29,7 @@ export default function CheckoutButton({ token, amountTotal }: { token: string; 
       >
         {busy ? '接続中…' : `決済に進む(¥${amountTotal.toLocaleString()})`}
       </button>
-      {error && <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-600">{error}</p>}
+      {error && <p className="mt-3 rounded-xl bg-red-950/40 p-3 text-sm font-bold text-red-400">{error}</p>}
     </div>
   );
 }
