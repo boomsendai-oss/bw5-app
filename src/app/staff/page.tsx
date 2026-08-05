@@ -19,6 +19,7 @@ import {
   PartyPopper,
   Palette,
   FileText,
+  Flame,
   type LucideIcon,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -137,6 +138,12 @@ const CARDS: CardDef[] = [
       { label: '注文', value: s.merch.total },
       { label: '未払い', value: s.merch.pending, alert: s.merch.pending > 0 },
     ],
+  },
+  {
+    href: '/staff/bf6',
+    icon: Flame,
+    title: "BOOMER'S FIGHT vol.6",
+    description: 'バトルエントリー・観覧・決済(9/26開催)',
   },
   {
     href: '/staff/events',

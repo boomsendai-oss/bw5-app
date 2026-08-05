@@ -20,25 +20,42 @@ export default async function Bf6TopPage() {
   );
 
   return (
-    <Bf6Shell wide>
+    <Bf6Shell full>
       <div>
-        {/* ヒーロー = フライヤー本体(タイトルは画像側が担う。テキストの重複を避ける) */}
-        {/* eslint-disable-next-line @next/next/no-img-element -- 静的フライヤー1枚のためnext/image不使用 */}
-        <img src="/bf6/flyer.jpg" alt="BOOMER'S FIGHT!!! vol.6 - BATTLE & SHOWCASE" className="w-full" />
-        <header className="bg-neutral-950 px-4 pb-7 pt-2 text-center text-white">
-          <p className="inline-block bg-red-600 px-3 py-1 text-[11px] font-black tracking-[0.2em]">
-            BATTLE &amp; SHOWCASE
-          </p>
-          <p className="mt-4 text-4xl font-black italic">
-            2026.9.26 <span className="text-xl">SAT</span>
-          </p>
-          <p className="mt-1 text-xs font-bold text-neutral-400">OPEN 14:30(予定)</p>
-        </header>
+        {/* ヒーロー = フライヤー本体(タイトルは画像側が担う。テキストの重複を避ける)。
+            PCはフライヤー+日付/CTAの2カラムでダイナミックに(ダンスライブ参考) */}
+        <div className="bg-neutral-950 md:grid md:grid-cols-2 md:items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element -- 静的フライヤー1枚のためnext/image不使用 */}
+          <img src="/bf6/flyer.jpg" alt="BOOMER'S FIGHT!!! vol.6 - BATTLE & SHOWCASE" className="w-full" />
+          <header className="px-4 pb-7 pt-2 text-center text-white md:px-8 md:py-10">
+            <p className="inline-block bg-red-600 px-3 py-1 text-[11px] font-black tracking-[0.2em] md:text-sm">
+              BATTLE &amp; SHOWCASE
+            </p>
+            <p className="mt-4 text-4xl font-black italic md:mt-6 md:text-6xl">
+              2026.9.26 <span className="text-xl md:text-3xl">SAT</span>
+            </p>
+            <p className="mt-1 text-xs font-bold text-neutral-400 md:mt-2 md:text-sm">OPEN 14:30(予定)</p>
+            <div className="mt-6 hidden gap-3 md:flex">
+              <Link
+                href="/bf6/entry"
+                className="flex h-14 flex-1 items-center justify-center rounded-2xl bg-red-600 font-black text-white shadow-lg shadow-red-600/30"
+              >
+                バトルエントリー
+              </Link>
+              <Link
+                href="/bf6/ticket"
+                className="flex h-14 flex-1 items-center justify-center rounded-2xl border-2 border-white/30 font-black text-white"
+              >
+                観覧チケット
+              </Link>
+            </div>
+          </header>
+        </div>
 
         {/* DETAIL */}
         <section className="px-4 pt-8">
           <Bf6SectionHead en="DETAIL" ja="開催概要" />
-          <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-2 shadow-sm">
+          <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-2 shadow-sm md:grid md:grid-cols-2 md:gap-x-10 md:px-8 md:py-4">
             <Bf6DetailBlock en="DATE">
               <p className="text-lg font-black text-neutral-900">2026.9.26 <span className="text-sm">SAT</span></p>
             </Bf6DetailBlock>
@@ -47,6 +64,7 @@ export default async function Bf6TopPage() {
               <p className="font-bold text-neutral-800">CLOSE 18:00頃</p>
               <p className="mt-2 text-xs text-neutral-500">※ タイムテーブルはエントリー締切後に発表します</p>
             </Bf6DetailBlock>
+            <div className="md:row-span-3">
             <Bf6DetailBlock en="FEE">
               <p className="text-xs font-black text-neutral-400">バトルエントリー</p>
               <table className="mt-2 w-full text-sm">
@@ -95,6 +113,7 @@ export default async function Bf6TopPage() {
                 </li>
               </ul>
             </Bf6DetailBlock>
+            </div>
             <Bf6DetailBlock en="VENUE">
               <p className="font-bold text-neutral-800">SSM 9階ホール</p>
               <p className="text-sm text-neutral-600">仙台スクールオブミュージック&amp;ダンス専門学校</p>
@@ -139,16 +158,16 @@ export default async function Bf6TopPage() {
             ))}
           </div>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
             <Link
               href="/bf6/entry"
-              className="flex h-[68px] w-full items-center justify-center rounded-2xl bg-red-600 text-lg font-black text-white shadow-lg shadow-red-600/30"
+              className="flex h-[68px] w-full items-center justify-center rounded-2xl bg-red-600 text-lg font-black text-white shadow-lg shadow-red-600/30 md:h-20 md:text-xl"
             >
               バトルエントリー
             </Link>
             <Link
               href="/bf6/ticket"
-              className="flex h-[68px] w-full items-center justify-center rounded-2xl bg-neutral-900 text-lg font-black text-white"
+              className="flex h-[68px] w-full items-center justify-center rounded-2xl bg-neutral-900 text-lg font-black text-white md:h-20 md:text-xl"
             >
               観覧チケット購入
             </Link>
