@@ -38,13 +38,13 @@ export default async function Bf6TopPage() {
             <div className="mt-6 hidden gap-3 md:flex">
               <Link
                 href="/bf6/entry"
-                className="flex h-14 flex-1 items-center justify-center rounded-2xl bg-red-600 font-black text-white shadow-lg shadow-red-600/30"
+                className="flex h-14 flex-1 items-center justify-center rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] font-black"
               >
                 バトルエントリー
               </Link>
               <Link
                 href="/bf6/ticket"
-                className="flex h-14 flex-1 items-center justify-center rounded-2xl border-2 border-white/30 font-black text-white"
+                className="flex h-14 flex-1 items-center justify-center rounded-2xl bg-gradient-to-b from-neutral-700 via-neutral-800 to-black text-white ring-1 ring-neutral-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_25px_-5px_rgba(0,0,0,0.6)] font-black"
               >
                 観覧チケット
               </Link>
@@ -131,7 +131,7 @@ export default async function Bf6TopPage() {
             <Bf6DetailBlock en="DIVISION">
               <ul className="space-y-2">
                 {BF6_DIVISIONS.map((d) => (
-                  <li key={d.key} className={`rounded-xl px-4 py-3 text-white ${d.accentBg}`}>
+                  <li key={d.key} className={`rounded-xl px-4 py-3 text-white ring-1 ring-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_4px_12px_rgba(0,0,0,0.4)] ${d.accentBg}`}>
                     <span className="text-base font-black">{d.key === 'beginner' && '🔰 '}{d.label}</span>
                     <span className="ml-2 text-xs font-bold text-white/80">{d.note}</span>
                   </li>
@@ -156,7 +156,7 @@ export default async function Bf6TopPage() {
 
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
             {BF6_DIVISIONS.map((d) => (
-              <div key={d.key} className={`rounded-2xl p-3 text-white shadow-sm ${d.accentBg}`}>
+              <div key={d.key} className={`rounded-2xl p-3 text-white ring-1 ring-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_4px_12px_rgba(0,0,0,0.4)] ${d.accentBg}`}>
                 <p className="text-[10px] font-bold text-white/80">{d.key === 'beginner' && '🔰 '}{d.label}</p>
                 <p className="mt-0.5 text-xl font-black md:text-2xl">
                   {remaining.divisions[d.key] > 0 ? `限定${settings.capacity[d.key]}名` : '満枠'}
@@ -168,13 +168,13 @@ export default async function Bf6TopPage() {
           <div className="mt-4 space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
             <Link
               href="/bf6/entry"
-              className="flex h-[68px] w-full items-center justify-center rounded-2xl bg-red-600 text-lg font-black text-white shadow-lg shadow-red-600/30 md:h-20 md:text-xl"
+              className="flex h-[68px] w-full items-center justify-center rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] text-lg font-black md:h-20 md:text-xl"
             >
               バトルエントリー
             </Link>
             <Link
               href="/bf6/ticket"
-              className="flex h-[68px] w-full items-center justify-center rounded-2xl bg-neutral-900 text-lg font-black text-white md:h-20 md:text-xl"
+              className="flex h-[68px] w-full items-center justify-center rounded-2xl bg-gradient-to-b from-neutral-700 via-neutral-800 to-black text-white ring-1 ring-neutral-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_25px_-5px_rgba(0,0,0,0.6)] text-lg font-black md:h-20 md:text-xl"
             >
               観覧チケット購入
             </Link>

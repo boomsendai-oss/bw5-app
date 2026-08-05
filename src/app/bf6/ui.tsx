@@ -62,9 +62,17 @@ export function Bf6Hero({ title, subtitle }: { title: string; subtitle?: string 
   );
 }
 
+// 立体感のあるボタン面(質感アップ・TARO 2026-08-05)。文言はテキストのまま
+export const btnPrimaryCls =
+  'bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)]';
+export const btnDarkCls =
+  'bg-gradient-to-b from-neutral-700 via-neutral-800 to-black text-white ring-1 ring-neutral-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_25px_-5px_rgba(0,0,0,0.6)]';
+/** 色付きボックス(部門チップ等)に足す立体仕上げ。 */
+export const glossCls = 'ring-1 ring-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_4px_12px_rgba(0,0,0,0.4)]';
+
 export function Bf6Card({ label, children }: { label?: string; children: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-sm">
+    <div className="rounded-2xl bg-gradient-to-b from-neutral-900 to-neutral-950 p-4 ring-1 ring-neutral-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_20px_rgba(0,0,0,0.35)]">
       {label && (
         <p className="mb-2 text-[11px] font-black uppercase tracking-widest text-red-400">{label}</p>
       )}
@@ -142,12 +150,15 @@ export function Bf6SectionHead({ en, ja, img }: { en: string; ja?: string; img?:
   );
 }
 
-/** DETAIL内の小見出し(DATE / TIME / FEE ...)。 */
+/** DETAIL内の小見出し(DATE / TIME / FEE ...)。赤バー+赤文字で区切りを明確に。 */
 export function Bf6DetailBlock({ en, children }: { en: string; children: ReactNode }) {
   return (
     <div className="border-b border-neutral-800 py-4 last:border-b-0">
-      <h3 className="text-sm font-black italic tracking-widest text-neutral-400">{en}</h3>
-      <div className="mt-2">{children}</div>
+      <h3 className="flex items-center gap-2">
+        <span className="h-4 w-1.5 skew-x-[-12deg] bg-gradient-to-b from-red-500 to-red-700" />
+        <span className="text-sm font-black italic tracking-widest text-red-500">{en}</span>
+      </h3>
+      <div className="mt-2.5 pl-3.5">{children}</div>
     </div>
   );
 }

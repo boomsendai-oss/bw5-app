@@ -31,7 +31,7 @@ export default async function Bf6EntriesPage() {
 
           <Link
             href="/bf6/entry"
-            className="mt-8 block w-full rounded-2xl bg-red-600 py-4 text-center text-lg font-black text-white shadow-lg shadow-red-600/30"
+            className="mt-8 block w-full rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] py-4 text-center text-lg font-black"
           >
             エントリーする
           </Link>

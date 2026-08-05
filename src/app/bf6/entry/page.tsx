@@ -209,14 +209,14 @@ export default function Bf6EntryPage() {
         <button
           onClick={handleGoCheckout}
           disabled={submitting}
-          className="w-full rounded-2xl bg-red-600 py-4 text-lg font-black text-white shadow-lg shadow-red-600/30 active:scale-[0.99] disabled:opacity-50"
+          className="w-full rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] py-4 text-lg font-black active:scale-[0.99] disabled:opacity-50"
         >
           {submitting ? '接続中…' : `はい、決済に進む(${yen(amountTotal)})`}
         </button>
         <button
           onClick={() => router.push(`/bf6/complete?t=${doneToken}`)}
           disabled={submitting}
-          className="w-full rounded-2xl border-2 border-neutral-700 bg-neutral-900 py-3.5 font-bold text-neutral-400"
+          className="w-full rounded-2xl bg-gradient-to-b from-neutral-700 via-neutral-800 to-black text-white ring-1 ring-neutral-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_25px_-5px_rgba(0,0,0,0.6)] py-3.5 font-bold opacity-90"
         >
           いいえ、あとで決済する
         </button>
@@ -286,11 +286,11 @@ export default function Bf6EntryPage() {
                 <button
                   onClick={handleSubmit}
                   disabled={submitting}
-                  className="w-full rounded-2xl bg-red-600 py-4 text-lg font-black text-white shadow-lg shadow-red-600/30 active:scale-[0.99] disabled:opacity-50"
+                  className="w-full rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] py-4 text-lg font-black active:scale-[0.99] disabled:opacity-50"
                 >
                   {submitting ? '送信中…' : payMethod === 'prepaid' ? 'この内容で申し込む(次で決済)' : 'この内容でエントリーする'}
                 </button>
-                <button onClick={() => setStep('input')} disabled={submitting} className="w-full rounded-2xl border-2 border-neutral-700 bg-neutral-900 py-3.5 font-bold text-neutral-400">
+                <button onClick={() => setStep('input')} disabled={submitting} className="w-full rounded-2xl bg-gradient-to-b from-neutral-700 via-neutral-800 to-black text-white ring-1 ring-neutral-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_25px_-5px_rgba(0,0,0,0.6)] py-3.5 font-bold opacity-90">
                   入力に戻る
                 </button>
               </div>
@@ -549,7 +549,7 @@ export default function Bf6EntryPage() {
             setStep('confirm');
             window.scrollTo({ top: 0 });
           }}
-          className="mt-5 w-full rounded-2xl bg-red-600 py-4 text-lg font-black text-white shadow-lg shadow-red-600/30 active:scale-[0.99]"
+          className="mt-5 w-full rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] py-4 text-lg font-black active:scale-[0.99]"
         >
           入力内容を確認する
         </button>

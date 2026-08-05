@@ -26,7 +26,7 @@ export default function EntryListTabs({
               key={d.key}
               onClick={() => setActive(d.key)}
               className={`rounded-xl px-2 py-3 text-center transition ${
-                isActive ? `${d.accentBg} text-white shadow-md` : 'bg-neutral-900 text-neutral-400 border border-neutral-800'
+                isActive ? `${d.accentBg} text-white ring-1 ring-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_4px_12px_rgba(0,0,0,0.4)]` : 'bg-neutral-900 text-neutral-400 border border-neutral-800'
               }`}
             >
               <span className="block text-xs font-black sm:text-sm">{d.key === 'beginner' && '🔰 '}{d.label}</span>

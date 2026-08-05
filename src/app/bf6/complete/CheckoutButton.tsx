@@ -25,7 +25,7 @@ export default function CheckoutButton({ token, amountTotal }: { token: string; 
       <button
         onClick={go}
         disabled={busy}
-        className="w-full rounded-2xl bg-red-600 py-4 text-lg font-black text-white shadow-lg shadow-red-600/30 active:scale-[0.99] disabled:opacity-50"
+        className="w-full rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] py-4 text-lg font-black active:scale-[0.99] disabled:opacity-50"
       >
         {busy ? '接続中…' : `決済に進む(¥${amountTotal.toLocaleString()})`}
       </button>
