@@ -5,6 +5,7 @@ import {
   buildXText,
   buildXReplyCta,
   buildYouTubeMeta,
+  buildThreadsText,
   sanitizeHandlesForOtherPlatform,
   pickNext,
   classifyByEnabled,
@@ -13,6 +14,7 @@ import {
 } from '@/lib/crosspost';
 import { configured as ytConfigured, uploadShort } from '@/lib/youtube';
 import { xConfigured, uploadVideo, postTweet, estimateChunkRequests } from '@/lib/xApi';
+import { configured as threadsConfigured, postVideo as postThreadsVideo } from '@/lib/threads';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -76,6 +78,7 @@ export async function POST(req: NextRequest) {
   const enabled = new Set<string>();
   if (ytConfigured()) enabled.add('youtube');
   if (xConfigured()) enabled.add('x');
+  if (threadsConfigured()) enabled.add('threads');
   const { toSkip, toRevive, actionable } = classifyByEnabled(rows, enabled);
 
   // env未設定のプラットフォームは skipped にして無駄な再試行を止める
@@ -132,15 +135,21 @@ export async function POST(req: NextRequest) {
     )) as ReelRow | null;
     if (!reel) return await fail(`reel_queue #${target.reel_id} が見つかりません`);
 
-    // 動画バイト列を取得(public配下のファイルを自分のoriginから取る)
     const origin = new URL(req.url).origin;
     const videoUrl = reel.video_path.startsWith('http')
       ? reel.video_path
       : `${origin}${reel.video_path}`;
-    const vres = await fetch(videoUrl);
-    if (!vres.ok) return await fail(`動画の取得に失敗 ${vres.status}: ${videoUrl}`);
-    const bytes = new Uint8Array(await vres.arrayBuffer());
-    if (bytes.byteLength === 0) return await fail(`動画が空: ${videoUrl}`);
+
+    // 動画バイト列を取得(public配下のファイルを自分のoriginから取る)。
+    // Threadsは**向こうがURLを取りに来る**方式なので、ここでは落とさない
+    // (リールは1本50MB近くあり、要らないダウンロードは関数の時間とメモリを食うだけ)。
+    let bytes = new Uint8Array(0);
+    if (target.platform !== 'threads') {
+      const vres = await fetch(videoUrl);
+      if (!vres.ok) return await fail(`動画の取得に失敗 ${vres.status}: ${videoUrl}`);
+      bytes = new Uint8Array(await vres.arrayBuffer());
+      if (bytes.byteLength === 0) return await fail(`動画が空: ${videoUrl}`);
+    }
 
     // キャプションはInstagram向けに書かれていて `@ハンドル` はInstagramのアカウント。
     // X / YouTube では @ が自分のところのアカウントを指すので、必ずここで無害化する
@@ -170,6 +179,11 @@ export async function POST(req: NextRequest) {
           (process.env.YOUTUBE_PRIVACY_STATUS as 'public' | 'unlisted' | 'private') ?? 'unlisted',
       });
       externalId = out.videoId;
+      permalink = out.permalink;
+    } else if (target.platform === 'threads') {
+      // Threadsは本文にリンクを入れても表示が落ちないので、導線を本文に直接入れる
+      const out = await postThreadsVideo(videoUrl, buildThreadsText(safeCaption));
+      externalId = out.id;
       permalink = out.permalink;
     } else {
       // Xは無料枠が厳しいので、必要リクエスト数を先に見積もって明らかに無理なら諦める

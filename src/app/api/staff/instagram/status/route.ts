@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { getAll } from '@/lib/db';
 import { configured, connectionStatus } from '@/lib/instagram';
+import {
+  configured as threadsConfigured,
+  connectionStatus as threadsConnectionStatus,
+} from '@/lib/threads';
 import { todayJst, weekdayJst, shiftDays } from '@/lib/dateJst';
 import { findChainMediaList, loadSidecar, checkSchedule } from '@/lib/storyPlan';
 import { peekNextQueueItem } from '@/lib/storyQueue';
@@ -14,6 +18,8 @@ export async function GET(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
 
   const status = await connectionStatus();
+  // Threadsは別アプリ・別トークン(instagram.tsのトークンは使えない)。連携状態も別に出す
+  const threads = await threadsConnectionStatus();
   const [logs, queue] = await Promise.all([
     getAll(
       'SELECT date, weekday, video_path, status, ig_media_id, error, created_at, mentions_applied, mentions_failed FROM story_post_log ORDER BY id DESC LIMIT 14'
@@ -48,6 +54,8 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     envConfigured: configured(),
+    threadsEnvConfigured: threadsConfigured(),
+    ...threads,
     ...status,
     logs,
     queue,

@@ -8,11 +8,13 @@
 import { OFFICIAL_LINE_URL, WEBSITE_URL } from './links';
 
 /** 横展開する配信先 */
-export const CROSSPOST_PLATFORMS = ['youtube', 'x'] as const;
+export const CROSSPOST_PLATFORMS = ['youtube', 'x', 'threads'] as const;
 export type Platform = (typeof CROSSPOST_PLATFORMS)[number];
 
 /** X の本文上限(通常アカウント) */
 export const X_TEXT_MAX = 280;
+/** Threads の本文上限 */
+export const THREADS_TEXT_MAX = 500;
 /** YouTube のタイトル上限 */
 export const YT_TITLE_MAX = 100;
 /** YouTube の説明上限 */
@@ -123,6 +125,27 @@ export function buildXText(caption: string, opts?: { maxTags?: number }): string
     if ([...out].length > X_TEXT_MAX) break;
   }
   return out;
+}
+
+/**
+ * Threads用の本文を作る。
+ *
+ * Threadsは500文字までで、Xと違って**本文にリンクを入れても表示が落ちない**ので、
+ * 導線(公式LINEのURL)を本文の中に直接置く。リプライに分ける必要がない。
+ * タグは1つだけ。Threadsはトピックタグを1つしかリンクにしないので、盛っても意味がない。
+ */
+export function buildThreadsText(caption: string): string {
+  const { body, tags } = splitCaption(caption);
+  // Instagram前提の「プロフィールの〜」はThreadsでも通じないので、本文のURLへ誘導する
+  const localized = body.replace(
+    /(体験レッスンは無料。|体験・受講の相談は)?[^\n]*プロフィール[^\n]*\n?/g,
+    ''
+  ).trim();
+  const cta = `体験レッスン(無料)のご予約・ご相談はこちら\n${OFFICIAL_LINE_URL}`;
+  const tag = tags[0] ?? '';
+  const fixed = `\n\n${cta}${tag ? `\n${tag}` : ''}`;
+  const budget = THREADS_TEXT_MAX - [...fixed].length;
+  return `${truncate(localized, Math.max(0, budget))}${fixed}`.trim();
 }
 
 /**

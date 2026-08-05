@@ -6,6 +6,8 @@ import {
   sanitizeHandlesForOtherPlatform,
   pickNext,
   X_TEXT_MAX,
+  THREADS_TEXT_MAX,
+  buildThreadsText,
   YT_TITLE_MAX,
   MAX_ATTEMPTS,
   YT_DESCRIPTION_MAX,
@@ -341,5 +343,41 @@ describe('buildXText のX向け言い換え', () => {
 
   it('「プロフィール」が無い本文は変えない', () => {
     expect(buildXText('HIPHOP ／ 日曜 14:00')).toBe('HIPHOP ／ 日曜 14:00');
+  });
+});
+
+describe('buildThreadsText', () => {
+  const caption = [
+    '【BOOM WOP vol.5】Sunshine 🕺', '',
+    '仙台のダンススクールBOOM「TARO HIPHOP 初級」クラスによるステージナンバー。', '',
+    '📍水曜 18:30〜20:00', '🕺講師：TARO', '',
+    '体験レッスンは無料。ご予約はプロフィールの公式LINEから', '',
+    '#仙台ダンススクール #ダンススクール #ストリートダンス',
+  ].join('\n');
+
+  it('公式LINEのURLを本文に入れる(Threadsはリンクを入れても表示が落ちない)', () => {
+    expect(buildThreadsText(caption)).toContain(OFFICIAL_LINE_URL);
+  });
+
+  it('Instagram前提の「プロフィールから」は残さない', () => {
+    expect(buildThreadsText(caption)).not.toContain('プロフィール');
+  });
+
+  it('タグは1つだけ(Threadsは複数付けてもリンクにならない)', () => {
+    const out = buildThreadsText(caption);
+    expect(out).toContain('#仙台ダンススクール');
+    expect(out).not.toContain('#ダンススクール ');
+    expect(out.match(/#/g)).toHaveLength(1);
+  });
+
+  it('500文字を超えない', () => {
+    const out = buildThreadsText('あ'.repeat(2000) + '\n\n#タグ');
+    expect([...out].length).toBeLessThanOrEqual(THREADS_TEXT_MAX);
+    expect(out).toContain(OFFICIAL_LINE_URL);
+  });
+
+  it('本文が長くても導線は削られない', () => {
+    const out = buildThreadsText('い'.repeat(600));
+    expect(out).toContain(OFFICIAL_LINE_URL);
   });
 });
