@@ -150,13 +150,17 @@ export function Bf6SectionHead({ en, ja, img }: { en: string; ja?: string; img?:
   );
 }
 
-/** DETAIL内の小見出し(DATE / TIME / FEE ...)。赤バー+赤文字で区切りを明確に。 */
-export function Bf6DetailBlock({ en, children }: { en: string; children: ReactNode }) {
+/**
+ * DETAIL内の小見出し(DATE / TIME / FEE ...)。赤バー+赤文字で区切りを明確に。
+ * ja=日本語の補助ラベル(英語が読めない人向け・小さくグレーで添える)。
+ */
+export function Bf6DetailBlock({ en, ja, children }: { en: string; ja?: string; children: ReactNode }) {
   return (
     <div className="border-b border-neutral-800 py-4 last:border-b-0">
-      <h3 className="flex items-center gap-2">
-        <span className="h-4 w-1.5 skew-x-[-12deg] bg-gradient-to-b from-red-500 to-red-700" />
+      <h3 className="flex items-baseline gap-2">
+        <span className="h-4 w-1.5 self-center skew-x-[-12deg] bg-gradient-to-b from-red-500 to-red-700" />
         <span className="text-sm font-black italic tracking-widest text-red-500">{en}</span>
+        {ja && <span className="text-[11px] font-bold text-neutral-500">{ja}</span>}
       </h3>
       <div className="mt-2.5 pl-3.5">{children}</div>
     </div>
