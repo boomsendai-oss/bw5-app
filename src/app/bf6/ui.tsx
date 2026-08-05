@@ -127,10 +127,9 @@ export function Bf6SectionHead({ en, ja, img }: { en: string; ja?: string; img?:
   return (
     <div className="mb-5 pt-2 text-center">
       {img ? (
-        <div className="mx-auto max-w-[320px] overflow-hidden rounded-2xl bg-black shadow-lg shadow-neutral-900/30 ring-1 ring-neutral-800 md:max-w-[440px]">
-          {/* eslint-disable-next-line @next/next/no-img-element -- 生成済み静的画像 */}
-          <img src={img} alt={en} className="w-full" />
-        </div>
+        /* 透過PNG(黒抜き済み)をそのまま置く。ヒーローのタイトルより控えめなサイズに */
+        /* eslint-disable-next-line @next/next/no-img-element -- 生成済み静的画像 */
+        <img src={img} alt={en} className="mx-auto w-full max-w-[200px] drop-shadow-sm md:max-w-[280px]" />
       ) : (
         <h2 className="text-3xl font-black italic tracking-tight text-neutral-900 md:text-5xl">
           {en}
