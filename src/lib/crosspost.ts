@@ -8,7 +8,7 @@
 import { OFFICIAL_LINE_URL, WEBSITE_URL } from './links';
 
 /** 横展開する配信先 */
-export const CROSSPOST_PLATFORMS = ['youtube', 'x', 'threads'] as const;
+export const CROSSPOST_PLATFORMS = ['youtube', 'x', 'threads', 'facebook', 'tiktok'] as const;
 export type Platform = (typeof CROSSPOST_PLATFORMS)[number];
 
 /** X の本文上限(通常アカウント) */
@@ -214,6 +214,39 @@ export function buildYouTubeMeta(
   // YouTubeのtagsフィールドは # を含めない
   const ytTags = tags.map((t) => t.replace(/^#/, '')).filter(Boolean).slice(0, 15);
   return { title: ytTitle, description, tags: ytTags };
+}
+
+/** TikTokのキャプション上限 */
+export const TIKTOK_TITLE_MAX = 2200;
+
+/**
+ * TikTok用のキャプション。
+ *
+ * TikTokは**プロフィールにリンクを置ける**(Instagramと同じ)ので、
+ * 「プロフィールのリンクから」という言い回しはそのまま通じる。言い換えない。
+ * 本文中のURLはタップできないため、導線を足しても意味がないので足さない。
+ */
+export function buildTikTokTitle(caption: string): string {
+  const { body, tags } = splitCaption(caption);
+  const tagLine = tags.join(' ');
+  const fixed = tagLine ? `\n\n${tagLine}` : '';
+  const budget = TIKTOK_TITLE_MAX - [...fixed].length;
+  return `${truncate(body.trim(), Math.max(0, budget))}${fixed}`.trim();
+}
+
+/**
+ * Facebookページのリール説明文。
+ *
+ * Instagram前提の「プロフィール」はFacebookページでは通じないので言い換える。
+ * リール説明のURLはタップできないが、公式LINEのURLは短く読み上げ可能なので載せる
+ * (見た人が手で開ける + ページの案内としても機能する)。
+ */
+export function buildFacebookDescription(caption: string): string {
+  const { body, tags } = splitCaption(caption);
+  const localized = body.replace(/プロフィール/g, 'ページ');
+  return [localized.trim(), '', `体験レッスン(無料)のご予約・ご相談は ${OFFICIAL_LINE_URL}`, '', tags.join(' ')]
+    .join('\n')
+    .trim();
 }
 
 export type CrosspostRow = {

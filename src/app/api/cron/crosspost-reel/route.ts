@@ -6,6 +6,8 @@ import {
   buildXReplyCta,
   buildYouTubeMeta,
   buildThreadsText,
+  buildFacebookDescription,
+  buildTikTokTitle,
   sanitizeHandlesForOtherPlatform,
   pickNext,
   classifyByEnabled,
@@ -15,6 +17,8 @@ import {
 import { configured as ytConfigured, uploadShort } from '@/lib/youtube';
 import { xConfigured, uploadVideo, postTweet, estimateChunkRequests } from '@/lib/xApi';
 import { configured as threadsConfigured, postVideo as postThreadsVideo } from '@/lib/threads';
+import { configured as fbConfigured, postReel as postFacebookReel } from '@/lib/facebookPage';
+import { configured as tiktokConfigured, postVideo as postTikTokVideo } from '@/lib/tiktok';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -79,6 +83,8 @@ export async function POST(req: NextRequest) {
   if (ytConfigured()) enabled.add('youtube');
   if (xConfigured()) enabled.add('x');
   if (threadsConfigured()) enabled.add('threads');
+  if (fbConfigured()) enabled.add('facebook');
+  if (tiktokConfigured()) enabled.add('tiktok');
   const { toSkip, toRevive, actionable } = classifyByEnabled(rows, enabled);
 
   // env未設定のプラットフォームは skipped にして無駄な再試行を止める
@@ -156,10 +162,11 @@ export async function POST(req: NextRequest) {
       : `${origin}${reel.video_path}`;
 
     // 動画バイト列を取得(public配下のファイルを自分のoriginから取る)。
-    // Threadsは**向こうがURLを取りに来る**方式なので、ここでは落とさない
+    // Threads と Facebook は**向こうがURLを取りに来る**方式なので、ここでは落とさない
     // (リールは1本50MB近くあり、要らないダウンロードは関数の時間とメモリを食うだけ)。
+    const PULLS_URL = ['threads', 'facebook'];
     let bytes = new Uint8Array(0);
-    if (target.platform !== 'threads') {
+    if (!PULLS_URL.includes(target.platform)) {
       const vres = await fetch(videoUrl);
       if (!vres.ok) return await fail(`動画の取得に失敗 ${vres.status}: ${videoUrl}`);
       bytes = new Uint8Array(await vres.arrayBuffer());
@@ -181,6 +188,9 @@ export async function POST(req: NextRequest) {
 
     let externalId: string;
     let permalink: string;
+    // 成功はしたが伝えておくべきこと(例: TikTokが審査未通過で全体公開にならなかった)。
+    // 成功時は error をNULLに戻すので、ここに入れて一緒に書き込む
+    let note: string | null = null;
 
     if (target.platform === 'youtube') {
       const meta = buildYouTubeMeta(reel.title, safeCaption);
@@ -200,6 +210,19 @@ export async function POST(req: NextRequest) {
       const out = await postThreadsVideo(videoUrl, buildThreadsText(safeCaption));
       externalId = out.id;
       permalink = out.permalink;
+    } else if (target.platform === 'facebook') {
+      const out = await postFacebookReel(videoUrl, buildFacebookDescription(safeCaption));
+      externalId = out.id;
+      permalink = out.permalink;
+    } else if (target.platform === 'tiktok') {
+      // 審査が通るまでは privacy_level が SELF_ONLY に落ちる(tiktok.ts参照)。
+      // どちらで出たかは error 欄に残して、画面から分かるようにする
+      const out = await postTikTokVideo(bytes, buildTikTokTitle(safeCaption));
+      externalId = out.publishId;
+      permalink = out.permalink;
+      if (out.privacyLevel !== 'PUBLIC_TO_EVERYONE') {
+        note = `⚠️ 審査未通過のため「${out.privacyLevel}」で投稿されました(全体公開になっていません)`;
+      }
     } else {
       // Xは無料枠が厳しいので、必要リクエスト数を先に見積もって明らかに無理なら諦める
       const needed = estimateChunkRequests(bytes.byteLength);
@@ -224,9 +247,9 @@ export async function POST(req: NextRequest) {
 
     await execute(
       `UPDATE reel_crossposts
-       SET status='posted', external_id=?, permalink=?, error=NULL, posted_at=?, updated_at=?
+       SET status='posted', external_id=?, permalink=?, error=?, posted_at=?, updated_at=?
        WHERE id=?`,
-      [externalId, permalink, nowUtcIso(), nowUtcIso(), target.id]
+      [externalId, permalink, note, nowUtcIso(), nowUtcIso(), target.id]
     );
 
     return NextResponse.json({

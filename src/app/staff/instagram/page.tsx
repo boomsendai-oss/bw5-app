@@ -301,12 +301,16 @@ type StatusResp = {
   igUserId?: string;
   tokenIssuedAt?: string;
   tokenAgeDays?: number;
-  // Threadsは別アプリ・別トークンなので連携状態も別枠(instagramの連携では繋がらない)
+  // 横展開先はどれも別アプリ・別トークンなので連携状態も別枠(instagramの連携では繋がらない)
   threadsEnvConfigured?: boolean;
   threadsConnected?: boolean;
   threadsUserId?: string;
-  threadsTokenIssuedAt?: string;
-  threadsTokenAgeDays?: number;
+  facebookEnvConfigured?: boolean;
+  facebookConnected?: boolean;
+  facebookPageName?: string;
+  tiktokEnvConfigured?: boolean;
+  tiktokConnected?: boolean;
+  tiktokOpenId?: string;
   logs: LogRow[];
   queue: QueueRow[];
   plans?: Plan[];
@@ -571,30 +575,47 @@ export default function InstagramStoryPage() {
               </div>
             )}
 
-            {/* Threads: リールの横展開先。Instagramとは別アプリ・別トークンなので個別に繋ぐ */}
-            <div className="mt-4 pt-4 border-t border-sand-200">
-              <h3 className="font-bold text-navy-800 text-sm mb-2">Threads（リール横展開）</h3>
-              {!data.threadsEnvConfigured ? (
-                <p className="text-sm text-neutral-500">
-                  環境変数 THREADS_APP_ID / THREADS_APP_SECRET が未設定です
-                </p>
-              ) : data.threadsConnected ? (
-                <div className="text-sm space-y-1">
-                  <p className="text-green-700 font-semibold">✅ 連携済み</p>
-                  <p className="text-neutral-500">ユーザーID: {data.threadsUserId}</p>
-                  <p className="text-neutral-500">
-                    トークン取得日: {data.threadsTokenIssuedAt?.slice(0, 10)}（
-                    {data.threadsTokenAgeDays}日経過）
-                  </p>
+            {/* リールの横展開先。どれもInstagramとは別アプリ・別トークンなので個別に繋ぐ */}
+            <div className="mt-4 pt-4 border-t border-sand-200 space-y-3">
+              <h3 className="font-bold text-navy-800 text-sm">リール横展開先</h3>
+              {[
+                {
+                  key: 'threads', label: 'Threads', env: 'THREADS_APP_ID / THREADS_APP_SECRET',
+                  configured: data.threadsEnvConfigured, connected: data.threadsConnected,
+                  detail: data.threadsUserId ? `ユーザーID: ${data.threadsUserId}` : null, note: null,
+                },
+                {
+                  key: 'facebook', label: 'Facebookページ', env: 'FACEBOOK_APP_ID / FACEBOOK_APP_SECRET',
+                  configured: data.facebookEnvConfigured, connected: data.facebookConnected,
+                  detail: data.facebookPageName ? `投稿先: ${data.facebookPageName}` : null, note: null,
+                },
+                {
+                  key: 'tiktok', label: 'TikTok', env: 'TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET',
+                  configured: data.tiktokEnvConfigured, connected: data.tiktokConnected,
+                  detail: data.tiktokOpenId ? `open_id: ${data.tiktokOpenId}` : null,
+                  note: '審査が通るまで投稿は「自分のみ」の公開範囲になります',
+                },
+              ].map((p) => (
+                <div key={p.key} className="text-sm">
+                  <p className="font-semibold text-navy-700">{p.label}</p>
+                  {!p.configured ? (
+                    <p className="text-neutral-500">環境変数 {p.env} が未設定です</p>
+                  ) : p.connected ? (
+                    <div className="space-y-0.5">
+                      <p className="text-green-700 font-semibold">✅ 連携済み</p>
+                      {p.detail && <p className="text-neutral-500">{p.detail}</p>}
+                      {p.note && <p className="text-amber-700">⚠️ {p.note}</p>}
+                    </div>
+                  ) : (
+                    <a
+                      href={`/api/staff/${p.key}/connect`}
+                      className="mt-1 inline-block rounded-lg bg-brand-600 text-white font-semibold px-4 py-2 text-sm"
+                    >
+                      {p.label}を連携する
+                    </a>
+                  )}
                 </div>
-              ) : (
-                <a
-                  href="/api/staff/threads/connect"
-                  className="inline-block rounded-lg bg-brand-600 text-white font-semibold px-4 py-2 text-sm"
-                >
-                  Threadsを連携する
-                </a>
-              )}
+              ))}
             </div>
           </div>
         )}

@@ -7,6 +7,9 @@ import {
   pickNext,
   X_TEXT_MAX,
   THREADS_TEXT_MAX,
+  TIKTOK_TITLE_MAX,
+  buildTikTokTitle,
+  buildFacebookDescription,
   buildThreadsText,
   YT_TITLE_MAX,
   MAX_ATTEMPTS,
@@ -379,5 +382,37 @@ describe('buildThreadsText', () => {
   it('本文が長くても導線は削られない', () => {
     const out = buildThreadsText('い'.repeat(600));
     expect(out).toContain(OFFICIAL_LINE_URL);
+  });
+});
+
+describe('buildTikTokTitle', () => {
+  // TikTokはプロフィールにリンクを置けるので「プロフィールから」はそのまま通じる
+  it('「プロフィール」を言い換えない', () => {
+    const out = buildTikTokTitle('ご予約はプロフィールのリンクから。\n\n#仙台ダンス');
+    expect(out).toContain('プロフィールのリンクから');
+  });
+
+  it('タグは全部残す(Xと違って本文が短いので削る必要がない)', () => {
+    const out = buildTikTokTitle('本文\n\n#a #b #c #d #e');
+    expect(out).toContain('#e');
+  });
+
+  it('2200文字を超えない', () => {
+    const out = buildTikTokTitle('あ'.repeat(3000) + '\n\n#タグ');
+    expect([...out].length).toBeLessThanOrEqual(TIKTOK_TITLE_MAX);
+  });
+});
+
+describe('buildFacebookDescription', () => {
+  it('Instagram前提の「プロフィール」を「ページ」に言い換える', () => {
+    const out = buildFacebookDescription('ご予約はプロフィールの公式LINEから\n\n#仙台ダンス');
+    expect(out).toContain('ページの公式LINEから');
+    expect(out).not.toContain('プロフィール');
+  });
+
+  it('公式LINEのURLとタグを入れる', () => {
+    const out = buildFacebookDescription('本文\n\n#仙台ダンス #キッズダンス');
+    expect(out).toContain(OFFICIAL_LINE_URL);
+    expect(out).toContain('#キッズダンス');
   });
 });

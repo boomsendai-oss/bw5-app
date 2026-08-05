@@ -6,6 +6,14 @@ import {
   configured as threadsConfigured,
   connectionStatus as threadsConnectionStatus,
 } from '@/lib/threads';
+import {
+  configured as fbConfigured,
+  connectionStatus as fbConnectionStatus,
+} from '@/lib/facebookPage';
+import {
+  configured as tiktokConfigured,
+  connectionStatus as tiktokConnectionStatus,
+} from '@/lib/tiktok';
 import { todayJst, weekdayJst, shiftDays } from '@/lib/dateJst';
 import { findChainMediaList, loadSidecar, checkSchedule } from '@/lib/storyPlan';
 import { peekNextQueueItem } from '@/lib/storyQueue';
@@ -18,8 +26,12 @@ export async function GET(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
 
   const status = await connectionStatus();
-  // Threadsは別アプリ・別トークン(instagram.tsのトークンは使えない)。連携状態も別に出す
-  const threads = await threadsConnectionStatus();
+  // 横展開先はどれも別アプリ・別トークン(instagram.tsのトークンは使えない)。連携状態も別に出す
+  const [threads, facebook, tiktok] = await Promise.all([
+    threadsConnectionStatus(),
+    fbConnectionStatus(),
+    tiktokConnectionStatus(),
+  ]);
   const [logs, queue] = await Promise.all([
     getAll(
       'SELECT date, weekday, video_path, status, ig_media_id, error, created_at, mentions_applied, mentions_failed FROM story_post_log ORDER BY id DESC LIMIT 14'
@@ -55,7 +67,11 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     envConfigured: configured(),
     threadsEnvConfigured: threadsConfigured(),
+    facebookEnvConfigured: fbConfigured(),
+    tiktokEnvConfigured: tiktokConfigured(),
     ...threads,
+    ...facebook,
+    ...tiktok,
     ...status,
     logs,
     queue,
