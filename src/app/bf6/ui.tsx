@@ -119,16 +119,26 @@ export function inputClsWith(error?: string): string {
   return error ? `${inputCls} !border-red-500` : inputCls;
 }
 
-/** DANCEALIVE風の英字大見出し(DETAIL / ENTRY / ENTRY LIST)。 */
-export function Bf6SectionHead({ en, ja }: { en: string; ja?: string }) {
+/**
+ * DANCEALIVE風の英字大見出し。img を渡すとフライヤーと同系のクロムメタル
+ * レタリング画像(Gemini生成・黒地)をメタルプレート風に表示する(TARO 2026-08-05)。
+ */
+export function Bf6SectionHead({ en, ja, img }: { en: string; ja?: string; img?: string }) {
   return (
     <div className="mb-5 pt-2 text-center">
-      <h2 className="text-3xl font-black italic tracking-tight text-neutral-900 md:text-5xl">
-        {en}
-        <span className="text-red-600">.</span>
-      </h2>
-      {ja && <p className="mt-0.5 text-xs font-bold text-neutral-500">{ja}</p>}
-      <div className="mx-auto mt-3 h-1 w-12 bg-red-600" />
+      {img ? (
+        <div className="mx-auto max-w-[320px] overflow-hidden rounded-2xl bg-black shadow-lg shadow-neutral-900/30 ring-1 ring-neutral-800 md:max-w-[440px]">
+          {/* eslint-disable-next-line @next/next/no-img-element -- 生成済み静的画像 */}
+          <img src={img} alt={en} className="w-full" />
+        </div>
+      ) : (
+        <h2 className="text-3xl font-black italic tracking-tight text-neutral-900 md:text-5xl">
+          {en}
+          <span className="text-red-600">.</span>
+        </h2>
+      )}
+      {ja && <p className="mt-2 text-xs font-bold text-neutral-500">{ja}</p>}
+      {!img && <div className="mx-auto mt-3 h-1 w-12 bg-red-600" />}
     </div>
   );
 }

@@ -29,7 +29,7 @@ export default function EntryListTabs({
                 isActive ? `${d.accentBg} text-white shadow-md` : 'bg-white text-neutral-500 border border-neutral-200'
               }`}
             >
-              <span className="block text-xs font-black sm:text-sm">{d.label}</span>
+              <span className="block text-xs font-black sm:text-sm">{d.key === 'beginner' && '🔰 '}{d.label}</span>
               <span className={`block text-lg font-black ${isActive ? 'text-white' : 'text-neutral-800'}`}>
                 {(lists[d.key] ?? []).length}
                 <span className={`text-xs font-bold ${isActive ? 'text-white/70' : 'text-neutral-400'}`}>
