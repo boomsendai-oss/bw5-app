@@ -141,7 +141,30 @@ export default async function Bf6TopPage() {
               </ul>
             </Bf6DetailBlock>
             <Bf6DetailBlock en="JUDGE / DJ / MC" ja="審査員・DJ・MC">
-              <p className="font-black italic tracking-widest text-neutral-300">COMING SOON</p>
+              <div className="rounded-xl bg-neutral-900 p-4 ring-1 ring-neutral-700">
+                <p className="text-[11px] font-bold tracking-widest text-red-500">JUDGE</p>
+                <p className="mt-1 text-2xl font-black italic text-white">SHOKO</p>
+                <p className="text-xs font-bold text-neutral-400">CONCLUSION / QWEEN OF QWEENZ</p>
+                <p className="mt-2 text-xs leading-relaxed text-neutral-300">
+                  仙台のEXCOLLABORATION加入後、日本各地のバトルで数々の優勝を重ね、
+                  日本を代表するBGIRLクルーQWEEN OF QWEENZ、東北のBBOYからなるCONCLUSIONに加入。
+                  LA・NY・台湾など海外バトルでも好成績を残し、テレビ・雑誌出演も経験。
+                  講師・振付・ジャッジ・バトラーとして活動し、キッズの育成にも力を入れている。
+                </p>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-[11px] font-bold text-red-400">主な戦績を見る ▾</summary>
+                  <ul className="mt-2 space-y-0.5 text-[11px] leading-relaxed text-neutral-400">
+                    <li>UK BBOY CHAMPIONSHIP JAPAN FINAL 2009 優勝 / ロンドン世界大会 BEST8</li>
+                    <li>BBOYWARS EPISODE∞,4,6,7,8 優勝</li>
+                    <li>FREE STYLE SESSION(ロサンゼルス) BEST8</li>
+                    <li>QWEENZ STREET(ニューヨーク) BGIRL 2on2 準優勝</li>
+                    <li>Bboy world asia(台湾) BGIRL 2on2 準優勝</li>
+                    <li>bcone 弘前 BBOY CREW 優勝 / 2021 JAPAN FINALIST</li>
+                    <li>MONSTER 2026 O40ソロ 優勝 ほか多数</li>
+                  </ul>
+                </details>
+              </div>
+              <p className="mt-3 font-black italic tracking-widest text-neutral-300">AND MORE… <span className="ml-1 text-xs font-bold not-italic text-neutral-500">続々発表予定</span></p>
             </Bf6DetailBlock>
           </div>
         </section>
