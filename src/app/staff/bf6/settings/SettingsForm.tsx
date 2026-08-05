@@ -49,6 +49,38 @@ export default function SettingsForm({ initial }: { initial: Bf6SettingsForm }) 
       </section>
 
       <section className="rounded-xl border border-sand-200 bg-white p-4">
+        <h2 className="text-sm font-bold text-navy-800">オンライン配信</h2>
+        <div className="mt-3 space-y-3">
+          <label className="flex items-center gap-2 text-sm text-navy-800">
+            <input type="checkbox" checked={form.streamOpen} onChange={(e) => setForm({ ...form, streamOpen: e.target.checked })} className="h-4 w-4 accent-brand-600" />
+            配信チケットを販売する(/bf6/stream)
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs text-neutral-500">
+              アーカイブ公開終了日
+              <input type="date" value={form.streamArchiveUntil} onChange={(e) => setForm({ ...form, streamArchiveUntil: e.target.value })} className={inputCls} />
+            </label>
+            <label className="block text-xs text-neutral-500">
+              CF customer code(customer-●●.cloudflarestream.comの●●)
+              <input value={form.cfCustomerCode} onChange={(e) => setForm({ ...form, cfCustomerCode: e.target.value })} className={inputCls} />
+            </label>
+            <label className="block text-xs text-neutral-500">
+              CF Live Input UID(本番用)
+              <input value={form.cfLiveInputUid} onChange={(e) => setForm({ ...form, cfLiveInputUid: e.target.value })} className={inputCls} />
+            </label>
+            <label className="block text-xs text-neutral-500">
+              CF 署名キーID(署名付きURL用・空なら未署名再生)
+              <input value={form.cfSigningKeyId} onChange={(e) => setForm({ ...form, cfSigningKeyId: e.target.value })} className={inputCls} />
+            </label>
+          </div>
+          <label className="block text-xs text-neutral-500">
+            CF 署名キーPEM(秘密鍵・空なら未署名再生)
+            <textarea rows={3} value={form.cfSigningKeyPem} onChange={(e) => setForm({ ...form, cfSigningKeyPem: e.target.value })} className={`${inputCls} font-mono text-xs`} />
+          </label>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-sand-200 bg-white p-4">
         <h2 className="text-sm font-bold text-navy-800">定員</h2>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(

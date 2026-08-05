@@ -95,6 +95,47 @@ describe('buildBf6LineItems: 注文明細→Stripe line_items', () => {
   });
 });
 
+describe('buildBf6LineItems: 配信チケットの明細名', () => {
+  test('stream itemは「オンライン配信視聴チケット」になる(小学生扱いにしない)', () => {
+    const base = sampleOrder();
+    const order = {
+      ...base,
+      items: [
+        {
+          itemType: 'stream', performerName: '', dancerName: '', dancerKana: '',
+          grade: '', genre: '', rep: '', instagram: '', isFirstBattle: false,
+          divisions: [], qty: 2, unitAmount: 1500,
+        },
+      ],
+    };
+    expect(buildBf6LineItems(order)).toEqual([
+      { name: 'オンライン配信視聴チケット', unitAmount: 1500, qty: 2 },
+    ]);
+  });
+});
+
+describe('buildBf6OrderEmail: 配信チケット購入', () => {
+  test('配信のみの注文は件名が配信チケットで、視聴キー別送の案内が入る', async () => {
+    const { buildBf6OrderEmail } = await import('../bf6Email');
+    const base = sampleOrder();
+    const order = {
+      ...base,
+      paymentStatus: 'paid',
+      amountTotal: 1500,
+      items: [
+        {
+          itemType: 'stream', performerName: '', dancerName: '', dancerKana: '',
+          grade: '', genre: '', rep: '', instagram: '', isFirstBattle: false,
+          divisions: [], qty: 1, unitAmount: 1500,
+        },
+      ],
+    };
+    const mail = buildBf6OrderEmail(order, 'tok123');
+    expect(mail.subject).toContain('配信');
+    expect(mail.text).toContain('視聴キー');
+  });
+});
+
 describe('buildCheckoutFormParams: Checkout Session作成パラメータ', () => {
   test('金額・URL・冪等な注文参照が入る', () => {
     const params = buildCheckoutFormParams({

@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseBf6WebhookEvent, verifyStripeSignature } from '@/lib/bf6Stripe';
 import { applyBf6WebhookEvent } from '@/lib/bf6Db';
 import { sendBf6OrderEmail } from '@/lib/bf6Email';
+import { handleBf6StreamPurchase } from '@/lib/bf6StreamDb';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,8 @@ export async function POST(req: NextRequest) {
         console.error('[bf6] amount mismatch on order', result.order.orderId, 'stripe:', ev.amountTotal);
       }
       await sendBf6OrderEmail(result.order, result.editToken);
+      // 配信チケットを含む注文なら視聴キーを発行して別メールで送付(冪等)
+      await handleBf6StreamPurchase(result.order);
     } else if (result.status === 'order_not_found') {
       console.error('[bf6] webhook order not found. session:', ev.sessionId);
     }

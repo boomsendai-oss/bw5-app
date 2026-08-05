@@ -372,6 +372,49 @@ describe('フリガナ(dancerKana)はカタカナ必須(TARO 2026-08-04)', () =>
   });
 });
 
+describe('配信チケット(streamTickets)の購入対応', () => {
+  test('配信チケットのみの注文(事前決済)が通り、合計は¥1,500×枚数', () => {
+    const v = validateBf6Order({
+      ...validInput(),
+      entries: [],
+      adultTickets: 0,
+      childTickets: 0,
+      streamTickets: 2,
+    });
+    expect(typeof v).not.toBe('string');
+    if (typeof v === 'string') return;
+    expect(v.streamTickets).toBe(2);
+    const items = buildBf6OrderItems(v, 'prepaid');
+    const stream = items.find((i) => i.itemType === 'stream');
+    expect(stream).toMatchObject({ qty: 2, unitAmount: 1500 });
+    expect(items.reduce((s, i) => s + i.qty * i.unitAmount, 0)).toBe(3000);
+  });
+
+  test('配信チケットは当日現金では買えない', () => {
+    const v = validateBf6Order({
+      ...validInput(),
+      entries: [],
+      adultTickets: 0,
+      childTickets: 0,
+      payMethod: 'onsite',
+      streamTickets: 1,
+    });
+    expect(typeof v).toBe('string');
+  });
+
+  test('streamTickets未指定は0扱い(既存フォーム互換)', () => {
+    const v = validateBf6Order(validInput());
+    if (typeof v === 'string') throw new Error(v);
+    expect(v.streamTickets).toBe(0);
+  });
+
+  test('calcOrderTotalも配信枚数を加算する', () => {
+    expect(
+      calcOrderTotal({ entries: [], adultTickets: 0, childTickets: 0, streamTickets: 2 }, 'prepaid')
+    ).toBe(3000);
+  });
+});
+
 describe('formatReceiptNo', () => {
   test('BF6-連番3桁', () => {
     expect(formatReceiptNo(7)).toBe('BF6-007');

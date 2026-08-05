@@ -14,8 +14,14 @@ export async function staffSetOrderStatus(orderId: number, status: string): Prom
 export interface Bf6SettingsForm {
   entryOpen: boolean;
   ticketOpen: boolean;
+  streamOpen: boolean;
   entryDeadline: string;
   ticketDeadline: string;
+  streamArchiveUntil: string;
+  cfCustomerCode: string;
+  cfLiveInputUid: string;
+  cfSigningKeyId: string;
+  cfSigningKeyPem: string;
   hallCapacity: number;
   capacity: { beginner: number; kids: number; general: number };
   pricing: {
@@ -33,8 +39,14 @@ export interface Bf6SettingsForm {
 export async function staffSaveSettings(form: Bf6SettingsForm): Promise<void> {
   await setBf6Setting('entry_open', form.entryOpen ? '1' : '0');
   await setBf6Setting('ticket_open', form.ticketOpen ? '1' : '0');
+  await setBf6Setting('stream_open', form.streamOpen ? '1' : '0');
   await setBf6Setting('entry_deadline', form.entryDeadline);
   await setBf6Setting('ticket_deadline', form.ticketDeadline);
+  await setBf6Setting('stream_archive_until', form.streamArchiveUntil);
+  await setBf6Setting('cf_customer_code', form.cfCustomerCode.trim());
+  await setBf6Setting('cf_live_input_uid', form.cfLiveInputUid.trim());
+  await setBf6Setting('cf_signing_key_id', form.cfSigningKeyId.trim());
+  await setBf6Setting('cf_signing_key_pem', form.cfSigningKeyPem.trim());
   await setBf6Setting('hall_capacity', String(form.hallCapacity));
   await setBf6Setting('capacity', JSON.stringify(form.capacity));
   await setBf6Setting('pricing', JSON.stringify(form.pricing));
