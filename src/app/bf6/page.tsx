@@ -141,7 +141,10 @@ export default async function Bf6TopPage() {
               </ul>
             </Bf6DetailBlock>
             <Bf6DetailBlock en="JUDGE / DJ / MC" ja="審査員・DJ・MC">
-              <div className="rounded-xl bg-neutral-900 p-4 ring-1 ring-neutral-700">
+              <div className="overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-neutral-700">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/bf6/judge-shoko.jpg" alt="SHOKO" className="aspect-[3/2] w-full object-cover" />
+                <div className="p-4">
                 <p className="text-[11px] font-bold tracking-widest text-red-500">JUDGE</p>
                 <p className="mt-1 text-2xl font-black italic text-white">SHOKO</p>
                 <p className="text-xs font-bold text-neutral-400">CONCLUSION / QWEEN OF QWEENZ</p>
@@ -163,6 +166,7 @@ export default async function Bf6TopPage() {
                     <li>MONSTER 2026 O40ソロ 優勝 ほか多数</li>
                   </ul>
                 </details>
+                </div>
               </div>
               <p className="mt-3 font-black italic tracking-widest text-neutral-300">AND MORE… <span className="ml-1 text-xs font-bold not-italic text-neutral-500">続々発表予定</span></p>
             </Bf6DetailBlock>
