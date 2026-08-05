@@ -12,12 +12,16 @@ export function buildBf6OrderEmail(order: OwnBf6Order, editToken: string): { sub
   const entries = order.items.filter((i) => i.itemType === 'entry');
   const adult = order.items.find((i) => i.itemType === 'ticket_adult');
   const child = order.items.find((i) => i.itemType === 'ticket_child');
+  const stream = order.items.find((i) => i.itemType === 'stream');
   const isEntry = entries.length > 0;
+  const isStreamOnly = !isEntry && !adult && !child && Boolean(stream);
   const paid = order.paymentStatus === 'paid';
 
   const subject = isEntry
     ? `【BOOMER'S FIGHT!!! vol.6】${paid ? 'エントリー確定' : 'エントリー受付'}(受付番号 ${receiptNo})`
-    : `【BOOMER'S FIGHT!!! vol.6】観覧チケット${paid ? '購入完了' : 'ご予約受付'}(受付番号 ${receiptNo})`;
+    : isStreamOnly
+      ? `【BOOMER'S FIGHT!!! vol.6】オンライン配信チケット${paid ? '購入完了' : 'ご購入受付'}(受付番号 ${receiptNo})`
+      : `【BOOMER'S FIGHT!!! vol.6】観覧チケット${paid ? '購入完了' : 'ご予約受付'}(受付番号 ${receiptNo})`;
 
   const lines: string[] = [];
   lines.push(`${order.buyerName} 様`);
@@ -39,6 +43,10 @@ export function buildBf6OrderEmail(order: OwnBf6Order, editToken: string): { sub
   }
   if (adult) lines.push(`■ 観覧チケット(大人) × ${adult.qty} — ${yen(adult.qty * adult.unitAmount)}`);
   if (child) lines.push(`■ 観覧チケット(小学生) × ${child.qty} — ${yen(child.qty * child.unitAmount)}`);
+  if (stream) {
+    lines.push(`■ オンライン配信視聴チケット × ${stream.qty} — ${yen(stream.qty * stream.unitAmount)}`);
+    if (paid) lines.push('  ※ 視聴キーは別のメールでお送りします(まもなく届きます)');
+  }
   lines.push('');
   lines.push(`■ 合計: ${yen(order.amountTotal)}`);
   if (paid) {

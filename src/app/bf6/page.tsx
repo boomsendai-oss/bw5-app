@@ -4,15 +4,17 @@
 import Link from 'next/link';
 import { BF6_DIVISIONS } from '@/lib/bf6';
 import { calcBf6Remaining, getBf6Settings, getBf6Usage, getPublicBf6Entries } from '@/lib/bf6Db';
+import { getBf6StreamConfig } from '@/lib/bf6StreamDb';
 import { Bf6DetailBlock, Bf6SectionHead, Bf6Shell } from './ui';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Bf6TopPage() {
-  const [settings, usage, entries] = await Promise.all([
+  const [settings, usage, entries, streamCfg] = await Promise.all([
     getBf6Settings(),
     getBf6Usage(),
     getPublicBf6Entries(),
+    getBf6StreamConfig(),
   ]);
   const remaining = calcBf6Remaining(settings, usage);
   const countByDivision = Object.fromEntries(
@@ -178,6 +180,14 @@ export default async function Bf6TopPage() {
             >
               観覧チケット購入
             </Link>
+            {streamCfg.open && (
+              <Link
+                href="/bf6/stream"
+                className="col-span-2 flex h-14 w-full items-center justify-center rounded-2xl border-2 border-red-600/60 bg-neutral-900 font-black text-red-400 md:col-span-2"
+              >
+                📡 オンライン配信チケット(遠方の方向け)
+              </Link>
+            )}
           </div>
           <p className="mt-3 text-center text-xs text-neutral-400">
             ※ 必ず<Link href="/bf6/legal" className="underline">注意事項・キャンセルポリシー</Link>をご確認のうえエントリーしてください

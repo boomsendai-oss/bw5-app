@@ -85,6 +85,7 @@ export interface Bf6Cart {
   entries: { divisions: Bf6Division[] }[];
   adultTickets: number;
   childTickets: number;
+  streamTickets?: number;
 }
 
 /** カート合計。エントリー複数人(きょうだい)+観覧同時購入を1決済に載せる。 */
@@ -100,7 +101,8 @@ export function calcOrderTotal(
   return (
     entryTotal +
     cart.adultTickets * calcTicketUnitPrice('ticket_adult', payMethod, pricing) +
-    cart.childTickets * calcTicketUnitPrice('ticket_child', payMethod, pricing)
+    cart.childTickets * calcTicketUnitPrice('ticket_child', payMethod, pricing) +
+    (cart.streamTickets ?? 0) * pricing.stream
   );
 }
 
@@ -219,6 +221,7 @@ export interface Bf6OrderInput {
   entries: Bf6EntryInput[];
   adultTickets: number;
   childTickets: number;
+  streamTickets?: number;
   note?: string;
 }
 
@@ -242,6 +245,7 @@ export interface ValidatedBf6Order {
   entries: ValidatedBf6Entry[];
   adultTickets: number;
   childTickets: number;
+  streamTickets: number;
   note: string;
 }
 
@@ -265,6 +269,14 @@ export function validateBf6Order(input: Bf6OrderInput): ValidatedBf6Order | stri
 
   if (!isValidTicketCount(input.adultTickets) || !isValidTicketCount(input.childTickets)) {
     return '観覧チケットの枚数が正しくありません(0〜20枚)';
+  }
+
+  const streamTickets = input.streamTickets ?? 0;
+  if (!Number.isInteger(streamTickets) || streamTickets < 0 || streamTickets > 10) {
+    return '配信チケットの枚数が正しくありません(0〜10枚)';
+  }
+  if (streamTickets > 0 && input.payMethod !== 'prepaid') {
+    return '配信チケットは事前カード決済のみご利用いただけます';
   }
 
   const rows = Array.isArray(input.entries) ? input.entries : [];
@@ -326,8 +338,8 @@ export function validateBf6Order(input: Bf6OrderInput): ValidatedBf6Order | stri
   }
 
   if (entries.length > 5) return '一度にエントリーできるのは5人までです';
-  if (entries.length === 0 && input.adultTickets === 0 && input.childTickets === 0) {
-    return '出場者または観覧チケットを1つ以上入力してください';
+  if (entries.length === 0 && input.adultTickets === 0 && input.childTickets === 0 && streamTickets === 0) {
+    return '出場者またはチケットを1つ以上入力してください';
   }
 
   return {
@@ -338,6 +350,7 @@ export function validateBf6Order(input: Bf6OrderInput): ValidatedBf6Order | stri
     entries,
     adultTickets: input.adultTickets,
     childTickets: input.childTickets,
+    streamTickets,
     note: (input.note ?? '').trim().slice(0, 500),
   };
 }
@@ -352,7 +365,7 @@ export function countEntriesByDivision(entries: { divisions: Bf6Division[] }[]):
 }
 
 export interface Bf6OrderItemRow {
-  itemType: 'entry' | 'ticket_adult' | 'ticket_child';
+  itemType: 'entry' | 'ticket_adult' | 'ticket_child' | 'stream';
   performerName: string;
   dancerName: string;
   dancerKana: string;
@@ -402,6 +415,13 @@ export function buildBf6OrderItems(
       itemType: 'ticket_child', ...emptyPerformer,
       qty: order.childTickets,
       unitAmount: calcTicketUnitPrice('ticket_child', payMethod, pricing),
+    });
+  }
+  if (order.streamTickets > 0) {
+    items.push({
+      itemType: 'stream', ...emptyPerformer,
+      qty: order.streamTickets,
+      unitAmount: pricing.stream,
     });
   }
   return items;

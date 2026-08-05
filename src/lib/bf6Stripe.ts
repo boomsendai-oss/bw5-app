@@ -50,7 +50,13 @@ export function buildBf6LineItems(order: OwnBf6Order): Bf6CheckoutLineItem[] {
     if (i.itemType === 'ticket_adult') {
       return { name: '観覧チケット(大人)', unitAmount: i.unitAmount, qty: i.qty };
     }
-    return { name: '観覧チケット(小学生)', unitAmount: i.unitAmount, qty: i.qty };
+    if (i.itemType === 'ticket_child') {
+      return { name: '観覧チケット(小学生)', unitAmount: i.unitAmount, qty: i.qty };
+    }
+    if (i.itemType === 'stream') {
+      return { name: 'オンライン配信視聴チケット', unitAmount: i.unitAmount, qty: i.qty };
+    }
+    return { name: i.itemType, unitAmount: i.unitAmount, qty: i.qty };
   });
 }
 
