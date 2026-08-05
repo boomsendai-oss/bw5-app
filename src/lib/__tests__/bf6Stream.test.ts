@@ -63,4 +63,15 @@ describe('buildStreamKeyEmail: 視聴キー発行メール', () => {
     expect(mail.text).toContain('同時に視聴できるのは1台');
     expect(mail.text).toContain('1週間');
   });
+
+  test('キーだけで視聴でき、家族に渡せることが書いてある(メールアドレス入力は求めない)', () => {
+    const mail = buildStreamKeyEmail({
+      buyerName: '山田花子',
+      streamKey: 'BF6-ABCD-EFGH-JKLM',
+      receiptNo: 'BF6-012',
+    });
+    expect(mail.text).toContain('視聴キーを入力するだけ');
+    expect(mail.text).toContain('そのままお送りください');
+    expect(mail.text).not.toContain('メールアドレスとこの視聴キー');
+  });
 });

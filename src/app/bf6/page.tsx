@@ -114,6 +114,16 @@ export default async function Bf6TopPage() {
                   <span className="text-neutral-400">無料</span>
                 </li>
               </ul>
+              <p className="mt-4 text-xs font-black text-neutral-400">オンライン配信</p>
+              <ul className="mt-2 space-y-1.5 text-sm">
+                <li className="flex justify-between">
+                  <span className="font-bold text-neutral-200">視聴チケット(事前カード決済)</span>
+                  <span className="font-black text-red-400">¥1,500</span>
+                </li>
+              </ul>
+              <p className="mt-1 text-xs text-neutral-400">
+                当日のライブ配信+終了後1週間のアーカイブ。遠方のご家族へのプレゼントにも(視聴キーを送るだけ)
+              </p>
             </Bf6DetailBlock>
             </div>
             <Bf6DetailBlock en="VENUE" ja="会場">

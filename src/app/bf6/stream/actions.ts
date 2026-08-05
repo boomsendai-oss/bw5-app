@@ -1,8 +1,9 @@
 'use server';
 
 // ⚠️ 公開Server Actions(認証なし)。理由: BF6オンライン配信の視聴ページ(購入者向け)が叩くため。
-// 認可は「メールアドレス+視聴キーの完全一致」で行い、キーはIPレート制限つきで照合する。
-// 再生URLは短寿命の署名付きトークン。名簿・キー一覧を返す公開経路は作らない。
+// 認可は「視聴キーの完全一致」(12文字・高エントロピー)+IPレート制限。キーを家族に渡す
+// 運用を想定しメール照合は課さない(TARO 2026-08-06)。再生URLは短寿命の署名付きトークン。
+// 名簿・キー一覧を返す公開経路は作らない。
 import { headers } from 'next/headers';
 import { checkRateLimit } from '@/lib/eventAuth';
 import { isPastDeadlineJst } from '@/lib/bf6';
@@ -34,11 +35,7 @@ export async function getBf6StreamContext(): Promise<Bf6StreamContext> {
   return { open: cfg.open, price: settings.pricing.stream, archiveUntil: cfg.archiveUntil };
 }
 
-export async function loginBf6Stream(
-  email: string,
-  key: string,
-  sessionId: string
-): Promise<StreamLoginResult> {
+export async function loginBf6Stream(key: string, sessionId: string): Promise<StreamLoginResult> {
   const ip = await clientIp();
   if (!(await checkRateLimit(`bf6stream:${ip}`, 30, 3600))) {
     return { ok: false, reason: 'invalid' };
@@ -49,7 +46,7 @@ export async function loginBf6Stream(
   }
   const h = await headers();
   const ua = h.get('user-agent') ?? '';
-  return streamLogin(email, normalizeStreamKey(key), sessionId, ua);
+  return streamLogin(normalizeStreamKey(key), sessionId, ua);
 }
 
 export async function heartbeatBf6Stream(key: string, sessionId: string): Promise<StreamHeartbeatResult> {
