@@ -26,7 +26,7 @@ export default async function Bf6TopPage() {
             PCはフライヤー+日付/CTAの2カラムでダイナミックに(ダンスライブ参考) */}
         <div className="bg-neutral-950 md:grid md:grid-cols-2 md:items-center">
           {/* eslint-disable-next-line @next/next/no-img-element -- 静的フライヤー1枚のためnext/image不使用 */}
-          <img src="/bf6/flyer.jpg" alt="BOOMER'S FIGHT!!! vol.6 - BATTLE & SHOWCASE" className="w-full" />
+          <img src="/bf6/flyer-hero.jpg" alt="BOOMER'S FIGHT!!! vol.6 - BATTLE & SHOWCASE" className="w-full" />
           <header className="px-4 pb-7 pt-2 text-center text-white md:px-8 md:py-10">
             <p className="inline-block bg-red-600 px-3 py-1 text-[11px] font-black tracking-[0.2em] md:text-sm">
               BATTLE &amp; SHOWCASE
@@ -119,13 +119,21 @@ export default async function Bf6TopPage() {
               <p className="text-sm text-neutral-600">仙台スクールオブミュージック&amp;ダンス専門学校</p>
               <p className="mt-1 text-xs text-neutral-500">仙台市若林区新寺2-1-11</p>
               <p className="text-xs text-neutral-500">JR仙台駅 東口より徒歩5分</p>
+              <a
+                href="https://www.google.com/maps/search/?api=1&query=%E4%BB%99%E5%8F%B0%E5%B8%82%E8%8B%A5%E6%9E%97%E5%8C%BA%E6%96%B0%E5%AF%BA2-1-11%20%E4%BB%99%E5%8F%B0%E3%82%B9%E3%82%AF%E3%83%BC%E3%83%AB%E3%82%AA%E3%83%96%E3%83%9F%E3%83%A5%E3%83%BC%E3%82%B8%E3%83%83%E3%82%AF"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-bold text-neutral-700 hover:border-red-500 hover:text-red-600"
+              >
+                📍 Googleマップで開く ↗
+              </a>
             </Bf6DetailBlock>
             <Bf6DetailBlock en="DIVISION">
-              <ul className="space-y-1.5">
+              <ul className="space-y-2">
                 {BF6_DIVISIONS.map((d) => (
-                  <li key={d.key} className="flex items-baseline gap-2">
-                    <span className={`font-black ${d.accentText}`}>{d.label}</span>
-                    <span className="text-xs text-neutral-500">{d.note}</span>
+                  <li key={d.key} className={`rounded-xl px-4 py-3 text-white ${d.accentBg}`}>
+                    <span className="text-base font-black">{d.label}</span>
+                    <span className="ml-2 text-xs font-bold text-white/80">{d.note}</span>
                   </li>
                 ))}
               </ul>
@@ -148,12 +156,11 @@ export default async function Bf6TopPage() {
 
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
             {BF6_DIVISIONS.map((d) => (
-              <div key={d.key} className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-sm">
-                <p className="text-[10px] font-bold text-neutral-500">{d.label}</p>
-                <p className={`mt-0.5 text-2xl font-black ${d.accentText}`}>
-                  {remaining.divisions[d.key] > 0 ? `残${remaining.divisions[d.key]}` : '満枠'}
+              <div key={d.key} className={`rounded-2xl p-3 text-white shadow-sm ${d.accentBg}`}>
+                <p className="text-[10px] font-bold text-white/80">{d.label}</p>
+                <p className="mt-0.5 text-xl font-black md:text-2xl">
+                  {remaining.divisions[d.key] > 0 ? `限定${settings.capacity[d.key]}名` : '満枠'}
                 </p>
-                {remaining.divisions[d.key] > 0 && <p className="text-[10px] text-neutral-400">枠</p>}
               </div>
             ))}
           </div>

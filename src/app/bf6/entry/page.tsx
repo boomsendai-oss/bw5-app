@@ -336,7 +336,7 @@ export default function Bf6EntryPage() {
         </section>
 
         <section className="mt-8">
-          <Bf6SectionTitle no="2" title="出場者" note="きょうだい等は「追加」でまとめて申込OK" />
+          <Bf6SectionTitle no="2" title="出場者" note="兄弟・姉妹は「追加」でまとめて申込OK" />
           {rows.map((row, i) => (
             <div key={i} className="mt-3 first:mt-0">
               <Bf6Card>
@@ -416,7 +416,7 @@ export default function Bf6EntryPage() {
                               <span className="flex items-center gap-2">
                                 <span className="font-black text-neutral-900">{d.label}</span>
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${remaining > 0 ? 'bg-neutral-100 text-neutral-500' : 'bg-yellow-100 text-yellow-700'}`}>
-                                  {remaining > 0 ? `残り${remaining}枠` : '満枠'}
+                                  {remaining > 0 ? `限定${ctx.capacity[d.key]}名` : '満枠'}
                                 </span>
                               </span>
                               <span className="block text-xs text-neutral-400">{d.note}</span>
@@ -451,7 +451,7 @@ export default function Bf6EntryPage() {
             onClick={() => setRows((p) => (p.length < 5 ? [...p, emptyPerformer()] : p))}
             className="mt-3 w-full rounded-2xl border-2 border-dashed border-neutral-300 bg-white py-3.5 font-bold text-neutral-500"
           >
-            + 出場者を追加(きょうだい等)
+            + 出場者を追加(兄弟・姉妹など)
           </button>
         </section>
 

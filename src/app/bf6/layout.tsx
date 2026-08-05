@@ -6,6 +6,10 @@ import type { ReactNode } from 'react';
 export const metadata: Metadata = {
   title: "BOOMER'S FIGHT!!! vol.6 - BATTLE & SHOWCASE",
   description: '2026.9.26(土) SSM 9階ホール / BOOM DANCE SCHOOL主催ダンスバトル&ショーケース。エントリー受付中!',
+  icons: {
+    icon: '/bf6/icon.png',
+    apple: '/bf6/icon.png',
+  },
   openGraph: {
     title: "BOOMER'S FIGHT!!! vol.6 - BATTLE & SHOWCASE",
     description: '2026.9.26(土) SSM 9階ホール / エントリー受付中!',
