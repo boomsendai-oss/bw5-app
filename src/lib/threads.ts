@@ -30,6 +30,7 @@
 //
 // 未設定の間は configured()=false のままで、cronは Threads を skipped にして触らない。
 
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getOne, execute } from './db';
 
 const TOKEN_KEY = 'threads_access_token';
@@ -141,6 +142,38 @@ export async function exchangeAndStoreToken(code: string, origin: string): Promi
     upsertSetting(USER_ID_KEY, userId),
   ]);
   return { userId };
+}
+
+/**
+ * Metaが送ってくる signed_request を検証して中身を返す。
+ *
+ * 形式は `<base64url署名>.<base64urlペイロード>` で、署名はペイロード文字列を
+ * app secret でHMAC-SHA256したもの。**検証せずに中身を信じると、誰でも
+ * 「連携解除された」と偽装して連携を壊せる**ので必ず通す。
+ * 検証に失敗したら null を返す。
+ */
+export function parseSignedRequest(signed: string): Record<string, unknown> | null {
+  const { appSecret } = getEnv();
+  if (!appSecret) return null;
+  const [sigPart, payloadPart] = String(signed).split('.');
+  if (!sigPart || !payloadPart) return null;
+  const expected = createHmac('sha256', appSecret).update(payloadPart).digest();
+  const actual = Buffer.from(sigPart.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
+  try {
+    return JSON.parse(Buffer.from(payloadPart, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** 連携情報を消す(利用者がThreads側でアプリの許可を取り消したとき) */
+export async function clearConnection(): Promise<void> {
+  await execute('DELETE FROM settings WHERE key IN (?, ?, ?)', [
+    TOKEN_KEY,
+    TOKEN_ISSUED_AT_KEY,
+    USER_ID_KEY,
+  ]);
 }
 
 export async function connectionStatus(): Promise<{
