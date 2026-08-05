@@ -56,16 +56,16 @@ export default async function Bf6TopPage() {
         <section className="px-4 pt-8">
           <Bf6SectionHead en="DETAIL" ja="開催概要" img="/bf6/head-detail.png" />
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900 px-4 py-2 shadow-sm md:grid md:grid-cols-2 md:gap-x-10 md:px-8 md:py-4">
-            <Bf6DetailBlock en="DATE">
+            <Bf6DetailBlock en="DATE" ja="日程">
               <p className="text-lg font-black text-white">2026.9.26 <span className="text-sm">SAT</span></p>
             </Bf6DetailBlock>
-            <Bf6DetailBlock en="TIME">
+            <Bf6DetailBlock en="TIME" ja="時間">
               <p className="font-bold text-neutral-200">OPEN 14:30(予定)</p>
               <p className="font-bold text-neutral-200">CLOSE 18:00頃</p>
               <p className="mt-2 text-xs text-neutral-400">※ タイムテーブルはエントリー締切後に発表します</p>
             </Bf6DetailBlock>
             <div className="md:row-span-3">
-            <Bf6DetailBlock en="FEE">
+            <Bf6DetailBlock en="FEE" ja="料金">
               <p className="text-xs font-black text-neutral-400">バトルエントリー</p>
               <table className="mt-2 w-full text-sm">
                 <thead>
@@ -114,7 +114,7 @@ export default async function Bf6TopPage() {
               </ul>
             </Bf6DetailBlock>
             </div>
-            <Bf6DetailBlock en="VENUE">
+            <Bf6DetailBlock en="VENUE" ja="会場">
               <p className="font-bold text-neutral-200">SSM 9階ホール</p>
               <p className="text-sm text-neutral-400">仙台スクールオブミュージック&amp;ダンス専門学校</p>
               <p className="mt-1 text-xs text-neutral-400">仙台市若林区新寺2-1-11</p>
@@ -128,7 +128,7 @@ export default async function Bf6TopPage() {
                 📍 Googleマップで開く ↗
               </a>
             </Bf6DetailBlock>
-            <Bf6DetailBlock en="DIVISION">
+            <Bf6DetailBlock en="DIVISION" ja="部門">
               <ul className="space-y-2">
                 {BF6_DIVISIONS.map((d) => (
                   <li key={d.key} className={`rounded-xl px-4 py-3 text-white ring-1 ring-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_4px_12px_rgba(0,0,0,0.4)] ${d.accentBg}`}>
@@ -138,7 +138,7 @@ export default async function Bf6TopPage() {
                 ))}
               </ul>
             </Bf6DetailBlock>
-            <Bf6DetailBlock en="JUDGE / DJ / MC">
+            <Bf6DetailBlock en="JUDGE / DJ / MC" ja="審査員・DJ・MC">
               <p className="font-black italic tracking-widest text-neutral-300">COMING SOON</p>
             </Bf6DetailBlock>
           </div>
