@@ -54,7 +54,7 @@ export default async function Bf6TopPage() {
 
         {/* DETAIL */}
         <section className="px-4 pt-8">
-          <Bf6SectionHead en="DETAIL" ja="開催概要" img="/bf6/head-detail.jpg" />
+          <Bf6SectionHead en="DETAIL" ja="開催概要" img="/bf6/head-detail.png" />
           <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-2 shadow-sm md:grid md:grid-cols-2 md:gap-x-10 md:px-8 md:py-4">
             <Bf6DetailBlock en="DATE">
               <p className="text-lg font-black text-neutral-900">2026.9.26 <span className="text-sm">SAT</span></p>
@@ -146,7 +146,7 @@ export default async function Bf6TopPage() {
 
         {/* ENTRY */}
         <section className="px-4 pt-10">
-          <Bf6SectionHead en="ENTRY" ja="エントリー・観覧チケット" img="/bf6/head-entry.jpg" />
+          <Bf6SectionHead en="ENTRY" ja="エントリー・観覧チケット" img="/bf6/head-entry.png" />
           <div className="rounded-2xl bg-neutral-900 p-4 text-center">
             <p className="text-[11px] font-bold tracking-widest text-neutral-400">受付期間</p>
             <p className="mt-1 text-lg font-black italic text-white">
@@ -187,7 +187,7 @@ export default async function Bf6TopPage() {
 
         {/* ENTRY LIST */}
         <section className="px-4 pt-10">
-          <Bf6SectionHead en="ENTRY LIST" ja="エントリーリスト(リアルタイム更新)" img="/bf6/head-entrylist.jpg" />
+          <Bf6SectionHead en="ENTRY LIST" ja="エントリーリスト(リアルタイム更新)" img="/bf6/head-entrylist.png" />
           <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
             <ul className="divide-y divide-neutral-100">
               {BF6_DIVISIONS.map((d) => (
