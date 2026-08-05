@@ -14,10 +14,10 @@ export default function Bf6LegalPage() {
         <Bf6Hero title="LEGAL" subtitle="特定商取引法に基づく表記・キャンセルポリシー" />
         <div className="px-4 py-6">
           <Bf6Card>
-            <p className="text-neutral-700">準備中です。エントリー受付開始までに掲載します。</p>
+            <p className="text-neutral-300">準備中です。エントリー受付開始までに掲載します。</p>
           </Bf6Card>
           <p className="mt-6 text-center text-sm">
-            <Link href="/bf6" className="font-bold text-red-600 underline">イベントページに戻る</Link>
+            <Link href="/bf6" className="font-bold text-red-400 underline">イベントページに戻る</Link>
           </p>
         </div>
       </div>
