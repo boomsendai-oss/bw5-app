@@ -10,6 +10,18 @@ import { NextResponse, type NextRequest } from 'next/server';
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // BF6用エイリアスドメイン(boomersfight.vercel.app等)のルートはイベントTOPへ。
+  // それ以外のホストの '/' は素通し(認証対象ではない)。
+  if (pathname === '/') {
+    const host = req.headers.get('host') ?? '';
+    if (host.startsWith('boomersfight')) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/bf6';
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
+
   if (pathname === '/staff/events/login' || pathname === '/api/staff/events/login') return NextResponse.next();
 
   const cookie = req.cookies.get('staff_events_auth')?.value;
@@ -39,6 +51,7 @@ export function proxy(req: NextRequest) {
  */
 export const config = {
   matcher: [
+    '/',
     '/staff/:path*',
     '/api/staff/:path*',
     '/api/settings',

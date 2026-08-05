@@ -129,11 +129,17 @@ export function ticketRemaining(
   return Math.max(0, hallCapacity - performerCount - soldTickets);
 }
 
-// accentText はTailwindのJIT対象になるためクラス名をリテラルで持つ
-export const BF6_DIVISIONS: { key: Bf6Division; label: string; note: string; accentText: string }[] = [
-  { key: 'beginner', label: 'ビギナー部門', note: '小学生・バトル初出場限定', accentText: 'text-emerald-600' },
-  { key: 'kids', label: '小中学生部門', note: '小学生・中学生', accentText: 'text-orange-500' },
-  { key: 'general', label: '一般部門', note: '年齢制限なし', accentText: 'text-red-600' },
+// accentText/accentBg はTailwindのJIT対象になるためクラス名をリテラルで持つ
+export const BF6_DIVISIONS: {
+  key: Bf6Division;
+  label: string;
+  note: string;
+  accentText: string;
+  accentBg: string;
+}[] = [
+  { key: 'beginner', label: 'ビギナー部門', note: '小学生・バトル初出場限定', accentText: 'text-emerald-600', accentBg: 'bg-emerald-600' },
+  { key: 'kids', label: '小中学生部門', note: '小学生・中学生', accentText: 'text-orange-500', accentBg: 'bg-orange-500' },
+  { key: 'general', label: '一般部門', note: '年齢制限なし', accentText: 'text-red-600', accentBg: 'bg-red-600' },
 ];
 
 export function bf6DivisionLabel(key: string): string {
