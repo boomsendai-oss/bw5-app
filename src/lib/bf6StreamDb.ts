@@ -13,7 +13,8 @@ import { formatReceiptNo } from '@/lib/bf6';
 import type { OwnBf6Order } from '@/lib/bf6Db';
 
 const SESSION_TTL_SEC = 60;
-const PLAYBACK_TOKEN_TTL_SEC = 4 * 60 * 60;
+// 早めにログインした視聴者がイベント中に切れないよう12時間(OPEN前〜CLOSE後を余裕で覆う)
+const PLAYBACK_TOKEN_TTL_SEC = 12 * 60 * 60;
 
 function nowIso(): string {
   return new Date().toISOString();
