@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
     trialRecords,
     unlinkedMembers,
     monthlyReports,
+    xPostsDraft,
   ] = await Promise.all([
     getActiveMemberCount(currentYm).catch(() => 0),
     count(`SELECT COUNT(*) as n FROM boom_members WHERE status = 'withdrew'`),
@@ -49,6 +50,7 @@ export async function GET(req: NextRequest) {
     count(`SELECT COUNT(*) as n FROM trial_records`),
     count(`SELECT COUNT(*) as n FROM boom_members WHERE status = 'active' AND id NOT IN (SELECT member_id FROM member_lstep_links)`),
     count(`SELECT COUNT(*) as n FROM monthly_reports`),
+    count(`SELECT COUNT(*) as n FROM x_posts WHERE status = 'draft'`),
   ]);
 
   return NextResponse.json({
@@ -59,6 +61,7 @@ export async function GET(req: NextRequest) {
     events: { total: events },
     trials: { total: trialRecords },
     monthly: { reports: monthlyReports },
+    xPosts: { draft: xPostsDraft },
     generated_at: new Date().toISOString(),
   });
 }

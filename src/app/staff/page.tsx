@@ -20,6 +20,7 @@ import {
   Palette,
   FileText,
   Flame,
+  Hash,
   type LucideIcon,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -33,6 +34,7 @@ type Stats = {
   events: { total: number };
   trials: { total: number };
   monthly: { reports: number };
+  xPosts?: { draft: number };
   generated_at: string;
 };
 
@@ -84,6 +86,15 @@ const CARDS: CardDef[] = [
     icon: XCircle,
     title: '休講申請',
     description: 'インストラクターからの休講申請を承認/却下',
+  },
+  {
+    href: '/staff/x-posts',
+    icon: Hash,
+    title: 'X投稿',
+    description: '承認するとX・Threadsの両方へ予約時刻に自動配信',
+    stat: s => s.xPosts ? [
+      { label: '承認待ち', value: s.xPosts.draft, alert: s.xPosts.draft > 0 },
+    ] : [],
   },
   {
     href: '/staff/members',
