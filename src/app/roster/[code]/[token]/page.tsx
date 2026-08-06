@@ -17,6 +17,12 @@ const PART_DOT: Record<string, string> = {
 const partPill = (k: string) => PART_PILL[k] ?? 'bg-slate-100 text-slate-600 border-slate-200';
 const partDot = (k: string) => PART_DOT[k] ?? 'bg-slate-400';
 
+function availBadge(a: 'yes' | 'no' | null | undefined) {
+  if (a === 'yes') return { cls: 'bg-emerald-50 text-emerald-700 border-emerald-300', label: '9/26◯' };
+  if (a === 'no') return { cls: 'bg-rose-50 text-rose-700 border-rose-300', label: '9/26✕' };
+  return { cls: 'bg-amber-50 text-amber-700 border-amber-300', label: '未回答' };
+}
+
 export default function SharedRosterPage({ params }: { params: Promise<{ code: string; token: string }> }) {
   const { code, token } = usePromise(params);
   const [res, setRes] = useState<SharedRosterResult | null>(null);
@@ -73,6 +79,11 @@ export default function SharedRosterPage({ params }: { params: Promise<{ code: s
                 </div>
               ))}
             </div>
+            <div className="w-full flex flex-wrap items-center gap-2 pt-1 text-xs">
+              <span className="font-bold text-emerald-700">9/26 出られる {allPerformers.filter((p) => p.availability === 'yes').length}</span>
+              <span className="font-bold text-rose-700">出られない {allPerformers.filter((p) => p.availability === 'no').length}</span>
+              <span className="font-bold text-amber-700">未回答 {allPerformers.filter((p) => p.availability == null).length}</span>
+            </div>
           </div>
         </section>
 
@@ -117,7 +128,10 @@ export default function SharedRosterPage({ params }: { params: Promise<{ code: s
                     <span className="text-xs text-slate-400 tabular-nums w-5 shrink-0">{i + 1}</span>
                     <span className="text-sm font-semibold text-slate-800">{p.name}</span>
                   </div>
-                  <div className="flex flex-wrap gap-1 justify-end shrink-0">
+                  <div className="flex flex-wrap gap-1 justify-end shrink-0 items-center">
+                    <span className={`text-[10px] font-bold rounded-full border px-2 py-0.5 ${availBadge(p.availability).cls}`}>
+                      {availBadge(p.availability).label}
+                    </span>
                     {p.parts.map((k) => (
                       <span key={k} className={`text-[10px] font-bold rounded-full border px-2 py-0.5 ${partPill(k)}`}>
                         {labelOf(k)}

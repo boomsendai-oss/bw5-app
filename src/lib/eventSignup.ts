@@ -47,27 +47,32 @@ export function defaultSettings(): ResolvedSettings {
   return {
     parts: DEFAULT_PARTS,
     feeText: '参加費：お一人 3,000円',
-    deadline: '2026-08-01',
+    deadline: '2026-08-10',
     calendarUrl: '',
     isOpen: true,
     introMd: [
-      '日時：2026年10月18日(日) 9:30〜15:30（出演時間は当日ご案内）',
-      '会場：杜の広場公園（あすと長町1丁目・ゼビオアリーナ仙台 東側）',
-      '参加費：お一人 3,000円',
+      '【重要】出演イベントが変わりました',
+      '太白区民まつりは選考の結果、出演できないことになりました。',
+      'かわりに、BOOM主催イベント「BOOMER\'S FIGHT!!!」のステージで、この作品を披露します。',
+      '',
+      '▼ 新しい出演イベント',
+      '日時：2026年9月26日(土) OPEN 14:30（予定・出演時間は後日ご案内）',
+      '会場：SSM（仙台スクールオブミュージック＆ダンス専門学校）9階ホール',
+      '住所：仙台市若林区新寺2丁目1-11',
+      '参加費：お一人 3,000円（これより高くなることはありません）',
       '衣装：後日ご案内します',
-      '申込締切：2026年8月1日(土)',
+      '回答締切：2026年8月10日(月)',
+      '',
+      '▼ お願い（申込済みの方も）',
+      '日程が変わったため、出演者ごとに「9/26に出演できる／できない」を選んで、もう一度送信してください。',
       '',
       '▼ 練習・レッスンの予約について',
-      '出演するパートが決まったら、練習レッスンの予約も HACOMONO から入れてください。',
       '・ガールズHIPHOP / WAACK … 通常の土曜レッスンの中で振り入れします（土曜レッスンをご予約ください）',
-      '・HIPHOP … 専用レッスンで振り入れします（下記の各回を HACOMONO からご予約ください）',
+      '・HIPHOP … 専用レッスン（木曜 18:30〜19:30・コナミスポーツクラブ仙台長町）8/20・9/10・9/24',
       '',
-      '▼ HIPHOPパート 練習日程（木曜 18:30〜19:30・コナミスポーツクラブ仙台長町）',
-      '8/6・8/20・9/10・9/24・10/8',
-      '',
-      '▼ 全体リハーサル（2回・できるだけご参加ください）',
+      '▼ 全体リハーサル',
       '・9/19(土) 17:30〜19:00　コナスポ',
-      '・10/11(日) 18:00〜20:00　太白区文化センター 展示ホール',
+      '※10/11のリハーサルは中止になりました',
       '',
       '⚠ 練習への参加が極端に少ない場合は、出演をお見送りいただくことがあります（特にHIPHOPパート）。',
       '　振り付けを覚えきれないと本番で他の出演者に影響するため、できるだけご参加ください。',
@@ -75,9 +80,16 @@ export function defaultSettings(): ResolvedSettings {
   };
 }
 
+// 9/26(BOOMER'S FIGHT!!!)に出演できるか。'yes' | 'no'。未回答は保存上 NULL。
+export type Availability = 'yes' | 'no';
+export function isAvailability(v: unknown): v is Availability {
+  return v === 'yes' || v === 'no';
+}
+
 export interface PerformerInput {
   name: string;
   parts: string[];
+  availability?: string;
 }
 export interface SignupInput {
   understood: boolean;
@@ -87,6 +99,7 @@ export interface SignupInput {
 export interface ValidatedPerformer {
   name: string;
   parts: PartKey[];
+  availability: Availability;
 }
 export interface ValidatedSignup {
   note: string;
@@ -103,9 +116,13 @@ export function validateSignupInput(input: SignupInput): ValidatedSignup | strin
     if (!name) continue;
     if (name.length > 50) return '出演者名が長すぎます（50文字以内）';
     if (!isKatakanaName(name)) return `「${name}」はカタカナで入力してください`;
+    if (!isAvailability(p?.availability)) return `${name} さんが9/26に出演できるかを選んでください`;
     const parts = Array.from(new Set((p?.parts ?? []).filter(isPartKey)));
-    if (parts.length === 0) return `${name} さんの希望パートを1つ以上選んでください`;
-    cleaned.push({ name, parts });
+    // 「出演できない」の人はパート未選択でもOK(名簿には残す)
+    if (p.availability === 'yes' && parts.length === 0) {
+      return `${name} さんの希望パートを1つ以上選んでください`;
+    }
+    cleaned.push({ name, parts, availability: p.availability });
   }
   if (cleaned.length === 0) return '出演者を1人以上入力してください';
   if (cleaned.length > 10) return '一度に登録できるのは10人までです';
@@ -132,6 +149,7 @@ export interface SignupRowForCsv {
   performerName: string;
   parts: PartKey[];
   createdAt: string;
+  availability?: Availability | null;
 }
 
 function csvCell(v: string): string {
@@ -140,11 +158,12 @@ function csvCell(v: string): string {
 }
 
 export function buildSignupCsv(rows: SignupRowForCsv[], labels: Record<string, string>): string {
-  const header = ['出演者名', '希望パート', '申込日時'];
+  const header = ['出演者名', '希望パート', '9/26出欠', '申込日時'];
   const lines = [header.join(',')];
   for (const r of rows) {
     const parts = r.parts.map((k) => labels[k] ?? k).join(' / ');
-    lines.push([csvCell(r.performerName), csvCell(parts), csvCell(r.createdAt)].join(','));
+    const avail = r.availability === 'yes' ? '出られる' : r.availability === 'no' ? '出られない' : '未回答';
+    lines.push([csvCell(r.performerName), csvCell(parts), csvCell(avail), csvCell(r.createdAt)].join(','));
   }
   return lines.join('\n');
 }

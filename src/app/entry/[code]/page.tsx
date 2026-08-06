@@ -12,7 +12,8 @@ import { isKatakanaName, type PartDef, type PartKey, type SignupInput } from '@/
 import FlowDiagram from './FlowDiagram';
 
 // choices: パートごとに 出演する('yes') / 出演しない('no') / 未回答(キー無し)
-type PerformerRow = { name: string; choices: Record<string, 'yes' | 'no'> };
+// avail: 9/26(BOOMER'S FIGHT!!!)に出演できるか(未回答=undefined)
+type PerformerRow = { name: string; choices: Record<string, 'yes' | 'no'>; avail?: 'yes' | 'no' };
 
 // 送信用に「出演する」パートだけ配列化
 function yesParts(choices: Record<string, 'yes' | 'no'>): PartKey[] {
@@ -70,6 +71,7 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
           r.signup.performers.map((p) => ({
             name: p.name,
             choices: Object.fromEntries(p.parts.map((k) => [k, 'yes' as const])),
+            avail: p.availability ?? undefined,
           }))
         );
         setEditing(true);
@@ -108,7 +110,7 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
       const payload: SignupInput = {
         understood,
         note,
-        performers: rows.map((r) => ({ name: r.name, parts: yesParts(r.choices) })),
+        performers: rows.map((r) => ({ name: r.name, parts: yesParts(r.choices), availability: r.avail })),
       };
       if (editing && token) {
         const r = await updateOwnSignup(code, token, payload);
@@ -192,12 +194,32 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
         <div className="max-w-md mx-auto space-y-4">
           <h1 className="text-xl font-bold text-slate-800 text-center">{view.eventName}</h1>
 
+          {rows.some((r) => r.name.trim() && !r.avail) && (
+            <div className="rounded-xl bg-amber-50 border border-amber-300 px-3 py-2.5 text-xs text-amber-800 text-center font-bold">
+              ⚠ 出演イベントが 9/26(土) BOOMER&apos;S FIGHT!!! に変わりました。
+              <span className="block font-normal mt-0.5">下の「回答する」ボタンから、9/26に出演できるかどうかを選んで送信してください。</span>
+            </div>
+          )}
+
           <div className="rounded-2xl border border-teal-200 bg-white p-4">
             <div className="text-xs font-bold text-teal-700 mb-2">✅ この内容で申込済みです</div>
             <div className="space-y-2">
               {rows.filter((r) => r.name.trim()).map((r, i) => (
                 <div key={i} className="rounded-lg bg-slate-50 px-3 py-2">
-                  <div className="text-sm font-bold text-slate-800">{r.name}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-bold text-slate-800">{r.name}</div>
+                    <span
+                      className={`text-[10px] font-bold rounded-full px-2 py-0.5 border shrink-0 ${
+                        r.avail === 'yes'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                          : r.avail === 'no'
+                            ? 'bg-rose-50 text-rose-700 border-rose-300'
+                            : 'bg-amber-50 text-amber-700 border-amber-300'
+                      }`}
+                    >
+                      {r.avail === 'yes' ? '9/26 出演できる' : r.avail === 'no' ? '9/26 出演できない' : '9/26 未回答'}
+                    </span>
+                  </div>
                   <div className="text-xs text-slate-500 mt-0.5">
                     {yesParts(r.choices).map((k) => parts.find((p) => p.key === k)?.label ?? k).join(' / ') || 'パート未選択'}
                   </div>
@@ -215,7 +237,7 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
             onClick={() => setReviewing(false)}
             className="w-full rounded-2xl bg-teal-600 text-white text-base font-bold py-3"
           >
-            内容を修正する
+            {rows.some((r) => r.name.trim() && !r.avail) ? '9/26に出られるか回答する' : '内容を修正する'}
           </button>
         </div>
       </div>
@@ -228,8 +250,9 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
         <h1 className="text-xl font-bold text-slate-800 text-center">{view.eventName}</h1>
 
         {editing && (
-          <div className="rounded-xl bg-teal-50 border border-teal-200 px-3 py-2 text-xs text-teal-700 text-center">
-            申込内容を修正しています。変更したら下の「内容を更新する」を押してください。
+          <div className="rounded-xl bg-amber-50 border border-amber-300 px-3 py-2.5 text-xs text-amber-800 text-center font-bold">
+            ⚠ 出演イベントが 9/26(土) BOOMER&apos;S FIGHT!!! に変わりました。
+            <span className="block font-normal mt-0.5">出演者ごとに「出演できる／できない」を選び直して、最後に「内容を更新する」を押してください。</span>
           </div>
         )}
 
@@ -352,6 +375,35 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
                       })}
                     </div>
                   </div>
+                  {/* 9/26 出欠 */}
+                  <div className={`rounded-xl border px-3 py-2.5 ${
+                    row.avail ? (row.avail === 'yes' ? 'border-emerald-300 bg-emerald-50' : 'border-rose-300 bg-rose-50') : 'border-amber-300 bg-amber-50'
+                  }`}>
+                    <div className="text-xs font-bold text-slate-700 mb-1.5">9/26(土) に出演できますか？</div>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, avail: 'yes' } : r)))}
+                        className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold border ${
+                          row.avail === 'yes' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-300'
+                        }`}
+                      >
+                        出演できる
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, avail: 'no' } : r)))}
+                        className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold border ${
+                          row.avail === 'no' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-600 border-slate-300'
+                        }`}
+                      >
+                        出演できない
+                      </button>
+                    </div>
+                    {!row.avail && row.name.trim() && (
+                      <p className="text-[11px] text-amber-700 mt-1">どちらかを選んでください</p>
+                    )}
+                  </div>
                 </div>
               ))}
               <button
@@ -375,7 +427,7 @@ export default function EntryPage({ params }: { params: Promise<{ code: string }
 
             <button
               onClick={onSubmit}
-              disabled={submitting || rows.some((r) => r.name.trim() !== '' && !isKatakanaName(r.name))}
+              disabled={submitting || rows.some((r) => r.name.trim() !== '' && (!isKatakanaName(r.name) || !r.avail))}
               className="w-full rounded-2xl bg-teal-600 text-white text-base font-bold py-3 disabled:opacity-50"
             >
               {submitting ? '送信中…' : editing ? '内容を更新する' : '申し込む'}

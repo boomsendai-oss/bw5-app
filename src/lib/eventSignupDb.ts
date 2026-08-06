@@ -7,6 +7,7 @@ import {
   defaultSettings,
   generateEditToken,
   countByPart,
+  type Availability,
   type PartKey,
   type PartDef,
   type ResolvedSettings,
@@ -16,6 +17,7 @@ import {
 export interface OwnPerformer {
   name: string;
   parts: PartKey[];
+  availability: Availability | null;
 }
 export interface OwnSignup {
   note: string;
@@ -25,6 +27,7 @@ export interface StaffPerformer {
   id: number;
   name: string;
   parts: PartKey[];
+  availability: Availability | null;
 }
 export interface StaffSignup {
   id: number;
@@ -43,24 +46,32 @@ export interface AuditEntry {
 }
 
 // 出演者リストを「太郎（ガールズHIPHOP・WAACK）、次郎（HIPHOP）」形式の読める文字列に。
-function snapshotText(performers: { name: string; parts: PartKey[] }[]): string {
+function snapshotText(
+  performers: { name: string; parts: PartKey[]; availability?: Availability | null }[]
+): string {
   if (!performers.length) return '(なし)';
   return performers
-    .map((p) => `${p.name}（${p.parts.map(partLabel).join('・') || 'パート未選択'}）`)
+    .map((p) => {
+      const avail = p.availability === 'yes' ? '・9/26◯' : p.availability === 'no' ? '・9/26✕' : '';
+      return `${p.name}（${p.parts.map(partLabel).join('・') || 'パート未選択'}${avail}）`;
+    })
     .join('、');
 }
 
-async function loadPerformers(signupId: number): Promise<{ name: string; parts: PartKey[] }[]> {
+async function loadPerformers(
+  signupId: number
+): Promise<{ name: string; parts: PartKey[]; availability: Availability | null }[]> {
   const performers = await getAll(
-    'SELECT id, performer_name FROM event_signup_performers WHERE signup_id = ? ORDER BY sort_order ASC, id ASC',
+    'SELECT id, performer_name, availability FROM event_signup_performers WHERE signup_id = ? ORDER BY sort_order ASC, id ASC',
     [signupId]
   );
-  const out: { name: string; parts: PartKey[] }[] = [];
+  const out: { name: string; parts: PartKey[]; availability: Availability | null }[] = [];
   for (const p of performers) {
     const parts = await getAll('SELECT part_key FROM event_signup_parts WHERE performer_id = ?', [Number(p.id)]);
     out.push({
       name: String(p.performer_name),
       parts: parts.map((r) => String(r.part_key)).filter(isPartKey) as PartKey[],
+      availability: p.availability === 'yes' || p.availability === 'no' ? p.availability : null,
     });
   }
   return out;
@@ -157,8 +168,8 @@ async function insertPerformers(
   for (let i = 0; i < performers.length; i++) {
     const p = performers[i];
     const res = await tx.execute({
-      sql: 'INSERT INTO event_signup_performers (signup_id, performer_name, sort_order) VALUES (?, ?, ?)',
-      args: [signupId, p.name, i],
+      sql: 'INSERT INTO event_signup_performers (signup_id, performer_name, sort_order, availability) VALUES (?, ?, ?, ?)',
+      args: [signupId, p.name, i, p.availability],
     });
     const performerId = Number(res.lastInsertRowid);
     for (const part of p.parts) {
@@ -196,21 +207,7 @@ export async function loadByToken(eventId: number, token: string): Promise<OwnSi
     [eventId, token]
   );
   if (!su) return null;
-  const performers = await getAll(
-    'SELECT id, performer_name FROM event_signup_performers WHERE signup_id = ? ORDER BY sort_order ASC, id ASC',
-    [Number(su.id)]
-  );
-  const out: OwnPerformer[] = [];
-  for (const p of performers) {
-    const parts = await getAll(
-      'SELECT part_key FROM event_signup_parts WHERE performer_id = ?',
-      [Number(p.id)]
-    );
-    out.push({
-      name: String(p.performer_name),
-      parts: parts.map((r) => String(r.part_key)).filter(isPartKey) as PartKey[],
-    });
-  }
+  const out: OwnPerformer[] = await loadPerformers(Number(su.id));
   return { note: String(su.note ?? ''), performers: out };
 }
 
@@ -262,7 +259,7 @@ export async function listByEvent(eventId: number): Promise<StaffSignup[]> {
   const out: StaffSignup[] = [];
   for (const su of signups) {
     const performers = await getAll(
-      'SELECT id, performer_name FROM event_signup_performers WHERE signup_id = ? ORDER BY sort_order ASC, id ASC',
+      'SELECT id, performer_name, availability FROM event_signup_performers WHERE signup_id = ? ORDER BY sort_order ASC, id ASC',
       [Number(su.id)]
     );
     const ps: StaffPerformer[] = [];
@@ -272,6 +269,7 @@ export async function listByEvent(eventId: number): Promise<StaffSignup[]> {
         id: Number(p.id),
         name: String(p.performer_name),
         parts: parts.map((r) => String(r.part_key)).filter(isPartKey) as PartKey[],
+        availability: p.availability === 'yes' || p.availability === 'no' ? p.availability : null,
       });
     }
     out.push({ id: Number(su.id), note: String(su.note ?? ''), createdAt: String(su.created_at), performers: ps });
@@ -374,6 +372,7 @@ export async function deletePerformer(eventId: number, performerId: number): Pro
 export interface SharedRosterPerformer {
   name: string;
   parts: PartKey[];
+  availability: Availability | null;
 }
 export interface SharedRosterSignup {
   note: string;
@@ -436,7 +435,7 @@ export async function getSharedRoster(code: string, token: string): Promise<Shar
     signups: signups.map((s) => ({
       note: s.note,
       createdAt: s.createdAt,
-      performers: s.performers.map((p) => ({ name: p.name, parts: p.parts })),
+      performers: s.performers.map((p) => ({ name: p.name, parts: p.parts, availability: p.availability })),
     })),
   };
 }

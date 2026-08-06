@@ -24,9 +24,9 @@ describe('validateSignupInput', () => {
     understood: true,
     note: ' メモ ',
     performers: [
-      { name: ' タロウ ', parts: ['girls_hh', 'girls_hh', 'waack'] },
+      { name: ' タロウ ', parts: ['girls_hh', 'girls_hh', 'waack'], availability: 'yes' },
       { name: '', parts: [] },
-      { name: 'ジロウ', parts: ['hiphop'] },
+      { name: 'ジロウ', parts: ['hiphop'], availability: 'yes' },
     ],
   };
 
@@ -36,19 +36,31 @@ describe('validateSignupInput', () => {
     if (typeof r === 'string') return;
     expect(r.note).toBe('メモ');
     expect(r.performers).toEqual([
-      { name: 'タロウ', parts: ['girls_hh', 'waack'] },
-      { name: 'ジロウ', parts: ['hiphop'] },
+      { name: 'タロウ', parts: ['girls_hh', 'waack'], availability: 'yes' },
+      { name: 'ジロウ', parts: ['hiphop'], availability: 'yes' },
     ]);
   });
 
+  it('9/26の出欠が未選択はエラー(名前入り)', () => {
+    const r = validateSignupInput({ understood: true, performers: [{ name: 'タロウ', parts: ['waack'] }] });
+    expect(r).toContain('タロウ');
+    expect(r).toContain('9/26');
+  });
+
+  it('出演できない(no)はパート未選択でもOK・availabilityが残る', () => {
+    const r = validateSignupInput({ understood: true, performers: [{ name: 'タロウ', parts: [], availability: 'no' }] });
+    if (typeof r === 'string') throw new Error(r);
+    expect(r.performers[0]).toEqual({ name: 'タロウ', parts: [], availability: 'no' });
+  });
+
   it('カタカナ以外の名前はエラー（ひらがな・漢字・英字）', () => {
-    expect(validateSignupInput({ understood: true, performers: [{ name: 'たろう', parts: ['waack'] }] })).toContain('カタカナ');
-    expect(validateSignupInput({ understood: true, performers: [{ name: '太郎', parts: ['waack'] }] })).toContain('カタカナ');
-    expect(validateSignupInput({ understood: true, performers: [{ name: 'Taro', parts: ['waack'] }] })).toContain('カタカナ');
+    expect(validateSignupInput({ understood: true, performers: [{ name: 'たろう', parts: ['waack'], availability: 'yes' }] })).toContain('カタカナ');
+    expect(validateSignupInput({ understood: true, performers: [{ name: '太郎', parts: ['waack'], availability: 'yes' }] })).toContain('カタカナ');
+    expect(validateSignupInput({ understood: true, performers: [{ name: 'Taro', parts: ['waack'], availability: 'yes' }] })).toContain('カタカナ');
   });
 
   it('カタカナ＋長音符・中点・スペースは許可', () => {
-    const r = validateSignupInput({ understood: true, performers: [{ name: 'サトウ　ハナ・コ', parts: ['waack'] }] });
+    const r = validateSignupInput({ understood: true, performers: [{ name: 'サトウ　ハナ・コ', parts: ['waack'], availability: 'yes' }] });
     if (typeof r === 'string') throw new Error(r);
     expect(r.performers[0].name).toBe('サトウ　ハナ・コ');
   });
@@ -61,20 +73,20 @@ describe('validateSignupInput', () => {
     expect(validateSignupInput({ understood: true, performers: [{ name: '', parts: [] }] })).toContain('1人以上');
   });
 
-  it('パート未選択の出演者はエラー(名前入り)', () => {
-    const r = validateSignupInput({ understood: true, performers: [{ name: 'ハナコ', parts: [] }] });
+  it('出演できる(yes)でパート未選択はエラー(名前入り)', () => {
+    const r = validateSignupInput({ understood: true, performers: [{ name: 'ハナコ', parts: [], availability: 'yes' }] });
     expect(r).toContain('ハナコ');
     expect(r).toContain('パート');
   });
 
   it('不正なパートキーは無視される', () => {
-    const r = validateSignupInput({ understood: true, performers: [{ name: 'エー', parts: ['ballet', 'waack'] }] });
+    const r = validateSignupInput({ understood: true, performers: [{ name: 'エー', parts: ['ballet', 'waack'], availability: 'yes' }] });
     if (typeof r === 'string') throw new Error(r);
     expect(r.performers[0].parts).toEqual(['waack']);
   });
 
   it('11人以上はエラー', () => {
-    const performers = Array.from({ length: 11 }, () => ({ name: 'テスト', parts: ['waack'] }));
+    const performers = Array.from({ length: 11 }, () => ({ name: 'テスト', parts: ['waack'], availability: 'yes' }));
     expect(validateSignupInput({ understood: true, performers })).toContain('10人');
   });
 });
@@ -102,11 +114,11 @@ describe('countByPart', () => {
 describe('buildSignupCsv', () => {
   it('ヘッダ+1行1出演者・パートはラベルを / 連結・カンマはエスケープ', () => {
     const csv = buildSignupCsv(
-      [{ performerName: '太郎', parts: ['girls_hh', 'waack'], createdAt: '2026-07-22T00:00:00.000Z' }],
+      [{ performerName: '太郎', parts: ['girls_hh', 'waack'], createdAt: '2026-07-22T00:00:00.000Z', availability: 'yes' }],
       { girls_hh: 'ガールズHIPHOP', waack: 'WAACK', hiphop: 'HIPHOP' }
     );
-    expect(csv).toContain('出演者名,希望パート,申込日時');
-    expect(csv).toContain('太郎,ガールズHIPHOP / WAACK,2026-07-22T00:00:00.000Z');
+    expect(csv).toContain('出演者名,希望パート,9/26出欠,申込日時');
+    expect(csv).toContain('太郎,ガールズHIPHOP / WAACK,出られる,2026-07-22T00:00:00.000Z');
   });
 });
 

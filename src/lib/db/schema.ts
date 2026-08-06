@@ -932,7 +932,8 @@ export function getSchemaStatements(): InStatement[] {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       signup_id INTEGER NOT NULL,
       performer_name TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      availability TEXT
     )`,
       args: [],
     },

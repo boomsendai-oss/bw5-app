@@ -13,7 +13,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const labels = Object.fromEntries(settings.parts.map((p) => [p.key, p.label]));
   const signups = await listByEvent(id);
   const rows: SignupRowForCsv[] = signups.flatMap((s) =>
-    s.performers.map((p) => ({ performerName: p.name, parts: p.parts, createdAt: s.createdAt }))
+    s.performers.map((p) => ({ performerName: p.name, parts: p.parts, createdAt: s.createdAt, availability: p.availability }))
   );
   const csv = '﻿' + buildSignupCsv(rows, labels);
   return new NextResponse(csv, {

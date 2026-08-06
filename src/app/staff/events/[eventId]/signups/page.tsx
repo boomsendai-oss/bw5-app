@@ -9,7 +9,7 @@ import Link from 'next/link';
 import StaffPageHeader from '@/components/StaffPageHeader';
 
 type PartMeta = { key: string; label: string };
-type Performer = { id: number; name: string; parts: string[] };
+type Performer = { id: number; name: string; parts: string[]; availability: 'yes' | 'no' | null };
 type Signup = { id: number; note: string; createdAt: string; performers: Performer[] };
 type Summary = { signupCount: number; performerCount: number; byPart: { key: string; label: string; count: number }[] };
 type AuditRow = { id: number; signupId: number | null; actor: string; action: string; message: string; createdAt: string };
@@ -27,6 +27,18 @@ const PART_DOT: Record<string, string> = {
 };
 const partBadge = (k: string) => PART_BADGE[k] ?? 'bg-slate-100 text-slate-600 border-slate-200';
 const partDot = (k: string) => PART_DOT[k] ?? 'bg-slate-400';
+
+// 9/26出欠バッジ
+function AvailBadge({ a }: { a: 'yes' | 'no' | null }) {
+  const cls =
+    a === 'yes'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+      : a === 'no'
+        ? 'bg-rose-50 text-rose-700 border-rose-300'
+        : 'bg-amber-50 text-amber-700 border-amber-300';
+  const label = a === 'yes' ? '9/26◯' : a === 'no' ? '9/26✕' : '未回答';
+  return <span className={`text-[10px] font-bold rounded-full border px-2 py-0.5 ${cls}`}>{label}</span>;
+}
 
 function fmtJst(iso: string): string {
   try {
@@ -113,6 +125,10 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
   const performerCount = summary?.performerCount ?? 0;
   const signupCount = summary?.signupCount ?? 0;
   const byPart = summary?.byPart ?? [];
+  const flat = signups.flatMap((s) => s.performers);
+  const availYes = flat.filter((p) => p.availability === 'yes').length;
+  const availNo = flat.filter((p) => p.availability === 'no').length;
+  const availNone = flat.filter((p) => p.availability == null).length;
 
   const visibleSignups =
     filterPart === 'all'
@@ -125,7 +141,7 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
     <div>
       <StaffPageHeader
         title="出演者募集・集計"
-        description="太白区民まつり2026 出演者の申込状況"
+        description="出演者の申込状況・9/26出欠"
         backHref={`/staff/events/${eventId}`}
         backLabel="イベント"
         rightExtra={
@@ -234,6 +250,19 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
                 <div className="text-2xl font-bold text-navy-800 tabular-nums leading-none">{signupCount}</div>
                 <div className="text-[11px] text-muted-foreground mt-1">申込数</div>
               </div>
+              <div className="w-px h-9 bg-sand-200" />
+              <div className="text-center">
+                <div className="text-2xl font-bold text-emerald-600 tabular-nums leading-none">{availYes}</div>
+                <div className="text-[11px] text-muted-foreground mt-1">9/26 出られる</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-rose-600 tabular-nums leading-none">{availNo}</div>
+                <div className="text-[11px] text-muted-foreground mt-1">出られない</div>
+              </div>
+              <div className="text-center">
+                <div className={`text-2xl font-bold tabular-nums leading-none ${availNone > 0 ? 'text-amber-600' : 'text-slate-300'}`}>{availNone}</div>
+                <div className="text-[11px] text-muted-foreground mt-1">未回答</div>
+              </div>
             </div>
             <div className="w-px h-9 bg-sand-200 hidden sm:block" />
             <div className="flex flex-wrap items-center gap-2">
@@ -301,6 +330,7 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
                           <span className="text-[9px] text-slate-400 border border-slate-200 rounded px-1 py-px shrink-0">兄弟</span>
                         )}
                         <span className="text-sm font-semibold text-slate-800">{p.name}</span>
+                        <AvailBadge a={p.availability} />
                         {p.parts.map((k) => (
                           <span key={k} className={`text-[10px] font-bold rounded-full border px-2 py-0.5 ${partBadge(k)}`}>
                             {labelOf(k)}
