@@ -208,3 +208,29 @@ export function tweetWeightedLength(text: string): number {
 
 /** ツイート1本の上限(weighted)。超過は画面で警告表示する(投稿自体はX API側が拒否する) */
 export const TWEET_MAX_WEIGHTED = 280;
+
+/** 予約時刻からの許容遅延。これを超えて未投稿のものは自動見送り(expired)にする */
+export const SCHEDULE_GRACE_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * 承認済み投稿を「投稿してよいもの(due側)」と「予約時刻を大きく過ぎたもの(expired)」に分ける。
+ * 古い予約のまま承認された投稿が今の文脈に合わない内容のまま即時投稿される事故を防ぐ
+ * (2026-08-06 TARO指摘: 過ぎた週次レッスン告知が承認と同時に流れてしまう問題)。
+ * expired は呼び出し側で status='failed' + 理由保存にする(差し戻し→時刻再設定で再試行可能)。
+ * scheduled_at が null のものは対象外(cronが触らない既存仕様のまま)。
+ */
+export function partitionExpired<T extends { id: number; scheduled_at: string | null }>(
+  posts: T[],
+  nowIso: string
+): { due: T[]; expired: T[] } {
+  const now = Date.parse(nowIso);
+  const due: T[] = [];
+  const expired: T[] = [];
+  for (const p of posts) {
+    if (!p.scheduled_at) continue;
+    const sched = Date.parse(p.scheduled_at);
+    if (Number.isFinite(sched) && now - sched > SCHEDULE_GRACE_MS) expired.push(p);
+    else due.push(p);
+  }
+  return { due, expired };
+}

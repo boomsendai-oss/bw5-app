@@ -7,6 +7,7 @@ import {
   buildTweetPayloads,
   parseMediaJson,
   parsePartsJson,
+  partitionExpired,
   pickDuePosts,
   type XPostMedia,
   type XPostRow,
@@ -79,7 +80,15 @@ async function run(req: NextRequest): Promise<NextResponse> {
   const approved = (await getAll(
     `SELECT * FROM x_posts WHERE status = 'approved' AND scheduled_at IS NOT NULL ORDER BY scheduled_at ASC, id ASC LIMIT 100`
   )) as XPostRow[];
-  const due = pickDuePosts(approved, now, MAX_POSTS_PER_RUN);
+  // 予約時刻を2時間超過したものは投稿せず自動見送り(古い文脈のまま流れる事故防止)
+  const { due: withinGrace, expired } = partitionExpired(approved, now);
+  for (const p of expired) {
+    await execute(
+      "UPDATE x_posts SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ? AND status = 'approved'",
+      ['予約時刻を2時間以上過ぎたため自動見送り(差し戻して時刻を設定し直すと再試行できます)', p.id]
+    );
+  }
+  const due = pickDuePosts(withinGrace, now, MAX_POSTS_PER_RUN);
 
   const results: Array<Record<string, unknown>> = [];
   let posted = 0;

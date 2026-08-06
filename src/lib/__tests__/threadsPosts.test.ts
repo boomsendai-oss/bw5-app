@@ -75,3 +75,42 @@ describe('定数', () => {
     expect(MAX_THREADS_POSTS_PER_RUN).toBe(5);
   });
 });
+
+// partitionExpired は xPosts.ts に置く(両cronで共用)がテストはここに追記
+import { partitionExpired, SCHEDULE_GRACE_MS } from '../xPosts';
+
+describe('partitionExpired (予約時刻を大きく過ぎた投稿の自動見送り)', () => {
+  const mk = (id: number, sched: string) => ({ id, status: 'approved', scheduled_at: sched });
+
+  it('猶予内(2時間以内)の遅れは due に残る', () => {
+    const posts = [mk(1, '2026-08-07T03:00:00Z')];
+    const { due, expired } = partitionExpired(posts, '2026-08-07T04:59:00Z');
+    expect(due.map(p => p.id)).toEqual([1]);
+    expect(expired).toEqual([]);
+  });
+
+  it('猶予(2時間)を超えた遅れは expired に入る', () => {
+    const posts = [mk(1, '2026-08-07T03:00:00Z')];
+    const { due, expired } = partitionExpired(posts, '2026-08-07T05:01:00Z');
+    expect(due).toEqual([]);
+    expect(expired.map(p => p.id)).toEqual([1]);
+  });
+
+  it('混在: 期限内と期限切れを正しく分ける', () => {
+    const posts = [mk(1, '2026-08-07T00:00:00Z'), mk(2, '2026-08-07T03:30:00Z')];
+    const { due, expired } = partitionExpired(posts, '2026-08-07T04:00:00Z');
+    expect(due.map(p => p.id)).toEqual([2]);
+    expect(expired.map(p => p.id)).toEqual([1]);
+  });
+
+  it('scheduled_at が null のものは触らない(dueにもexpiredにも入れない)', () => {
+    const posts = [{ id: 1, status: 'approved', scheduled_at: null }];
+    const { due, expired } = partitionExpired(posts, '2026-08-07T04:00:00Z');
+    expect(due).toEqual([]);
+    expect(expired).toEqual([]);
+  });
+
+  it('猶予は2時間', () => {
+    expect(SCHEDULE_GRACE_MS).toBe(2 * 60 * 60 * 1000);
+  });
+});

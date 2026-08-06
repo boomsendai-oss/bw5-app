@@ -12,10 +12,10 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
-// 「今週のレッスン」X投稿の下書き自動生成cron (2026-07-17・WS S)。
+// 「今週のレッスン」X投稿の自動生成cron (2026-07-17・WS S)。
 // GitHub Actions から毎週日曜21時JSTに叩かれる。
 // 予定の正 = 生徒に公開しているGoogleカレンダー「BOOMレッスンスケジュール」(アプリDBは読まない)。
-// 生成するのは x_posts の draft のみ — 投稿にはTAROの承認(/staff/x-posts)が必要。
+// 2026-08-06より層0扱い=approvedで直接投入(TARO承認不要・SNSテキスト配信 設計v0.6の承認3層)。
 // 予約時刻 = 翌月曜 8:00 JST。同じ週の下書きが既にあれば二重生成しない。
 function cronAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -60,9 +60,11 @@ async function run(req: NextRequest): Promise<NextResponse> {
   }
 
   // 予約 = 月曜 8:00 JST (= 前日 23:00 UTC)
+  // 層0(事実がDB/カレンダー由来・型固定)なので承認不要で直接 approved にする
+  // (SNSテキスト配信 設計v0.6の承認3層・2026-08-06 TARO再確認「この辺は承認しなくてもいい」)
   const scheduledAt = new Date(`${monday}T08:00:00+09:00`).toISOString();
   const r = await execute(
-    "INSERT INTO x_posts (account, parts, scheduled_at, status) VALUES ('boom', ?, ?, 'draft')",
+    "INSERT INTO x_posts (account, parts, scheduled_at, status) VALUES ('boom', ?, ?, 'approved')",
     [JSON.stringify(parts), scheduledAt]
   );
 

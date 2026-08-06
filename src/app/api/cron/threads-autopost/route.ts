@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { execute, getAll } from '@/lib/db';
 import { nowUtcIso } from '@/lib/dateJst';
 import { configured as threadsConfigured, connectionStatus, postText } from '@/lib/threads';
-import { pickDuePosts } from '@/lib/xPosts';
+import { partitionExpired, pickDuePosts } from '@/lib/xPosts';
 import {
   MAX_THREADS_POSTS_PER_RUN,
   resolveLinkedAction,
@@ -68,7 +68,15 @@ async function run(req: NextRequest): Promise<NextResponse> {
   const approved = (await getAll(
     `SELECT * FROM threads_posts WHERE status = 'approved' AND scheduled_at IS NOT NULL ORDER BY scheduled_at ASC, id ASC LIMIT 100`
   )) as ThreadsPostRow[];
-  const due = pickDuePosts(approved, now, MAX_THREADS_POSTS_PER_RUN);
+  // 予約時刻を2時間超過したものは投稿せず自動見送り(x-autopostと同じガード)
+  const { due: withinGrace, expired } = partitionExpired(approved, now);
+  for (const p of expired) {
+    await execute(
+      "UPDATE threads_posts SET status = 'failed', error = ?, updated_at = datetime('now') WHERE id = ? AND status = 'approved'",
+      ['予約時刻を2時間以上過ぎたため自動見送り(時刻を設定し直すと再試行できます)', p.id]
+    );
+  }
+  const due = pickDuePosts(withinGrace, now, MAX_THREADS_POSTS_PER_RUN);
 
   const results: Array<Record<string, unknown>> = [];
   let posted = 0;
