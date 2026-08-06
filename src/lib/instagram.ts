@@ -119,8 +119,12 @@ export async function exchangeAndStoreToken(code: string, origin: string): Promi
     throw new Error(`短期トークン取得失敗: ${JSON.stringify(shortJson)}`);
   }
   const shortToken = shortJson.access_token as string;
-  // user_id は data 配列 or トップレベルで返る(APIバージョン差異に両対応)
-  const igUserId = String(shortJson.user_id ?? shortJson.data?.[0]?.user_id ?? '');
+  // ⚠️ user_id をここから読むのは**数値で返ってきた場合に危険**。
+  // IDは 2^53 を超えるので JSON.parse の時点で丸められることがある
+  // (Threadsで実際に ...101 が ...100 になり投稿APIが落ちた)。
+  // 文字列で返っている時だけ採用し、それ以外は下の /me で取り直す。
+  const rawUserId = shortJson.user_id ?? shortJson.data?.[0]?.user_id;
+  const igUserId = typeof rawUserId === 'string' ? rawUserId : '';
   if (!shortToken) throw new Error('短期アクセストークンが取得できませんでした');
 
   // 2. 長期トークン(60日)

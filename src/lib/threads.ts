@@ -118,7 +118,10 @@ export async function exchangeAndStoreToken(code: string, origin: string): Promi
   }
   const shortToken = shortJson.access_token as string;
   if (!shortToken) throw new Error('短期アクセストークンが取得できませんでした');
-  let userId = String(shortJson.user_id ?? '');
+  // ⚠️ shortJson.user_id は**絶対に使わない**。ThreadsのユーザーIDは
+  // JSONの数値として返るが 2^53 を超えるため、JSON.parse の時点で丸められる
+  // (実際に ...101 が ...100 になり、投稿APIが「そんなIDは無い」で落ちた)。
+  // 文字列で返る /me の id を必ず使う。
 
   const longRes = await fetch(
     `${GRAPH}/access_token?grant_type=th_exchange_token&client_secret=${appSecret}&access_token=${shortToken}`
@@ -130,11 +133,10 @@ export async function exchangeAndStoreToken(code: string, origin: string): Promi
   const longToken = longJson.access_token as string;
   if (!longToken) throw new Error('長期アクセストークンが取得できませんでした');
 
-  if (!userId) {
-    const meRes = await fetch(`${GRAPH}/v1.0/me?fields=id&access_token=${longToken}`);
-    const meJson = await meRes.json();
-    userId = String(meJson.id ?? '');
-  }
+  const meRes = await fetch(`${GRAPH}/v1.0/me?fields=id,username&access_token=${longToken}`);
+  const meJson = await meRes.json();
+  const userId = String(meJson.id ?? '');
+  if (!userId) throw new Error(`ユーザーIDが取得できませんでした: ${JSON.stringify(meJson)}`);
 
   await Promise.all([
     upsertSetting(TOKEN_KEY, longToken),
