@@ -47,6 +47,30 @@ export function splitCaption(caption: string): { body: string; tags: string[] } 
 }
 
 /**
+ * Threadsにアカウントがある講師のInstagramハンドル(小文字・@なし)。
+ *
+ * ThreadsのハンドルはInstagramと同一なので、ここに載っている講師は
+ * Threads投稿で `@ハンドル` をそのまま残せば**本人へのメンション**として機能する。
+ * 逆に載っていない講師は Threads 未開設で、@のまま出すと死にリンクになるだけ
+ * なので名前置換に落とす。
+ *
+ * 2026-08-06 に全講師ぶんを実在確認済み(未開設: kattsu_ziel / chamnatsu / sayu_sayuki)。
+ * 再確認方法: https://www.threads.com/@<handle> がログインなしでプロフィールを
+ * 表示すれば存在、ログインページに飛ばされれば未開設。講師がThreadsを始めたらここに足す。
+ */
+export const THREADS_MENTIONABLE_HANDLES: ReadonlySet<string> = new Set([
+  'taro_bsb',
+  'aoi.w_0530',
+  'm55keiko',
+  'takaryu_1203',
+  'occhan.88',
+  'haruka0v0matsuura',
+  'yurillo7fancy',
+  'kousukekokeko',
+  'my.dlst_07',
+]);
+
+/**
  * Instagram向けキャプションの `@ハンドル` を、Instagram以外で無害な形に直す。
  *
  * ⚠️ ここを通さないと**赤の他人にメンションが飛ぶ**(TARO 2026-08-05指摘)。
@@ -59,12 +83,17 @@ export function splitCaption(caption: string): { body: string; tags: string[] } 
  *            引けない場合は @ ごと落とす(間違ったリンクを作るより、無いほうがまし)。
  *  - CAST … 生徒のInstagramアカウントなので**行ごと落とす**。
  *            Instagram以外では宛先が存在しないうえ、誤爆すると無関係の人を巻き込む。
+ *  - 例外: keepMentions に入っているハンドルは `@` のまま残す。
+ *          Threads はハンドルがInstagramと同一なので、Threads開設済みの講師
+ *          (THREADS_MENTIONABLE_HANDLES)だけは本人へのメンションとして機能する。
  *
  * @param nameByHandle Instagramハンドル(小文字・@なし) → 表示名
+ * @param keepMentions `@` のまま残してよいハンドル(小文字・@なし)の集合
  */
 export function sanitizeHandlesForOtherPlatform(
   caption: string,
-  nameByHandle: Record<string, string> = {}
+  nameByHandle: Record<string, string> = {},
+  keepMentions?: ReadonlySet<string>
 ): string {
   const lines = (caption ?? '').split('\n');
   const out: string[] = [];
@@ -72,8 +101,10 @@ export function sanitizeHandlesForOtherPlatform(
     // CAST行(旧表記の「出演：」も含む)は丸ごと落とす
     if (/^\s*(CAST\s*[:：]|出演\s*[:：])/i.test(line)) continue;
 
-    const replaced = line.replace(/@([A-Za-z0-9._]+)/g, (_m, h: string) => {
-      const name = nameByHandle[String(h).toLowerCase()];
+    const replaced = line.replace(/@([A-Za-z0-9._]+)/g, (m, h: string) => {
+      const key = String(h).toLowerCase();
+      if (keepMentions?.has(key)) return m;
+      const name = nameByHandle[key];
       return name ?? '';
     });
 

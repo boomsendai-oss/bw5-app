@@ -9,6 +9,7 @@ import {
   buildFacebookDescription,
   buildTikTokTitle,
   sanitizeHandlesForOtherPlatform,
+  THREADS_MENTIONABLE_HANDLES,
   pickNext,
   classifyByEnabled,
   CROSSPOST_PLATFORMS,
@@ -206,8 +207,15 @@ export async function POST(req: NextRequest) {
       externalId = out.videoId;
       permalink = out.permalink;
     } else if (target.platform === 'threads') {
-      // Threadsは本文にリンクを入れても表示が落ちないので、導線を本文に直接入れる
-      const out = await postThreadsVideo(videoUrl, buildThreadsText(safeCaption));
+      // Threadsは本文にリンクを入れても表示が落ちないので、導線を本文に直接入れる。
+      // ハンドルはInstagramと同一なので、Threads開設済みの講師だけ@メンションを残す
+      // (本人に通知が飛び、リポストしてもらいやすくなる)
+      const threadsCaption = sanitizeHandlesForOtherPlatform(
+        reel.caption,
+        nameByHandle,
+        THREADS_MENTIONABLE_HANDLES
+      );
+      const out = await postThreadsVideo(videoUrl, buildThreadsText(threadsCaption));
       externalId = out.id;
       permalink = out.permalink;
     } else if (target.platform === 'facebook') {

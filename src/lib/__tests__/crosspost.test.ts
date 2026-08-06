@@ -4,6 +4,7 @@ import {
   buildXText,
   buildYouTubeMeta,
   sanitizeHandlesForOtherPlatform,
+  THREADS_MENTIONABLE_HANDLES,
   pickNext,
   X_TEXT_MAX,
   THREADS_TEXT_MAX,
@@ -305,6 +306,57 @@ describe('sanitizeHandlesForOtherPlatform', () => {
   it('@が無いキャプションはそのまま', () => {
     const caption = 'HIPHOP ／ 日曜 14:00\n体験レッスンは無料。';
     expect(sanitizeHandlesForOtherPlatform(caption, NAMES)).toBe(caption);
+  });
+});
+
+// Threads向け: ハンドルがInstagramと同一なので、Threads開設済みの講師だけ
+// @メンションのまま残す(本人に通知が飛ぶ)。未開設の講師は名前置換のまま。
+describe('sanitizeHandlesForOtherPlatform + keepMentions (Threads)', () => {
+  const KEEP: ReadonlySet<string> = new Set(['taro_bsb', 'takaryu_1203']);
+
+  it('Threads開設済みの講師は@のまま残す', () => {
+    const out = sanitizeHandlesForOtherPlatform('🕺講師：@takaryu_1203', NAMES, KEEP);
+    expect(out).toBe('🕺講師：@takaryu_1203');
+  });
+
+  it('Threads未開設の講師は今まで通り名前に置換する', () => {
+    const out = sanitizeHandlesForOtherPlatform('🕺講師：@m55keiko', NAMES, KEEP);
+    expect(out).toBe('🕺講師：KEIKO');
+  });
+
+  it('keepMentionsの大文字小文字はハンドル側を小文字化して照合する', () => {
+    const out = sanitizeHandlesForOtherPlatform('🕺講師：@Taro_BSB', NAMES, KEEP);
+    expect(out).toBe('🕺講師：@Taro_BSB');
+  });
+
+  it('CAST行(生徒)はkeepMentionsがあっても行ごと落とす', () => {
+    const out = sanitizeHandlesForOtherPlatform('本文\nCAST : @taro_bsb @kid_a\n締め', NAMES, KEEP);
+    expect(out).not.toContain('CAST');
+    expect(out).not.toContain('kid_a');
+  });
+
+  it('登録簿に無いハンドルはkeepMentionsに無ければ従来通り行ごと落ちる', () => {
+    expect(sanitizeHandlesForOtherPlatform('🕺講師：@unknown_person', NAMES, KEEP)).toBe('');
+  });
+
+  it('本物の定数: 開設済み9人が入っていて未開設3人が入っていない', () => {
+    expect(THREADS_MENTIONABLE_HANDLES.has('taro_bsb')).toBe(true);
+    expect(THREADS_MENTIONABLE_HANDLES.has('m55keiko')).toBe(true);
+    expect(THREADS_MENTIONABLE_HANDLES.size).toBe(9);
+    // 2026-08-06時点でThreads未開設(実在確認済み)
+    expect(THREADS_MENTIONABLE_HANDLES.has('kattsu_ziel')).toBe(false);
+    expect(THREADS_MENTIONABLE_HANDLES.has('chamnatsu')).toBe(false);
+    expect(THREADS_MENTIONABLE_HANDLES.has('sayu_sayuki')).toBe(false);
+  });
+
+  it('buildThreadsTextまで通してもメンションが残る', () => {
+    const caption = [
+      'HIPHOP ／ 日曜 14:00', '🕺講師：@takaryu_1203', '',
+      '体験レッスンは無料。ご予約はプロフィールの公式LINEから', '',
+      '#仙台ダンススクール',
+    ].join('\n');
+    const threads = buildThreadsText(sanitizeHandlesForOtherPlatform(caption, NAMES, KEEP));
+    expect(threads).toContain('@takaryu_1203');
   });
 });
 
