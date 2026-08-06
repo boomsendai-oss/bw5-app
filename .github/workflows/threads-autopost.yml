@@ -1,0 +1,26 @@
+# Threadsテキスト投稿 自動ポストcron (SNSテキスト配信レーン 2026-08-06)
+# 15分おき(Xの */15 と7分ずらし)に /api/cron/threads-autopost を叩く。
+# エンドポイント側で ①リンク行のX承認追従 ②approved かつ scheduled_at<=now を最大5件投稿。
+# 対象が無ければ即no-op・Threads未連携の間は dormant を返すだけ(安全)。
+name: threads-autopost
+
+on:
+  schedule:
+    - cron: '7-59/15 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/threads-autopost
+        run: |
+          set -e
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/threads-autopost)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1

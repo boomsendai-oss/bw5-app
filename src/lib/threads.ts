@@ -311,3 +311,54 @@ export async function postVideo(videoUrl: string, text: string): Promise<{ id: s
   }
   return { id, permalink };
 }
+
+/**
+ * テキスト投稿(SNSテキスト配信レーン 2026-08-06)。
+ * TEXTコンテナは動画と違い通常すぐ公開できるので、長いポーリングはせず
+ * publish失敗時のみ短く待って再試行する(固定投稿をAPIで作った実績のある方式)。
+ */
+export async function postText(text: string): Promise<{ id: string; permalink: string }> {
+  const { token, userId } = await requireConnection();
+
+  const createParams = new URLSearchParams({ media_type: 'TEXT', text, access_token: token });
+  const createRes = await fetch(`${GRAPH}/v1.0/${userId}/threads`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: createParams.toString(),
+  });
+  const createJson = await createRes.json();
+  if (!createRes.ok || createJson.error) {
+    throw new Error(`コンテナ作成失敗: ${JSON.stringify(createJson.error ?? createJson)}`);
+  }
+  const creationId = String(createJson.id ?? '');
+  if (!creationId) throw new Error('creation_id が取得できませんでした');
+
+  const pubParams = new URLSearchParams({ creation_id: creationId, access_token: token });
+  let lastErr: unknown = null;
+  let id = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await sleep(3000);
+    const pubRes = await fetch(`${GRAPH}/v1.0/${userId}/threads_publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: pubParams.toString(),
+    });
+    const pubJson = await pubRes.json();
+    if (pubRes.ok && !pubJson.error && pubJson.id) {
+      id = String(pubJson.id);
+      break;
+    }
+    lastErr = pubJson.error ?? pubJson;
+  }
+  if (!id) throw new Error(`公開失敗: ${JSON.stringify(lastErr)}`);
+
+  let permalink = `https://www.threads.net/@_/post/${id}`;
+  try {
+    const pRes = await fetch(`${GRAPH}/v1.0/${id}?fields=permalink&access_token=${token}`);
+    const pJson = await pRes.json();
+    if (pJson.permalink) permalink = String(pJson.permalink);
+  } catch {
+    // permalinkが取れなくても投稿は完了している
+  }
+  return { id, permalink };
+}
