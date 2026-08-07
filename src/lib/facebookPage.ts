@@ -292,3 +292,49 @@ export async function postReel(
 
   return { id: videoId, permalink: `https://www.facebook.com/reel/${videoId}` };
 }
+
+/**
+ * ページへのテキスト投稿を**Facebook側の機能で**予約する(GBP月次投稿のFB版に使う)。
+ *
+ * cronを増やさず、FBの scheduled_publish_time に任せる。制約は
+ * 「10分後以上・75日後以内」— 毎月20日に翌月分(最大6週先)を予約する運用は余裕で収まる。
+ *
+ * @param scheduledAtUtcIso 公開日時(UTC ISO)
+ */
+export async function schedulePagePost(
+  message: string,
+  scheduledAtUtcIso: string
+): Promise<{ id: string }> {
+  const { pageId, pageToken } = await requireConnection();
+  const unix = Math.floor(new Date(scheduledAtUtcIso).getTime() / 1000);
+  const res = await fetch(`${GRAPH}/${pageId}/feed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      message,
+      published: 'false',
+      scheduled_publish_time: String(unix),
+      access_token: pageToken,
+    }).toString(),
+  });
+  const json = await res.json();
+  if (!res.ok || json.error) {
+    throw new Error(`FB予約投稿の作成失敗: ${JSON.stringify(json.error ?? json)}`);
+  }
+  return { id: String(json.id) };
+}
+
+/** 予約済み投稿の公開予定時刻(UTC ISO)一覧。二重登録の防止に使う */
+export async function listScheduledPagePostTimes(): Promise<string[]> {
+  const { pageId, pageToken } = await requireConnection();
+  const res = await fetch(
+    `${GRAPH}/${pageId}/scheduled_posts?fields=scheduled_publish_time&limit=100&access_token=${pageToken}`
+  );
+  const json = await res.json();
+  if (!res.ok || json.error) {
+    throw new Error(`FB予約一覧の取得失敗: ${JSON.stringify(json.error ?? json)}`);
+  }
+  return ((json.data ?? []) as { scheduled_publish_time?: number }[])
+    .filter((p) => p.scheduled_publish_time)
+    .map((p) => new Date(p.scheduled_publish_time! * 1000).toISOString());
+}

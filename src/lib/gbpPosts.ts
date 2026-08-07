@@ -25,6 +25,14 @@ export type ParsedDraftPost = {
   scheduledTimeUtc: string;
   /** 投稿本文 */
   summary: string;
+  /**
+   * Facebookページ版の本文 (同時起草・TARO 2026-08-07)。
+   * GBP文面のコピーではなく、同じネタをFB向けに書いた別文
+   * (GBPそのまま転載は内容が薄く見えるため禁止)。
+   * ドラフトMDで「**Facebook版**」の後のコードブロックに書く。
+   * 無ければ undefined = FBには投稿しない(後方互換)。
+   */
+  fbText?: string;
 };
 
 export type ParseResult = {
@@ -81,7 +89,20 @@ export function parseGbpDraftMarkdown(markdown: string): ParseResult {
       continue;
     }
 
-    posts.push({ index, title, scheduledTimeUtc, summary });
+    // Facebook版(任意)。「**Facebook版**」マーカー以降の最初のコードブロック。
+    // マーカーがあるのに本文が無い場合はエラーに隔離する(GBP側は生かす)
+    let fbText: string | undefined;
+    const fbMarkerAt = sec.search(/\*\*\s*Facebook版\s*\*\*/);
+    if (fbMarkerAt >= 0) {
+      const fbBody = sec.slice(fbMarkerAt).match(/```[^\n]*\n([\s\S]*?)\n```/);
+      if (fbBody && fbBody[1].trim()) {
+        fbText = fbBody[1].trim();
+      } else {
+        errors.push(`投稿${index}: Facebook版マーカーはあるが本文コードブロックがありません`);
+      }
+    }
+
+    posts.push({ index, title, scheduledTimeUtc, summary, ...(fbText ? { fbText } : {}) });
   }
 
   return { posts, errors };

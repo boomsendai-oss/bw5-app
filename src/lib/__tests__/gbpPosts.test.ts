@@ -136,3 +136,72 @@ describe('nextMonthJst', () => {
     expect(nextMonthJst(new Date('2026-07-31T23:00:00Z'))).toBe('2026-09');
   });
 });
+
+// Facebook版の同時起草(TARO 2026-08-07)。GBP文面の転載でなく別文を書く前提で、
+// ドラフトMDの「**Facebook版**」ブロックをパースする。
+describe('parseGbpDraftMarkdown: Facebook版', () => {
+  const base = (fbBlock: string) => `# ドラフト
+
+## 投稿1/4 — 第1週(出来事報告)
+
+**予約日時: 2026年9月7日(月) 9:00 JST**
+
+\`\`\`
+GBP向けの本文です。
+\`\`\`
+
+${fbBlock}
+`;
+
+  it('Facebook版ブロックがあれば fbText に入る', () => {
+    const md = base('**Facebook版**\n\n```\nFB向けの本文です。場面を描いた長めの文。\n```');
+    const { posts, errors } = parseGbpDraftMarkdown(md);
+    expect(errors).toEqual([]);
+    expect(posts[0].summary).toBe('GBP向けの本文です。');
+    expect(posts[0].fbText).toBe('FB向けの本文です。場面を描いた長めの文。');
+  });
+
+  it('Facebook版が無ければ fbText は undefined (後方互換)', () => {
+    const { posts, errors } = parseGbpDraftMarkdown(base(''));
+    expect(errors).toEqual([]);
+    expect(posts[0].fbText).toBeUndefined();
+  });
+
+  it('マーカーはあるが本文が無い場合はエラーに隔離し、GBP側は生かす', () => {
+    const md = base('**Facebook版**\n\n(書き忘れ)');
+    const { posts, errors } = parseGbpDraftMarkdown(md);
+    expect(posts).toHaveLength(1);
+    expect(posts[0].fbText).toBeUndefined();
+    expect(errors.some((e) => e.includes('Facebook版'))).toBe(true);
+  });
+
+  it('複数投稿でFB版の有無が混在してよい', () => {
+    const md = `# ドラフト
+
+## 投稿1/4 — 第1週
+
+**予約日時: 2026年9月7日(月) 9:00 JST**
+
+\`\`\`
+GBP1
+\`\`\`
+
+**Facebook版**
+
+\`\`\`
+FB1
+\`\`\`
+
+## 投稿2/4 — 第2週
+
+**予約日時: 2026年9月14日(月) 9:00 JST**
+
+\`\`\`
+GBP2
+\`\`\`
+`;
+    const { posts, errors } = parseGbpDraftMarkdown(md);
+    expect(errors).toEqual([]);
+    expect(posts.map((p) => p.fbText)).toEqual(['FB1', undefined]);
+  });
+});

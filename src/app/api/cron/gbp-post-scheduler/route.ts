@@ -12,6 +12,11 @@ import {
   planPostCreation,
 } from '@/lib/gbpPosts';
 import { notifyTaro } from '@/lib/notify';
+import {
+  configured as fbConfigured,
+  schedulePagePost,
+  listScheduledPagePostTimes,
+} from '@/lib/facebookPage';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -107,7 +112,43 @@ async function run(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const allErrors = [...parseErrors, ...createErrors];
+    // Facebook版の同時予約 (TARO 2026-08-07 同時起草方式)。
+    // FBネイティブの予約投稿(scheduled_publish_time)に任せるので、配信用cronは増えない。
+    // 冪等性はGBPと同型: 同時刻の予約が既にあればskip。
+    // FBの制約「10分後以降しか予約できない」があるので、閾値も10分にしてある。
+    const fbPosts = posts.filter((p) => p.fbText);
+    const fbCreated: { index: number; scheduledTimeUtc: string }[] = [];
+    let fbSkipped = 0;
+    const fbErrors: string[] = [];
+    if (fbPosts.length > 0) {
+      if (!fbConfigured()) {
+        fbErrors.push('Facebook版がドラフトにありますが、FB連携envが未設定のため予約できません');
+      } else {
+        try {
+          const existingFbTimes = new Set(
+            (await listScheduledPagePostTimes()).map((t) => new Date(t).getTime())
+          );
+          for (const p of fbPosts) {
+            const t = new Date(p.scheduledTimeUtc).getTime();
+            if (existingFbTimes.has(t) || t <= Date.now() + 11 * 60_000) {
+              fbSkipped++;
+              continue;
+            }
+            if (dry) continue;
+            try {
+              await schedulePagePost(p.fbText!, p.scheduledTimeUtc);
+              fbCreated.push({ index: p.index, scheduledTimeUtc: p.scheduledTimeUtc });
+            } catch (e) {
+              fbErrors.push(`FB投稿${p.index}: ${e instanceof Error ? e.message : String(e)}`);
+            }
+          }
+        } catch (e) {
+          fbErrors.push(`FB予約一覧の取得失敗: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+    }
+
+    const allErrors = [...parseErrors, ...createErrors, ...fbErrors];
     if (!dry && (created.length > 0 || allErrors.length > 0)) {
       const jst = (iso: string) =>
         new Date(new Date(iso).getTime() + 9 * 3600_000)
@@ -124,6 +165,10 @@ async function run(req: NextRequest): Promise<NextResponse> {
         plan.skipped.length > 0
           ? `スキップ${plan.skipped.length}本(既存予約と重複 or 時刻超過)`
           : '',
+        fbCreated.length > 0
+          ? `Facebookページにも${fbCreated.length}本を同時刻で予約しました(ページの「予約済み投稿」から確認できます)。`
+          : '',
+        fbSkipped > 0 ? `FB側スキップ${fbSkipped}本(既存予約と重複 or 時刻超過)` : '',
         allErrors.length > 0 ? `⚠️ エラー:\n${allErrors.join('\n')}` : '',
       ].filter(Boolean);
       await notifyTaro({
@@ -150,6 +195,7 @@ async function run(req: NextRequest): Promise<NextResponse> {
       to_create_dry: dry
         ? plan.toCreate.map((p) => ({ index: p.index, scheduledTimeUtc: p.scheduledTimeUtc }))
         : undefined,
+      fb: { withFbText: fbPosts.length, created: fbCreated, skipped: fbSkipped },
       errors: allErrors,
     });
   } catch (e) {
