@@ -286,6 +286,40 @@ export default async function Bf6TopPage() {
           </div>
         </section>
 
+        {/* 主催スクールへの導線: 見に来て「踊ってみたい」と思った人を受け止める */}
+        <section className="px-4 pt-10">
+          <div className="rounded-2xl border border-neutral-800 bg-gradient-to-b from-neutral-900 to-neutral-950 p-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+            <p className="text-[11px] font-bold tracking-[0.2em] text-red-500">PRESENTED BY</p>
+            <p className="mt-1 text-2xl font-black italic text-white">BOOM DANCE SCHOOL</p>
+            <p className="mt-3 text-sm leading-relaxed text-neutral-300">
+              このイベントを主催しているのは、仙台のストリートダンススクール BOOM。
+              <br className="hidden md:block" />
+              初心者から現役バトラーまで、幅広いクラスがあります。
+            </p>
+            <p className="mt-2 text-xs text-neutral-400">
+              「自分も踊ってみたい」「いつかバトルに出てみたい」と思ったら、まずは体験レッスンから。
+            </p>
+            <div className="mt-4 space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
+              <a
+                href="https://boom-sendai.com/trial/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-14 w-full items-center justify-center rounded-2xl bg-gradient-to-b from-neutral-200 to-neutral-400 font-black text-neutral-900 ring-1 ring-neutral-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
+              >
+                体験レッスンを見る ↗
+              </a>
+              <a
+                href="https://boom-sendai.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-14 w-full items-center justify-center rounded-2xl border-2 border-neutral-700 bg-neutral-900 font-bold text-neutral-300"
+              >
+                スクール公式サイト ↗
+              </a>
+            </div>
+          </div>
+        </section>
+
         <p className="mt-10 text-center text-xs text-neutral-400">
           <Link href="/bf6/legal" className="underline">特商法表記・キャンセルポリシー</Link>
         </p>

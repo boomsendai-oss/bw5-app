@@ -46,9 +46,15 @@ export const inputCls =
 export function Bf6Hero({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <header className="bg-neutral-950 px-4 pb-6 pt-8 text-white">
-      <p className="text-[11px] font-bold tracking-[0.25em] text-neutral-400">
+      {/* 主催スクールへの導線。別タブなので申込フォーム記入中でも入力は消えない */}
+      <a
+        href="https://boom-sendai.com/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-block text-[11px] font-bold tracking-[0.25em] text-neutral-400 hover:text-white"
+      >
         BOOM DANCE SCHOOL PRESENTS
-      </p>
+      </a>
       <p className="mt-1 text-lg font-black italic leading-none">
         BOOMER&apos;S FIGHT!!! <span className="text-red-500">vol.6</span>
       </p>
