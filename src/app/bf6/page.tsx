@@ -182,11 +182,12 @@ export default async function Bf6TopPage() {
                 <div className="rounded-xl bg-neutral-900 p-3 ring-1 ring-neutral-700">
                   <p className="text-[11px] font-bold tracking-widest text-red-500">MC</p>
                   <p className="mt-0.5 text-xl font-black italic text-white">TARO</p>
-                  <p className="text-[11px] font-bold text-neutral-400">BOOM DANCE SCHOOL</p>
+                  <p className="text-[11px] font-bold text-neutral-400">TARO&amp;TAKE / BSB</p>
                 </div>
                 <div className="rounded-xl bg-neutral-900 p-3 ring-1 ring-neutral-700">
                   <p className="text-[11px] font-bold tracking-widest text-red-500">BATTLE DJ</p>
                   <p className="mt-0.5 text-xl font-black italic text-white">DJ おっちゃん</p>
+                  <p className="text-[11px] font-bold text-neutral-400">NEW STYLERS</p>
                 </div>
               </div>
               <p className="mt-3 font-black italic tracking-widest text-neutral-300">JUDGE: AND MORE… <span className="ml-1 text-xs font-bold not-italic text-neutral-500">続々発表予定</span></p>
