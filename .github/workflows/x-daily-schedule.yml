@@ -1,11 +1,11 @@
 # 「本日のレッスン」自動投稿の生成cron (2026-08-07・層0=承認不要)
-# 毎朝7:10 JST(22:10 UTC)に当日分を生成し7:30 JST予約でx_posts(approved)+threads_posts(リンク)へ投入。
+# 毎日12:00 JST(03:00 UTC)に当日分を生成し12:30 JST予約でx_posts(approved)+threads_posts(リンク)へ投入。
 # レッスンが無い日・カレンダー未連携時は何もしない(安全)。
 name: x-daily-schedule
 
 on:
   schedule:
-    - cron: '10 22 * * *'
+    - cron: '0 3 * * *'
   workflow_dispatch: {}
 
 jobs:

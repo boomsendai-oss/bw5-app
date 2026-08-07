@@ -13,7 +13,9 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 // 「本日のレッスン」X/Threads投稿の自動生成cron (2026-08-07・TARO指示)。
-// GitHub Actions から毎朝7:10 JSTに叩かれ、当日分を7:30 JST予約で投入する。
+// GitHub Actions から毎日12:00 JSTに叩かれ、当日分を12:30 JST予約で投入する。
+// (12:30の根拠: 保護者の昼休みスクロール帯・夕方レッスンの6時間前リマインド・IGストーリー12時と整合。
+//  直前生成なので朝に入った休講・代講もその日の投稿に反映される。2026-08-07 TARO指摘で7:30から変更)
 // 層0(カレンダー由来・型固定)なので approved 直接投入=TARO承認不要(SNSテキスト配信 設計の承認3層)。
 // Threads側は x_post_id リンクの draft を作る(threads-autopost の承認追従が approved にする)。
 // 予定の正 = 生徒に公開しているGoogleカレンダー(週次と同じ・アプリDBは読まない)。
@@ -58,8 +60,8 @@ async function run(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, skipped: 'no-lessons', day: ymd, events: events.length });
   }
 
-  // 予約 = 当日 7:30 JST。層0なので approved 直接投入
-  const scheduledAt = new Date(`${ymd}T07:30:00+09:00`).toISOString();
+  // 予約 = 当日 12:30 JST。層0なので approved 直接投入
+  const scheduledAt = new Date(`${ymd}T12:30:00+09:00`).toISOString();
   const rx = await execute(
     "INSERT INTO x_posts (account, parts, scheduled_at, status) VALUES ('boom', ?, ?, 'approved')",
     [JSON.stringify(parts), scheduledAt]
