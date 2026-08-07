@@ -1,0 +1,25 @@
+# 「本日のレッスン」自動投稿の生成cron (2026-08-07・層0=承認不要)
+# 毎朝7:10 JST(22:10 UTC)に当日分を生成し7:30 JST予約でx_posts(approved)+threads_posts(リンク)へ投入。
+# レッスンが無い日・カレンダー未連携時は何もしない(安全)。
+name: x-daily-schedule
+
+on:
+  schedule:
+    - cron: '10 22 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/x-daily-schedule
+        run: |
+          set -e
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/x-daily-schedule)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || exit 1

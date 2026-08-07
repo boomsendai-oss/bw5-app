@@ -157,3 +157,58 @@ export function addDaysYmd(ymd: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/** ISO日時をJSTの HH:MM に変換 */
+function jstHhmm(iso: string): string {
+  const d = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * 「本日のレッスン」投稿の本文を組み立てる (2026-08-07・TARO指示の層0レーン)。
+ * 週次と同じカレンダーイベントを日次で時刻付きに整形する。
+ * イベント0件(または全件休講)なら null (投稿を作らない)。
+ */
+export function buildDailyPostParts(
+  events: WeeklyCalEvent[],
+  today: { month: number; day: number; weekday: number }
+): string[] | null {
+  const sorted = [...events]
+    .filter((ev) => !ev.summary.includes('【休講】'))
+    .sort((a, b) => (a.startIso < b.startIso ? -1 : 1));
+
+  const lines: string[] = [];
+  for (const ev of sorted) {
+    const name = classNameFromSummary(ev.summary);
+    if (!name) continue;
+    const venue = shortVenue(ev.location);
+    const item = venue ? `${name}(${venue})` : name;
+    const line = `▫${jstHhmm(ev.startIso)} ${item}`;
+    if (!lines.includes(line)) lines.push(line);
+  }
+  if (lines.length === 0) return null;
+
+  const header = `【本日のレッスン】${today.month}/${today.day}(${WEEKDAY_JA[today.weekday]})`;
+  const cta = '体験・お問い合わせは公式LINEからどうぞ🗓';
+
+  const parts: string[] = [];
+  let current = header;
+  for (const line of lines) {
+    const candidate = `${current}\n${line}`;
+    if (candidate.length > PART_CHAR_BUDGET && current !== header) {
+      parts.push(current);
+      current = line;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) parts.push(current);
+
+  const last = parts[parts.length - 1];
+  if (last && `${last}\n\n${cta}`.length <= PART_CHAR_BUDGET + 20) {
+    parts[parts.length - 1] = `${last}\n\n${cta}`;
+  } else {
+    parts.push(cta);
+  }
+  return parts;
+}
