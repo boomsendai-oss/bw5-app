@@ -39,6 +39,8 @@ export default function PlanChangePage() {
         </p>
         {t.inTime ? (
           <>
+            {/* 締切は「日付」を主役にする。カウントダウンは急ぎ具合を伝えるだけの別文にし、
+                「あと2日(8月10日まで)に手続きすれば」のように括弧で文を分断しない(TARO指摘 2026-08-08) */}
             <p className="mt-2 text-[17px] font-bold leading-relaxed text-navy-800">
               今日は{formatDayLabel(t.today)}。
               {t.daysLeft === 0 ? (
@@ -47,13 +49,17 @@ export default function PlanChangePage() {
                 </>
               ) : (
                 <>
-                  あと<span className="text-brand-600">{t.daysLeft}日</span>（
-                  {formatDayLabel(t.deadline)}まで）に手続きすれば
+                  締切まで<span className="text-brand-600">あと{t.daysLeft}日</span>です。
                 </>
               )}
             </p>
             <p className="mt-1 text-[17px] font-bold leading-relaxed text-navy-800">
-              <span className="rounded bg-brand-50 px-1.5 py-0.5 text-brand-700">
+              <span className="inline-block whitespace-nowrap rounded bg-brand-50 px-1.5 py-0.5 text-brand-700">
+                {/* 締切当日に「8月10日までに」と繰り返すと冗長なので「今日中」に言い換える */}
+                {t.daysLeft === 0 ? '今日中' : `${formatDayLabel(t.deadline)}まで`}
+              </span>
+              に手続きすれば、
+              <span className="inline-block whitespace-nowrap rounded bg-brand-50 px-1.5 py-0.5 text-brand-700">
                 {formatMonthLabel(t.effectiveMonth, baseYm)}分
               </span>
               から新しいプランになります。
@@ -70,7 +76,7 @@ export default function PlanChangePage() {
             </p>
             <p className="mt-1 text-[17px] font-bold leading-relaxed text-navy-800">
               いま手続きすると
-              <span className="rounded bg-brand-50 px-1.5 py-0.5 text-brand-700">
+              <span className="inline-block whitespace-nowrap rounded bg-brand-50 px-1.5 py-0.5 text-brand-700">
                 {formatMonthLabel(t.effectiveMonth, baseYm)}分
               </span>
               から新しいプランになります。
