@@ -54,15 +54,19 @@ export async function GET(req: NextRequest) {
   } else {
     for (const media of chain) {
       const sidecar = await loadSidecar(origin, media.base);
+      // library-auto の素材は宣言をChainMediaにインライン保持していてsidecarファイルが無い。
+      // sidecarだけ見ていると「台帳由来の素材は内容検査を素通り」になる(2026-08-08の誤配信は
+      // まさにこの経路で、前夜プリフライトが何も警告できなかった)。インライン宣言を優先する。
+      const declared = media.lessons ?? sidecar.lessons;
 
-      const check = await checkSchedule(date, sidecar.lessons);
+      const check = await checkSchedule(date, declared);
       if (check.result === 'mismatch') {
         warnings.push(`⚠️ ${media.base}: 宣言レッスンが明日のカレンダーと不一致 — ${check.problems.join(' / ')}`);
       }
 
-      if (sidecar.lessons && sidecar.lessons.length > 0) {
+      if (declared && declared.length > 0) {
         try {
-          const { unresolved } = await resolveMentions(sidecar.lessons.map((l) => l.instructor));
+          const { unresolved } = await resolveMentions(declared.map((l) => l.instructor));
           if (unresolved.length > 0) {
             warnings.push(
               `🏷️ ${media.base}: IGハンドル未登録の講師 [${unresolved.join(', ')}] — このままだとタグが付きません(講師マスタに登録を)。`
