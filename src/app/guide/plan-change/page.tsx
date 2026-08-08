@@ -10,7 +10,10 @@ import { GuideStep, GuideSteps } from '../_components/GuideStep';
 import capHome from '../_captures/plan-2-home.png';
 import capMypage from '../_captures/plan-3-mypage.png';
 import capKeiyaku from '../_captures/plan-4-keiyaku.png';
-import capStartMonth from '../_captures/plan-5-startmonth.png';
+import capStore from '../_captures/plan-5-store.png';
+import capStartMonth from '../_captures/plan-6-startmonth.png';
+import capPay from '../_captures/plan-8-pay.png';
+import capConfirm from '../_captures/plan-9-confirm.png';
 
 // 締切の残り日数を今日の日付から出すため、リクエストごとに描画する。
 // 静的化するとビルド日の「あと◯日」が焼き付いて嘘になる。
@@ -165,6 +168,9 @@ export default function PlanChangePage() {
           n={5}
           title="「店舗を選択してください」はそのまま「次へ」"
           body="BOOMしかないので、最初から選ばれています。そのまま進んで大丈夫です。"
+          image={capStore}
+          imageAlt="店舗を選択する画面。BOOMのロゴが1つだけあり、選択済みのチェックが付いている"
+          hotspot={{ left: 2, top: 44.8, width: 96, height: 5.6 }}
         />
         <GuideStep
           n={6}
@@ -192,6 +198,9 @@ export default function PlanChangePage() {
           n={8}
           title="支払い方法を確認して「次へ」"
           body="登録済みのカードが表示されます。そのままでよければ「次へ」を押してください。"
+          image={capPay}
+          imageAlt="支払方法の確認画面。登録済みカードが表示され、「新しく利用カードを登録する」ボタンがある"
+          hotspot={{ left: 2, top: 24.6, width: 96, height: 8 }}
         />
         <GuideStep
           n={9}
@@ -203,6 +212,9 @@ export default function PlanChangePage() {
               思っていた内容と違う場合は、<b>実行せずに</b>公式LINEへご連絡ください。
             </>
           }
+          image={capConfirm}
+          imageAlt="最終確認の画面。手数料としてシステム変更手数料1,500円が表示され、その下に新しい契約内容と変更前の契約内容が並ぶ"
+          hotspot={{ left: 1, top: 33, width: 98, height: 22 }}
         />
       </GuideSteps>
 
