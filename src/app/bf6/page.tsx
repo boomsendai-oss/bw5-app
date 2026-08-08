@@ -178,6 +178,15 @@ export default async function Bf6TopPage() {
                 </details>
                 </div>
               </div>
+              <div className="mt-2 overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-neutral-700">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/bf6/judge-mao.jpg" alt="Mao" className="aspect-[3/2] w-full object-cover object-top" />
+                <div className="p-4">
+                  <p className="text-[11px] font-bold tracking-widest text-red-500">JUDGE</p>
+                  <p className="mt-1 text-2xl font-black italic text-white">Mao</p>
+                  <p className="mt-2 text-xs text-neutral-400">プロフィール・戦績は近日公開</p>
+                </div>
+              </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <div className="overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-neutral-700">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
