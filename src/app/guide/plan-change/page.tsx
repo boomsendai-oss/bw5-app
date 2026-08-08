@@ -88,7 +88,18 @@ export default function PlanChangePage() {
         )}
       </section>
 
+      {/* 実機の最終確認画面(6/7)で判明。手続きを始める前に知らせないと、
+          最後の最後で「聞いていない出費」に当たることになる(2026-08-08) */}
       <div className="mt-4">
+        <GuideCallout tone="warn">
+          <p className="font-semibold">手数料が1,500円かかります</p>
+          <p className="mt-1">
+            手続きを実行すると、システム変更手数料<b>1,500円（税込）</b>が登録中のカードから<b>その場で引き落とされます</b>。月会費とは別の費用です。手続きの最後の確認画面にも金額が表示されます。
+          </p>
+        </GuideCallout>
+      </div>
+
+      <div className="mt-3">
         <GuideCallout>
           <p className="font-semibold">なぜ10日が締切なの？</p>
           <p className="mt-1">
@@ -148,8 +159,15 @@ export default function PlanChangePage() {
           imageAlt="契約管理の画面。「プランを変更」の行があり、その下に「退会」がある"
           hotspot={{ left: 1, top: 49, width: 98, height: 7 }}
         />
+        {/* 実機で踏破して判明(2026-08-08): 「プランを変更」の直後は月の選択ではなく店舗選択が出る。
+            ここを書いていなかったので、会員は最初の画面でいきなり案内と食い違う状態だった */}
         <GuideStep
           n={5}
+          title="「店舗を選択してください」はそのまま「次へ」"
+          body="BOOMしかないので、最初から選ばれています。そのまま進んで大丈夫です。"
+        />
+        <GuideStep
+          n={6}
           title="変更を始める月を選ぶ"
           body={
             <>
@@ -157,11 +175,11 @@ export default function PlanChangePage() {
             </>
           }
           image={capStartMonth}
-          imageAlt="プラン変更手続きの2/7画面。「プランを変更する開始年月を選択してください」と変更開始年月日の選択欄"
+          imageAlt="プラン変更手続きの画面。「プランを変更する開始年月を選択してください」と変更開始年月日の選択欄"
           hotspot={{ left: 0.5, top: 19.5, width: 99, height: 15.5 }}
         />
         <GuideStep
-          n={6}
+          n={7}
           title="新しいプランを選んで「次へ」"
           body={
             <>
@@ -171,11 +189,18 @@ export default function PlanChangePage() {
           }
         />
         <GuideStep
-          n={7}
-          title="あとは画面の案内どおりに進める"
+          n={8}
+          title="支払い方法を確認して「次へ」"
+          body="登録済みのカードが表示されます。そのままでよければ「次へ」を押してください。"
+        />
+        <GuideStep
+          n={9}
+          title="最後の確認画面で、金額と開始日を見てから実行する"
           body={
             <>
-              手続きは全部で7ステップあり、画面の上に「◯/7」と出ます。最後まで進めて完了画面が出れば終わりです。ホームの契約プラン欄でも確認できます。
+              <b>手数料1,500円</b>と、新しい契約内容（開始日・プラン名・月額）、変更前の契約内容が並びます。ここが最終確認です。内容に間違いがなければ同意のチェックを入れて「プラン変更手続きを実行する」を押すと完了です。
+              <br />
+              思っていた内容と違う場合は、<b>実行せずに</b>公式LINEへご連絡ください。
             </>
           }
         />
