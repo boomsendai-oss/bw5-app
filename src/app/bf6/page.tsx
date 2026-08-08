@@ -187,6 +187,31 @@ export default async function Bf6TopPage() {
                   <p className="mt-2 text-xs text-neutral-400">プロフィール・戦績は近日公開</p>
                 </div>
               </div>
+              <div className="mt-2 overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-neutral-700">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/bf6/judge-kattsu.png" alt="K@TTSU" className="aspect-[3/2] w-full bg-gradient-to-b from-neutral-800 to-neutral-950 object-cover" />
+                <div className="p-4">
+                  <p className="text-[11px] font-bold tracking-widest text-red-500">JUDGE</p>
+                  <p className="mt-1 text-2xl font-black italic text-white">K@TTSU</p>
+                  <p className="text-xs font-bold text-neutral-400">Ziel</p>
+                  <p className="mt-2 text-xs leading-relaxed text-neutral-300">
+                    仙台を中心に東北のハウスシーンを牽引するダンスチーム「Ziel」の一人。
+                    チームとしても個人としても、数々のコンテスト・バトルで好成績を残す。
+                  </p>
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[11px] font-bold text-red-400">主な戦績を見る ▾</summary>
+                    <ul className="mt-2 space-y-0.5 text-[11px] leading-relaxed text-neutral-400">
+                      <li>DANCE@LIVE HOUSE 東北 2014 優勝 / 2016 準優勝</li>
+                      <li>WDC 2013 JAPAN FINAL HOUSE side 準優勝</li>
+                      <li>WDC 2013 東北予選 HOUSE side 優勝</li>
+                      <li>loop de dance 5th / season7 ファイナル クルーバトル優勝</li>
+                      <li>never say never 2nd season ファイナル 2on2 準優勝</li>
+                      <li>BUSH ON TOHOKU vol.2 準優勝</li>
+                      <li>king 仙台予選 バトルside 優勝 / コンテストside 準優勝</li>
+                    </ul>
+                  </details>
+                </div>
+              </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <div className="overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-neutral-700">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
