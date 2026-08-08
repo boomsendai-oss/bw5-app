@@ -99,14 +99,15 @@ export function GuideStep({
   );
 }
 
-/** キャプチャ未撮影のステップ。撮影後に image を渡せば置き換わる。 */
+/**
+ * キャプチャ未撮影のステップ。撮影後に image を渡せば置き換わる。
+ * 各手順に大きな空箱が並ぶとページが無駄に長くなるので、1行の控えめな帯にする。
+ */
 function CapturePlaceholder() {
   return (
-    <div className="flex h-36 items-center justify-center rounded-xl border-2 border-dashed border-sand-300 bg-sand-50 px-4 text-center text-[13px] leading-relaxed text-sand-700">
-      この手順の画面写真は準備中です
-      <br />
-      （文章のとおりに進めれば操作できます）
-    </div>
+    <p className="rounded-lg border border-dashed border-sand-300 bg-sand-50 px-3 py-2 text-[12px] text-sand-700">
+      📷 画面写真は準備中です
+    </p>
   );
 }
 
