@@ -91,7 +91,6 @@ export default function PlanChangePage() {
       <GuideSteps>
         <GuideStep
           n={1}
-          pendingCapture
           title="BOOMポータルにログインする"
           body={
             <>
@@ -108,7 +107,6 @@ export default function PlanChangePage() {
         />
         <GuideStep
           n={2}
-          pendingCapture
           title="画面の下の「マイページ」を押す"
           // 実機確認(2026-08-08): BOOMのポータルは下部バーが ホーム/予約/予定管理/マイページ。
           // hacomono純正マニュアルは「5つのボタン」と書いているが実際と合わないので数を書かない
@@ -116,14 +114,12 @@ export default function PlanChangePage() {
         />
         <GuideStep
           n={3}
-          pendingCapture
           title="「契約管理」を押す"
           body="マイページの中にあります。今契約しているプランがここに出ます。"
         />
-        <GuideStep n={4} pendingCapture title="「プラン変更」を押して、新しいプランを選ぶ" />
+        <GuideStep n={4} title="「プラン変更」を押して、新しいプランを選ぶ" />
         <GuideStep
           n={5}
-          pendingCapture
           title="確認画面で「いつから変わるか」を必ず見る"
           body={
             <>
@@ -133,7 +129,6 @@ export default function PlanChangePage() {
         />
         <GuideStep
           n={6}
-          pendingCapture
           title="内容を確認して確定する"
           body="完了画面が出れば手続きは終わりです。ホームの契約プラン欄でも確認できます。"
         />
