@@ -6,6 +6,11 @@ import {
 } from '@/lib/planChangeDeadline';
 import { GuideShell, GuideCallout, PORTAL_URL } from '../_components/GuideShell';
 import { GuideStep, GuideSteps } from '../_components/GuideStep';
+// 実画面キャプチャ(2026-08-08撮影・501px)。氏名/メールは撮影前にCSSでぼかしてある
+import capHome from '../_captures/plan-2-home.png';
+import capMypage from '../_captures/plan-3-mypage.png';
+import capKeiyaku from '../_captures/plan-4-keiyaku.png';
+import capStartMonth from '../_captures/plan-5-startmonth.png';
 
 // 締切の残り日数を今日の日付から出すため、リクエストごとに描画する。
 // 静的化するとビルド日の「あと◯日」が焼き付いて嘘になる。
@@ -113,30 +118,51 @@ export default function PlanChangePage() {
           // 会員が見るのはログイン後なので純正マニュアルの「5つ」は誤りではないが、
           // 状態で変わる数を書くと迷わせるため、位置だけで案内する
           body="画面のいちばん下のバー、その右端にあります。"
+          image={capHome}
+          imageAlt="ログイン後のホーム画面。画面下のバーの右端に「マイページ」がある"
+          hotspot={{ left: 84, top: 92.5, width: 12, height: 7 }}
         />
         <GuideStep
           n={3}
           title="「契約管理」を押す"
-          body="マイページの中にあります。今契約しているプランがここに出ます。"
+          body="マイページの中ほど、右側にあります。今契約しているプランがここに出ます。"
+          image={capMypage}
+          imageAlt="マイページ。「チケットの購入」の右に「契約管理」のボタンがある"
+          hotspot={{ left: 50.5, top: 34.8, width: 46.5, height: 11.8 }}
         />
         <GuideStep
           n={4}
           title="「プランを変更」を押す"
-          body="契約中のプランの下にあります。「退会」がすぐ隣にあるので押し間違いにご注意ください。"
+          body={
+            <>
+              契約中のプランの下にあります。<b>すぐ下が「退会」</b>なので、押し間違いにご注意ください。
+            </>
+          }
+          image={capKeiyaku}
+          imageAlt="契約管理の画面。「プランを変更」の行があり、その下に「退会」がある"
+          hotspot={{ left: 1, top: 49, width: 98, height: 7 }}
         />
         <GuideStep
           n={5}
           title="変更を始める月を選ぶ"
           body={
             <>
-              <b>ここが10日締切の正体です。</b>選べる月がその場に表示されるので、希望の月になっているか必ず確認してください。10日までに手続きしていれば翌月が選べます。
+              <b>ここが10日締切の正体です。</b>選べる月がこの欄に出てきます。10日までに手続きしていれば翌月が選べます。希望の月になっているか必ず確認してください。
             </>
           }
+          image={capStartMonth}
+          imageAlt="プラン変更手続きの2/7画面。「プランを変更する開始年月を選択してください」と変更開始年月日の選択欄"
+          hotspot={{ left: 0.5, top: 19.5, width: 99, height: 15.5 }}
         />
         <GuideStep
           n={6}
           title="新しいプランを選んで「次へ」"
-          body="同じ画面に月額料金つきでプランが並びます。回数と料金を見て選んでください。"
+          body={
+            <>
+              同じ画面の下に、月額料金つきでプランが並びます。
+              <b>最初はいちばん上の「受け放題」が選ばれた状態</b>になっているので、そのまま進めず、<b>必ず自分の希望するプランを選び直してください。</b>
+            </>
+          }
         />
         <GuideStep
           n={7}
