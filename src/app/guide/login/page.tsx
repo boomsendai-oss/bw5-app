@@ -1,6 +1,10 @@
 import type { Metadata } from 'next';
 import { GuideShell, GuideCallout, PORTAL_URL } from '../_components/GuideShell';
 import { GuideStep, GuideSteps } from '../_components/GuideStep';
+// 実画面キャプチャ(2026-08-08撮影・375px)。ログアウト状態の画面なので個人情報は写っていない
+import capHome from '../_captures/login-1-home.png';
+import capForm from '../_captures/login-2-form.png';
+import capReset from '../_captures/login-3-reset.png';
 
 export const metadata: Metadata = {
   title: 'ログインできない | BOOM 使い方ガイド',
@@ -32,32 +36,38 @@ export default function LoginGuidePage() {
       <GuideSteps>
         <GuideStep
           n={1}
-          pendingCapture
           title="ログイン画面を開く"
           body={
             <>
               <a className="text-brand-700 underline" href={PORTAL_URL}>
                 boom.hacomono.jp
               </a>
-              を開いて「ログイン」を押します。
+              を開いて、右上の「ログイン」を押します。
             </>
           }
+          image={capHome}
+          imageAlt="BOOMポータルのホーム画面。右上に「ログイン」ボタンがある"
+          hotspot={{ left: 64, top: 1.4, width: 24, height: 4.6 }}
         />
         <GuideStep
           n={2}
-          pendingCapture
           title="「パスワードを忘れた方はこちら」を押す"
-          body="パスワードの入力欄の下にあります。文字が小さいので見落としやすい場所です。"
+          body="緑の「ログイン」ボタンのすぐ下にあります。文字が小さいので見落としやすい場所です。"
+          image={capForm}
+          imageAlt="ログイン画面。「ログイン」ボタンの下に「パスワードを忘れた方はこちら」のリンクがある"
+          hotspot={{ left: 23, top: 49.8, width: 55, height: 3.4 }}
         />
         <GuideStep
           n={3}
-          pendingCapture
-          title="登録しているメールアドレスを入れて送信する"
+          title="登録しているメールアドレスを入れて「確認メールを送信する」"
           body="ここで入れるアドレスは、入会時に登録したものです。心当たりが複数ある場合は順番に試してください。"
+          image={capReset}
+          imageAlt="パスワード再発行の画面。メールアドレスの入力欄と「確認メールを送信する」ボタン"
+          // 入力欄と「確認メールを送信する」ボタンの両方を囲む(この画面でやることは2つ)
+          hotspot={{ left: 4, top: 29.2, width: 91, height: 14.5 }}
         />
         <GuideStep
           n={4}
-          pendingCapture
           title="届いたメールのリンクを開く"
           body={
             <>
@@ -70,8 +80,9 @@ export default function LoginGuidePage() {
           }
         />
         <GuideStep
+          // 再発行メールのリンク先の画面は、実際にリセットメールを発行しないと到達できない。
+          // 撮影のために本番アカウントのパスワード再発行を走らせる価値は無いので文章のみとする
           n={5}
-          pendingCapture
           title="新しいパスワードを決めて保存する"
           body="そのまま新しいパスワードでログインできます。"
         />
