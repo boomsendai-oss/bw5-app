@@ -141,7 +141,7 @@ function lessonKey(start: string, instructor: string): string {
 }
 
 // 宣言レッスン1件が当日カレンダーに存在するか(checkScheduleの1件判定と同じ規則)。
-function matchDeclaredLesson(
+export function matchDeclaredLesson(
   calLessons: Array<{ start: string; summary: string }>,
   knownNames: string[],
   d: DeclaredLesson
@@ -154,9 +154,13 @@ function matchDeclaredLesson(
     const title = l.summary.toUpperCase();
     const daiko = l.summary.match(/代講[\s:：]*([^\s　]+)/);
     if (daiko) return daiko[1].toUpperCase().includes(who) || who.includes(daiko[1].toUpperCase());
-    const namesInTitle = knownNames.filter((n) => title.includes(n));
-    if (namesInTitle.length === 0) return true; // タイトルに講師名なし→時刻一致でOK
-    return namesInTitle.includes(who);
+    // タイトルに講師名が無い予定は「レッスンである保証が無い」ので一致とみなさない。
+    // ⚠️2026-08-08の誤配信: 当日11:00にあったのは「⚔️ダンスバトル練習会」だけだったのに、
+    //   旧実装は「講師名なし→時刻一致でOK」としていたため、多賀城AOI/多賀城KATTSUの2枚が
+    //   "カレンダーに実在する"と誤判定され、休みの多賀城クラスの告知が自動投稿された。
+    //   BOOMのレッスン予定は必ずタイトルに講師名が入る運用(【講師名】クラス名)なので、
+    //   名前が取れない予定は落として良い(=誤配信より未投稿を選ぶ)。
+    return knownNames.filter((n) => title.includes(n)).includes(who);
   });
 }
 
@@ -279,14 +283,10 @@ export async function checkSchedule(date: string, declared: DeclaredLesson[] | u
       problems.push(`${start} のレッスンがカレンダーに無い(宣言: ${d.instructor})`);
       continue;
     }
-    const ok = atTime.some((l) => {
-      const title = l.summary.toUpperCase();
-      const daiko = l.summary.match(/代講[\s:：]*([^\s　]+)/);
-      if (daiko) return daiko[1].toUpperCase().includes(who) || who.includes(daiko[1].toUpperCase());
-      const namesInTitle = knownNames.filter((n) => title.includes(n));
-      if (namesInTitle.length === 0) return true; // タイトルに講師名なし→時刻一致でOK
-      return namesInTitle.includes(who);
-    });
+    // 照合規則は matchDeclaredLesson が正本。ここで規則を書き写すと、
+    // 投稿側(selectLibraryChain)と検査側(前夜プリフライト/watchdog)で規則がズレて
+    // 「誤配信を検査もすり抜ける」状態になる(2026-08-08の誤配信がまさにそれ)。
+    const ok = matchDeclaredLesson(atTime, knownNames, d);
     if (!ok) {
       problems.push(`${start} ${d.instructor} がカレンダーと不一致(実際: ${atTime.map((l) => l.summary).join(' / ')})`);
     }
