@@ -224,7 +224,7 @@ export default async function Bf6TopPage() {
                   <p className="text-xs font-bold text-neutral-400">Foodies</p>
                   <p className="text-[11px] font-bold tracking-wide text-neutral-500">HIPHOP / 山形</p>
                   <p className="mt-2 text-xs leading-relaxed text-neutral-300">
-                    BOOM講師・ちゃんなつとの2人からなる、山形を拠点に活動する女性HIPHOPチーム「Foodies」のメンバー。
+                    ちゃんなつ・Maoの2人からなる、山形を拠点に活動する女性HIPHOPチーム「Foodies」のメンバー。
                     キッズ時代からダンスを続け、バトル・コンテストの両方で実績を重ねてきた実力派。
                   </p>
                   <p className="mt-2 text-[11px] font-bold leading-relaxed text-neutral-400">
