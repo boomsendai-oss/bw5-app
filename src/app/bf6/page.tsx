@@ -28,7 +28,7 @@ export default async function Bf6TopPage() {
             PCはフライヤー+日付/CTAの2カラムでダイナミックに(ダンスライブ参考) */}
         <div className="bg-neutral-950 md:grid md:grid-cols-2 md:items-center">
           {/* eslint-disable-next-line @next/next/no-img-element -- 静的フライヤー1枚のためnext/image不使用 */}
-          <img src="/bf6/flyer-hero.jpg" alt="BOOMER'S FIGHT!!! vol.6 - BATTLE & SHOWCASE" className="w-full" />
+          <img src="/bf6/flyer-hero-v2.jpg" alt="BOOMER'S FIGHT!!! vol.6 - BATTLE & SHOWCASE" className="w-full" />
           <header className="px-4 pb-7 pt-2 text-center text-white md:px-8 md:py-10">
             <p className="inline-block bg-red-600 px-3 py-1 text-[11px] font-black tracking-[0.2em] md:text-sm">
               BATTLE &amp; SHOWCASE
@@ -158,6 +158,7 @@ export default async function Bf6TopPage() {
                 <p className="text-[11px] font-bold tracking-widest text-red-500">JUDGE</p>
                 <p className="mt-1 text-2xl font-black italic text-white">SHOKO</p>
                 <p className="text-xs font-bold text-neutral-400">CONCLUSION / QWEEN OF QWEENZ</p>
+                <p className="text-[11px] font-bold tracking-wide text-neutral-500">BREAK / 仙台</p>
                 <p className="mt-2 text-xs leading-relaxed text-neutral-300">
                   仙台のEXCOLLABORATION加入後、日本各地のバトルで数々の優勝を重ね、
                   日本を代表するBGIRLクルーQWEEN OF QWEENZ、東北のBBOYからなるCONCLUSIONに加入。
@@ -180,20 +181,12 @@ export default async function Bf6TopPage() {
               </div>
               <div className="mt-2 overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-neutral-700">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/bf6/judge-mao.jpg" alt="Mao" className="aspect-[3/2] w-full object-cover object-top" />
-                <div className="p-4">
-                  <p className="text-[11px] font-bold tracking-widest text-red-500">JUDGE</p>
-                  <p className="mt-1 text-2xl font-black italic text-white">Mao</p>
-                  <p className="mt-2 text-xs text-neutral-400">プロフィール・戦績は近日公開</p>
-                </div>
-              </div>
-              <div className="mt-2 overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-neutral-700">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/bf6/judge-kattsu.png" alt="K@TTSU" className="aspect-[3/2] w-full bg-gradient-to-b from-neutral-800 to-neutral-950 object-cover" />
                 <div className="p-4">
                   <p className="text-[11px] font-bold tracking-widest text-red-500">JUDGE</p>
                   <p className="mt-1 text-2xl font-black italic text-white">K@TTSU</p>
                   <p className="text-xs font-bold text-neutral-400">Ziel</p>
+                  <p className="text-[11px] font-bold tracking-wide text-neutral-500">HOUSE / 仙台</p>
                   <p className="mt-2 text-xs leading-relaxed text-neutral-300">
                     仙台を中心に東北のハウスシーンを牽引するダンスチーム「Ziel」の一人。
                     チームとしても個人としても、数々のコンテスト・バトルで好成績を残す。
@@ -210,6 +203,17 @@ export default async function Bf6TopPage() {
                       <li>king 仙台予選 バトルside 優勝 / コンテストside 準優勝</li>
                     </ul>
                   </details>
+                </div>
+              </div>
+              <div className="mt-2 overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-neutral-700">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/bf6/judge-mao.jpg" alt="Mao" className="aspect-[3/2] w-full object-cover object-top" />
+                <div className="p-4">
+                  <p className="text-[11px] font-bold tracking-widest text-red-500">JUDGE</p>
+                  <p className="mt-1 text-2xl font-black italic text-white">Mao</p>
+                  <p className="text-xs font-bold text-neutral-400">Foodies</p>
+                  <p className="text-[11px] font-bold tracking-wide text-neutral-500">HIPHOP / 山形</p>
+                  <p className="mt-2 text-xs text-neutral-400">プロフィール・戦績は近日公開</p>
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
