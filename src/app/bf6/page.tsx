@@ -246,7 +246,6 @@ export default async function Bf6TopPage() {
                   </div>
                 </div>
               </div>
-              <p className="mt-3 font-black italic tracking-widest text-neutral-300">JUDGE: AND MORE… <span className="ml-1 text-xs font-bold not-italic text-neutral-500">続々発表予定</span></p>
             </Bf6DetailBlock>
           </div>
         </section>
