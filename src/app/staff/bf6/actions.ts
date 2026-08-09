@@ -2,13 +2,28 @@
 
 // スタッフ専用Server Actions。/staff/* 配下のためproxyの認証で保護される(規約4.5)。
 import { revalidatePath } from 'next/cache';
-import { setBf6OrderStatusStaff, setBf6Setting } from '@/lib/bf6Db';
+import { setBf6OrderStatusStaff, setBf6Setting, updateBf6EntryItemStaff } from '@/lib/bf6Db';
+import { validateBf6EntryEdit, type Bf6EntryEditInput } from '@/lib/bf6';
 
 export async function staffSetOrderStatus(orderId: number, status: string): Promise<void> {
   await setBf6OrderStatusStaff(orderId, status);
   revalidatePath('/staff/bf6');
   revalidatePath('/staff/bf6/entries');
   revalidatePath('/staff/bf6/tickets');
+}
+
+/** 出場者情報の修正。検証NGならエラー文言を返し、DBは触らない。 */
+export async function staffUpdateEntryItem(
+  itemId: number,
+  input: Bf6EntryEditInput
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const v = validateBf6EntryEdit(input);
+  if (typeof v === 'string') return { ok: false, error: v };
+  await updateBf6EntryItemStaff(itemId, v);
+  revalidatePath('/staff/bf6/entries');
+  revalidatePath('/bf6/entries');
+  revalidatePath('/bf6');
+  return { ok: true };
 }
 
 export interface Bf6SettingsForm {

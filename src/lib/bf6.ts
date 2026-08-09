@@ -253,6 +253,41 @@ function isValidTicketCount(n: number): boolean {
   return Number.isInteger(n) && n >= 0 && n <= 20;
 }
 
+/**
+ * スタッフ画面から出場者情報を直すときの検証。
+ * 部門・学年は料金と定員に影響するのでここでは扱わない(誤操作で金額がズレるのを防ぐ)。
+ */
+export interface Bf6EntryEditInput {
+  dancerName: string;
+  dancerKana: string;
+  performerName: string;
+  genre: string;
+  rep: string;
+  instagram: string;
+}
+
+export function validateBf6EntryEdit(input: Bf6EntryEditInput): Bf6EntryEditInput | string {
+  const dancerName = (input.dancerName ?? '').trim();
+  if (!dancerName) return 'ダンサーネームを入力してください';
+  if (dancerName.length > 40) return 'ダンサーネームが長すぎます(40文字以内)';
+
+  const dancerKana = (input.dancerKana ?? '').trim();
+  if (!dancerKana) return 'ダンサーネームのフリガナを入力してください';
+  if (!isKatakanaText(dancerKana)) return `フリガナ「${dancerKana}」はカタカナで入力してください`;
+
+  const performerName = (input.performerName ?? '').trim();
+  if (!performerName) return '本名(カタカナ)を入力してください';
+  if (!isKatakanaText(performerName)) return `本名「${performerName}」はカタカナで入力してください`;
+
+  const genre = (input.genre ?? '').trim();
+  if (!genre) return 'ジャンルを入力してください';
+
+  const rep = (input.rep ?? '').trim();
+  if (!rep) return 'レペゼンを入力してください';
+
+  return { dancerName, dancerKana, performerName, genre, rep, instagram: (input.instagram ?? '').trim() };
+}
+
 /** 検証OKなら ValidatedBf6Order、NGなら日本語エラー文字列を返す(太白まつり方式)。 */
 export function validateBf6Order(input: Bf6OrderInput): ValidatedBf6Order | string {
   const buyerName = (input.buyerName ?? '').trim();
