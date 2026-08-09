@@ -66,16 +66,19 @@ function sampleOrder(): OwnBf6Order {
     createdAt: '2026-08-08T01:00:00.000Z',
     items: [
       {
+        itemId: 1,
         itemType: 'entry', performerName: 'ヤマダタロウ', dancerName: 'TARO', dancerKana: 'タロー',
         grade: 'es4', genre: 'HIPHOP', rep: 'BOOM', instagram: '@taro', isFirstBattle: true,
         divisions: ['beginner'], qty: 1, unitAmount: 2000,
       },
       {
+        itemId: 2,
         itemType: 'ticket_adult', performerName: '', dancerName: '', dancerKana: '',
         grade: '', genre: '', rep: '', instagram: '', isFirstBattle: false,
         divisions: [], qty: 1, unitAmount: 2000,
       },
       {
+        itemId: 3,
         itemType: 'ticket_child', performerName: '', dancerName: '', dancerKana: '',
         grade: '', genre: '', rep: '', instagram: '', isFirstBattle: false,
         divisions: [], qty: 1, unitAmount: 1000,
@@ -102,6 +105,7 @@ describe('buildBf6LineItems: 配信チケットの明細名', () => {
       ...base,
       items: [
         {
+          itemId: 4,
           itemType: 'stream', performerName: '', dancerName: '', dancerKana: '',
           grade: '', genre: '', rep: '', instagram: '', isFirstBattle: false,
           divisions: [], qty: 2, unitAmount: 1500,
@@ -124,6 +128,7 @@ describe('buildBf6OrderEmail: 配信チケット購入', () => {
       amountTotal: 1500,
       items: [
         {
+          itemId: 5,
           itemType: 'stream', performerName: '', dancerName: '', dancerKana: '',
           grade: '', genre: '', rep: '', instagram: '', isFirstBattle: false,
           divisions: [], qty: 1, unitAmount: 1500,

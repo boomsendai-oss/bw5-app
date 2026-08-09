@@ -3,6 +3,7 @@ import StaffPageHeader from '@/components/StaffPageHeader';
 import { bf6DivisionLabel, bf6GradeLabel, formatReceiptNo } from '@/lib/bf6';
 import { listBf6OrdersStaff } from '@/lib/bf6Db';
 import StatusButtons from '../StatusButtons';
+import EntryEditor from '../EntryEditor';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,16 +52,27 @@ export default async function StaffBf6EntriesPage() {
                 <span className="ml-2">{o.phone}</span>
               </p>
               <div className="mt-2 space-y-1">
-                {entries.map((e, i) => (
-                  <p key={i} className="text-sm text-neutral-700">
-                    <span className="font-bold text-navy-800">{e.dancerName}</span>
-                    <span className="text-neutral-400">({e.dancerKana})</span>
-                    <span className="ml-1">{e.performerName}・{bf6GradeLabel(e.grade)}</span>
-                    <span className="ml-1 font-bold text-brand-700">{e.divisions.map(bf6DivisionLabel).join('・')}</span>
-                    {e.genre && <span className="ml-1 text-neutral-500">{e.genre}</span>}
-                    {e.rep && <span className="ml-1 text-neutral-500">REP:{e.rep}</span>}
-                    {e.instagram && <span className="ml-1 text-neutral-500">{e.instagram}</span>}
-                  </p>
+                {entries.map((e) => (
+                  <div key={e.itemId}>
+                    <p className="text-sm text-neutral-700">
+                      <span className="font-bold text-navy-800">{e.dancerName}</span>
+                      <span className="text-neutral-400">({e.dancerKana})</span>
+                      <span className="ml-1">{e.performerName}・{bf6GradeLabel(e.grade)}</span>
+                      <span className="ml-1 font-bold text-brand-700">{e.divisions.map(bf6DivisionLabel).join('・')}</span>
+                      {e.genre && <span className="ml-1 text-neutral-500">{e.genre}</span>}
+                      {e.rep && <span className="ml-1 text-neutral-500">REP:{e.rep}</span>}
+                      {e.instagram && <span className="ml-1 text-neutral-500">{e.instagram}</span>}
+                      <EntryEditor
+                        itemId={e.itemId}
+                        dancerName={e.dancerName}
+                        dancerKana={e.dancerKana}
+                        performerName={e.performerName}
+                        genre={e.genre}
+                        rep={e.rep}
+                        instagram={e.instagram}
+                      />
+                    </p>
+                  </div>
                 ))}
                 {(adult || child) && (
                   <p className="text-xs text-neutral-500">

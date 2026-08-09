@@ -230,6 +230,7 @@ export async function getPublicBf6Entries(): Promise<PublicBf6Entry[]> {
 }
 
 export interface OwnBf6Item {
+  itemId: number;
   itemType: string;
   performerName: string;
   dancerName: string;
@@ -297,6 +298,7 @@ export async function listBf6OrdersStaff(): Promise<StaffBf6Order[]> {
     editToken: String(o.edit_token),
     createdAt: String(o.created_at),
     items: (byOrder.get(Number(o.id)) ?? []).map((i: any) => ({
+      itemId: Number(i.id),
       itemType: String(i.item_type),
       performerName: String(i.performer_name ?? ''),
       dancerName: String(i.dancer_name ?? ''),
@@ -312,6 +314,25 @@ export async function listBf6OrdersStaff(): Promise<StaffBf6Order[]> {
     })),
   }));
   /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
+/**
+ * スタッフによる出場者情報の修正(誤字・表記ゆれの訂正用)。
+ * 部門・学年・金額は変更しない。定員と料金に波及する変更は誤操作の危険が大きいため、
+ * 必要になったら注文ごと作り直す運用にする。
+ */
+export async function updateBf6EntryItemStaff(
+  itemId: number,
+  v: { dancerName: string; dancerKana: string; performerName: string; genre: string; rep: string; instagram: string }
+): Promise<void> {
+  await execute(
+    "UPDATE bf_order_items SET dancer_name = ?, dancer_kana = ?, performer_name = ?, genre = ?, rep = ?, instagram = ? WHERE id = ? AND item_type = 'entry'",
+    [v.dancerName, v.dancerKana, v.performerName, v.genre, v.rep, v.instagram, itemId]
+  );
+  await execute(
+    'UPDATE bf_orders SET updated_at = ? WHERE id = (SELECT order_id FROM bf_order_items WHERE id = ?)',
+    [nowIso(), itemId]
+  );
 }
 
 export interface StaffBf6Payment {
@@ -382,6 +403,7 @@ async function rowToOwnOrder(o: any): Promise<OwnBf6Order> {
     expiresAt: String(o.expires_at ?? ''),
     createdAt: String(o.created_at),
     items: items.map((i) => ({
+      itemId: Number(i.id),
       itemType: String(i.item_type),
       performerName: String(i.performer_name ?? ''),
       dancerName: String(i.dancer_name ?? ''),

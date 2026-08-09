@@ -9,6 +9,7 @@ import {
   divisionRemaining,
   ticketRemaining,
   validateBf6Order,
+  validateBf6EntryEdit,
   countEntriesByDivision,
   buildBf6OrderItems,
   formatReceiptNo,
@@ -420,5 +421,46 @@ describe('formatReceiptNo', () => {
     expect(formatReceiptNo(7)).toBe('BF6-007');
     expect(formatReceiptNo(123)).toBe('BF6-123');
     expect(formatReceiptNo(1234)).toBe('BF6-1234');
+  });
+});
+
+describe('validateBf6EntryEdit: スタッフによる出場者情報の編集', () => {
+  const base = {
+    dancerName: 'SOMA',
+    dancerKana: 'ソウマ',
+    performerName: 'キムラソウマ',
+    genre: 'HIPHOP',
+    rep: '仙台',
+    instagram: '@soma',
+  };
+
+  test('正しい入力はトリムされて返る', () => {
+    const r = validateBf6EntryEdit({ ...base, dancerName: ' SOMA ', rep: ' 仙台 ' });
+    expect(typeof r).not.toBe('string');
+    if (typeof r === 'string') return;
+    expect(r.dancerName).toBe('SOMA');
+    expect(r.rep).toBe('仙台');
+  });
+
+  test('ダンサーネームが空ならエラー', () => {
+    expect(typeof validateBf6EntryEdit({ ...base, dancerName: '  ' })).toBe('string');
+  });
+
+  test('フリガナがカタカナでなければエラー', () => {
+    expect(typeof validateBf6EntryEdit({ ...base, dancerKana: 'そうま' })).toBe('string');
+  });
+
+  test('本名がカタカナでなければエラー', () => {
+    expect(typeof validateBf6EntryEdit({ ...base, performerName: '木村奏真' })).toBe('string');
+  });
+
+  test('ジャンル・レペゼンは必須', () => {
+    expect(typeof validateBf6EntryEdit({ ...base, genre: '' })).toBe('string');
+    expect(typeof validateBf6EntryEdit({ ...base, rep: '' })).toBe('string');
+  });
+
+  test('Instagramは任意(空でも通る)', () => {
+    const r = validateBf6EntryEdit({ ...base, instagram: '' });
+    expect(typeof r).not.toBe('string');
   });
 });
