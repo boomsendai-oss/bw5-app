@@ -181,7 +181,7 @@ export default async function Bf6TopPage() {
               </div>
               <div className="mt-2 overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-neutral-700">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/bf6/judge-kattsu.png" alt="K@TTSU" className="aspect-[3/2] w-full bg-gradient-to-b from-neutral-800 to-neutral-950 object-cover" />
+                <img src="/bf6/judge-kattsu.jpg" alt="K@TTSU" className="aspect-[3/2] w-full object-cover" />
                 <div className="p-4">
                   <p className="text-[11px] font-bold tracking-widest text-red-500">JUDGE</p>
                   <p className="mt-1 text-2xl font-black italic text-white">K@TTSU</p>
@@ -207,7 +207,7 @@ export default async function Bf6TopPage() {
               </div>
               <div className="mt-2 overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-neutral-700">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/bf6/judge-mao.jpg" alt="Mao" className="aspect-[3/2] w-full object-cover object-top" />
+                <img src="/bf6/judge-mao.jpg" alt="Mao" className="aspect-[3/2] w-full object-cover" />
                 <div className="p-4">
                   <p className="text-[11px] font-bold tracking-widest text-red-500">JUDGE</p>
                   <p className="mt-1 text-2xl font-black italic text-white">Mao</p>
