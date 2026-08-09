@@ -3,18 +3,19 @@
 // ヒーロー → キービジュアル → DETAIL(DATE/TIME/FEE/VENUE/JUDGE) → ENTRY(大ボタン) → ENTRY LIST
 import Link from 'next/link';
 import { BF6_DIVISIONS } from '@/lib/bf6';
-import { calcBf6Remaining, getBf6Settings, getBf6Usage, getPublicBf6Entries } from '@/lib/bf6Db';
+import { calcBf6Remaining, getBf6Faqs, getBf6Settings, getBf6Usage, getPublicBf6Entries } from '@/lib/bf6Db';
 import { getBf6StreamConfig } from '@/lib/bf6StreamDb';
 import { Bf6DetailBlock, Bf6SectionHead, Bf6Shell } from './ui';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Bf6TopPage() {
-  const [settings, usage, entries, streamCfg] = await Promise.all([
+  const [settings, usage, entries, streamCfg, faqs] = await Promise.all([
     getBf6Settings(),
     getBf6Usage(),
     getPublicBf6Entries(),
     getBf6StreamConfig(),
+    getBf6Faqs(),
   ]);
   const remaining = calcBf6Remaining(settings, usage);
   const countByDivision = Object.fromEntries(
@@ -338,6 +339,35 @@ export default async function Bf6TopPage() {
             </Link>
           </div>
         </section>
+
+        {/* FAQ: 初出場者がつまずきやすい点をエントリー前に自己解決できるように */}
+        {faqs.length > 0 && (
+        <section className="px-4 pt-10">
+          <div className="mb-4 text-center">
+            <p className="text-2xl font-black italic tracking-wider text-white">FAQ</p>
+            <p className="mt-1 text-xs font-bold text-neutral-400">よくある質問</p>
+            <div className="mx-auto mt-2 h-1 w-10 bg-red-600" />
+          </div>
+          <div className="divide-y divide-neutral-800 overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900">
+            {faqs.map((item) => (
+              <details key={item.q} className="group p-4">
+                <summary className="flex cursor-pointer items-start gap-2 text-sm font-bold text-neutral-100">
+                  <span className="mt-0.5 text-red-500">Q.</span>
+                  <span className="flex-1">{item.q}</span>
+                  <span className="text-neutral-500 transition-transform group-open:rotate-180">▾</span>
+                </summary>
+                <div className="mt-3 flex gap-2 text-xs leading-relaxed text-neutral-300">
+                  <span className="font-bold text-neutral-500">A.</span>
+                  <p className="flex-1 whitespace-pre-line">{item.a}</p>
+                </div>
+              </details>
+            ))}
+          </div>
+          <p className="mt-3 text-center text-xs text-neutral-400">
+            その他のご質問は公式LINEからお気軽にどうぞ
+          </p>
+        </section>
+        )}
 
         {/* 主催スクールへの導線: 見に来て「踊ってみたい」と思った人を受け止める */}
         <section className="px-4 pt-10">

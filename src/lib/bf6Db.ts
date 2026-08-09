@@ -197,6 +197,25 @@ export interface PublicBf6Entry {
  * 公開エントリーリスト。確定分(paid/cash_due)のみ・公開列(ダンサーネーム/ジャンル/REP/部門)のみを
  * SELECTする。本名・連絡先・IG・学年など他の列をこの関数から返してはならない(M22)。
  */
+/**
+ * BF6のよくある質問。FAQボットと同じ faq_entries を読むので、
+ * スタッフ画面(/staff/faq)で直すとボットとイベントページの両方に反映される。
+ */
+export const BF6_FAQ_CATEGORY = "BOOMER'S FIGHT(バトル)";
+
+export interface Bf6Faq {
+  q: string;
+  a: string;
+}
+
+export async function getBf6Faqs(): Promise<Bf6Faq[]> {
+  const rows = await getAll(
+    'SELECT question, answer FROM faq_entries WHERE category = ? AND is_public = 1 ORDER BY sort_order, id',
+    [BF6_FAQ_CATEGORY]
+  );
+  return rows.map((r) => ({ q: String(r.question), a: String(r.answer) }));
+}
+
 export async function getPublicBf6Entries(): Promise<PublicBf6Entry[]> {
   await sweepExpiredBf6Orders();
   const rows = await getAll(
