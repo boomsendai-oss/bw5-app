@@ -144,8 +144,18 @@ export default async function Bf6TopPage() {
               <ul className="space-y-2">
                 {BF6_DIVISIONS.map((d) => (
                   <li key={d.key} className={`rounded-xl px-4 py-3 text-white ring-1 ring-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_4px_12px_rgba(0,0,0,0.4)] ${d.accentBg}`}>
-                    <span className="text-base font-black">{d.key === 'beginner' && '🔰 '}{d.label}</span>
-                    <span className="ml-2 text-xs font-bold text-white/80">{d.note}</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>
+                        <span className="text-base font-black">{d.key === 'beginner' && '🔰 '}{d.label}</span>
+                        <span className="ml-2 text-xs font-bold text-white/80">{d.note}</span>
+                      </span>
+                      <span className="shrink-0 text-right">
+                        <span className="block text-[10px] font-bold leading-none text-white/70">優勝賞金</span>
+                        <span className="text-lg font-black leading-tight">
+                          ¥{(d.key === 'beginner' ? 5000 : d.key === 'kids' ? 10000 : 20000).toLocaleString()}
+                        </span>
+                      </span>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -213,7 +223,13 @@ export default async function Bf6TopPage() {
                   <p className="mt-1 text-2xl font-black italic text-white">Mao</p>
                   <p className="text-xs font-bold text-neutral-400">Foodies</p>
                   <p className="text-[11px] font-bold tracking-wide text-neutral-500">HIPHOP / 山形</p>
-                  <p className="mt-2 text-xs text-neutral-400">プロフィール・戦績は近日公開</p>
+                  <p className="mt-2 text-xs leading-relaxed text-neutral-300">
+                    BOOM講師・ちゃんなつとの2人からなる、山形を拠点に活動する女性HIPHOPチーム「Foodies」のメンバー。
+                    キッズ時代からダンスを続け、バトル・コンテストの両方で実績を重ねてきた実力派。
+                  </p>
+                  <p className="mt-2 text-[11px] font-bold leading-relaxed text-neutral-400">
+                    JAPAN DANCE DELIGHT vol.30 FINALIST(Foodies)
+                  </p>
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
