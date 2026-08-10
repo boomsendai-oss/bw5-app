@@ -22,11 +22,17 @@ export function upsertCastLine(caption: string, rawHandles: string | null | unde
   const handles = normalizeCastHandles(rawHandles);
   const lines = String(caption ?? '').split('\n');
 
-  // 既存のCAST行(と、その直前の空行)を取り除く
+  // ① 既存のCAST行を、前後にくっついた空行ごと取り除いて「元の文面」に戻す。
+  //    片側だけ消すと、入れ直すたびに空行が増えていく。
   const castIdx = lines.findIndex((l) => l.startsWith(CAST_PREFIX));
   if (castIdx >= 0) {
-    const from = castIdx > 0 && lines[castIdx - 1].trim() === '' ? castIdx - 1 : castIdx;
-    lines.splice(from, castIdx - from + 1);
+    let from = castIdx;
+    let to = castIdx;
+    while (from > 0 && lines[from - 1].trim() === '') from--;
+    while (to < lines.length - 1 && lines[to + 1].trim() === '') to++;
+    // 取り除いた跡は、前後に本文がある時だけ空行1つでつなぐ
+    const joiner = from > 0 && to < lines.length - 1 ? [''] : [];
+    lines.splice(from, to - from + 1, ...joiner);
   }
   if (handles.length === 0) return lines.join('\n');
 
@@ -39,8 +45,9 @@ export function upsertCastLine(caption: string, rawHandles: string | null | unde
     lines.push(castLine);
     return lines.join('\n');
   }
-  // 「体験…」やタグ行の直前に、空行を挟んで入れる
-  const before = at > 0 && lines[at - 1].trim() === '' ? at - 1 : at;
-  lines.splice(before, 0, '', castLine);
+  // ② 「体験…」やタグ行の直前へ。既にある空行は飲み込んで、上下を空行1つずつで挟む。
+  let before = at;
+  while (before > 0 && lines[before - 1].trim() === '') before--;
+  lines.splice(before, at - before, '', castLine, '');
   return lines.join('\n');
 }
