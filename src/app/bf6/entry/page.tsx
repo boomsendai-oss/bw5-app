@@ -66,6 +66,7 @@ export default function Bf6EntryPage() {
   const [childTickets, setChildTickets] = useState(0);
 
   const [error, setError] = useState('');
+  const [ssmHint, setSsmHint] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [doneToken, setDoneToken] = useState('');
   const [amountTotal, setAmountTotal] = useState(0);
@@ -87,6 +88,10 @@ export default function Bf6EntryPage() {
       setCtx(await getBf6Context());
       setLoading(false);
     })();
+    // SSM学生枠のコードを通した人が誤って有料エントリーしないよう案内を出す
+    try {
+      if (localStorage.getItem('bf6_ssm_ok') === '1') setSsmHint(true);
+    } catch { /* private mode */ }
   }, []);
 
   const pricing = ctx?.pricing;
@@ -313,6 +318,21 @@ export default function Bf6EntryPage() {
   return (
     <Shell>
       <Bf6Hero title="BATTLE ENTRY" subtitle="バトルエントリー / 2026.9.26 SAT — SSM 9階ホール" />
+      {ssmHint && (
+        <div className="mx-4 mt-4 rounded-2xl border-2 border-red-600 bg-red-950/40 p-4">
+          <p className="text-sm font-black text-red-300">SSMの学生の方へ</p>
+          <p className="mt-1 text-xs leading-relaxed text-neutral-300">
+            このページは<span className="font-bold text-white">有料</span>のエントリーです。
+            SSM学生無料枠でお申し込みの方は、専用ページからお進みください。
+          </p>
+          <Link
+            href="/bf6/ssm"
+            className="mt-3 flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-sm font-black text-white ring-1 ring-red-950"
+          >
+            SSM学生 無料エントリーへ戻る
+          </Link>
+        </div>
+      )}
       <div className="px-4 py-6">
         <section>
           <Bf6SectionTitle no="1" title="申込者" note="保護者の方でもOK" />

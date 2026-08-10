@@ -51,6 +51,7 @@ export default function Bf6SsmPage() {
       );
       return;
     }
+    try { localStorage.setItem('bf6_ssm_ok', '1'); } catch { /* private mode */ }
     setRemaining(res.remaining);
     setStep('input');
     window.scrollTo({ top: 0 });
@@ -103,6 +104,26 @@ export default function Bf6SsmPage() {
                   {busy ? '確認中…' : 'コードを確認する'}
                 </button>
               </div>
+            </Bf6Card>
+            <Bf6Card label="イベント概要">
+              <ul className="space-y-1.5 text-sm text-neutral-300">
+                <li>・2026年9月26日(土) OPEN 14:30 / CLOSE 18:00頃</li>
+                <li>・SSM 9階ホール(仙台駅東口 徒歩5分)</li>
+                <li>・一般部門 1on1トーナメント(優勝賞金¥20,000)</li>
+                <li>・JUDGE: SHOKO / K@TTSU / Mao</li>
+                <li>・MC: TARO / BATTLE DJ: DJ おっちゃん</li>
+              </ul>
+              <a
+                href="/bf6"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 flex h-12 w-full items-center justify-center rounded-xl border-2 border-neutral-700 bg-neutral-900 text-sm font-bold text-neutral-300"
+              >
+                イベント詳細を見る(別タブで開きます) ↗
+              </a>
+              <p className="mt-2 text-center text-[11px] text-neutral-500">
+                ※ このページは開いたまま残ります。詳細を見たあとこのタブに戻ってエントリーしてください
+              </p>
             </Bf6Card>
             <p className="text-center text-xs text-neutral-400">
               SSMの学生でない方は <Link href="/bf6/entry" className="font-bold text-red-400 underline">通常のエントリー</Link> をご利用ください
@@ -206,6 +227,15 @@ export default function Bf6SsmPage() {
           </section>
 
           {error && <p className="mt-4 rounded-xl bg-red-950/40 p-3 text-sm font-bold text-red-400">{error}</p>}
+
+          <a
+            href="/bf6"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-6 flex h-12 w-full items-center justify-center rounded-xl border-2 border-neutral-700 bg-neutral-900 text-sm font-bold text-neutral-300"
+          >
+            イベント詳細を見る(別タブ) ↗
+          </a>
 
           <button
             onClick={() => {
