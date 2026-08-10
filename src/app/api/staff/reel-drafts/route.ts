@@ -166,6 +166,10 @@ export async function GET(req: NextRequest) {
             d.dance_start, d.dance_end, d.cover_at, d.cover_choice, d.status, d.reel_queue_id, d.error,
             d.reel_path, d.cover_path, d.caption, d.created_at, d.updated_at, d.lesson_master_id, d.mention_handles,
             d.collaborators,
+            -- 共同投稿は「担当講師にするか/しないか」だけの選択にする(TARO 2026-08-10)。
+            -- 手入力させると誤字で招待が飛ばないので、登録簿のハンドルをここで解決して返す。
+            (SELECT i.instagram_handle FROM instructors i
+              WHERE UPPER(i.name) = UPPER(TRIM(d.instructor)) LIMIT 1) AS instructor_handle,
             -- 追従を目で決めるための「切り取る前(16:9)」プレビュー。存在する時だけURLを返す
             CASE WHEN d.preview_path IS NOT NULL AND d.kind IN ('発表会','stage')
                  THEN REPLACE(d.preview_path, 'preview.mp4', 'wide.mp4') END AS wide_path,

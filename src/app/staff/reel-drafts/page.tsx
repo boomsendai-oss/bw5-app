@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import StaffPageHeader from '@/components/StaffPageHeader';
+import { upsertCastLine } from '@/lib/reelCaption';
 
 // リール自動生成 — 下書き入力画面 (WS: リール自動生成)
 // 設計: ~/BOOM/SNS戦略/リール自動生成パイプライン設計_v1.md
@@ -40,6 +41,7 @@ type Draft = {
   lesson_master_id: number | null;
   mention_handles: string | null;
   collaborators: string | null;
+  instructor_handle: string | null;
   updated_at: string;
 };
 type Lesson = { id: number; class_name: string; dw: number; st: string; et: string | null; instructor: string | null };
@@ -1025,6 +1027,7 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
   const stage = draft.kind === '発表会' || draft.kind === 'stage';
   const [caption, setCaption] = useState(draft.caption ?? '');
   const [collab, setCollab] = useState(draft.collaborators ?? '');
+  const [cast, setCast] = useState(draft.mention_handles ?? '');
   const [dateStr, setDateStr] = useState(''); // datetime-local
   const [busy, setBusy] = useState(false);
   const [pickCover, setPickCover] = useState(false);
@@ -1051,11 +1054,25 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
     onMsg('キャプションを保存しました');
   };
 
+  // CAST行だけをキャプションに差し込む(本文の手直しは保ったまま入れ替える)
+  const applyCast = async () => {
+    const next = upsertCastLine(caption, cast);
+    setCaption(next);
+    setBusy(true);
+    await fetch('/api/staff/reel-drafts', {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: draft.id, caption: next, mention_handles: cast.trim() || null }),
+    });
+    setBusy(false);
+    onMsg(cast.trim() ? 'CASTをキャプションに入れました' : 'CASTをキャプションから外しました');
+  };
+
   const schedule = async (scheduledAt?: string) => {
     setBusy(true);
     // キャプション・共同投稿の編集を反映してから予約(予約時にreel_queueへコピーされるため先に保存)
     const patch: Record<string, unknown> = { id: draft.id };
     if (caption !== (draft.caption ?? '')) patch.caption = caption;
+    if (cast !== (draft.mention_handles ?? '')) patch.mention_handles = cast.trim() || null;
     if (collab !== (draft.collaborators ?? '')) patch.collaborators = collab.trim() || null;
     if (Object.keys(patch).length > 1) {
       await fetch('/api/staff/reel-drafts', {
@@ -1170,16 +1187,37 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
         </div>
       </label>
 
-      {/* 共同投稿: 承認されると相手のフィードにも並ぶ。自動では入れず、毎回ここで選ぶ(TARO 2026-08-10)。 */}
+      {/* 共同投稿: 相手は常に担当講師なので、選択は「するか/しないか」だけ(TARO 2026-08-10)。 */}
+      <div className="mb-3">
+        {draft.instructor_handle ? (
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" checked={collab.trim() !== ''} className="mt-0.5 w-4 h-4 accent-brand-600"
+              onChange={(e) => setCollab(e.target.checked ? String(draft.instructor_handle) : '')} />
+            <span className="text-xs text-navy-700">
+              <b>{draft.instructor}</b> さん（@{draft.instructor_handle}）を共同投稿者にする
+              <span className="block text-[11px] text-navy-400 mt-0.5">
+                先生に招待が届き、承認されると先生の投稿一覧にも並びます。
+                承認されなくても、リールはそのまま投稿されます。
+              </span>
+            </span>
+          </label>
+        ) : (
+          <p className="text-[11px] text-navy-400">
+            共同投稿には講師のInstagramアカウント登録が必要です（{draft.instructor || '講師未設定'}／講師マスタに未登録）。
+          </p>
+        )}
+      </div>
+
+      {/* CAST: その回の受講者。将来はHACOMONOの受講者から自動で引く(今は手入力) */}
       <label className="block mb-3">
-        <span className="text-[11px] text-navy-500">共同投稿する相手（Instagramのユーザー名・最大3人）</span>
-        <input value={collab} onChange={(e) => setCollab(e.target.value)}
-          placeholder="例: occhan.88（空欄なら共同投稿しない）"
+        <span className="text-[11px] text-navy-500">CAST（一緒に写っている人・Instagramのユーザー名をスペース区切り）</span>
+        <input value={cast} onChange={(e) => setCast(e.target.value)}
+          placeholder="例: luv_.riko ta.iga131（空欄ならCAST行なし）"
           className="w-full border border-sand-200 rounded-lg p-2 text-sm text-navy-800 mt-1" />
-        <p className="text-[11px] text-navy-400 mt-1">
-          相手に招待が届き、承認されると相手の投稿一覧にも並びます。非公開アカウントは指定できません。
-          指定が通らなかった場合も、共同投稿なしでリールは投稿されます。
-        </p>
+        <button onClick={applyCast} disabled={busy}
+          className="mt-1 text-[11px] text-brand-600 hover:underline disabled:opacity-50">
+          CASTをキャプションに反映
+        </button>
       </label>
 
       <div className="border-t border-sand-100 pt-3">
