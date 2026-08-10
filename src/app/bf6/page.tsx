@@ -228,9 +228,17 @@ export default async function Bf6TopPage() {
                     ちゃんなつ・Maoの2人からなる、山形を拠点に活動する女性HIPHOPチーム「Foodies」のメンバー。
                     キッズ時代からダンスを続け、バトル・コンテストの両方で実績を重ねてきた実力派。
                   </p>
-                  <p className="mt-2 text-[11px] font-bold leading-relaxed text-neutral-400">
-                    JAPAN DANCE DELIGHT vol.30 FINALIST(Foodies)
-                  </p>
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[11px] font-bold text-red-400">主な戦績を見る ▾</summary>
+                    <ul className="mt-2 space-y-0.5 text-[11px] leading-relaxed text-neutral-400">
+                      <li>DANCEJOINT 2017 準優勝</li>
+                      <li>WDC 2017 山形予選 準優勝</li>
+                      <li>Pharcide 2017 優勝</li>
+                      <li>NAKED×DEEP GROOVE 2024 準優勝</li>
+                      <li>JAPAN DANCE DELIGHT 2024 仙台予選 FINALIST</li>
+                      <li>JAPAN DANCE DELIGHT vol.30 FINALIST(Foodies)</li>
+                    </ul>
+                  </details>
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
