@@ -1,7 +1,7 @@
 // スタッフ: BF6エントリー一覧(PII込み)。/staff/* 配下のためproxy認証で保護(規約4.5)。
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { bf6DivisionLabel, bf6GradeLabel, formatReceiptNo } from '@/lib/bf6';
-import { listBf6OrdersStaff } from '@/lib/bf6Db';
+import { listBf6OrdersStaff, SSM_FREE_NOTE } from '@/lib/bf6Db';
 import StatusButtons from '../StatusButtons';
 import EntryEditor from '../EntryEditor';
 
@@ -27,7 +27,7 @@ export default async function StaffBf6EntriesPage() {
     <div>
       <StaffPageHeader
         title="エントリー一覧"
-        description={`${orders.length}件の申込(全ステータス表示)`}
+        description={`${orders.length}件の申込(うちSSM学生枠 ${orders.filter((o) => o.note === SSM_FREE_NOTE).length}件・全ステータス表示)`}
         backHref="/staff/bf6"
         backLabel="BF6ダッシュボード"
       />
@@ -43,6 +43,9 @@ export default async function StaffBf6EntriesPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-sm font-bold text-navy-800">{formatReceiptNo(o.orderId)}</span>
                 <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${badge.cls}`}>{badge.label}</span>
+                {o.note === SSM_FREE_NOTE && (
+                  <span className="rounded-full bg-navy-800 px-2 py-0.5 text-xs font-bold text-white">SSM学生枠(無料)</span>
+                )}
                 <span className="text-sm font-bold text-navy-800">{yen(o.amountTotal)}</span>
                 <span className="text-xs text-neutral-400">{o.createdAt.slice(0, 16).replace('T', ' ')}</span>
               </div>

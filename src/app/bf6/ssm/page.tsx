@@ -23,9 +23,8 @@ export default function Bf6SsmPage() {
   const [dancerKana, setDancerKana] = useState('');
   const [performerName, setPerformerName] = useState('');
   const [genre, setGenre] = useState('');
-  const [rep, setRep] = useState('SSM');
+  const [rep, setRep] = useState('');
   const [instagram, setInstagram] = useState('');
-  const [isFirstBattle, setIsFirstBattle] = useState(false);
 
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -61,7 +60,7 @@ export default function Bf6SsmPage() {
     setBusy(true);
     setError('');
     const res = await submitBf6SsmEntry(code, {
-      buyerName, email, phone, dancerName, dancerKana, performerName, genre, rep, instagram, isFirstBattle,
+      buyerName, email, phone, dancerName, dancerKana, performerName, genre, rep, instagram, isFirstBattle: false,
     });
     if (!res.ok) {
       setBusy(false);
@@ -197,15 +196,11 @@ export default function Bf6SsmPage() {
                   <input value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="例: HIPHOP" className={inputCls} />
                 </Bf6Field>
                 <Bf6Field label="レペゼン" required hint="エントリーリストに載ります">
-                  <input value={rep} onChange={(e) => setRep(e.target.value)} placeholder="例: SSM" className={inputCls} />
+                  <input value={rep} onChange={(e) => setRep(e.target.value)} placeholder="例: BOOM / 仙台" className={inputCls} />
                 </Bf6Field>
                 <Bf6Field label="Instagram" hint="任意。タグ付けに使用します">
                   <input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@your_account" className={inputCls} />
                 </Bf6Field>
-                <label className="flex items-center gap-2 text-sm text-neutral-300">
-                  <input type="checkbox" checked={isFirstBattle} onChange={(e) => setIsFirstBattle(e.target.checked)} className="h-4 w-4 accent-red-600" />
-                  バトルに出るのは初めて
-                </label>
               </div>
             </Bf6Card>
           </section>

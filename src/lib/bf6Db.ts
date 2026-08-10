@@ -262,6 +262,7 @@ export interface OwnBf6Order {
 
 export interface StaffBf6Order {
   orderId: number;
+  note: string;
   buyerName: string;
   email: string;
   phone: string;
@@ -288,6 +289,7 @@ export async function listBf6OrdersStaff(): Promise<StaffBf6Order[]> {
   }
   return orders.map((o: any) => ({
     orderId: Number(o.id),
+    note: String(o.note ?? ''),
     buyerName: String(o.buyer_name),
     email: String(o.email),
     phone: String(o.phone),
