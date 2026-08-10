@@ -4,13 +4,21 @@ TikTokのContent Posting APIは**審査で却下**された（個人・社内利
 2026-08-10）。用途を偽っての再申請はBANリスクがあるため行わない。
 代わりに、TikTokが公式にサポートしているPC版の投稿画面（TikTok Studio）をブラウザから操作する。
 
-## 初回だけ
+## 初回だけ（まだ未完了 / 2026-08-10 時点）
 
 ```bash
-python3 scripts/tiktok/login.py
+cd ~/BOOM/BW5_2026/bw5-app && python3 scripts/tiktok/login_qr.py
 ```
 
-専用プロファイル `~/.boom_tiktok_profile` にログインを保存する。以降は不要。
+Chromeのウィンドウが開くので、どちらかでログインする:
+
+- **QRコードをスマホのTikTokアプリで読む**（画面に出ている。1分ごとに更新されるので、そのとき出ているものを読む）
+- または「**Googleで続ける**」→ boom.sendai@gmail.com
+
+ログインすると専用プロファイル `~/.boom_tiktok_profile` に保存され、以降は不要。
+15分待って承認がなければ終了するので、その時はもう一度実行する。
+
+⚠️ **QRのURLを別端末に送る運用は不可**。1分で期限が切れるため、送っている間に無効になる（実測済み）。
 
 ## 毎回
 
