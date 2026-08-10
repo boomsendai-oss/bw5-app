@@ -81,6 +81,23 @@
       ]
     },
     {
+      "file": "10_土曜_午後YURIソロ.jpg",
+      "weekday": 6,
+      "mentions": [
+        "yurillo7fancy"
+      ],
+      "lessons": [
+        {
+          "start": "15:30",
+          "instructor": "YURI"
+        },
+        {
+          "start": "16:30",
+          "instructor": "YURI"
+        }
+      ]
+    },
+    {
       "file": "11_日曜_多賀城AOI.jpg",
       "weekday": 0,
       "mentions": [
