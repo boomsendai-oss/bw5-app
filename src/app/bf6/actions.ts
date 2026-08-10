@@ -16,8 +16,11 @@ import {
 } from '@/lib/bf6';
 import {
   calcBf6Remaining,
+  countBf6SsmFreeOrders,
   createBf6Order,
+  createBf6SsmFreeOrder,
   getBf6Settings,
+  getBf6SsmConfig,
   getBf6Usage,
   getPublicBf6Entries,
   loadBf6OrderByToken,
@@ -30,6 +33,7 @@ import {
   createBf6CheckoutSession,
 } from '@/lib/bf6Stripe';
 import { sendBf6OrderEmail } from '@/lib/bf6Email';
+import { validateBf6SsmEntry, type Bf6SsmEntryInput } from '@/lib/bf6';
 
 async function clientIp(): Promise<string> {
   const h = await headers();
@@ -145,4 +149,70 @@ export async function startBf6Checkout(token: string): Promise<Bf6CheckoutResult
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : '決済ページの作成に失敗しました' };
   }
+}
+
+// ───────────────────────── SSM学生無料枠 ─────────────────────────
+// 招待コードはサーバー側でのみ照合する(コードなしでは状態も申込も返さない)。
+
+export type Bf6SsmStatus =
+  | { ok: true; remaining: number }
+  | { ok: false; reason: 'code' | 'closed' | 'full' };
+
+function isBeforeStartJst(start: string, now: Date = new Date()): boolean {
+  if (!start) return false;
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return jst < start;
+}
+
+async function checkSsmGate(code: string): Promise<Bf6SsmStatus & { limit?: number }> {
+  const cfg = await getBf6SsmConfig();
+  if (!cfg.code || (code ?? '').trim().toUpperCase() !== cfg.code.toUpperCase()) {
+    return { ok: false, reason: 'code' };
+  }
+  if (isBeforeStartJst(cfg.start) || isPastDeadlineJst(cfg.deadline)) {
+    return { ok: false, reason: 'closed' };
+  }
+  const used = await countBf6SsmFreeOrders();
+  if (used >= cfg.limit) return { ok: false, reason: 'full' };
+  return { ok: true, remaining: cfg.limit - used, limit: cfg.limit };
+}
+
+/** コードが正しい場合のみ残枠を返す。 */
+export async function getBf6SsmStatus(code: string): Promise<Bf6SsmStatus> {
+  const ip = await clientIp();
+  if (!(await checkRateLimit(`bf6ssm:${ip}`, 30, 3600))) {
+    return { ok: false, reason: 'code' };
+  }
+  const gate = await checkSsmGate(code);
+  return gate.ok ? { ok: true, remaining: gate.remaining } : gate;
+}
+
+export async function submitBf6SsmEntry(
+  code: string,
+  payload: Bf6SsmEntryInput
+): Promise<{ ok: true; token: string } | { ok: false; error: string }> {
+  const ip = await clientIp();
+  if (!(await checkRateLimit(`bf6ssm:${ip}`, 30, 3600))) {
+    return { ok: false, error: '送信が多すぎます。しばらくしてからお試しください' };
+  }
+  const gate = await checkSsmGate(code);
+  if (!gate.ok) {
+    return {
+      ok: false,
+      error:
+        gate.reason === 'code'
+          ? '招待コードが正しくありません'
+          : gate.reason === 'full'
+            ? 'SSM学生無料枠は埋まりました'
+            : '現在SSM学生枠の受付期間外です',
+    };
+  }
+  const validated = validateBf6SsmEntry(payload);
+  if (typeof validated === 'string') return { ok: false, error: validated };
+  const created = await createBf6SsmFreeOrder(validated, gate.limit ?? 6);
+  if (!created.ok) return { ok: false, error: created.error };
+  // 無料=即確定なので、このタイミングで確定メールを送る
+  const order = await loadBf6OrderByToken(created.editToken);
+  if (order) await sendBf6OrderEmail(order, created.editToken);
+  return { ok: true, token: created.editToken };
 }

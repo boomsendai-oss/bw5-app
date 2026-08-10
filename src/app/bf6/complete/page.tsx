@@ -65,6 +65,10 @@ export default async function Bf6CompletePage({
               <p className="rounded-xl border-2 border-neutral-300 bg-neutral-900 p-4 text-sm font-bold text-neutral-200">
                 お支払いは当日会場受付にて <span className="text-lg font-black">{yen(order.amountTotal)}</span>(現金)をお願いします。
               </p>
+            ) : order.amountTotal === 0 ? (
+              <p className="rounded-xl border-2 border-red-600 bg-red-950/40 p-4 text-sm font-bold text-red-300">
+                無料枠でのエントリーです。お支払いはありません。
+              </p>
             ) : (
               <p className="rounded-xl border-2 border-red-600 bg-red-950/40 p-4 text-sm font-bold text-red-300">
                 お支払い済み: {yen(order.amountTotal)}(カード決済)

@@ -316,6 +316,87 @@ export async function listBf6OrdersStaff(): Promise<StaffBf6Order[]> {
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }
 
+// ───────────────────────── SSM学生無料枠 ─────────────────────────
+// SSM(会場校)の学生向け特典: 招待コード必須・6名限定・期間限定・一般部門のみ・無料で即確定。
+// 一般のエントリーと同じbf_ordersに amount_total=0 / note='SSM_FREE' で記録するため、
+// 公開リスト・一般部門の定員カウント・スタッフ画面にはそのまま乗る。
+
+export const SSM_FREE_NOTE = 'SSM_FREE';
+
+export interface Bf6SsmConfig {
+  code: string;        // 招待コード(空なら受付停止)
+  limit: number;       // 無料枠の人数
+  start: string;       // YYYY-MM-DD (この日から受付)
+  deadline: string;    // YYYY-MM-DD (この日まで受付)
+}
+
+export async function getBf6SsmConfig(): Promise<Bf6SsmConfig> {
+  const rows = await getAll(
+    "SELECT key, value FROM bf_settings WHERE key IN ('ssm_code','ssm_free_limit','ssm_start','ssm_deadline')"
+  );
+  const map = new Map<string, string>(rows.map((r) => [String(r.key), String(r.value)]));
+  return {
+    code: map.get('ssm_code') ?? '',
+    limit: Number(map.get('ssm_free_limit') ?? '6') || 6,
+    start: map.get('ssm_start') ?? '',
+    deadline: map.get('ssm_deadline') ?? '',
+  };
+}
+
+/** SSM無料枠の使用数(期限切れ・キャンセルは数えない)。 */
+export async function countBf6SsmFreeOrders(): Promise<number> {
+  const rows = await getAll(
+    `SELECT COUNT(*) AS n FROM bf_orders WHERE note = ? AND payment_status IN ${HOLDING_STATUSES}`,
+    [SSM_FREE_NOTE]
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
+export async function createBf6SsmFreeOrder(
+  v: import('@/lib/bf6').ValidatedBf6SsmEntry,
+  ssmLimit: number
+): Promise<CreateBf6OrderResult> {
+  const settings = await getBf6Settings();
+  await sweepExpiredBf6Orders();
+  const editToken = generateEditToken();
+  const now = nowIso();
+  try {
+    const orderId = await withWriteTx(async (tx: Transaction) => {
+      // SSM枠の再チェック(同時申込対策・Tx内で確定)
+      const cntRes = await tx.execute({
+        sql: `SELECT COUNT(*) AS n FROM bf_orders WHERE note = ? AND payment_status IN ${HOLDING_STATUSES}`,
+        args: [SSM_FREE_NOTE],
+      });
+      if (Number((cntRes.rows[0] as { n?: unknown })?.n ?? 0) >= ssmLimit) {
+        throw new Error(`申し訳ありません。SSM学生無料枠(${ssmLimit}名)は埋まりました`);
+      }
+      // 一般部門の残枠チェック
+      const usageRes = await tx.execute(
+        `SELECT i.item_type, i.divisions, i.qty FROM bf_order_items i JOIN bf_orders o ON o.id = i.order_id WHERE o.payment_status IN ${HOLDING_STATUSES}`
+      );
+      const usage = aggregateUsage(usageRes.rows as unknown as UsageRow[]);
+      const remaining = calcBf6Remaining(settings, usage);
+      if (remaining.divisions.general < 1) {
+        throw new Error('申し訳ありません。一般部門は定員に達しました');
+      }
+
+      const orderRes = await tx.execute({
+        sql: 'INSERT INTO bf_orders (buyer_name, email, phone, pay_method, payment_status, amount_total, edit_token, expires_at, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        args: [v.buyerName, v.email, v.phone, 'onsite', 'paid', 0, editToken, '', SSM_FREE_NOTE, now, now],
+      });
+      const oid = Number(orderRes.lastInsertRowid);
+      await tx.execute({
+        sql: 'INSERT INTO bf_order_items (order_id, item_type, performer_name, dancer_name, dancer_kana, grade, genre, rep, instagram, is_first_battle, divisions, qty, unit_amount, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        args: [oid, 'entry', v.performerName, v.dancerName, v.dancerKana, v.grade, v.genre, v.rep, v.instagram, v.isFirstBattle ? 1 : 0, JSON.stringify(v.divisions), 1, 0, 0],
+      });
+      return oid;
+    });
+    return { ok: true, orderId, editToken, amountTotal: 0 };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : '申込に失敗しました。時間をおいてお試しください' };
+  }
+}
+
 /**
  * スタッフによる出場者情報の修正(誤字・表記ゆれの訂正用)。
  * 部門・学年・金額は変更しない。定員と料金に波及する変更は誤操作の危険が大きいため、
