@@ -65,7 +65,7 @@ export default async function Bf6TopPage() {
             <Bf6DetailBlock en="TIME" ja="時間">
               <p className="font-bold text-neutral-200">OPEN 14:30(予定)</p>
               <p className="font-bold text-neutral-200">CLOSE 18:00頃</p>
-              <p className="mt-2 text-xs text-neutral-400">※ タイムテーブルはエントリー締切後に発表します</p>
+              <p className="mt-2 text-xs text-neutral-400">※ タイムテーブルは追って発表いたします</p>
             </Bf6DetailBlock>
             <div className="md:row-span-3">
             <Bf6DetailBlock en="FEE" ja="料金">
