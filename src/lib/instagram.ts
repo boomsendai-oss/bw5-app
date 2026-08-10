@@ -374,33 +374,64 @@ export async function fetchMediaInsights(mediaId: string, kind: 'reel' | 'story'
  *  3. media_publish → permalink取得
  * 実証済みフロー: scripts/post_reel_once.mjs (2026-07-17 初投稿で検証)
  */
+/** 共同投稿者の指定文字列(スペース/カンマ区切り)を、@を落とした最大3件の配列にする。 */
+export function parseCollaborators(raw: string | null | undefined): string[] {
+  return String(raw ?? '')
+    .split(/[\s,、，]+/)
+    .map((s) => s.replace(/^@+/, '').trim())
+    .filter(Boolean)
+    .slice(0, 3); // Instagram仕様: 共同投稿者は最大3人
+}
+
 export async function publishReel(
   videoUrl: string,
   caption: string,
-  coverUrl?: string
-): Promise<{ mediaId: string; permalink?: string }> {
+  coverUrl?: string,
+  collaborators?: string[]
+): Promise<{ mediaId: string; permalink?: string; collaboratorsApplied: string[]; collaboratorsDropped: string[] }> {
   const { token, igUserId } = await requireConnection();
   const base = `${GRAPH}/${GRAPH_VERSION}/${igUserId}`;
+  const wanted = (collaborators ?? []).slice(0, 3);
 
-  const payload: Record<string, unknown> = {
-    media_type: 'REELS',
-    video_url: videoUrl,
-    caption,
-    share_to_feed: 'true',
-    access_token: token,
+  const buildPayload = (withCollab: boolean): Record<string, unknown> => {
+    const p: Record<string, unknown> = {
+      media_type: 'REELS',
+      video_url: videoUrl,
+      caption,
+      share_to_feed: 'true',
+      access_token: token,
+    };
+    if (coverUrl) p.cover_url = coverUrl;
+    if (withCollab && wanted.length > 0) p.collaborators = JSON.stringify(wanted);
+    return p;
   };
-  if (coverUrl) payload.cover_url = coverUrl;
 
-  const createRes = await fetch(`${base}/media`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const createJson = await createRes.json();
-  if (!createRes.ok || createJson.error) {
-    throw new Error(`リールコンテナ作成失敗: ${JSON.stringify(createJson.error ?? createJson)}`);
+  const createContainer = async (withCollab: boolean) => {
+    const res = await fetch(`${base}/media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildPayload(withCollab)),
+    });
+    const json = await res.json();
+    return { ok: res.ok && !json.error, json };
+  };
+
+  // 共同投稿の指定で弾かれても(非公開アカウント・ハンドル変更など)、リール自体は必ず出す。
+  // 相手が非公開だとAPIが受け付けないため、失敗したら共同投稿なしで作り直す(TARO 2026-08-10)。
+  // ストーリーのメンションと同じ「落ちた分だけ諦めて本体は出す」方針。
+  let attempt = await createContainer(wanted.length > 0);
+  let collaboratorsApplied = wanted;
+  let collaboratorsDropped: string[] = [];
+  if (!attempt.ok && wanted.length > 0) {
+    console.warn(`共同投稿の指定でコンテナ作成に失敗→共同投稿なしで再試行: ${JSON.stringify(attempt.json.error ?? attempt.json)}`);
+    attempt = await createContainer(false);
+    collaboratorsApplied = [];
+    collaboratorsDropped = wanted;
   }
-  const creationId = createJson.id as string;
+  if (!attempt.ok) {
+    throw new Error(`リールコンテナ作成失敗: ${JSON.stringify(attempt.json.error ?? attempt.json)}`);
+  }
+  const creationId = attempt.json.id as string;
 
   const deadline = Date.now() + 240_000;
   let statusCode = 'IN_PROGRESS';
@@ -436,5 +467,5 @@ export async function publishReel(
   } catch {
     // permalinkは表示用なので失敗しても公開自体は成功扱い
   }
-  return { mediaId, permalink };
+  return { mediaId, permalink, collaboratorsApplied, collaboratorsDropped };
 }

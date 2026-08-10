@@ -39,6 +39,7 @@ type Draft = {
   queue_permalink: string | null;
   lesson_master_id: number | null;
   mention_handles: string | null;
+  collaborators: string | null;
   updated_at: string;
 };
 type Lesson = { id: number; class_name: string; dw: number; st: string; et: string | null; instructor: string | null };
@@ -1023,6 +1024,7 @@ function defaultSlotLocal(stage: boolean): string {
 function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () => void; onMsg: (s: string) => void }) {
   const stage = draft.kind === '発表会' || draft.kind === 'stage';
   const [caption, setCaption] = useState(draft.caption ?? '');
+  const [collab, setCollab] = useState(draft.collaborators ?? '');
   const [dateStr, setDateStr] = useState(''); // datetime-local
   const [busy, setBusy] = useState(false);
   const [pickCover, setPickCover] = useState(false);
@@ -1051,10 +1053,13 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
 
   const schedule = async (scheduledAt?: string) => {
     setBusy(true);
-    // キャプション編集を反映してから予約
-    if (caption !== (draft.caption ?? '')) {
+    // キャプション・共同投稿の編集を反映してから予約(予約時にreel_queueへコピーされるため先に保存)
+    const patch: Record<string, unknown> = { id: draft.id };
+    if (caption !== (draft.caption ?? '')) patch.caption = caption;
+    if (collab !== (draft.collaborators ?? '')) patch.collaborators = collab.trim() || null;
+    if (Object.keys(patch).length > 1) {
       await fetch('/api/staff/reel-drafts', {
-        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: draft.id, caption }),
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch),
       });
     }
     const body: Record<string, unknown> = { action: 'schedule', id: draft.id };
@@ -1163,6 +1168,18 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
           <button onClick={resetCaption} disabled={busy}
             className="text-[11px] text-navy-400 hover:underline disabled:opacity-50">自動文面に戻す</button>
         </div>
+      </label>
+
+      {/* 共同投稿: 承認されると相手のフィードにも並ぶ。自動では入れず、毎回ここで選ぶ(TARO 2026-08-10)。 */}
+      <label className="block mb-3">
+        <span className="text-[11px] text-navy-500">共同投稿する相手（Instagramのユーザー名・最大3人）</span>
+        <input value={collab} onChange={(e) => setCollab(e.target.value)}
+          placeholder="例: occhan.88（空欄なら共同投稿しない）"
+          className="w-full border border-sand-200 rounded-lg p-2 text-sm text-navy-800 mt-1" />
+        <p className="text-[11px] text-navy-400 mt-1">
+          相手に招待が届き、承認されると相手の投稿一覧にも並びます。非公開アカウントは指定できません。
+          指定が通らなかった場合も、共同投稿なしでリールは投稿されます。
+        </p>
       </label>
 
       <div className="border-t border-sand-100 pt-3">

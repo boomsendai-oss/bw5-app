@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getOne } from '@/lib/db';
 import { nowUtcIso } from '@/lib/dateJst';
-import { configured as igConfigured, publishReel, refreshTokenIfStale } from '@/lib/instagram';
+import { configured as igConfigured, publishReel, parseCollaborators, refreshTokenIfStale } from '@/lib/instagram';
+import { notifyTaro } from '@/lib/notify';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   const now = nowUtcIso();
   const due = await getOne(
-    `SELECT id, title, video_path, cover_path, caption FROM reel_queue
+    `SELECT id, title, video_path, cover_path, caption, collaborators FROM reel_queue
      WHERE status = 'scheduled' AND scheduled_at <= ?
      ORDER BY scheduled_at ASC LIMIT 1`,
     [now]
@@ -68,12 +69,27 @@ export async function POST(req: NextRequest) {
   const coverUrl = due.cover_path ? `${origin}${encodePath(String(due.cover_path))}` : undefined;
 
   try {
-    const { mediaId, permalink } = await publishReel(videoUrl, String(due.caption), coverUrl);
+    const collaborators = parseCollaborators(due.collaborators as string | null);
+    const { mediaId, permalink, collaboratorsApplied, collaboratorsDropped } =
+      await publishReel(videoUrl, String(due.caption), coverUrl, collaborators);
     await execute(
       `UPDATE reel_queue SET status = 'posted', ig_media_id = ?, permalink = ?, posted_at = ?, updated_at = ? WHERE id = ?`,
       [mediaId, permalink ?? null, nowUtcIso(), nowUtcIso(), due.id]
     );
-    return NextResponse.json({ ok: true, posted: true, id: due.id, mediaId, permalink });
+    // 共同投稿だけ落ちた場合はリールは出ている。黙って消えると気づけないのでTAROへ知らせる。
+    if (collaboratorsDropped.length > 0) {
+      await notifyTaro({
+        subject: 'リールの共同投稿だけ付きませんでした',
+        body:
+          `「${due.title}」は投稿できましたが、共同投稿の指定 [${collaboratorsDropped.join(', ')}] は反映されませんでした。\n` +
+          '相手が非公開アカウント、またはユーザー名が変わっている可能性があります。\n' +
+          (permalink ?? ''),
+      }).catch(() => {});
+    }
+    return NextResponse.json({
+      ok: true, posted: true, id: due.id, mediaId, permalink,
+      collaborators: collaboratorsApplied, collaboratorsDropped,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await execute(

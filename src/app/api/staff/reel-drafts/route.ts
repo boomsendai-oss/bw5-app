@@ -19,7 +19,7 @@ export const maxDuration = 30;
  * need_input を作り、ready を生成して reel_queue に投入する。ここは"入力"だけを担う。
  */
 
-const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice', 'caption', 'stage_kf', 'lesson_master_id', 'mention_handles'] as const;
+const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice', 'caption', 'stage_kf', 'lesson_master_id', 'mention_handles', 'collaborators'] as const;
 
 const isStage = (kind: unknown) => kind === '発表会' || kind === 'stage';
 
@@ -165,6 +165,7 @@ export async function GET(req: NextRequest) {
             d.caption_style, d.duration_sec, d.preview_path, d.cover_candidates, d.stage_kf,
             d.dance_start, d.dance_end, d.cover_at, d.cover_choice, d.status, d.reel_queue_id, d.error,
             d.reel_path, d.cover_path, d.caption, d.created_at, d.updated_at, d.lesson_master_id, d.mention_handles,
+            d.collaborators,
             -- 追従を目で決めるための「切り取る前(16:9)」プレビュー。存在する時だけURLを返す
             CASE WHEN d.preview_path IS NOT NULL AND d.kind IN ('発表会','stage')
                  THEN REPLACE(d.preview_path, 'preview.mp4', 'wide.mp4') END AS wide_path,
@@ -263,10 +264,15 @@ export async function PATCH(req: NextRequest) {
   }
   // 予約済みのキャプション編集は、実際に投稿へ使われる reel_queue 側にも同期する
   // (予約時にコピーされるため、draft だけ直しても投稿文は変わらない事故の防止)
-  if ('caption' in body && draft.reel_queue_id) {
+  if (('caption' in body || 'collaborators' in body) && draft.reel_queue_id) {
     const q = await getOne('SELECT status FROM reel_queue WHERE id = ?', [draft.reel_queue_id]);
     if (q && q.status === 'scheduled') {
-      await execute('UPDATE reel_queue SET caption = ? WHERE id = ?', [body.caption ?? '', draft.reel_queue_id]);
+      if ('caption' in body) {
+        await execute('UPDATE reel_queue SET caption = ? WHERE id = ?', [body.caption ?? '', draft.reel_queue_id]);
+      }
+      if ('collaborators' in body) {
+        await execute('UPDATE reel_queue SET collaborators = ? WHERE id = ?', [body.collaborators ?? null, draft.reel_queue_id]);
+      }
     }
   }
   const updated = await getOne('SELECT * FROM reel_draft WHERE id = ?', [id]);
@@ -463,9 +469,9 @@ export async function POST(req: NextRequest) {
     }
     const title = `${d.class_name || d.drive_name}${d.instructor ? '（' + d.instructor + '）' : ''}`;
     const q = await execute(
-      `INSERT INTO reel_queue (title, video_path, cover_path, caption, scheduled_at, status)
-       VALUES (?, ?, ?, ?, ?, 'scheduled')`,
-      [title, d.reel_path, d.cover_path, d.caption ?? '', scheduledAt]
+      `INSERT INTO reel_queue (title, video_path, cover_path, caption, scheduled_at, status, collaborators)
+       VALUES (?, ?, ?, ?, ?, 'scheduled', ?)`,
+      [title, d.reel_path, d.cover_path, d.caption ?? '', scheduledAt, d.collaborators ?? null]
     );
     await execute('UPDATE reel_draft SET status = ?, reel_queue_id = ?, updated_at = ? WHERE id = ?',
       ['scheduled', String(q.lastInsertRowid), now, id]);
