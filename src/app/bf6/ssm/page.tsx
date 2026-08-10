@@ -47,7 +47,7 @@ export default function Bf6SsmPage() {
           ? '招待コードが正しくありません'
           : res.reason === 'full'
             ? 'SSM学生無料枠(6名)は埋まりました。通常のエントリーをご利用ください'
-            : '現在SSM学生枠の受付期間外です(受付: 8/11〜8/31)'
+            : '現在SSM学生枠の受付期間外です(締切: 8/31)'
       );
       return;
     }
@@ -81,7 +81,7 @@ export default function Bf6SsmPage() {
             <Bf6Card label="SSM(仙台スクールオブミュージック&ダンス専門学校)の学生専用">
               <ul className="space-y-1.5 text-sm text-neutral-300">
                 <li>・SSMの学生は<span className="font-bold text-white">6名まで無料</span>で一般部門にエントリーできます</li>
-                <li>・受付期間: <span className="font-bold text-white">8/11(月)〜8/31(月)</span>・先着順</li>
+                <li>・受付締切: <span className="font-bold text-white">8/31(月)</span>まで・先着順</li>
                 <li>・学校から共有された<span className="font-bold text-white">招待コード</span>を入力してください</li>
               </ul>
             </Bf6Card>
@@ -113,14 +113,24 @@ export default function Bf6SsmPage() {
                 <li>・JUDGE: SHOKO / K@TTSU / Mao</li>
                 <li>・MC: TARO / BATTLE DJ: DJ おっちゃん</li>
               </ul>
-              <a
-                href="/bf6"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 flex h-12 w-full items-center justify-center rounded-xl border-2 border-neutral-700 bg-neutral-900 text-sm font-bold text-neutral-300"
-              >
-                イベント詳細を見る(別タブで開きます) ↗
-              </a>
+              <div className="mt-3 space-y-2">
+                <a
+                  href="/bf6"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-12 w-full items-center justify-center rounded-xl border-2 border-neutral-700 bg-neutral-900 text-sm font-bold text-neutral-300"
+                >
+                  イベント詳細を見る(別タブ) ↗
+                </a>
+                <a
+                  href="/bf6/entries"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-12 w-full items-center justify-center rounded-xl border-2 border-neutral-700 bg-neutral-900 text-sm font-bold text-neutral-300"
+                >
+                  エントリーリストを見る(別タブ) ↗
+                </a>
+              </div>
               <p className="mt-2 text-center text-[11px] text-neutral-500">
                 ※ このページは開いたまま残ります。詳細を見たあとこのタブに戻ってエントリーしてください
               </p>
@@ -228,14 +238,24 @@ export default function Bf6SsmPage() {
 
           {error && <p className="mt-4 rounded-xl bg-red-950/40 p-3 text-sm font-bold text-red-400">{error}</p>}
 
-          <a
-            href="/bf6"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-6 flex h-12 w-full items-center justify-center rounded-xl border-2 border-neutral-700 bg-neutral-900 text-sm font-bold text-neutral-300"
-          >
-            イベント詳細を見る(別タブ) ↗
-          </a>
+          <div className="mt-6 grid gap-2 sm:grid-cols-2">
+            <a
+              href="/bf6"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-12 w-full items-center justify-center rounded-xl border-2 border-neutral-700 bg-neutral-900 text-sm font-bold text-neutral-300"
+            >
+              イベント詳細 ↗
+            </a>
+            <a
+              href="/bf6/entries"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-12 w-full items-center justify-center rounded-xl border-2 border-neutral-700 bg-neutral-900 text-sm font-bold text-neutral-300"
+            >
+              エントリーリスト ↗
+            </a>
+          </div>
 
           <button
             onClick={() => {
