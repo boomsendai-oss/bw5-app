@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAll, execute } from '@/lib/db';
 import { todayJst, nowUtcIso, shiftDays } from '@/lib/dateJst';
 import { configured, fetchMediaInsights } from '@/lib/instagram';
+import { configured as ytConfigured, fetchChannelStats } from '@/lib/youtube';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -12,8 +13,13 @@ export const maxDuration = 60;
 // 「一定期間運用してデータを見て再計画する」を人手のIGアプリ目視に頼らないための土台。
 //   - リール: 投稿後30日間、毎日スナップショット(数日かけて数字が伸びるため初速も見える)
 //   - ストーリー: 投稿後3日間(24hで消えるが直後の数字を確実に押さえる)
+//   - YouTube: チャンネル統計(登録者数/総再生/本数)を1日1点(登録者1,000人までの推移を見る)
 // (media_id, collected_date) のUNIQUEで1日1行にupsert=再実行しても増殖しない。
 // 認証: Bearer CRON_SECRET または x-cron-secret(GH Actionsから)。
+//
+// ⚠️ InstagramとYouTubeは**互いに独立**に処理する(部分成功化)。
+//    片方のenvが切れただけでもう片方の計測まで止まると、
+//    「気づいたら数字が何日も欠けていた」という最悪の壊れ方をするため。
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
@@ -25,12 +31,41 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  if (!configured()) {
-    return NextResponse.json({ ok: true, configured: false });
-  }
-
   const collectedDate = todayJst();
   const collectedAt = nowUtcIso();
+
+  // --- YouTube チャンネル統計 (Instagramの成否に依存させない) ---
+  const youtube: { configured: boolean; saved: boolean; subscribers?: number | null; error?: string } = {
+    configured: ytConfigured(),
+    saved: false,
+  };
+  if (youtube.configured) {
+    try {
+      const st = await fetchChannelStats();
+      if (st) {
+        await execute(
+          `INSERT INTO youtube_channel_stats
+             (channel_id, title, collected_date, collected_at, subscribers, views, videos, raw)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(channel_id, collected_date) DO UPDATE SET
+             title = excluded.title, collected_at = excluded.collected_at,
+             subscribers = excluded.subscribers, views = excluded.views,
+             videos = excluded.videos, raw = excluded.raw`,
+          [st.channelId, st.title, collectedDate, collectedAt, st.subscribers, st.views, st.videos, st.raw]
+        );
+        youtube.saved = true;
+        youtube.subscribers = st.subscribers;
+      } else {
+        youtube.error = 'チャンネル情報が取得できませんでした';
+      }
+    } catch (e) {
+      youtube.error = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  if (!configured()) {
+    return NextResponse.json({ ok: true, configured: false, youtube });
+  }
   const cutoffReel = new Date(Date.now() - 30 * 86400000).toISOString();
   // ストーリーは24hで消え、期限切れ後はインサイトが取れない(全項目null)。
   // 毎朝4時の収集で「前日の朝に出したストーリー」を約20時間後に拾えるため、今日+昨日で十分。
@@ -107,11 +142,12 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    ok: errors.length === 0,
+    ok: errors.length === 0 && !youtube.error,
     collectedDate,
     targets: targets.length,
     saved,
     pending,
     errors,
+    youtube,
   });
 }

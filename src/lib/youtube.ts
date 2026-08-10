@@ -135,6 +135,71 @@ export async function uploadShort(input: UploadShortInput): Promise<UploadShortR
   return { videoId, permalink: `https://www.youtube.com/shorts/${videoId}` };
 }
 
+export type ChannelStats = {
+  channelId: string;
+  title: string;
+  subscribers: number | null;
+  views: number | null;
+  videos: number | null;
+  raw: string;
+};
+
+/**
+ * 自チャンネルの統計(登録者数・総再生回数・動画本数)を取る。
+ *
+ * 採用API: channels.list?part=snippet,statistics&mine=true
+ *   - クォータ 1 unit (videos.insert の 1600 と比べれば無視できる)
+ *   - `mine=true` なので OAuth のリフレッシュトークンがどのチャンネルの物かに追従する。
+ *     チャンネルIDをハードコードしないので、認可し直しても壊れない。
+ *
+ * ⚠️ subscriberCount は YouTube 側で**3桁に丸められる**(例: 1,234 → 1,230)。
+ *    日々の増減を見る用途では十分だが、1人単位の正確さは無い。
+ *    hiddenSubscriberCount が true のチャンネルでは null になる。
+ */
+export async function fetchChannelStats(): Promise<ChannelStats | null> {
+  if (!configured()) return null;
+  const token = await getAccessToken();
+  const res = await fetch(
+    'https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true',
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`YouTube channels.list失敗 ${res.status}: ${raw.slice(0, 300)}`);
+
+  const parsed = JSON.parse(raw) as {
+    items?: {
+      id?: string;
+      snippet?: { title?: string };
+      statistics?: {
+        subscriberCount?: string;
+        viewCount?: string;
+        videoCount?: string;
+        hiddenSubscriberCount?: boolean;
+      };
+    }[];
+  };
+  const item = parsed.items?.[0];
+  if (!item) return null;
+
+  // API は数値を文字列で返す。数字以外が来たら null にして、0 と取り違えないようにする
+  const num = (v: string | undefined): number | null => {
+    if (v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  return {
+    channelId: item.id ?? '',
+    title: item.snippet?.title ?? '',
+    subscribers: item.statistics?.hiddenSubscriberCount
+      ? null
+      : num(item.statistics?.subscriberCount),
+    views: num(item.statistics?.viewCount),
+    videos: num(item.statistics?.videoCount),
+    raw: raw.slice(0, 2000),
+  };
+}
+
 /**
  * カバー画像をサムネイルとして設定してみる。成功/失敗をbooleanで返し、throwしない。
  *

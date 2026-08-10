@@ -5,7 +5,7 @@
 //   - YouTube: タイトルと説明が別。#Shorts が無いとShortsとして扱われないことがある
 // ここでプラットフォームごとに整形する。
 
-import { OFFICIAL_LINE_URL, WEBSITE_URL } from './links';
+import { OFFICIAL_LINE_URL, WEBSITE_URL, YOUTUBE_SUBSCRIBE_URL } from './links';
 
 /** 横展開する配信先 */
 export const CROSSPOST_PLATFORMS = ['youtube', 'x', 'threads', 'facebook', 'tiktok'] as const;
@@ -207,9 +207,18 @@ function localizeForYouTube(body: string): string {
   return body.replace(/プロフィール/g, '概要欄');
 }
 
-/** 説明欄の末尾に付ける導線。YouTubeは説明のURLがリンクになる */
+/**
+ * 説明欄の末尾に付ける導線。YouTubeは説明のURLがリンクになる。
+ *
+ * チャンネル登録を**体験申込より先**に置いている。体験は仙台近郊の人にしか刺さらないが、
+ * 登録は誰でも押せて、押されるほど次の動画が本人のフィードに出る=再訪が増えるため。
+ * (登録者1,000人でパートナープログラム入り→Shortsのカスタムサムネイルが解禁される)
+ */
 function buildCtaBlock(): string {
   return [
+    `▼ チャンネル登録はこちら(1タップで登録画面が開きます)`,
+    YOUTUBE_SUBSCRIBE_URL,
+    '',
     '▼ 体験レッスン(無料)のご予約・ご相談はこちら',
     `公式LINE: ${OFFICIAL_LINE_URL}`,
     `ホームページ: ${WEBSITE_URL}`,
@@ -219,7 +228,7 @@ function buildCtaBlock(): string {
 /**
  * YouTube Shorts用のタイトルと説明を作る。
  * タイトル = キャプション1行目(【】があれば中身を優先)。
- * 説明     = 本文 + 導線(公式LINE/HP) + タグ + #Shorts。
+ * 説明     = 本文 + 導線(チャンネル登録/公式LINE/HP) + タグ + #Shorts。
  *
  * 導線を入れるのは、YouTubeから来た人が体験申込に辿り着けるようにするため。
  * チャンネルの概要欄にもリンクはあるが、動画→チャンネル→概要→リンクと

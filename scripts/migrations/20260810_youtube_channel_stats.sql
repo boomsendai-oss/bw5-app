@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS youtube_channel_stats (id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id TEXT NOT NULL, title TEXT, collected_date TEXT NOT NULL, collected_at TEXT, subscribers INTEGER, views INTEGER, videos INTEGER, raw TEXT, UNIQUE(channel_id, collected_date));

@@ -19,7 +19,7 @@ import {
   classifyByEnabled,
   type CrosspostRow,
 } from '../crosspost';
-import { OFFICIAL_LINE_URL, WEBSITE_URL } from '../links';
+import { OFFICIAL_LINE_URL, WEBSITE_URL, YOUTUBE_SUBSCRIBE_URL } from '../links';
 
 describe('splitCaption', () => {
   it('末尾のハッシュタグ行を本文から切り離す', () => {
@@ -118,6 +118,27 @@ describe('buildYouTubeMeta', () => {
     expect(m.description).toContain(WEBSITE_URL);
   });
 
+  it('チャンネル登録の導線を入れる(sub_confirmation付き)', () => {
+    const m = buildYouTubeMeta('t', '本文\n\n#仙台ダンス');
+    expect(m.description).toContain(YOUTUBE_SUBSCRIBE_URL);
+    expect(m.description).toContain('sub_confirmation=1');
+  });
+
+  it('登録URLはハンドルでなくチャンネルID形式(説明欄に@を持ち込まない)', () => {
+    // 説明欄の @ は別アカウントへのリンクになりうるため、自分のハンドルでも入れない
+    const m = buildYouTubeMeta('t', '本文');
+    expect(m.description).not.toContain('@boom_sendai');
+    expect(m.description).toContain('/channel/');
+  });
+
+  it('チャンネル登録の導線を体験申込より先に置く', () => {
+    // 登録は誰でも押せて再訪に直結するので、地域が限られる体験申込より上に置く
+    const m = buildYouTubeMeta('t', '本文');
+    expect(m.description.indexOf(YOUTUBE_SUBSCRIBE_URL)).toBeLessThan(
+      m.description.indexOf(OFFICIAL_LINE_URL)
+    );
+  });
+
   it('Instagram向けの「プロフィール」をYouTubeの「概要欄」に言い換える', () => {
     const m = buildYouTubeMeta('t', '体験レッスンは無料。ご予約はプロフィールの公式LINEから');
     expect(m.description).toContain('概要欄');
@@ -128,6 +149,7 @@ describe('buildYouTubeMeta', () => {
     const m = buildYouTubeMeta('t', 'あ'.repeat(8000) + '\n\n#仙台ダンス');
     expect([...m.description].length).toBeLessThanOrEqual(YT_DESCRIPTION_MAX);
     expect(m.description).toContain(OFFICIAL_LINE_URL);
+    expect(m.description).toContain(YOUTUBE_SUBSCRIBE_URL);
     expect(m.description).toContain('#Shorts');
   });
 
