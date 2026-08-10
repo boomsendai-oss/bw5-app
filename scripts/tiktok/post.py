@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""
+TikTokへリールを投稿する(Playwright)。
+
+前提:
+  - 先に `node scripts/tiktok/prepare.mjs` で job.json を作る
+  - 先に `python3 scripts/tiktok/login.py` で一度ログインしておく
+
+使い方:
+    python3 scripts/tiktok/post.py scripts/tiktok/out/9/job.json            # 投稿する
+    python3 scripts/tiktok/post.py scripts/tiktok/out/9/job.json --dry-run  # 投稿ボタンだけ押さない
+
+--dry-run は「動画とカバーとキャプションを全部入れた状態」で止まる。
+初回や仕様変更が疑われる時はこれで確認してから本番を撃つこと。
+
+2026-08-10 の手作業で分かっている落とし穴を、そのまま実装に落としてある:
+  - カバーは投稿後に変更できない → 必ず投稿前に入れる
+  - キャプションはDraft.jsで、入力が二重に適用されることがある
+    → 入れたあと必ず「正解と完全一致するか」を検証し、違えば直す
+  - 投稿直後は「自分のみ・コンテンツ審査中」になることがある(新しめのアカウントの通常挙動)
+"""
+import json
+import sys
+import time
+from pathlib import Path
+
+from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+
+USER_DATA_DIR = Path.home() / ".boom_tiktok_profile"
+UPLOAD_URL = "https://www.tiktok.com/tiktokstudio/upload"
+UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+
+# 日本語UI / 英語UI どちらでも拾えるように両方持つ
+T = {
+    "uploaded": ["アップロード完了", "Uploaded"],
+    "edit_cover": ["カバーを編集", "Edit cover"],
+    "upload_cover": ["カバーをアップロード", "Upload cover"],
+    "save": ["保存", "Save"],
+    "post": ["投稿", "Post"],
+    "cancel": ["キャンセル", "Cancel"],
+}
+
+
+def any_text(page, keys):
+    """T[...] のどれかを含む可視要素を返す(無ければ None)"""
+    for word in T[keys]:
+        loc = page.locator(f"text={word}").first
+        try:
+            if loc.count() and loc.is_visible():
+                return loc
+        except Exception:
+            pass
+    return None
+
+
+def dismiss_autocheck_dialog(page):
+    """『コンテンツの自動チェックをオンにしますか？』はアカウント設定の変更なので必ず断る"""
+    for word in T["cancel"]:
+        btn = page.get_by_role("button", name=word)
+        try:
+            if btn.count() and btn.first.is_visible():
+                btn.first.click()
+                page.wait_for_timeout(600)
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def set_caption(page, caption: str) -> bool:
+    """Draft.jsのエディタに入れる。二重適用されることがあるので一致するまで直す。"""
+    ed = page.locator('[contenteditable="true"]').first
+    ed.wait_for(state="visible", timeout=30_000)
+
+    for attempt in range(4):
+        ed.click()
+        page.keyboard.press("Meta+A")
+        page.keyboard.press("Backspace")
+        page.wait_for_timeout(300)
+        # insert_text は1文字ずつ打たないので、# のオートコンプリートに邪魔されにくい
+        ed.press_sequentially("", delay=0)  # フォーカス確定
+        page.keyboard.insert_text(caption)
+        page.wait_for_timeout(900)
+
+        current = ed.inner_text()
+        if " ".join(current.split()) == " ".join(caption.split()):
+            return True
+        print(f"  キャプションが一致しないので入れ直します (試行{attempt + 1}: "
+              f"{len(current)}文字 / 正解{len(caption)}文字)")
+    return False
+
+
+def run(job_path: Path, dry_run: bool) -> int:
+    job = json.loads(job_path.read_text(encoding="utf8"))
+    video = Path(job["videoPath"])
+    cover = Path(job["coverPath"])
+    caption = job["caption"]
+    for f, label in ((video, "動画"), (cover, "カバー")):
+        if not f.exists():
+            print(f"✗ {label}が見つかりません: {f}")
+            return 1
+
+    print(f"リール#{job['reelId']} {job['title']}")
+    print(f"  動画   : {video.name} ({video.stat().st_size / 1e6:.1f}MB)")
+    print(f"  カバー : {cover.name}")
+
+    with sync_playwright() as p:
+        ctx = p.chromium.launch_persistent_context(
+            user_data_dir=str(USER_DATA_DIR),
+            headless=False,          # 目視できるように常に表示。何か出たら人が気づける
+            channel="chrome",
+            user_agent=UA,
+            viewport={"width": 1440, "height": 900},
+            locale="ja-JP",
+            timezone_id="Asia/Tokyo",
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        try:
+            page.goto(UPLOAD_URL, wait_until="domcontentloaded")
+            page.wait_for_timeout(3000)
+            if "/login" in page.url:
+                print("✗ ログインが切れています。python3 scripts/tiktok/login.py を先に実行してください")
+                return 2
+
+            # 1) 動画
+            print("→ 動画をアップロード中…")
+            page.locator('input[type="file"]').first.set_input_files(str(video))
+            for _ in range(120):
+                if any_text(page, "uploaded"):
+                    break
+                page.wait_for_timeout(1000)
+            else:
+                print("✗ アップロードが終わりませんでした")
+                return 3
+            print("  完了")
+            dismiss_autocheck_dialog(page)
+
+            # 2) カバー(投稿後に変更できないので、ここで必ず入れる)
+            print("→ カバーを設定中…")
+            btn = any_text(page, "edit_cover")
+            if not btn:
+                print("✗ 「カバーを編集」が見つかりません")
+                return 4
+            btn.click()
+            page.wait_for_timeout(2500)
+            # モーダル内の画像用 file input
+            cover_input = page.locator('input[type="file"][accept*="image"]').last
+            cover_input.set_input_files(str(cover))
+            page.wait_for_timeout(3500)
+            save = any_text(page, "save")
+            if not save:
+                print("✗ カバー編集の「保存」が見つかりません")
+                return 5
+            save.click()
+            page.wait_for_timeout(2500)
+            print("  完了")
+
+            # 3) キャプション
+            print("→ キャプションを入力中…")
+            if not set_caption(page, caption):
+                print("✗ キャプションが正しく入りませんでした(手で直してください)")
+                return 6
+            print("  完了")
+
+            # 4) 公開範囲の確認(既定で「誰でも」のはずだが、変わっていたら止める)
+            body = page.inner_text("body")
+            if ("誰でも" not in body) and ("Everyone" not in body):
+                print("✗ 公開範囲が『誰でも』になっていません。手で確認してください")
+                return 7
+
+            if dry_run:
+                print("\n--dry-run なので投稿はしません。画面を確認したらブラウザを閉じてください。")
+                input("Enterで終了: ")
+                return 0
+
+            # 5) 投稿
+            print("→ 投稿中…")
+            posted = False
+            for word in T["post"]:
+                b = page.get_by_role("button", name=word, exact=True)
+                if b.count():
+                    b.first.click()
+                    posted = True
+                    break
+            if not posted:
+                print("✗ 投稿ボタンが見つかりません")
+                return 8
+
+            for _ in range(30):
+                page.wait_for_timeout(1000)
+                if "/content" in page.url:
+                    print("✓ 投稿しました")
+                    print("  ※ 新規投稿はしばらく『自分のみ・審査中』表示になることがあります(通常挙動)")
+                    return 0
+            print("△ 投稿は送信しましたが、完了画面を確認できませんでした。管理画面を見てください")
+            return 0
+        except PWTimeout as e:
+            print("✗ タイムアウト:", e)
+            return 9
+        finally:
+            page.wait_for_timeout(1500)
+            ctx.close()
+
+
+if __name__ == "__main__":
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if not args:
+        print(__doc__)
+        sys.exit(1)
+    sys.exit(run(Path(args[0]), "--dry-run" in sys.argv))
