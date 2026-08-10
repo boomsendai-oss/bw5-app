@@ -10,6 +10,7 @@ import {
   ticketRemaining,
   validateBf6Order,
   validateBf6EntryEdit,
+  validateBf6SsmEntry,
   countEntriesByDivision,
   buildBf6OrderItems,
   formatReceiptNo,
@@ -462,5 +463,44 @@ describe('validateBf6EntryEdit: スタッフによる出場者情報の編集', 
   test('Instagramは任意(空でも通る)', () => {
     const r = validateBf6EntryEdit({ ...base, instagram: '' });
     expect(typeof r).not.toBe('string');
+  });
+});
+
+describe('validateBf6SsmEntry: SSM学生無料枠のエントリー検証', () => {
+  const base = {
+    buyerName: '専門太郎',
+    email: 'ssm@example.com',
+    phone: '09012345678',
+    dancerName: 'TARO-SSM',
+    dancerKana: 'タロウ',
+    performerName: 'センモンタロウ',
+    genre: 'HIPHOP',
+    rep: 'SSM',
+    instagram: '',
+    isFirstBattle: false,
+  };
+
+  test('正しい入力は一般部門固定・大人固定で返る', () => {
+    const r = validateBf6SsmEntry(base);
+    expect(typeof r).not.toBe('string');
+    if (typeof r === 'string') return;
+    expect(r.divisions).toEqual(['general']);
+    expect(r.grade).toBe('adult');
+    expect(r.dancerName).toBe('TARO-SSM');
+  });
+
+  test('メール・電話の形式チェックが効く', () => {
+    expect(typeof validateBf6SsmEntry({ ...base, email: 'bad' })).toBe('string');
+    expect(typeof validateBf6SsmEntry({ ...base, phone: '123' })).toBe('string');
+  });
+
+  test('フリガナ・本名はカタカナ必須', () => {
+    expect(typeof validateBf6SsmEntry({ ...base, dancerKana: 'たろう' })).toBe('string');
+    expect(typeof validateBf6SsmEntry({ ...base, performerName: '専門太郎' })).toBe('string');
+  });
+
+  test('ジャンル・レペゼン必須', () => {
+    expect(typeof validateBf6SsmEntry({ ...base, genre: ' ' })).toBe('string');
+    expect(typeof validateBf6SsmEntry({ ...base, rep: '' })).toBe('string');
   });
 });

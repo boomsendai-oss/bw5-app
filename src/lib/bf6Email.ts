@@ -49,7 +49,9 @@ export function buildBf6OrderEmail(order: OwnBf6Order, editToken: string): { sub
   }
   lines.push('');
   lines.push(`■ 合計: ${yen(order.amountTotal)}`);
-  if (paid) {
+  if (paid && order.amountTotal === 0) {
+    lines.push('  (無料枠でのご参加のため、お支払いは不要です)');
+  } else if (paid) {
     lines.push('  (カード決済でお支払い済み)');
   } else if (order.payMethod === 'onsite') {
     lines.push('  当日会場受付にて現金でお支払いください。');

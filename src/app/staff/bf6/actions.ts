@@ -37,6 +37,10 @@ export interface Bf6SettingsForm {
   cfLiveInputUid: string;
   cfSigningKeyId: string;
   cfSigningKeyPem: string;
+  ssmCode: string;
+  ssmFreeLimit: number;
+  ssmStart: string;
+  ssmDeadline: string;
   hallCapacity: number;
   capacity: { beginner: number; kids: number; general: number };
   pricing: {
@@ -62,6 +66,10 @@ export async function staffSaveSettings(form: Bf6SettingsForm): Promise<void> {
   await setBf6Setting('cf_live_input_uid', form.cfLiveInputUid.trim());
   await setBf6Setting('cf_signing_key_id', form.cfSigningKeyId.trim());
   await setBf6Setting('cf_signing_key_pem', form.cfSigningKeyPem.trim());
+  await setBf6Setting('ssm_code', form.ssmCode.trim());
+  await setBf6Setting('ssm_free_limit', String(form.ssmFreeLimit));
+  await setBf6Setting('ssm_start', form.ssmStart);
+  await setBf6Setting('ssm_deadline', form.ssmDeadline);
   await setBf6Setting('hall_capacity', String(form.hallCapacity));
   await setBf6Setting('capacity', JSON.stringify(form.capacity));
   await setBf6Setting('pricing', JSON.stringify(form.pricing));

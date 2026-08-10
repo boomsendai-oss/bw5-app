@@ -81,6 +81,31 @@ export default function SettingsForm({ initial }: { initial: Bf6SettingsForm }) 
       </section>
 
       <section className="rounded-xl border border-sand-200 bg-white p-4">
+        <h2 className="text-sm font-bold text-navy-800">SSM学生無料枠(/bf6/ssm)</h2>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <label className="block text-xs text-neutral-500">
+            招待コード(空にすると受付停止)
+            <input value={form.ssmCode} onChange={(e) => setForm({ ...form, ssmCode: e.target.value })} className={`${inputCls} font-mono`} />
+          </label>
+          <label className="block text-xs text-neutral-500">
+            無料枠の人数
+            <input type="number" value={form.ssmFreeLimit} onChange={(e) => setForm({ ...form, ssmFreeLimit: num(e.target.value) })} className={inputCls} />
+          </label>
+          <label className="block text-xs text-neutral-500">
+            受付開始日
+            <input type="date" value={form.ssmStart} onChange={(e) => setForm({ ...form, ssmStart: e.target.value })} className={inputCls} />
+          </label>
+          <label className="block text-xs text-neutral-500">
+            受付締切日
+            <input type="date" value={form.ssmDeadline} onChange={(e) => setForm({ ...form, ssmDeadline: e.target.value })} className={inputCls} />
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-neutral-400">
+          ※ SSM学生は招待コード入力で一般部門に無料エントリー(即確定・一般部門の定員を消費)
+        </p>
+      </section>
+
+      <section className="rounded-xl border border-sand-200 bg-white p-4">
         <h2 className="text-sm font-bold text-navy-800">定員</h2>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(

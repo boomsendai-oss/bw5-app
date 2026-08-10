@@ -288,6 +288,53 @@ export function validateBf6EntryEdit(input: Bf6EntryEditInput): Bf6EntryEditInpu
   return { dancerName, dancerKana, performerName, genre, rep, instagram: (input.instagram ?? '').trim() };
 }
 
+/**
+ * SSM学生無料枠(6名限定)のエントリー検証。
+ * 専門学生のため一般部門・大人固定。枠数・期間・招待コードの検証はサーバー側(DB/action)で行う。
+ */
+export interface Bf6SsmEntryInput {
+  buyerName: string;
+  email: string;
+  phone: string;
+  dancerName: string;
+  dancerKana: string;
+  performerName: string;
+  genre: string;
+  rep: string;
+  instagram: string;
+  isFirstBattle: boolean;
+}
+
+export interface ValidatedBf6SsmEntry extends Bf6SsmEntryInput {
+  grade: 'adult';
+  divisions: ['general'];
+}
+
+export function validateBf6SsmEntry(input: Bf6SsmEntryInput): ValidatedBf6SsmEntry | string {
+  const buyerName = (input.buyerName ?? '').trim();
+  if (!buyerName) return 'お名前を入力してください';
+  if (buyerName.length > 50) return 'お名前が長すぎます(50文字以内)';
+
+  const email = (input.email ?? '').trim();
+  if (!isValidBf6Email(email)) return 'メールアドレスの形式が正しくありません';
+
+  const phone = (input.phone ?? '').trim();
+  if (!isValidBf6Phone(phone)) return '電話番号は数字10〜11桁で入力してください';
+
+  const edited = validateBf6EntryEdit(input);
+  if (typeof edited === 'string') return edited;
+
+  return {
+    buyerName,
+    email,
+    phone,
+    ...edited,
+    isFirstBattle: Boolean(input.isFirstBattle),
+    grade: 'adult',
+    divisions: ['general'],
+  };
+}
+
 /** 検証OKなら ValidatedBf6Order、NGなら日本語エラー文字列を返す(太白まつり方式)。 */
 export function validateBf6Order(input: Bf6OrderInput): ValidatedBf6Order | string {
   const buyerName = (input.buyerName ?? '').trim();

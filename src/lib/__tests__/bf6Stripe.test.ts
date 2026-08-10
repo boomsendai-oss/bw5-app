@@ -199,3 +199,43 @@ describe('buildBf6OrderEmail: 完了メール文面', () => {
     expect(mail.subject).toContain('観覧チケット');
   });
 });
+
+describe('無料エントリー(SSM学生枠)の完了メール', () => {
+  test('¥0で確定済みの注文は「お支払い不要」の文面になる', () => {
+    const order = {
+      orderId: 42,
+      buyerName: '専門太郎',
+      email: 'ssm@example.com',
+      phone: '09012345678',
+      payMethod: 'onsite' as const,
+      paymentStatus: 'paid',
+      amountTotal: 0,
+      stripeSessionId: '',
+      editToken: 'tok',
+      expiresAt: '',
+      createdAt: '2026-08-11T00:00:00.000Z',
+      items: [
+        {
+          itemId: 99,
+          itemType: 'entry',
+          performerName: 'センモンタロウ',
+          dancerName: 'TARO-SSM',
+          dancerKana: 'タロウ',
+          grade: 'adult',
+          genre: 'HIPHOP',
+          rep: 'SSM',
+          instagram: '',
+          isFirstBattle: false,
+          divisions: ['general' as const],
+          qty: 1,
+          unitAmount: 0,
+        },
+      ],
+    };
+    const mail = buildBf6OrderEmail(order, 'tok');
+    expect(mail.subject).toContain('エントリー確定');
+    expect(mail.text).toContain('お支払いは不要');
+    expect(mail.text).not.toContain('カード決済でお支払い済み');
+    expect(mail.text).not.toContain('当日会場受付にて現金');
+  });
+});
