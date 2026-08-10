@@ -105,11 +105,16 @@ export function sanitizeHandlesForOtherPlatform(
       const key = String(h).toLowerCase();
       if (keepMentions?.has(key)) return m;
       const name = nameByHandle[key];
-      return name ?? '';
+      if (name) return name;
+      // 音楽クレジット行は、ハンドル文字列そのものがアーティスト名義なので@だけ外して残す。
+      // 消してしまうと「🎵 music：」だけが残る上にクレジット自体が失われる(2026-08-10発覚)。
+      // @が付かなければX等で無関係アカウントへの誤タグは起きない。
+      if (/music|🎵|♪|楽曲|歌/i.test(line)) return h;
+      return '';
     });
 
-    // 置換の結果「講師：」だけが残った行は、情報が無いので落とす
-    if (replaced !== line && /^\s*(🕺)?\s*講師\s*[:：]\s*$/.test(replaced)) continue;
+    // 置換でハンドルが消えた結果「講師：」「music：」等のラベルだけが残った行は、情報が無いので落とす
+    if (replaced !== line && /[:：]\s*$/.test(replaced.trim())) continue;
     out.push(replaced.replace(/[ \t]+$/, ''));
   }
   // 落とした行の跡で空行が3つ以上並ばないようにする

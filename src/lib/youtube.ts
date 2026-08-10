@@ -134,3 +134,34 @@ export async function uploadShort(input: UploadShortInput): Promise<UploadShortR
 
   return { videoId, permalink: `https://www.youtube.com/shorts/${videoId}` };
 }
+
+/**
+ * カバー画像をサムネイルとして設定してみる。成功/失敗をbooleanで返し、throwしない。
+ *
+ * ⚠️ Shortsは現状YouTube側の制限で thumbnails.set がエラーになる(2026-08時点)。
+ *    2026-07末にYouTube Studio側でパートナープログラム参加チャンネルから
+ *    カスタムサムネイル解禁が始まったが、APIへの開放はまだ。
+ *    それでも毎回試行しておくことで、YouTubeがAPIに開放した日から
+ *    コード変更なしでカバーが効き始める(失敗しても投稿自体には影響させない)。
+ */
+export async function trySetThumbnail(videoId: string, jpegBytes: Uint8Array): Promise<boolean> {
+  try {
+    const token = await getAccessToken();
+    const res = await fetch(
+      `https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${encodeURIComponent(videoId)}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'image/jpeg' },
+        body: jpegBytes as unknown as BodyInit,
+      }
+    );
+    if (!res.ok) {
+      console.warn(`YouTubeサムネイル設定は不可(Shorts制限の想定内): ${res.status} ${(await res.text()).slice(0, 200)}`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn(`YouTubeサムネイル設定に失敗(投稿は成功のまま): ${e instanceof Error ? e.message : e}`);
+    return false;
+  }
+}

@@ -468,3 +468,23 @@ describe('buildFacebookDescription', () => {
     expect(out).toContain('#キッズダンス');
   });
 });
+
+describe('sanitizeHandlesForOtherPlatform: 音楽クレジット(2026-08-10)', () => {
+  const NAMES2 = { 'occhan.88': 'おっちゃん' };
+
+  it('musicクレジットのアーティストは@を外した文字列で残す(登録簿に無くても消さない)', () => {
+    const out = sanitizeHandlesForOtherPlatform('🎵 music：@sakura_shiawase_', NAMES2);
+    expect(out).toBe('🎵 music：sakura_shiawase_');
+  });
+
+  it('講師とmusicが並ぶ実文面: 講師は名前・musicは名義テキストになる', () => {
+    const caption = ['🕺講師：@occhan.88', '🎵 music：@sakura_shiawase_'].join('\n');
+    expect(sanitizeHandlesForOtherPlatform(caption, NAMES2)).toBe(
+      ['🕺講師：おっちゃん', '🎵 music：sakura_shiawase_'].join('\n')
+    );
+  });
+
+  it('置換でハンドルが消えラベルだけ残った行は落ちる(講師以外のラベルも)', () => {
+    expect(sanitizeHandlesForOtherPlatform('担当：@unknown_person', NAMES2)).toBe('');
+  });
+});

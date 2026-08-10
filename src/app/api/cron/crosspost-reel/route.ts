@@ -15,7 +15,7 @@ import {
   CROSSPOST_PLATFORMS,
   type CrosspostRow,
 } from '@/lib/crosspost';
-import { configured as ytConfigured, uploadShort } from '@/lib/youtube';
+import { configured as ytConfigured, uploadShort, trySetThumbnail } from '@/lib/youtube';
 import { xConfigured, uploadVideo, postTweet, estimateChunkRequests } from '@/lib/xApi';
 import { configured as threadsConfigured, postVideo as postThreadsVideo } from '@/lib/threads';
 import { configured as fbConfigured, postReel as postFacebookReel } from '@/lib/facebookPage';
@@ -45,7 +45,7 @@ function cronAuthorized(req: NextRequest): boolean {
   return req.headers.get('x-cron-secret') === secret;
 }
 
-type ReelRow = { id: number; title: string; video_path: string; caption: string };
+type ReelRow = { id: number; title: string; video_path: string; caption: string; cover_path: string | null };
 
 /** Instagram公開済みのリールに対して、未登録の配信先行を作る(冪等: UNIQUE制約で重複しない) */
 async function enqueueMissing(now: string): Promise<number> {
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const reel = (await getOne(
-      `SELECT id, title, video_path, caption FROM reel_queue WHERE id = ?`,
+      `SELECT id, title, video_path, caption, cover_path FROM reel_queue WHERE id = ?`,
       [target.reel_id]
     )) as ReelRow | null;
     if (!reel) return await fail(`reel_queue #${target.reel_id} が見つかりません`);
@@ -206,6 +206,15 @@ export async function POST(req: NextRequest) {
       });
       externalId = out.videoId;
       permalink = out.permalink;
+      // カバー画像をサムネイルとして試行(Shortsは現状YouTube側制限で不可の想定・失敗しても投稿は成功のまま。
+      // APIに開放された日からコード変更なしで効き始める)
+      if (reel.cover_path) {
+        try {
+          const coverUrl = reel.cover_path.startsWith('http') ? reel.cover_path : `${origin}${reel.cover_path}`;
+          const cres = await fetch(coverUrl);
+          if (cres.ok) await trySetThumbnail(out.videoId, new Uint8Array(await cres.arrayBuffer()));
+        } catch { /* サムネイルは任意・本体の成否に影響させない */ }
+      }
     } else if (target.platform === 'threads') {
       // Threadsは本文にリンクを入れても表示が落ちないので、導線を本文に直接入れる。
       // ハンドルはInstagramと同一なので、Threads開設済みの講師だけ@メンションを残す
