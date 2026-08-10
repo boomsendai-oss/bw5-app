@@ -253,6 +253,14 @@ export async function PATCH(req: NextRequest) {
   args.push(new Date().toISOString());
   args.push(id);
   await execute(`UPDATE reel_draft SET ${sets.join(', ')} WHERE id = ?`, args);
+  // 「リールを作る」を押したら、そのまま生成まで走らせる(TARO 2026-08-10)。
+  // 以前は ready にするだけで、別途ヘッダの「今すぐ生成」を押さないと着手されず
+  // (押さない場合は次の定期実行 0/6/12/18時:10 まで待ち)、押したのに何も起きない
+  // ように見えていた。発表会側の recut / カバー確定は既にこの合図を立てている。
+  if (action === 'submit') {
+    const now = new Date().toISOString();
+    await execute('UPDATE reel_pipeline_signal SET generate_requested_at = ?, updated_at = ? WHERE id = 1', [now, now]);
+  }
   // 予約済みのキャプション編集は、実際に投稿へ使われる reel_queue 側にも同期する
   // (予約時にコピーされるため、draft だけ直しても投稿文は変わらない事故の防止)
   if ('caption' in body && draft.reel_queue_id) {
