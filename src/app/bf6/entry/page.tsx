@@ -390,7 +390,7 @@ export default function Bf6EntryPage() {
                     <input value={row.genre} onChange={(e) => updateRow(i, { genre: e.target.value })} placeholder="例: HIPHOP" className={inputCls} />
                   </Bf6Field>
                   <Bf6Field label="レペゼン(チーム名・地域・スクールなど)" required hint="エントリーリストに載ります">
-                    <input value={row.rep} onChange={(e) => updateRow(i, { rep: e.target.value })} placeholder="例: BOOM / 仙台" className={inputCls} />
+                    <input value={row.rep} onChange={(e) => updateRow(i, { rep: e.target.value })} placeholder="例: 仙台(地域名・チーム名など)" className={inputCls} />
                   </Bf6Field>
                   <Bf6Field label="Instagram" hint="結果発表やレポートでタグ付けします。なるべくご入力ください">
                     <input value={row.instagram} onChange={(e) => updateRow(i, { instagram: e.target.value })} placeholder="@boom_dance_school" className={inputCls} />
