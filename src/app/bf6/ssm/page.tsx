@@ -196,7 +196,7 @@ export default function Bf6SsmPage() {
                   <input value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="例: HIPHOP" className={inputCls} />
                 </Bf6Field>
                 <Bf6Field label="レペゼン" required hint="エントリーリストに載ります">
-                  <input value={rep} onChange={(e) => setRep(e.target.value)} placeholder="例: BOOM / 仙台" className={inputCls} />
+                  <input value={rep} onChange={(e) => setRep(e.target.value)} placeholder="例: 仙台(地域名・チーム名など)" className={inputCls} />
                 </Bf6Field>
                 <Bf6Field label="Instagram" hint="任意。タグ付けに使用します">
                   <input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@your_account" className={inputCls} />
