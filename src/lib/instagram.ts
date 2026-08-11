@@ -374,6 +374,22 @@ export async function fetchMediaInsights(mediaId: string, kind: 'reel' | 'story'
  *  3. media_publish → permalink取得
  * 実証済みフロー: scripts/post_reel_once.mjs (2026-07-17 初投稿で検証)
  */
+/**
+ * 直近に公開されたメディアの一覧(id/permalink/timestamp)。
+ * 公開APIが一時エラーを返しても実際は公開済みのことがある(2026-08-11 #72で実証:
+ * media_publishがis_transientエラーを返したがIG側では19:02に公開されていた)。
+ * 「失敗」と断定する前に、呼び出し側がこの一覧と既知のメディアIDを突き合わせて確認する。
+ */
+export async function listRecentMedia(limit = 5): Promise<Array<{ id: string; permalink?: string; timestamp?: string }>> {
+  const { token, igUserId } = await requireConnection();
+  const res = await fetch(
+    `${GRAPH}/${GRAPH_VERSION}/${igUserId}/media?fields=id,permalink,timestamp&limit=${limit}&access_token=${encodeURIComponent(token)}`
+  );
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(`メディア一覧取得失敗: ${JSON.stringify(json.error ?? json)}`);
+  return (json.data ?? []) as Array<{ id: string; permalink?: string; timestamp?: string }>;
+}
+
 /** 共同投稿者の指定文字列(スペース/カンマ区切り)を、@を落とした最大3件の配列にする。 */
 export function parseCollaborators(raw: string | null | undefined): string[] {
   return String(raw ?? '')

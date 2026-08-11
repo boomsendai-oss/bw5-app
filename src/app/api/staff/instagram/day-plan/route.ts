@@ -6,7 +6,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/eventAuth';
 import { execute, getAll } from '@/lib/db';
 import { isIsoDate, nowUtcIso, todayJst } from '@/lib/dateJst';
-import { setDayPlan, clearDayPlan, getDayPlan, upsertDaySlot, deleteDaySlot, listDaySlots } from '@/lib/storyDayPlan';
+import {
+  setDayPlan, clearDayPlan, getDayPlan, upsertDaySlot, deleteDaySlot, listDaySlots,
+  expandRecurringDates, listUpcomingSlots, deleteUpcomingSlotsByMedia,
+} from '@/lib/storyDayPlan';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -71,7 +74,10 @@ export const GET = withAuth(async (req: NextRequest) => {
     });
   }
 
-  return NextResponse.json({ candidates });
+  // 今日以降の全スロット(繰り返し予約の一覧・一括解除UI用)
+  const upcomingSlots = await listUpcomingSlots(todayJst());
+
+  return NextResponse.json({ candidates, upcomingSlots });
 });
 
 export const POST = withAuth(async (req: NextRequest) => {
@@ -81,6 +87,47 @@ export const POST = withAuth(async (req: NextRequest) => {
   } catch {
     return NextResponse.json({ error: 'invalid json' }, { status: 400 });
   }
+
+  // --- 繰り返し予約(date不要の一括操作。TARO 2026-08-11: イベント告知の定期ストーリー) ---
+  if (body.action === 'slot_set_bulk') {
+    const time = String(body.time ?? '').trim();
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+      return NextResponse.json({ error: '時刻は HH:MM で指定してください' }, { status: 400 });
+    }
+    const mediaPath = String(body.mediaPath ?? '').trim();
+    if (!/^\/(stories|api\/story-media)\//.test(mediaPath)) {
+      return NextResponse.json({ error: '素材のパスが不正です' }, { status: 400 });
+    }
+    const until = String(body.until ?? '');
+    if (!isIsoDate(until)) return NextResponse.json({ error: '終了日の形式が不正です' }, { status: 400 });
+    const weekdays = Array.isArray(body.weekdays) ? body.weekdays.map(Number) : [];
+    const dates = expandRecurringDates(weekdays, todayJst(), until);
+    if (dates.length === 0) {
+      return NextResponse.json({ error: '対象日がありません(曜日と終了日を確認してください)' }, { status: 400 });
+    }
+    const mediaType = body.mediaType === 'video' ? 'video' : 'image';
+    const note = body.note ? String(body.note) : null;
+    const skipped: string[] = [];
+    let created = 0;
+    for (const d of dates) {
+      const slots = await listDaySlots(d);
+      // 手で置いた既存の枠は上書きしない(1日3枠の上限も既存slot_setと同じ)
+      if (slots.some((sl) => sl.slotTime === time) || slots.length >= 3) {
+        skipped.push(d);
+        continue;
+      }
+      await upsertDaySlot(d, time, mediaPath, mediaType, note);
+      created++;
+    }
+    return NextResponse.json({ ok: true, created, skipped });
+  }
+  if (body.action === 'slot_delete_bulk') {
+    const mediaPath = String(body.mediaPath ?? '').trim();
+    if (!mediaPath) return NextResponse.json({ error: 'mediaPath が必要です' }, { status: 400 });
+    const deleted = await deleteUpcomingSlotsByMedia(mediaPath, todayJst());
+    return NextResponse.json({ ok: true, deleted });
+  }
+
   const date = String(body.date ?? '');
   if (!isIsoDate(date)) return NextResponse.json({ error: '日付の形式が不正です' }, { status: 400 });
   // 過去日をいじっても投稿は変わらない(cronは当日しか見ない)ので誤操作として弾く

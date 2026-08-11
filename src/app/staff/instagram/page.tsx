@@ -452,11 +452,16 @@ export default function InstagramStoryPage() {
 
   // --- その日だけの指示(スキップ / 素材の指定 / アップロード) ---
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [upcomingSlots, setUpcomingSlots] = useState<DaySlotRow[]>([]);
   const [dayBusy, setDayBusy] = useState(false);
   const loadCandidates = useCallback(async () => {
     try {
       const res = await fetch('/api/staff/instagram/day-plan', { credentials: 'include' });
-      if (res.ok) setCandidates((await res.json()).candidates ?? []);
+      if (res.ok) {
+        const j = await res.json();
+        setCandidates(j.candidates ?? []);
+        setUpcomingSlots(j.upcomingSlots ?? []);
+      }
     } catch {
       // 候補が取れなくても画面は使える
     }
@@ -730,6 +735,15 @@ export default function InstagramStoryPage() {
         )}
 
         {data && tab === 'story' && (
+          <RecurringCard
+            candidates={candidates}
+            upcomingSlots={upcomingSlots}
+            busy={dayBusy}
+            onAction={async (body) => { await dayPlanAction(body); await loadCandidates(); }}
+          />
+        )}
+
+        {data && tab === 'story' && (
           <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
             <h2 className="font-bold text-navy-800 mb-2">埋め草キュー</h2>
             <p className="text-xs text-neutral-400 mb-3">
@@ -884,6 +898,107 @@ export default function InstagramStoryPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * 🔁 繰り返し予約(TARO 2026-08-11)。イベント告知(例: 9/26 BOOMER'S FIGHT)を
+ * 「毎週◯曜の◯時に終了日まで」で一括予約する。中身は既存の時間帯枠(slot)を
+ * まとめて置くだけ=毎朝のレッスン告知に「足して」投稿される(置き換えない)。
+ */
+function RecurringCard({ candidates, upcomingSlots, busy, onAction }: {
+  candidates: Candidate[];
+  upcomingSlots: DaySlotRow[];
+  busy: boolean;
+  onAction: (body: Record<string, unknown>) => Promise<void>;
+}) {
+  const [mediaPath, setMediaPath] = useState('');
+  const [weekdays, setWeekdays] = useState<number[]>([]);
+  const [time, setTime] = useState('21:00');
+  const [until, setUntil] = useState('');
+  const [msg, setMsg] = useState('');
+
+  // 予約中の一覧は素材×時刻でまとめて「毎週◯曜」として見せる
+  const groups = new Map<string, DaySlotRow[]>();
+  for (const sl of upcomingSlots) {
+    const k = `${sl.mediaPath}|${sl.slotTime}`;
+    groups.set(k, [...(groups.get(k) ?? []), sl]);
+  }
+  const labelOf = (p: string) => candidates.find((c) => c.mediaPath === p)?.label ?? p.split('/').pop() ?? p;
+
+  const create = async () => {
+    setMsg('');
+    const c = candidates.find((x) => x.mediaPath === mediaPath);
+    if (!c) { setMsg('素材を選んでください'); return; }
+    if (weekdays.length === 0) { setMsg('曜日を選んでください'); return; }
+    if (!until) { setMsg('終了日を選んでください'); return; }
+    await onAction({
+      action: 'slot_set_bulk', weekdays, time, until,
+      mediaPath: c.mediaPath, mediaType: c.mediaType, note: `繰り返し予約(${labelOf(c.mediaPath)})`,
+    });
+    setMsg('予約しました。下の一覧に反映されています');
+  };
+
+  return (
+    <div className="rounded-xl bg-white border border-sand-200 shadow-sm p-4">
+      <h2 className="font-bold text-navy-800 mb-1">🔁 繰り返し予約（イベント告知など）</h2>
+      <p className="text-xs text-neutral-400 mb-3">
+        選んだ素材を、指定の曜日・時刻に終了日まで毎週投稿します。毎朝のレッスン告知はそのまま出ます（置き換えません）。
+        時刻は朝8時・昼12:30・夜21時に対応。1日3枠まで、手で置いた枠は上書きしません。
+      </p>
+      <div className="space-y-2 text-sm">
+        <select value={mediaPath} onChange={(e) => setMediaPath(e.target.value)} disabled={busy}
+          className="w-full border border-sand-300 rounded-lg px-2 py-2">
+          <option value="">素材を選ぶ…（上の「素材をアップロード」で追加できます）</option>
+          {['アップロード', '埋め草', 'ライブラリ'].map((g) => (
+            <optgroup key={g} label={g}>
+              {candidates.filter((c) => c.group === g).map((c) => (
+                <option key={c.mediaPath} value={c.mediaPath}>{c.label}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        <div className="flex flex-wrap items-center gap-2">
+          {WEEKDAY_JA.map((w, i) => (
+            <label key={i} className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer select-none ${weekdays.includes(i) ? 'bg-brand-600 text-white border-brand-600' : 'border-sand-300 text-navy-700'}`}>
+              <input type="checkbox" className="hidden" checked={weekdays.includes(i)} disabled={busy}
+                onChange={() => setWeekdays((prev) => prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i].sort())} />
+              {w}
+            </label>
+          ))}
+          <select value={time} onChange={(e) => setTime(e.target.value)} disabled={busy}
+            className="border border-sand-300 rounded-lg px-2 py-1.5 text-xs">
+            {SLOT_TIMES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <span className="text-xs text-neutral-500">〜</span>
+          <input type="date" value={until} onChange={(e) => setUntil(e.target.value)} disabled={busy}
+            className="border border-sand-300 rounded-lg px-2 py-1.5 text-xs" />
+          <span className="text-xs text-neutral-500">まで</span>
+          <button onClick={create} disabled={busy}
+            className="rounded-lg bg-brand-600 text-white text-xs font-semibold px-4 py-2 disabled:opacity-50">予約を作成</button>
+        </div>
+        {msg && <p className="text-xs text-navy-600">{msg}</p>}
+      </div>
+      {groups.size > 0 && (
+        <div className="mt-4 border-t border-sand-100 pt-3 space-y-2">
+          <p className="text-xs font-semibold text-navy-700">予約中</p>
+          {[...groups.entries()].map(([k, rows]) => {
+            const wdSet = [...new Set(rows.map((r) => new Date(`${r.date}T00:00:00Z`).getUTCDay()))].sort();
+            return (
+              <div key={k} className="flex items-center justify-between gap-2 text-xs text-navy-700">
+                <span className="min-w-0 truncate">
+                  {labelOf(rows[0].mediaPath)} ／ {wdSet.map((w) => WEEKDAY_JA[w]).join('・')}曜 {rows[0].slotTime}
+                  ・残り{rows.length}回（〜{rows[rows.length - 1].date.slice(5).replace('-', '/')}）
+                </span>
+                <button disabled={busy}
+                  onClick={() => onAction({ action: 'slot_delete_bulk', mediaPath: rows[0].mediaPath })}
+                  className="shrink-0 text-red-500 hover:underline">全部解除</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

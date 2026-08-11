@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execute, getOne } from '@/lib/db';
+import { execute, getOne, getAll } from '@/lib/db';
 import { nowUtcIso } from '@/lib/dateJst';
-import { configured as igConfigured, publishReel, parseCollaborators, refreshTokenIfStale } from '@/lib/instagram';
+import { configured as igConfigured, publishReel, parseCollaborators, listRecentMedia, refreshTokenIfStale } from '@/lib/instagram';
 import { notifyTaro } from '@/lib/notify';
 
 export const dynamic = 'force-dynamic';
@@ -92,6 +92,41 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+
+    // 公開APIが一時エラーを返しても、IG側では公開が完了していることがある(2026-08-11 #72で実証。
+    // failedのまま再試行すると二重投稿になる)。失敗と断定する前に、直近メディアに
+    // 「うちの記録に無い、この数分の新しい投稿」が現れていないかを確認する。
+    try {
+      await new Promise((r) => setTimeout(r, 10_000)); // IG側の反映を少し待つ
+      const known = new Set(
+        (await getAll('SELECT ig_media_id FROM reel_queue WHERE ig_media_id IS NOT NULL')).map((r) =>
+          String(r.ig_media_id)
+        )
+      );
+      const recent = await listRecentMedia(5);
+      const ghost = recent.find(
+        (m) =>
+          !known.has(m.id) &&
+          m.timestamp != null &&
+          Date.now() - new Date(m.timestamp).getTime() < 15 * 60 * 1000
+      );
+      if (ghost) {
+        await execute(
+          `UPDATE reel_queue SET status = 'posted', ig_media_id = ?, permalink = ?, posted_at = ?, error = ?, updated_at = ? WHERE id = ?`,
+          [ghost.id, ghost.permalink ?? null, ghost.timestamp ?? nowUtcIso(),
+           `公開APIはエラーを返したがIG側では公開済みだった(自動確認): ${msg.slice(0, 200)}`,
+           nowUtcIso(), due.id]
+        );
+        await notifyTaro({
+          subject: 'リールは無事投稿されています(公開APIの応答だけ失敗)',
+          body: `「${due.title}」の公開でInstagramが一時エラーを返しましたが、実際には公開済みであることを自動確認しました。対応は不要です。\n${ghost.permalink ?? ''}`,
+        }).catch(() => {});
+        return NextResponse.json({ ok: true, posted: true, id: due.id, mediaId: ghost.id, permalink: ghost.permalink, recovered: true });
+      }
+    } catch {
+      // 確認自体に失敗した場合は従来どおりfailedにする(通知が飛びTARO/Claudeが手で確認する)
+    }
+
     await execute(
       `UPDATE reel_queue SET status = 'failed', error = ?, updated_at = ? WHERE id = ?`,
       [msg.slice(0, 500), nowUtcIso(), due.id]

@@ -136,3 +136,45 @@ export async function upsertDaySlot(
 export async function deleteDaySlot(date: string, slotTime: string): Promise<void> {
   await execute('DELETE FROM story_day_slot WHERE date = ? AND slot_time = ?', [date, slotTime]);
 }
+
+/**
+ * 繰り返し予約(TARO 2026-08-11: イベント告知を終了日まで定期投稿してエントリーを伸ばす)の
+ * 対象日を列挙する。fromの翌日から untilまで(両端含む・上限90日)のうち、指定曜日の日付。
+ * 純関数(テスト対象)。日付はすべて 'YYYY-MM-DD' のJST日付文字列。
+ */
+export function expandRecurringDates(weekdays: number[], fromDate: string, untilDate: string): string[] {
+  const wd = new Set(weekdays.filter((w) => Number.isInteger(w) && w >= 0 && w <= 6));
+  if (wd.size === 0) return [];
+  const from = new Date(`${fromDate}T00:00:00Z`);
+  const until = new Date(`${untilDate}T00:00:00Z`);
+  if (isNaN(from.getTime()) || isNaN(until.getTime())) return [];
+  const out: string[] = [];
+  for (let i = 1; i <= 90; i++) {
+    const d = new Date(from.getTime() + i * 86400000);
+    if (d.getTime() > until.getTime()) break;
+    if (wd.has(d.getUTCDay())) out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/** 今日以降のスロットを全部返す(繰り返し予約の一覧表示・一括解除用)。日付昇順。 */
+export async function listUpcomingSlots(fromDate: string): Promise<DaySlot[]> {
+  try {
+    const rows = await getAll(
+      'SELECT id, date, slot_time, media_path, media_type, note FROM story_day_slot WHERE date >= ? ORDER BY date, slot_time',
+      [fromDate]
+    );
+    return rows.map(toSlot);
+  } catch {
+    return [];
+  }
+}
+
+/** 指定素材の今日以降のスロットを一括削除し、消した件数を返す(繰り返し予約の解除)。 */
+export async function deleteUpcomingSlotsByMedia(mediaPath: string, fromDate: string): Promise<number> {
+  const r = await execute(
+    'DELETE FROM story_day_slot WHERE media_path = ? AND date >= ?',
+    [mediaPath, fromDate]
+  );
+  return Number(r.rowsAffected ?? 0);
+}
