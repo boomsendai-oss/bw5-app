@@ -249,6 +249,7 @@ export default async function Bf6TopPage() {
                     <p className="text-[11px] font-bold tracking-widest text-red-500">MC</p>
                     <p className="mt-0.5 text-xl font-black italic text-white">TARO</p>
                     <p className="text-[11px] font-bold text-neutral-400">TARO&amp;TAKE / BSB</p>
+                    <p className="text-[11px] font-bold tracking-wide text-neutral-500">仙台</p>
                     <ul className="mt-2 space-y-0.5 text-[11px] leading-relaxed text-neutral-300">
                       <li>JAPAN DANCE DELIGHT vol.25 FINALIST</li>
                       <li>WORLD DANCE COLOSSEUM / TOHOKU HIPHOP 優勝</li>
