@@ -281,7 +281,7 @@ export default async function Bf6TopPage() {
           <div className="rounded-2xl bg-black p-4 ring-1 ring-neutral-800 text-center">
             <p className="text-[11px] font-bold tracking-widest text-neutral-400">受付期間</p>
             <p className="mt-1 text-lg font-black italic text-white">
-              2026.8.8 <span className="text-xs">SAT</span> — 9.24 <span className="text-xs">THU</span>
+              2026.8.11 <span className="text-xs">TUE</span> — 9.24 <span className="text-xs">THU</span>
             </p>
           </div>
 
