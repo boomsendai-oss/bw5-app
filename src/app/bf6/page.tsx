@@ -263,6 +263,7 @@ export default async function Bf6TopPage() {
                     <p className="text-[11px] font-bold tracking-widest text-red-500">BATTLE DJ</p>
                     <p className="mt-0.5 text-xl font-black italic text-white">DJ おっちゃん</p>
                     <p className="text-[11px] font-bold text-neutral-400">NEW STYLERS</p>
+                    <p className="text-[11px] font-bold tracking-wide text-neutral-500">宮城</p>
                     <ul className="mt-2 space-y-0.5 text-[11px] leading-relaxed text-neutral-300">
                       <li>JAPAN DANCE DELIGHT vol.19/21/22 FINALIST</li>
                       <li>GRAND SOUL vol.37 優勝</li>
