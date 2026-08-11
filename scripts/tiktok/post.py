@@ -54,6 +54,47 @@ def any_text(page, keys):
     return None
 
 
+def click_button_in_dialog(page, dialog_words, button_words) -> bool:
+    """モーダル内のボタンを、重なり要素に邪魔されずに押す。
+
+    TikTokのモーダルは上にcanvas等が重なっていて通常のclick()が弾かれることがある。
+    ボタン要素を特定してイベントを直接発火させる(手作業で確立した方法と同じ)。
+    """
+    return bool(page.evaluate(
+        """([dialogWords, buttonWords]) => {
+            const dlgs = [...document.querySelectorAll('[role="dialog"], .TUXModal, [class*="modal"]')];
+            const dlg = dlgs.find(d => dialogWords.some(w => d.innerText.includes(w)));
+            if (!dlg) return false;
+            const btn = [...dlg.querySelectorAll('button')]
+                .find(b => buttonWords.some(w => b.textContent.trim() === w));
+            if (!btn) return false;
+            ['pointerdown','mousedown','pointerup','mouseup','click']
+                .forEach(t => btn.dispatchEvent(new MouseEvent(t, {bubbles:true, cancelable:true})));
+            return true;
+        }""",
+        [dialog_words, button_words],
+    ))
+
+
+def dismiss_tour(page) -> bool:
+    """TikTokの操作ガイド(react-joyride)を閉じる。
+
+    初回表示の案内が画面全体にオーバーレイを敷くため、放置すると
+    すべてのクリックが "overlay intercepts pointer events" で弾かれる。
+    """
+    return bool(page.evaluate(
+        """() => {
+            let acted = false;
+            const skip = [...document.querySelectorAll('button')].find(b =>
+                /スキップ|Skip|閉じる|Close|後で|Got it|わかりました/.test(b.textContent.trim()));
+            if (skip) { skip.click(); acted = true; }
+            document.querySelectorAll('#react-joyride-portal, .react-joyride__overlay')
+                .forEach(el => { el.remove(); acted = true; });
+            return acted;
+        }"""
+    ))
+
+
 def dismiss_autocheck_dialog(page):
     """『コンテンツの自動チェックをオンにしますか？』はアカウント設定の変更なので必ず断る"""
     for word in T["cancel"]:
@@ -85,6 +126,14 @@ def set_caption(page, caption: str) -> bool:
 
         current = ed.inner_text()
         if " ".join(current.split()) == " ".join(caption.split()):
+            # ハッシュタグの候補リストが開いたままだと、次のクリックで
+            # 意図しないタグが入ることがある。必ず閉じてフォーカスも外す。
+            # ⚠️ ここで座標クリックして閉じてはいけない。サイドバーに当たると
+            #    「本当に終了しますか？」が出て作業が飛ぶ(2026-08-12に踏んだ)。
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+            page.evaluate("() => document.activeElement && document.activeElement.blur()")
+            page.wait_for_timeout(500)
             return True
         print(f"  キャプションが一致しないので入れ直します (試行{attempt + 1}: "
               f"{len(current)}文字 / 正解{len(caption)}文字)")
@@ -136,25 +185,49 @@ def run(job_path: Path, dry_run: bool) -> int:
                 return 3
             print("  完了")
             dismiss_autocheck_dialog(page)
+            dismiss_tour(page)
+            page.wait_for_timeout(500)
 
             # 2) カバー(投稿後に変更できないので、ここで必ず入れる)
             print("→ カバーを設定中…")
-            btn = any_text(page, "edit_cover")
-            if not btn:
-                print("✗ 「カバーを編集」が見つかりません")
+            opened = page.evaluate(
+                """(words) => {
+                    const el = [...document.querySelectorAll('*')].find(e =>
+                        e.children.length === 0 && words.includes(e.textContent.trim()));
+                    if (!el) return false;
+                    let b = el;
+                    for (let i = 0; i < 5 && b; i++) {
+                        if (b.tagName === 'BUTTON' || getComputedStyle(b).cursor === 'pointer') break;
+                        b = b.parentElement;
+                    }
+                    ['pointerdown','mousedown','pointerup','mouseup','click']
+                        .forEach(t => b.dispatchEvent(new MouseEvent(t, {bubbles:true, cancelable:true})));
+                    return true;
+                }""",
+                T["edit_cover"],
+            )
+            if not opened:
+                shot = job_path.parent / "error_cover.png"
+                page.screenshot(path=str(shot), full_page=True)
+                (job_path.parent / "error_cover.txt").write_text(
+                    page.inner_text("body")[:3000], encoding="utf8")
+                print(f"✗ 「カバーを編集」が見つかりません（画面: {shot}）")
                 return 4
-            btn.click()
             page.wait_for_timeout(2500)
             # モーダル内の画像用 file input
             cover_input = page.locator('input[type="file"][accept*="image"]').last
             cover_input.set_input_files(str(cover))
             page.wait_for_timeout(3500)
-            save = any_text(page, "save")
-            if not save:
-                print("✗ カバー編集の「保存」が見つかりません")
+            # カバー編集の「保存」は、フレーム選択のcanvasが上に重なっていて
+            # 普通の click() だと "subtree intercepts pointer events" で弾かれる。
+            # 手作業と同じくイベントを直接発火させる。
+            if not click_button_in_dialog(page, T["edit_cover"], T["save"]):
+                print("✗ カバー編集の「保存」を押せませんでした")
                 return 5
-            save.click()
             page.wait_for_timeout(2500)
+            if any_text(page, "edit_cover") is None:
+                print("✗ カバー編集画面が閉じていません")
+                return 5
             print("  完了")
 
             # 3) キャプション
@@ -171,31 +244,50 @@ def run(job_path: Path, dry_run: bool) -> int:
                 return 7
 
             if dry_run:
-                print("\n--dry-run なので投稿はしません。画面を確認したらブラウザを閉じてください。")
-                input("Enterで終了: ")
+                shot = job_path.parent / "dryrun.png"
+                page.screenshot(path=str(shot), full_page=True)
+                print(f"\n--dry-run なので投稿はしません。確認用スクショ: {shot}")
                 return 0
 
             # 5) 投稿
             print("→ 投稿中…")
-            posted = False
-            for word in T["post"]:
-                b = page.get_by_role("button", name=word, exact=True)
-                if b.count():
-                    b.first.click()
-                    posted = True
-                    break
-            if not posted:
-                print("✗ 投稿ボタンが見つかりません")
+            # 投稿ボタンは role 指定の click() だと効かないことがある
+            # (同名要素が複数あり、実体は class に Button__root を持つ方)。
+            # 実体を特定してイベントを直接発火させる。
+            clicked = page.evaluate(
+                """(words) => {
+                    const btn = [...document.querySelectorAll('button')].find(b =>
+                        words.includes(b.textContent.trim()) &&
+                        String(b.className).includes('Button__root') && !b.disabled);
+                    if (!btn) return false;
+                    btn.scrollIntoView({block: 'center'});
+                    ['pointerdown','mousedown','pointerup','mouseup','click']
+                        .forEach(t => btn.dispatchEvent(new MouseEvent(t, {bubbles:true, cancelable:true})));
+                    return true;
+                }""",
+                T["post"],
+            )
+            if not clicked:
+                shot = job_path.parent / "error_post.png"
+                page.screenshot(path=str(shot), full_page=True)
+                print(f"✗ 投稿ボタンを押せませんでした（画面: {shot}）")
                 return 8
 
-            for _ in range(30):
-                page.wait_for_timeout(1000)
+            # 投稿完了は「一覧に自分の説明文が出ること」で確かめる。
+            # URLの変化だけだと、送信できていなくても成功に見えることがある。
+            head = " ".join(caption.split())[:18]
+            for _ in range(40):
+                page.wait_for_timeout(1500)
                 if "/content" in page.url:
-                    print("✓ 投稿しました")
-                    print("  ※ 新規投稿はしばらく『自分のみ・審査中』表示になることがあります(通常挙動)")
-                    return 0
-            print("△ 投稿は送信しましたが、完了画面を確認できませんでした。管理画面を見てください")
-            return 0
+                    page.wait_for_timeout(4000)
+                    if head in " ".join(page.inner_text("body").split()):
+                        print("✓ 投稿しました（一覧に反映を確認）")
+                        print("  ※ 新規投稿はしばらく『自分のみ・審査中』表示になることがあります(通常挙動)")
+                        return 0
+            shot = job_path.parent / "error_post.png"
+            page.screenshot(path=str(shot), full_page=True)
+            print(f"△ 投稿を確認できませんでした（画面: {shot}）")
+            return 10
         except PWTimeout as e:
             print("✗ タイムアウト:", e)
             return 9
