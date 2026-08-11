@@ -7,8 +7,13 @@ export const metadata: Metadata = {
   title: "BOOMER'S FIGHT!!! vol.6 - BATTLE & SHOWCASE",
   description: '2026.9.26(土) SSM 9階ホール / BOOM DANCE SCHOOL主催ダンスバトル&ショーケース。エントリー受付中!',
   icons: {
-    icon: '/bf6/icon.png',
-    apple: '/bf6/icon.png',
+    // タブは16px。3文字だと潰れるため「B6」のクロムマークにした(2026-08-12)。
+    // .ico に 16/32/48 を内蔵してサイズごとにシャープをかけてある。
+    icon: [
+      { url: '/bf6/favicon.ico', sizes: '16x16 32x32 48x48' },
+      { url: '/bf6/icon.png', type: 'image/png', sizes: '512x512' },
+    ],
+    apple: '/bf6/apple-icon.png',
   },
   openGraph: {
     title: "BOOMER'S FIGHT!!! vol.6 - BATTLE & SHOWCASE",
