@@ -30,4 +30,9 @@ jobs:
           BODY=$(echo "$RESP" | sed '$d')
           CODE=$(echo "$RESP" | tail -1)
           echo "HTTP $CODE: $BODY"
-          [ "$CODE" = "200" ] || exit 1
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # 未設定(note)と実際の取得失敗(error)を区別する。
+          # 未設定は上のコメントどおり想定内なので緑のまま、error が入ったときだけ赤にする。
+          echo "$BODY" | jq -e '.ok == true and (.gbp.error // null) == null and (.gsc.error // null) == null' \
+            >/dev/null 2>&1 \
+            || { echo "::error::SEOスナップショットの取得に失敗があります: $BODY"; exit 1; }

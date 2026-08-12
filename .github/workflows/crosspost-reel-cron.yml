@@ -44,4 +44,13 @@ jobs:
           BODY=$(echo "$RESP" | sed '$d')
           CODE=$(echo "$RESP" | tail -1)
           echo "HTTP $CODE: $BODY"
-          [ "$CODE" = "200" ] || exit 1
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # ⚠️ HTTPコードだけでは配信失敗を検知できない。route側の fail() は
+          # 失敗時も **status 200** のまま {"ok":false,"platform":"x","error":"..."} を返すため、
+          # 200だけを見ていると永久に緑になる(2026-08-10からのX全滅を5日間見逃した)。
+          # 正常系は必ず ok:true (配信対象なし・別プロセス処理中も ok:true)。
+          #   成功        : {"ok":true,"posted":true,...}
+          #   対象なし    : {"ok":true,"posted":false,"note":"配信対象なし"} など
+          #   失敗(要対応): {"ok":false,...}
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::二次配信に失敗しました (ok != true): $BODY"; exit 1; }

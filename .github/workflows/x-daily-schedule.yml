@@ -22,4 +22,8 @@ jobs:
           BODY=$(echo "$RESP" | sed '$d')
           CODE=$(echo "$RESP" | tail -1)
           echo "HTTP $CODE: $BODY"
-          [ "$CODE" = "200" ] || exit 1
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # 何もしなかった正常系は ok:true (skipped=no-lessons / already-exists / dormant)。
+          # ok:false はレッスンカレンダーが見つからない時だけ = 生成が静かに止まる本当の異常。
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::本日のレッスン投稿を生成できませんでした: $BODY"; exit 1; }

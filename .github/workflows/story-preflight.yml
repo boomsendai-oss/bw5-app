@@ -24,4 +24,9 @@ jobs:
           BODY=$(echo "$RESP" | sed '$d')
           CODE=$(echo "$RESP" | tail -1)
           echo "HTTP $CODE: $BODY"
-          [ "$CODE" = "200" ] || exit 1
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # プリフライトの ok:false は「明日の素材が未配置」等の**予告**であって、
+          # 自動化そのものの失敗ではない(TAROへメール通知済み)。恒常的に赤くして
+          # 本当の失敗を埋もれさせないよう、ここは警告どまりにする。
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || echo "::warning::明日のストーリーに要対応の予告があります: $BODY"

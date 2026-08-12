@@ -35,4 +35,7 @@ jobs:
           BODY=$(echo "$RESP" | sed '$d')
           CODE=$(echo "$RESP" | tail -1)
           echo "HTTP $CODE: $BODY"
-          [ "$CODE" = "200" ] || exit 1
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # 本文も見る。投稿対象が無い日・投稿済み(冪等)は {"ok":true,"posted":false,...} = 正常。
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::ストーリー投稿に失敗しました: $BODY"; exit 1; }

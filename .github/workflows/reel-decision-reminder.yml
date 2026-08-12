@@ -16,8 +16,13 @@ jobs:
           RESP=$(curl -s --max-time 60 -w '\n%{http_code}' \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             https://bw5-app.vercel.app/api/cron/reel-decision-reminder)
-          echo "HTTP $(echo "$RESP" | tail -1): $(echo "$RESP" | sed '$d')"
-          [ "$(echo "$RESP" | tail -1)" = "200" ] || exit 1
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # 判断日前・送信済みは {"ok":true,"sent":false,...} = 正常。本文も見る。
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::判断リマインダーの送信に失敗しました: $BODY"; exit 1; }
 
       # 日付リマインダー(staff_reminders)。専用workflowを増やさず同じ毎朝の枠に相乗りさせる。
       - name: Call /api/cron/reminders
@@ -26,5 +31,11 @@ jobs:
           RESP=$(curl -s --max-time 60 -w '\n%{http_code}' -X POST \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             https://bw5-app.vercel.app/api/cron/reminders)
-          echo "HTTP $(echo "$RESP" | tail -1): $(echo "$RESP" | sed '$d')"
-          [ "$(echo "$RESP" | tail -1)" = "200" ] || exit 1
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # 期日のリマインダーが無い日は {"ok":true,"sent":0,...} = 正常。
+          # ok:false = メール送信に失敗した件がある(翌朝また拾われるが気づけるように赤にする)。
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::リマインダーの送信に失敗しました: $BODY"; exit 1; }

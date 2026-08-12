@@ -26,4 +26,9 @@ jobs:
           BODY=$(echo "$RESP" | sed '$d')
           CODE=$(echo "$RESP" | tail -1)
           echo "HTTP $CODE: $BODY"
-          [ "$CODE" = "200" ] || exit 1
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # ⚠️ watchdogは**異常を見つけたときも 200 で ok:false を返す**(anomaliesに理由が入る)。
+          # HTTPコードだけ見ていると「見張り役が異常を報告しているのに緑」になる。
+          # 異常なし = {"ok":true,...,"anomalies":[]} / env未設定 = {"ok":true,"configured":false,...}
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::インスタ自動投稿に異常があります: $BODY"; exit 1; }

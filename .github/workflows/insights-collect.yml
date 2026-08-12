@@ -24,4 +24,8 @@ jobs:
           BODY=$(echo "$RESP" | sed '$d')
           CODE=$(echo "$RESP" | tail -1)
           echo "HTTP $CODE: $BODY"
-          [ "$CODE" = "200" ] || exit 1
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # ⚠️ route側は収集エラーがあっても 200 を返し ok:false に落とすだけなので本文も見る。
+          # 正常 = {"ok":true,...,"errors":[]} / env未設定 = {"ok":true,"configured":false,...}
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::インサイト収集に失敗があります: $BODY"; exit 1; }

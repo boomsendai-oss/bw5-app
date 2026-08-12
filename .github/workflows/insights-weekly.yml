@@ -17,5 +17,10 @@ jobs:
           RESP=$(curl -s --max-time 60 -w '\n%{http_code}' \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             https://bw5-app.vercel.app/api/cron/insights-weekly)
-          echo "HTTP $(echo "$RESP" | tail -1): $(echo "$RESP" | sed '$d')"
-          [ "$(echo "$RESP" | tail -1)" = "200" ] || exit 1
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # データ無しの週は {"ok":true,"sent":false,...} = 正常。本文も見て ok:false は赤にする。
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::週次サマリーの送信に失敗しました: $BODY"; exit 1; }

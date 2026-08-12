@@ -1,0 +1,35 @@
+# cron判定ロジックの自己検証（一時ファイル・検証後に削除する）
+#
+# 各cronワークフローに入れた「本文の ok を見て失敗なら exit 1」の判定を、
+# 実際のレスポンス本文を食わせて GitHub Actions 上で緑/赤が意図どおりになるか確かめる。
+# 本物のエンドポイントは叩かない（＝SNSへ実際に投稿してしまう危険がない）。
+name: cron-check-selftest
+
+on:
+  workflow_dispatch:
+    inputs:
+      body:
+        description: '判定に食わせるレスポンス本文'
+        required: true
+        default: '{"ok":true,"posted":false,"added":0,"skipped":0,"revived":0,"note":"配信対象なし"}'
+      code:
+        description: 'HTTPステータス'
+        required: true
+        default: '200'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 判定(crosspost-reel と同じロジック)
+        env:
+          BODY: ${{ inputs.body }}
+          CODE: ${{ inputs.code }}
+        run: |
+          set -e
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::二次配信に失敗しました (ok != true): $BODY"; exit 1; }
+          echo "判定=成功(緑)"

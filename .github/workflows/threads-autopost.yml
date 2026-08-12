@@ -23,4 +23,10 @@ jobs:
           BODY=$(echo "$RESP" | sed '$d')
           CODE=$(echo "$RESP" | tail -1)
           echo "HTTP $CODE: $BODY"
-          [ "$CODE" = "200" ] || exit 1
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # ⚠️ x-autopost と同じ理由で**本文の failed も見る**。
+          # 個々の投稿が失敗しても全体は ok:true / 200 で返るため、HTTPコードだけでは検知できない。
+          #   env未設定/未連携: {"ok":true,"configured":false,"status":"dormant",...} ← 正常
+          #   要対応          : failed >= 1 / ok:false
+          echo "$BODY" | jq -e '.ok == true and (.failed // 0) == 0' >/dev/null 2>&1 \
+            || { echo "::error::Threads投稿に失敗があります: $BODY"; exit 1; }

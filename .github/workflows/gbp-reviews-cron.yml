@@ -22,4 +22,13 @@ jobs:
           BODY=$(echo "$RESP" | sed '$d')
           CODE=$(echo "$RESP" | tail -1)
           echo "HTTP $CODE: $BODY"
-          [ "$CODE" = "200" ] || exit 1
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # 取込自体が失敗した場合は route が throw して 500 になる(上のCODEで拾える)が、
+          # 将来 200 のまま ok:false を返すようになっても気づけるように本文も見る。
+          #   env未設定: {"ok":true,"configured":false,...} ← 正常(GBP承認待ちの間)
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::クチコミ取込に失敗しました: $BODY"; exit 1; }
+          # ドラフト生成の失敗は取込そのものの失敗ではない(ANTHROPIC_API_KEY未設定でも出る)ので、
+          # 赤にはせず警告だけ出す。恒常的に赤いと本当の失敗を見落とすため。
+          echo "$BODY" | jq -e '(.draft_errors // []) | length == 0' >/dev/null 2>&1 \
+            || echo "::warning::返信ドラフトの生成に失敗した件があります: $BODY"

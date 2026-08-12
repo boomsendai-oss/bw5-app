@@ -23,4 +23,12 @@ jobs:
           BODY=$(echo "$RESP" | sed '$d')
           CODE=$(echo "$RESP" | tail -1)
           echo "HTTP $CODE: $BODY"
-          [ "$CODE" = "200" ] || exit 1
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # ⚠️ HTTPコードだけでは投稿失敗を検知できない。route側は個々の投稿が失敗しても
+          # 全体は ok:true / status 200 で返し、失敗件数を failed に入れるだけなので、
+          # **本文の failed も見る**(見ないと投稿が全滅しても永久に緑になる)。
+          #   通常     : {"ok":true,"configured":true,"due":0,"posted":0,"failed":0,...}
+          #   env未設定: {"ok":true,"configured":false,"status":"dormant",...} ← 正常
+          #   要対応   : failed >= 1 (差し戻し→再承認が要る) / ok:false
+          echo "$BODY" | jq -e '.ok == true and (.failed // 0) == 0' >/dev/null 2>&1 \
+            || { echo "::error::X投稿に失敗があります: $BODY"; exit 1; }
