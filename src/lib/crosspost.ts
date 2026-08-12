@@ -5,7 +5,12 @@
 //   - YouTube: タイトルと説明が別。#Shorts が無いとShortsとして扱われないことがある
 // ここでプラットフォームごとに整形する。
 
-import { OFFICIAL_LINE_URL, WEBSITE_URL, YOUTUBE_SUBSCRIBE_URL } from './links';
+import {
+  OFFICIAL_LINE_URL,
+  WEBSITE_URL,
+  YOUTUBE_SUBSCRIBE_URL,
+  YOUTUBE_ARCHIVE_PLAYLIST_URL,
+} from './links';
 
 /** 横展開する配信先 */
 export const CROSSPOST_PLATFORMS = ['youtube', 'x', 'threads', 'facebook', 'tiktok'] as const;
@@ -218,6 +223,11 @@ function buildCtaBlock(): string {
   return [
     `▼ チャンネル登録はこちら(1タップで登録画面が開きます)`,
     YOUTUBE_SUBSCRIBE_URL,
+    '',
+    // 「登録する理由」を同じ画面に置く。切り抜きを気に入った人に、
+    // その場で見られるフル尺が21本あることを伝える
+    '▼ 発表会のフル映像(BOOM WOP vol.3・全21本)',
+    YOUTUBE_ARCHIVE_PLAYLIST_URL,
     '',
     '▼ 体験レッスン(無料)のご予約・ご相談はこちら',
     `公式LINE: ${OFFICIAL_LINE_URL}`,

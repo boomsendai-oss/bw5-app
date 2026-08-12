@@ -19,7 +19,12 @@ import {
   classifyByEnabled,
   type CrosspostRow,
 } from '../crosspost';
-import { OFFICIAL_LINE_URL, WEBSITE_URL, YOUTUBE_SUBSCRIBE_URL } from '../links';
+import {
+  OFFICIAL_LINE_URL,
+  WEBSITE_URL,
+  YOUTUBE_SUBSCRIBE_URL,
+  YOUTUBE_ARCHIVE_PLAYLIST_URL,
+} from '../links';
 
 describe('splitCaption', () => {
   it('末尾のハッシュタグ行を本文から切り離す', () => {
@@ -124,6 +129,12 @@ describe('buildYouTubeMeta', () => {
     expect(m.description).toContain('sub_confirmation=1');
   });
 
+  it('発表会フル映像(アーカイブ)への導線を入れる', () => {
+    // 切り抜きを気に入った人に「フル尺がここにある」を見せるのが登録の理由になる
+    const m = buildYouTubeMeta('t', '本文\n\n#仙台ダンス');
+    expect(m.description).toContain(YOUTUBE_ARCHIVE_PLAYLIST_URL);
+  });
+
   it('登録URLはハンドルでなくチャンネルID形式(説明欄に@を持ち込まない)', () => {
     // 説明欄の @ は別アカウントへのリンクになりうるため、自分のハンドルでも入れない
     const m = buildYouTubeMeta('t', '本文');
@@ -150,6 +161,7 @@ describe('buildYouTubeMeta', () => {
     expect([...m.description].length).toBeLessThanOrEqual(YT_DESCRIPTION_MAX);
     expect(m.description).toContain(OFFICIAL_LINE_URL);
     expect(m.description).toContain(YOUTUBE_SUBSCRIBE_URL);
+    expect(m.description).toContain(YOUTUBE_ARCHIVE_PLAYLIST_URL);
     expect(m.description).toContain('#Shorts');
   });
 

@@ -29,3 +29,14 @@ export const YOUTUBE_CHANNEL_ID = 'UCcHMEFmqpzyGkKew05NmvGA';
  *      改名で一斉にリンク切れになるのを防げる。
  */
 export const YOUTUBE_SUBSCRIBE_URL = `https://www.youtube.com/channel/${YOUTUBE_CHANNEL_ID}?sub_confirmation=1`;
+
+/**
+ * 過去の発表会フル映像の再生リスト(BOOM WOP vol.3・2024.1.28・全21本)。
+ *
+ * Shortsは発表会の切り抜きなので、「続き・フル尺はここにある」を指せる。
+ * **YouTubeにしか無い価値**(尺の都合でInstagramには置けない)なので、
+ * 登録する理由そのものになる。vol.3を選ぶ理由は、公開済みアーカイブのうち最新で
+ * かつDVD販売が終了しているため(販売中のvol.5は出さない)。
+ */
+export const YOUTUBE_ARCHIVE_PLAYLIST_URL =
+  'https://www.youtube.com/playlist?list=PLcsxYFxzxZa0tnG-UW7Ig72FAUQ8Or44k';
