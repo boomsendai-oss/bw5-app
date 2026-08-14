@@ -47,6 +47,10 @@ export async function runMigrations(c: Client): Promise<void> {
   await addColumnIfMissing(c, 'event_signup_settings', 'share_token', 'TEXT');
   // 出演者募集: 9/26(BOOMER'S FIGHT)への出欠再確認 'yes'/'no'/NULL=未回答。本番は台帳 20260806_performer_availability.sql
   await addColumnIfMissing(c, 'event_signup_performers', 'availability', 'TEXT');
+  // 会員Instagram(2026-08-14): 会員のInstagramはこの3列が正本。本番は台帳 20260814_instagram_collect.sql
+  await addColumnIfMissing(c, 'boom_members', 'instagram_handle', 'TEXT');
+  await addColumnIfMissing(c, 'boom_members', 'instagram_owner_kind', 'TEXT');
+  await addColumnIfMissing(c, 'boom_members', 'instagram_linked_at', 'TEXT');
   // 体験予約 担当周知(WS T / 2026-07-18)の trial_records 列(course_type/dance_experience/
   // referral_source)は台帳 scripts/migrations/20260718_trial_notify_fields.sql で追加する。
   // 本番は SKIP_DB_INIT=1 でこの runMigrations 自体が走らないため、ここに書いても本番へ届かない。

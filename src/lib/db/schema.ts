@@ -1084,5 +1084,53 @@ export function getSchemaStatements(): InStatement[] {
     )`,
       args: [],
     },
+    {
+      // === 会員Instagramアカウント収集 (2026-08-14) ===
+      // 回答の受信箱。正本は boom_members.instagram_handle であってこちらではない。
+      // 本番は台帳 scripts/migrations/20260814_instagram_collect.sql で作成済み。
+      sql: `CREATE TABLE IF NOT EXISTS instagram_submissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      edit_token TEXT NOT NULL UNIQUE,
+      note TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS instagram_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      submission_id INTEGER NOT NULL,
+      member_name TEXT NOT NULL,
+      member_name_kana TEXT NOT NULL,
+      handle TEXT NOT NULL,
+      owner_kind TEXT NOT NULL,
+      match_state TEXT NOT NULL DEFAULT 'pending',
+      matched_member_id INTEGER,
+      matched_by TEXT,
+      matched_at TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_instagram_entries_submission ON instagram_entries (submission_id)`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_instagram_entries_state ON instagram_entries (match_state)`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS instagram_collect_settings (
+      id INTEGER PRIMARY KEY,
+      is_open INTEGER NOT NULL DEFAULT 1,
+      intro_md TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT ''
+    )`,
+      args: [],
+    },
   ];
 }
