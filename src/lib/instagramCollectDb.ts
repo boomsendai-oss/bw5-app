@@ -1,11 +1,15 @@
 // 会員Instagramアカウント収集の DB 層 (2026-08-14)。純ロジックは instagramCollect.ts。
 //
 // ⚠️ boom_members への書き込みは approveEntry / unlinkEntry / deleteByToken からのみ行う。
-//   フォームの送信・編集では絶対に boom_members を触らない(承認キュー方式)。
+//   フォームの送信・編集が boom_members に届くのは autoApproveSubmission() 経由だけで、
+//   そこも最終的に approveEntry を呼ぶ(書き込み口を1つに保つため)。
+//   自動で通るのは canAutoApprove() を満たす行だけ＝取り違えの余地が原理的に無い場合のみ。
+//   条件を外れた行は pending のまま残り、従来どおりスタッフ画面で人が承認する。
 
 import { getAll, getOne, execute, withWriteTx } from './db';
 import {
   suggestMatches,
+  pickMentionHandle,
   type MatchSuggestion,
   type MemberForIgMatch,
   type OwnerKind,
@@ -56,14 +60,16 @@ export async function saveSettings(s: CollectSettings): Promise<void> {
 export type OwnEntry = {
   memberName: string;
   memberNameKana: string;
-  handle: string;
-  ownerKind: OwnerKind;
+  handleSelf: string | null;
+  handleMother: string | null;
+  handleFather: string | null;
 };
 export type OwnSubmission = { note: string; entries: OwnEntry[] };
 
-export async function createSubmission(token: string, v: ValidatedCollect): Promise<void> {
+/** 受信箱に保存し、その submission_id を返す(呼び出し側が自動承認へ渡す)。 */
+export async function createSubmission(token: string, v: ValidatedCollect): Promise<number> {
   const at = nowIso();
-  await withWriteTx(async (tx) => {
+  return withWriteTx(async (tx) => {
     const r = await tx.execute({
       sql: 'INSERT INTO instagram_submissions (edit_token, note, created_at, updated_at) VALUES (?, ?, ?, ?)',
       args: [token, v.note, at, at],
@@ -73,12 +79,58 @@ export async function createSubmission(token: string, v: ValidatedCollect): Prom
     for (const e of v.entries) {
       await tx.execute({
         sql: `INSERT INTO instagram_entries
-              (submission_id, member_name, member_name_kana, handle, owner_kind, match_state, sort_order, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
-        args: [submissionId, e.memberName, e.memberNameKana, e.handle, e.ownerKind, i++, at, at],
+              (submission_id, member_name, member_name_kana, handle_self, handle_mother, handle_father,
+               handle, owner_kind, match_state, sort_order, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        args: [submissionId, e.memberName, e.memberNameKana, e.handleSelf, e.handleMother, e.handleFather,
+               pickMentionHandle(e)?.handle ?? null, pickMentionHandle(e)?.kind ?? null, i++, at, at],
       });
     }
+    return submissionId;
   });
+}
+
+/**
+ * 送信直後に、取り違えの余地が無い行だけを自動で紐付ける (TARO承認 2026-08-17)。
+ * 判定は canAutoApprove()。条件を満たさない行は今までどおり pending のまま残り、
+ * スタッフ画面で人が見る。
+ *
+ * `matched_by` に 'auto' を残すので、あとから自動分だけを一覧・解除できる。
+ * 失敗しても送信自体は成功扱いにする（会員に見えるのは「送信できたか」だけで、
+ * 紐付けは運営側の都合。ここで例外を投げて送信をエラーにする方が損害が大きい）。
+ */
+export async function autoApproveSubmission(submissionId: number): Promise<number> {
+  try {
+    const rows = await getAll(
+      `SELECT id, member_name, member_name_kana, handle_self, handle_mother, handle_father
+       FROM instagram_entries WHERE submission_id = ? AND match_state = 'pending'`,
+      [submissionId]
+    );
+    if (rows.length === 0) return 0;
+
+    const members = await loadMembersForMatch();
+    const suggestions = suggestMatches(
+      rows.map((r) => ({
+        id: Number(r.id),
+        memberName: (r.member_name as string) ?? '',
+        memberNameKana: (r.member_name_kana as string) ?? '',
+        handleSelf: (r.handle_self as string) ?? null,
+        handleMother: (r.handle_mother as string) ?? null,
+        handleFather: (r.handle_father as string) ?? null,
+      })),
+      members
+    );
+
+    let n = 0;
+    for (const s of suggestions) {
+      if (!s.auto_approvable) continue;
+      const r = await approveEntry(s.entry_id, s.candidates[0].member_id, 'auto');
+      if (r.ok) n++;
+    }
+    return n;
+  } catch {
+    return 0;
+  }
 }
 
 async function findSubmissionIdByToken(token: string): Promise<number | null> {
@@ -92,7 +144,7 @@ export async function loadByToken(token: string): Promise<OwnSubmission | null> 
   if (id === null) return null;
   const head = await getOne('SELECT note FROM instagram_submissions WHERE id = ?', [id]);
   const rows = await getAll(
-    `SELECT member_name, member_name_kana, handle, owner_kind
+    `SELECT member_name, member_name_kana, handle_self, handle_mother, handle_father
      FROM instagram_entries WHERE submission_id = ? ORDER BY sort_order, id`,
     [id]
   );
@@ -101,8 +153,9 @@ export async function loadByToken(token: string): Promise<OwnSubmission | null> 
     entries: rows.map((r) => ({
       memberName: r.member_name as string,
       memberNameKana: r.member_name_kana as string,
-      handle: r.handle as string,
-      ownerKind: r.owner_kind as OwnerKind,
+      handleSelf: (r.handle_self as string) ?? null,
+      handleMother: (r.handle_mother as string) ?? null,
+      handleFather: (r.handle_father as string) ?? null,
     })),
   };
 }
@@ -118,7 +171,8 @@ export async function updateByToken(token: string, v: ValidatedCollect): Promise
   const at = nowIso();
   await withWriteTx(async (tx) => {
     await tx.execute({
-      sql: `UPDATE boom_members SET instagram_handle = NULL, instagram_owner_kind = NULL, instagram_linked_at = NULL
+      sql: `UPDATE boom_members SET instagram_handle = NULL, instagram_handle_mother = NULL, instagram_handle_father = NULL,
+                                   instagram_owner_kind = NULL, instagram_linked_at = NULL
             WHERE id IN (SELECT matched_member_id FROM instagram_entries
                          WHERE submission_id = ? AND match_state = 'approved' AND matched_member_id IS NOT NULL)`,
       args: [id],
@@ -128,9 +182,11 @@ export async function updateByToken(token: string, v: ValidatedCollect): Promise
     for (const e of v.entries) {
       await tx.execute({
         sql: `INSERT INTO instagram_entries
-              (submission_id, member_name, member_name_kana, handle, owner_kind, match_state, sort_order, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
-        args: [id, e.memberName, e.memberNameKana, e.handle, e.ownerKind, i++, at, at],
+              (submission_id, member_name, member_name_kana, handle_self, handle_mother, handle_father,
+               handle, owner_kind, match_state, sort_order, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        args: [id, e.memberName, e.memberNameKana, e.handleSelf, e.handleMother, e.handleFather,
+               pickMentionHandle(e)?.handle ?? null, pickMentionHandle(e)?.kind ?? null, i++, at, at],
       });
     }
     await tx.execute({
@@ -138,6 +194,8 @@ export async function updateByToken(token: string, v: ValidatedCollect): Promise
       args: [v.note, at, id],
     });
   });
+  // 差し替え後の行も、取り違えの余地が無ければそのまま紐付け直す
+  await autoApproveSubmission(id);
   return true;
 }
 
@@ -147,7 +205,8 @@ export async function deleteByToken(token: string): Promise<boolean> {
   if (id === null) return false;
   await withWriteTx(async (tx) => {
     await tx.execute({
-      sql: `UPDATE boom_members SET instagram_handle = NULL, instagram_owner_kind = NULL, instagram_linked_at = NULL
+      sql: `UPDATE boom_members SET instagram_handle = NULL, instagram_handle_mother = NULL, instagram_handle_father = NULL,
+                                   instagram_owner_kind = NULL, instagram_linked_at = NULL
             WHERE id IN (SELECT matched_member_id FROM instagram_entries
                          WHERE submission_id = ? AND match_state = 'approved' AND matched_member_id IS NOT NULL)`,
       args: [id],
@@ -166,12 +225,18 @@ export type StaffEntry = {
   id: number;
   member_name: string;
   member_name_kana: string;
-  handle: string;
-  owner_kind: OwnerKind;
+  handle_self: string | null;
+  handle_mother: string | null;
+  handle_father: string | null;
+  /** メンションに使う1つ(本人>母>父)。表示と確認用 */
+  mention_handle: string | null;
+  mention_kind: OwnerKind | null;
   match_state: 'pending' | 'approved' | 'rejected';
   matched_member_id: number | null;
   matched_member_name: string | null;
   matched_at: string | null;
+  /** 'auto' なら自動承認された行(人が押していない) */
+  matched_by: string | null;
   created_at: string;
   note: string;
   suggestion: MatchSuggestion;
@@ -179,7 +244,8 @@ export type StaffEntry = {
 
 async function loadMembersForMatch(): Promise<MemberForIgMatch[]> {
   const rows = await getAll(
-    `SELECT id, hacomono_member_id, full_name, full_name_kana, status, instagram_handle FROM boom_members`
+    `SELECT id, hacomono_member_id, full_name, full_name_kana, status,
+            instagram_handle, instagram_handle_mother, instagram_handle_father FROM boom_members`
   );
   return rows.map((r) => ({
     id: Number(r.id),
@@ -188,13 +254,15 @@ async function loadMembersForMatch(): Promise<MemberForIgMatch[]> {
     full_name_kana: (r.full_name_kana as string) ?? '',
     status: (r.status as string) ?? '',
     instagram_handle: (r.instagram_handle as string) ?? null,
+    instagram_handle_mother: (r.instagram_handle_mother as string) ?? null,
+    instagram_handle_father: (r.instagram_handle_father as string) ?? null,
   }));
 }
 
 export async function listForStaff(): Promise<StaffEntry[]> {
   const rows = await getAll(
-    `SELECT e.id, e.member_name, e.member_name_kana, e.handle, e.owner_kind, e.match_state,
-            e.matched_member_id, e.matched_at, e.created_at, s.note,
+    `SELECT e.id, e.member_name, e.member_name_kana, e.handle_self, e.handle_mother, e.handle_father,
+            e.match_state, e.matched_member_id, e.matched_at, e.matched_by, e.created_at, s.note,
             m.full_name AS matched_member_name
      FROM instagram_entries e
      JOIN instagram_submissions s ON s.id = e.submission_id
@@ -207,27 +275,40 @@ export async function listForStaff(): Promise<StaffEntry[]> {
       id: Number(r.id),
       memberName: (r.member_name as string) ?? '',
       memberNameKana: (r.member_name_kana as string) ?? '',
-      handle: (r.handle as string) ?? '',
-      ownerKind: (r.owner_kind as string) ?? '',
+      handleSelf: (r.handle_self as string) ?? null,
+      handleMother: (r.handle_mother as string) ?? null,
+      handleFather: (r.handle_father as string) ?? null,
     })),
     members
   );
   const byId = new Map(suggestions.map((s) => [s.entry_id, s]));
 
-  return rows.map((r) => ({
-    id: Number(r.id),
-    member_name: (r.member_name as string) ?? '',
-    member_name_kana: (r.member_name_kana as string) ?? '',
-    handle: (r.handle as string) ?? '',
-    owner_kind: (r.owner_kind as OwnerKind) ?? 'other',
-    match_state: (r.match_state as StaffEntry['match_state']) ?? 'pending',
-    matched_member_id: r.matched_member_id === null ? null : Number(r.matched_member_id),
-    matched_member_name: (r.matched_member_name as string) ?? null,
-    matched_at: (r.matched_at as string) ?? null,
-    created_at: (r.created_at as string) ?? '',
-    note: (r.note as string) ?? '',
-    suggestion: byId.get(Number(r.id)) ?? { entry_id: Number(r.id), candidates: [], confidence: 'なし' },
-  }));
+  return rows.map((r) => {
+    const handles = {
+      handleSelf: (r.handle_self as string) ?? null,
+      handleMother: (r.handle_mother as string) ?? null,
+      handleFather: (r.handle_father as string) ?? null,
+    };
+    const pick = pickMentionHandle(handles);
+    return {
+      id: Number(r.id),
+      member_name: (r.member_name as string) ?? '',
+      member_name_kana: (r.member_name_kana as string) ?? '',
+      handle_self: handles.handleSelf,
+      handle_mother: handles.handleMother,
+      handle_father: handles.handleFather,
+      mention_handle: pick?.handle ?? null,
+      mention_kind: pick?.kind ?? null,
+      match_state: (r.match_state as StaffEntry['match_state']) ?? 'pending',
+      matched_member_id: r.matched_member_id === null ? null : Number(r.matched_member_id),
+      matched_member_name: (r.matched_member_name as string) ?? null,
+      matched_at: (r.matched_at as string) ?? null,
+      matched_by: (r.matched_by as string) ?? null,
+      created_at: (r.created_at as string) ?? '',
+      note: (r.note as string) ?? '',
+      suggestion: byId.get(Number(r.id)) ?? { entry_id: Number(r.id), candidates: [], confidence: 'なし', auto_approvable: false },
+    };
+  });
 }
 
 export type ApproveResult = { ok: true } | { ok: false; error: string };
@@ -237,16 +318,30 @@ export type ApproveResult = { ok: true } | { ok: false; error: string };
  * 会員IDは呼び出し側(スタッフ)が明示的に渡す。候補から自動で選ばない。
  */
 export async function approveEntry(entryId: number, memberId: number, actor: string): Promise<ApproveResult> {
-  const entry = await getOne('SELECT handle, owner_kind FROM instagram_entries WHERE id = ?', [entryId]);
+  const entry = await getOne(
+    'SELECT handle_self, handle_mother, handle_father FROM instagram_entries WHERE id = ?',
+    [entryId]
+  );
   if (!entry) return { ok: false, error: '回答が見つかりません' };
   const member = await getOne('SELECT id FROM boom_members WHERE id = ?', [memberId]);
   if (!member) return { ok: false, error: '会員が見つかりません' };
 
+  const handles = {
+    handleSelf: (entry.handle_self as string) ?? null,
+    handleMother: (entry.handle_mother as string) ?? null,
+    handleFather: (entry.handle_father as string) ?? null,
+  };
+  // instagram_owner_kind は「どの枠をメンションに使うか」を表す(本人>母>父)。表示用。
+  const pick = pickMentionHandle(handles);
+
   const at = nowIso();
   await withWriteTx(async (tx) => {
     await tx.execute({
-      sql: 'UPDATE boom_members SET instagram_handle = ?, instagram_owner_kind = ?, instagram_linked_at = ?, updated_at = ? WHERE id = ?',
-      args: [entry.handle, entry.owner_kind, at, at, memberId],
+      sql: `UPDATE boom_members
+            SET instagram_handle = ?, instagram_handle_mother = ?, instagram_handle_father = ?,
+                instagram_owner_kind = ?, instagram_linked_at = ?, updated_at = ?
+            WHERE id = ?`,
+      args: [handles.handleSelf, handles.handleMother, handles.handleFather, pick?.kind ?? null, at, at, memberId],
     });
     await tx.execute({
       sql: `UPDATE instagram_entries
@@ -276,7 +371,8 @@ export async function unlinkEntry(entryId: number): Promise<ApproveResult> {
   await withWriteTx(async (tx) => {
     if (entry.matched_member_id !== null) {
       await tx.execute({
-        sql: 'UPDATE boom_members SET instagram_handle = NULL, instagram_owner_kind = NULL, instagram_linked_at = NULL, updated_at = ? WHERE id = ?',
+        sql: `UPDATE boom_members SET instagram_handle = NULL, instagram_handle_mother = NULL, instagram_handle_father = NULL,
+                                     instagram_owner_kind = NULL, instagram_linked_at = NULL, updated_at = ? WHERE id = ?`,
         args: [at, Number(entry.matched_member_id)],
       });
     }
@@ -297,7 +393,10 @@ export async function summary(): Promise<{ total: number; pending: number; appro
      FROM instagram_entries`
   );
   const m = await getOne(
-    `SELECT COUNT(*) AS n FROM boom_members WHERE TRIM(COALESCE(instagram_handle, '')) <> ''`
+    `SELECT COUNT(*) AS n FROM boom_members
+     WHERE TRIM(COALESCE(instagram_handle, '')) <> ''
+        OR TRIM(COALESCE(instagram_handle_mother, '')) <> ''
+        OR TRIM(COALESCE(instagram_handle_father, '')) <> ''`
   );
   return {
     total: Number(r?.total ?? 0),

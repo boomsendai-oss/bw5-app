@@ -15,6 +15,7 @@ import { validateCollectInput, generateEditToken, type CollectInput } from '@/li
 import {
   resolveSettings,
   createSubmission,
+  autoApproveSubmission,
   loadByToken,
   updateByToken,
   deleteByToken,
@@ -49,7 +50,10 @@ export async function submit(payload: CollectInput): Promise<SubmitResult> {
   const validated = validateCollectInput(payload);
   if (typeof validated === 'string') return { ok: false, error: validated };
   const token = generateEditToken();
-  await createSubmission(token, validated);
+  const submissionId = await createSubmission(token, validated);
+  // 取り違えの余地が無い行はここで会員に紐付く(TARO承認 2026-08-17)。
+  // 失敗しても送信は成功として返す — 会員に見えるのは「送信できたか」だけで、紐付けは運営側の都合。
+  await autoApproveSubmission(submissionId);
   return { ok: true, token };
 }
 

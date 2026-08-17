@@ -1,22 +1,22 @@
-// 会員Instagramアカウント収集の純ロジック (2026-08-14)
+// 会員Instagramアカウント収集の純ロジック (2026-08-14 / 2026-08-17 3段化)
 //
 // 目的: 会員のInstagramアカウントを任意で提出してもらい、会員DB(boom_members)へ紐付ける。
+//       用途は各種SNS発信でのメンション(フォーム冒頭でそう伝え、送信をもって同意とみなす)。
 //
-// ⚠️ 正本は boom_members.instagram_handle の1箇所。
+// ⚠️ 会員のInstagramの正本は boom_members の instagram_handle / _mother / _father。
 //   instagram_entries は「回答の受信箱(生ログ)」であって参照先ではない。
 //   アプリの他の場所から会員のInstagramを読むときは必ず boom_members を見ること。
-//   受信箱を残すのは ①誤紐付けを後から追跡・解除するため ②本人が編集URLで直したときに
-//   追随するため (trial_records.matched_by / matched_at と同じ思想)。
+//   ※非会員の出演者(外部ゲスト等)は boom_members に置き場が無いため performers 側に残る。
 //
-// ⚠️ 突合は自動確定しない。suggestMatches は候補を出すだけで、
-//   boom_members への書き込みはスタッフ画面の「承認」を経たときだけ行う(LSTEP表示名一括更新と同じ承認キュー方式)。
-//   同姓同名・旧姓・表記ゆれで誤紐付けすると被害が読めないため。
+// ⚠️ 突合は原則として自動確定しない。suggestMatches は候補を出すだけで、
+//   boom_members への書き込みは「スタッフの承認」か「canAutoApprove を満たす自動承認」だけ。
 //
 // ※ このモジュールは公開フォーム(クライアント)からも import されるため node: 依存を持たない。
 
 import { normalizeKana } from './linkSuggest';
 
-export const OWNER_KINDS = ['self', 'father', 'mother', 'other'] as const;
+/** 誰のアカウントか。フォームは本人/母/父の3段で受け取る(otherは旧データ互換のため残す)。 */
+export const OWNER_KINDS = ['self', 'mother', 'father', 'other'] as const;
 export type OwnerKind = (typeof OWNER_KINDS)[number];
 
 export function isOwnerKind(v: unknown): v is OwnerKind {
@@ -25,8 +25,8 @@ export function isOwnerKind(v: unknown): v is OwnerKind {
 
 const OWNER_LABELS: Record<OwnerKind, string> = {
   self: '本人',
-  father: '父',
   mother: '母',
+  father: '父',
   other: 'その他',
 };
 
@@ -55,7 +55,10 @@ export type HandleResult = { ok: true; handle: string } | { ok: false; error: st
 /**
  * 入力されたものからInstagramアカウント名を取り出して正規化する。
  * `@`付き / URL貼り付け / 全角 / 大文字 のどれで来ても同じ値に落とす。
- * 表示名(日本語)を書かれた場合は弾く — 突合できない値を溜めても意味がないため。
+ *
+ * ひらがな・カタカナ・漢字・空白・ハイフンはすべて弾く。Instagramのユーザー名に
+ * 使えない文字であり、表示名(日本語)を書き間違えたケースをここで止めるため
+ * (突合できない値を溜めても意味がない)。
  */
 export function normalizeHandle(input: string): HandleResult {
   const empty = { ok: false as const, error: 'Instagramのアカウント名を入力してください' };
@@ -68,7 +71,6 @@ export function normalizeHandle(input: string): HandleResult {
   if (urlMatch) {
     s = urlMatch[1];
   } else {
-    // クエリ・ハッシュだけ付いてくるケースを落とす
     s = s.split(/[?#]/)[0];
   }
 
@@ -78,13 +80,13 @@ export function normalizeHandle(input: string): HandleResult {
   if (!HANDLE_RE.test(s)) {
     return {
       ok: false,
-      error: `「${input.trim()}」はInstagramのアカウント名として読み取れませんでした。プロフィール画面の「@」から始まる名前をそのまま入れてください`,
+      error: `「${input.trim()}」はInstagramのアカウント名として読み取れませんでした。プロフィール画面の「@」から始まる名前（英数字）をそのまま入れてください`,
     };
   }
   return { ok: true, handle: s };
 }
 
-// 出演者名と同じく、フリガナは全角カタカナのみ許可(長音符・中点・スペースは可)。
+// フリガナは全角カタカナのみ許可(長音符・中点・スペースは可)。ひらがな・漢字・英数字は不可。
 const KATAKANA_RE = /^[゠-ヿ　\s]+$/;
 export function isKatakana(s: string): boolean {
   return KATAKANA_RE.test(s);
@@ -93,8 +95,9 @@ export function isKatakana(s: string): boolean {
 export interface EntryInput {
   memberName: string;
   memberNameKana: string;
-  handle: string;
-  ownerKind: string;
+  handleSelf?: string;
+  handleMother?: string;
+  handleFather?: string;
 }
 
 export interface CollectInput {
@@ -105,13 +108,29 @@ export interface CollectInput {
 export interface ValidatedEntry {
   memberName: string;
   memberNameKana: string;
-  handle: string;
-  ownerKind: OwnerKind;
+  handleSelf: string | null;
+  handleMother: string | null;
+  handleFather: string | null;
 }
 
 export interface ValidatedCollect {
   entries: ValidatedEntry[];
   note: string;
+}
+
+/** 3つのうち、メンションに使う1つを選ぶ。優先度は 本人 > 母 > 父 (TARO決定)。 */
+export function pickMentionHandle(e: {
+  handleSelf?: string | null;
+  handleMother?: string | null;
+  handleFather?: string | null;
+}): { handle: string; kind: OwnerKind } | null {
+  const self = (e.handleSelf ?? '').trim();
+  if (self) return { handle: self, kind: 'self' };
+  const mother = (e.handleMother ?? '').trim();
+  if (mother) return { handle: mother, kind: 'mother' };
+  const father = (e.handleFather ?? '').trim();
+  if (father) return { handle: father, kind: 'father' };
+  return null;
 }
 
 /** 検証OKなら ValidatedCollect、NGなら会員に見せる日本語エラー文字列を返す。 */
@@ -122,23 +141,40 @@ export function validateCollectInput(input: CollectInput): ValidatedCollect | st
   for (const row of rows) {
     const memberName = (row?.memberName ?? '').trim();
     const memberNameKana = (row?.memberNameKana ?? '').trim();
-    const handleRaw = (row?.handle ?? '').trim();
-    const ownerKind = (row?.ownerKind ?? '').trim();
+    const raw = {
+      self: (row?.handleSelf ?? '').trim(),
+      mother: (row?.handleMother ?? '').trim(),
+      father: (row?.handleFather ?? '').trim(),
+    };
+    const anyHandle = raw.self || raw.mother || raw.father;
 
     // 「＋もう1人追加」を押しただけの空行は無視する(エラーにしない)
-    if (!memberName && !memberNameKana && !handleRaw && !ownerKind) continue;
+    if (!memberName && !memberNameKana && !anyHandle) continue;
 
     if (!memberName) return 'お名前を入力してください';
     if (memberName.length > 50) return 'お名前が長すぎます（50文字以内）';
     if (!memberNameKana) return `${memberName} さんのフリガナを入力してください`;
     if (memberNameKana.length > 50) return 'フリガナが長すぎます（50文字以内）';
     if (!isKatakana(memberNameKana)) return `${memberName} さんのフリガナはカタカナで入力してください`;
-    if (!isOwnerKind(ownerKind)) return `${memberName} さんの欄で、どなたのアカウントかを選んでください`;
+    if (!anyHandle) {
+      return `${memberName} さんのアカウント名を、本人・母・父のどれか1つ以上入れてください`;
+    }
 
-    const h = normalizeHandle(handleRaw);
-    if (!h.ok) return h.error;
+    const out: ValidatedEntry = {
+      memberName,
+      memberNameKana,
+      handleSelf: null,
+      handleMother: null,
+      handleFather: null,
+    };
+    for (const [key, value] of [['handleSelf', raw.self], ['handleMother', raw.mother], ['handleFather', raw.father]] as const) {
+      if (!value) continue;
+      const h = normalizeHandle(value);
+      if (!h.ok) return h.error;
+      out[key] = h.handle;
+    }
 
-    cleaned.push({ memberName, memberNameKana, handle: h.handle, ownerKind });
+    cleaned.push(out);
   }
 
   if (cleaned.length === 0) return '入力がありません';
@@ -159,6 +195,8 @@ export type MemberForIgMatch = {
   full_name_kana: string;
   status: string;
   instagram_handle: string | null;
+  instagram_handle_mother?: string | null;
+  instagram_handle_father?: string | null;
 };
 
 export type MatchCandidate = {
@@ -168,9 +206,13 @@ export type MatchCandidate = {
   status: string;
   /** 何で当たったか。kana(フリガナ一致) が主軸、name(漢字一致) はフォールバック */
   reason: 'kana' | 'name';
-  /** その会員に既に入っているアカウント(あれば) */
-  existing_handle: string | null;
-  /** 承認すると別のアカウントを上書きすることになるか */
+  /** フリガナが一致したか(自動承認の判定に使う) */
+  kana_match: boolean;
+  /** 漢字氏名が一致したか(自動承認の判定に使う) */
+  name_match: boolean;
+  /** その会員に既に入っている3つ */
+  existing: { self: string | null; mother: string | null; father: string | null };
+  /** 承認すると、既に入っている値のどれかを別の値で置き換えることになるか */
   overwrites: boolean;
 };
 
@@ -178,8 +220,9 @@ export type EntryForMatch = {
   id: number;
   memberName: string;
   memberNameKana: string;
-  handle: string;
-  ownerKind: string;
+  handleSelf: string | null;
+  handleMother: string | null;
+  handleFather: string | null;
 };
 
 export type MatchSuggestion = {
@@ -187,6 +230,8 @@ export type MatchSuggestion = {
   candidates: MatchCandidate[];
   /** 高=候補1件で在籍中 / 要確認=複数ヒットまたは退会済み / なし=候補0件 */
   confidence: '高' | '要確認' | 'なし';
+  /** 人の確認なしで紐付けてよいか。canAutoApprove() の判定結果 */
+  auto_approvable: boolean;
 };
 
 /**
@@ -213,12 +258,36 @@ export function normalizeName(s: string): string {
 }
 
 const isActive = (status: string) => (status ?? '').trim() === 'active';
+const trimOrNull = (v: string | null | undefined) => {
+  const t = (v ?? '').trim();
+  return t ? t : null;
+};
+
+/**
+ * 人の確認なしで boom_members に紐付けてよいか (TARO承認 2026-08-17)。
+ * 承認キューを挟んだのは誤紐付けを防ぐためなので、**取り違えの余地が原理的に無い場合だけ**通す。
+ *
+ * 条件（すべて満たすこと）:
+ *   1. 候補がちょうど1人 … 同姓同名が居たら必ず人が見る
+ *   2. フリガナと漢字が両方一致 … 片方だけの一致は別人の可能性が残る
+ *   3. 在籍中 … 退会者は名簿の状態自体を確認したい
+ *   4. 既存の値を壊さない … その会員に入っている値と食い違うなら人が見る。
+ *      同じ値の再送信は通す(値が変わらない＝取り違えようがない。ここを弾くと
+ *      修正のたびに未処理が溜まり「自動」の意味が薄れる)
+ */
+export function canAutoApprove(candidates: MatchCandidate[]): boolean {
+  if (candidates.length !== 1) return false;
+  const c = candidates[0];
+  if (!c.kana_match || !c.name_match) return false;
+  if (!isActive(c.status)) return false;
+  return !c.overwrites;
+}
 
 /**
  * 回答1行ごとに会員の候補を出す。**確定はしない**。
  *
  * 主軸はフリガナ(normalizeKana で四つ仮名・空白の揺れを吸収)。
- * カナが外れた行だけ漢字氏名でフォールバックする(会員が旧字体や送り仮名で書くケース)。
+ * カナが外れた行だけ漢字氏名でフォールバックする(異体字は normalizeName で吸収)。
  * 候補が複数、または在籍中でない会員しか当たらない場合は「要確認」に落として
  * スタッフが目で見るまで boom_members に触らせない。
  */
@@ -241,26 +310,54 @@ export function suggestMatches(entries: EntryForMatch[], members: MemberForIgMat
   }
 
   return entries.map((e) => {
-    const kanaHits = byKana.get(normalizeKana(e.memberNameKana)) ?? [];
+    const kanaKey = normalizeKana(e.memberNameKana);
+    const nameKey = normalizeName(e.memberName);
+    const kanaHits = byKana.get(kanaKey) ?? [];
     const reason: 'kana' | 'name' = kanaHits.length > 0 ? 'kana' : 'name';
-    const hits = kanaHits.length > 0 ? kanaHits : byName.get(normalizeName(e.memberName)) ?? [];
+    const hits = kanaHits.length > 0 ? kanaHits : byName.get(nameKey) ?? [];
 
-    const candidates: MatchCandidate[] = hits.map((m) => ({
-      member_id: m.id,
-      hacomono_member_id: m.hacomono_member_id,
-      full_name: m.full_name,
-      status: m.status,
-      reason,
-      existing_handle: m.instagram_handle ?? null,
-      overwrites: !!m.instagram_handle && m.instagram_handle !== e.handle,
-    }));
+    const candidates: MatchCandidate[] = hits.map((m) => {
+      const existing = {
+        self: trimOrNull(m.instagram_handle),
+        mother: trimOrNull(m.instagram_handle_mother),
+        father: trimOrNull(m.instagram_handle_father),
+      };
+      // 「上書きになる」= 既に値が入っている枠に、別の値を書こうとしている
+      const overwrites =
+        (!!existing.self && !!e.handleSelf && existing.self !== e.handleSelf) ||
+        (!!existing.mother && !!e.handleMother && existing.mother !== e.handleMother) ||
+        (!!existing.father && !!e.handleFather && existing.father !== e.handleFather) ||
+        // 入っている枠に対して今回は空 = 消えることになるので、これも人が見る
+        (!!existing.self && !e.handleSelf) ||
+        (!!existing.mother && !e.handleMother) ||
+        (!!existing.father && !e.handleFather);
+
+      return {
+        member_id: m.id,
+        hacomono_member_id: m.hacomono_member_id,
+        full_name: m.full_name,
+        status: m.status,
+        reason,
+        // 当たった経路にかかわらず両方を突き合わせて記録する
+        // (自動承認は「カナと漢字の両方が一致」を要求するため、片方の結果では判断できない)
+        kana_match: !!kanaKey && normalizeKana(m.full_name_kana ?? '') === kanaKey,
+        name_match: !!nameKey && normalizeName(m.full_name ?? '') === nameKey,
+        existing,
+        overwrites,
+      };
+    });
 
     const confidence: MatchSuggestion['confidence'] =
       candidates.length === 0 ? 'なし'
         : candidates.length === 1 && isActive(candidates[0].status) ? '高'
           : '要確認';
 
-    return { entry_id: e.id, candidates, confidence };
+    return {
+      entry_id: e.id,
+      candidates,
+      confidence,
+      auto_approvable: canAutoApprove(candidates),
+    };
   });
 }
 

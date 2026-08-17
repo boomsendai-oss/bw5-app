@@ -12,9 +12,12 @@ import {
   THREADS_MENTIONABLE_HANDLES,
   pickNext,
   classifyByEnabled,
+  findStalled,
+  MAX_ATTEMPTS,
   CROSSPOST_PLATFORMS,
   type CrosspostRow,
 } from '@/lib/crosspost';
+import { notifyTaro } from '@/lib/notify';
 import { configured as ytConfigured, uploadShort, trySetThumbnail } from '@/lib/youtube';
 import { xConfigured, uploadVideo, postTweet, estimateChunkRequests } from '@/lib/xApi';
 import { configured as threadsConfigured, postVideo as postThreadsVideo } from '@/lib/threads';
@@ -75,8 +78,9 @@ export async function POST(req: NextRequest) {
   const added = await enqueueMissing(now);
 
   // skipped も読む。envが後から入った時に pending へ戻すため(classifyByEnabled)
+  // error も読む。打ち止め(findStalled)の理由をレスポンス/通知に載せるため
   const rows = (await getAll(
-    `SELECT id, reel_id, platform, status, attempts FROM reel_crossposts
+    `SELECT id, reel_id, platform, status, attempts, error FROM reel_crossposts
      WHERE status IN ('pending', 'failed', 'skipped')`
   )) as CrosspostRow[];
 
@@ -115,15 +119,39 @@ export async function POST(req: NextRequest) {
   );
   const pickable = recentX ? actionable.filter((r) => r.platform !== 'x') : actionable;
 
+  // 打ち止め = 3回失敗して pickNext の候補から外れた行。**未配信のまま誰も再試行しない**。
+  // これを黙って「対象なし」に混ぜると、cronは ok:true を返し続けて永久に緑になる。
+  // ここでレスポンスに出し、ok:false にして必ず赤くする(findStalled のコメント参照)。
+  // Xの24時間枠で外した行(pickable)ではなく actionable から数える —
+  // 枠待ちは時間が経てば解決するが、打ち止めは人が手を入れるまで解決しないため。
+  const stalled = findStalled(actionable);
+  const stalledInfo = {
+    stalled: stalled.length,
+    stalledRows: stalled.map((r) => ({
+      id: r.id,
+      reelId: r.reel_id,
+      platform: r.platform,
+      attempts: r.attempts,
+      error: r.error ?? null,
+    })),
+  };
+  const stalledNote = `打ち止め${stalled.length}件(${stalled
+    .map((r) => `#${r.id} reel${r.reel_id}/${r.platform}`)
+    .join(', ')}) — ${MAX_ATTEMPTS}回失敗して自動再試行を諦めた行が未配信のまま残っています。手動対応が必要`;
+
   const target = pickNext(pickable);
   if (!target) {
     return NextResponse.json({
-      ok: true,
+      // 「配信対象なし」と「打ち止めで諦めた」を混同しない。後者は未完了の仕事が残っている
+      ok: stalled.length === 0,
       posted: false,
       added,
       skipped: toSkip.length,
       revived: toRevive.length,
-      note: toRevive.length > 0
+      ...stalledInfo,
+      note: stalled.length > 0
+        ? stalledNote
+        : toRevive.length > 0
         ? '復活した行を次回実行で処理します'
         : recentX && actionable.length > 0
           ? 'Xは24時間の無料枠待ち・他は配信対象なし'
@@ -138,7 +166,12 @@ export async function POST(req: NextRequest) {
     [now, target.id]
   );
   if ((claim.rowsAffected ?? 0) === 0) {
-    return NextResponse.json({ ok: true, posted: false, note: `#${target.id} は別プロセスが処理中` });
+    return NextResponse.json({
+      ok: stalled.length === 0,
+      posted: false,
+      ...stalledInfo,
+      note: `#${target.id} は別プロセスが処理中${stalled.length > 0 ? ` / ${stalledNote}` : ''}`,
+    });
   }
 
   const fail = async (message: string) => {
@@ -147,7 +180,43 @@ export async function POST(req: NextRequest) {
       nowUtcIso(),
       target.id,
     ]);
-    return NextResponse.json({ ok: false, platform: target.platform, error: message }, { status: 200 });
+    // claim で attempts は +1 済み。今回の失敗で使い切ったなら、この行は以後
+    // pickNext の候補から外れる = 自動では二度と試されない。
+    // 諦めた**その瞬間に1回だけ**TAROへ通知する(以後は毎回赤くなるcronが役目を引き継ぐ)。
+    const attemptsNow = (target.attempts ?? 0) + 1;
+    const justStalled = attemptsNow >= MAX_ATTEMPTS;
+    if (justStalled) {
+      try {
+        await notifyTaro({
+          subjectPrefix: '[BOOM SNS]',
+          subject: `二次配信を諦めました (${target.platform} / reel #${target.reel_id})`,
+          body: [
+            `配信先: ${target.platform}`,
+            `リール: reel_queue #${target.reel_id} (reel_crossposts #${target.id})`,
+            `試行回数: ${attemptsNow}/${MAX_ATTEMPTS} — 自動再試行はここで止まります`,
+            '',
+            `エラー: ${message}`,
+            '',
+            '対応するまでこのリールはこの配信先へ出ません。',
+            '原因を直したら reel_crossposts の当該行を status=\'pending\', attempts=0 に戻すと再開します。',
+          ].join('\n'),
+        });
+      } catch (e) {
+        // 通知が落ちてもcronのレスポンス(ok:false)は返す。検知経路を二重にしてあるのが要点
+        console.warn('[crosspost] 打ち止め通知に失敗:', e);
+      }
+    }
+    return NextResponse.json(
+      {
+        ok: false,
+        platform: target.platform,
+        error: message,
+        justStalled,
+        stalled: stalled.length + (justStalled ? 1 : 0),
+        stalledRows: stalledInfo.stalledRows,
+      },
+      { status: 200 }
+    );
   };
 
   try {
@@ -270,12 +339,16 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json({
-      ok: true,
+      // 今回の1件は成功しても、別に打ち止めの行が残っているなら全体としては正常ではない。
+      // ここを ok:true にすると「毎回1件は成功するので永久に緑」という穴が残る
+      ok: stalled.length === 0,
       posted: true,
       platform: target.platform,
       reelId: reel.id,
       permalink,
       added,
+      ...stalledInfo,
+      ...(stalled.length > 0 ? { note: stalledNote } : {}),
     });
   } catch (e) {
     return await fail(e instanceof Error ? e.message : String(e));

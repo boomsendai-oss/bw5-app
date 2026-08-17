@@ -310,6 +310,8 @@ export type CrosspostRow = {
   platform: string;
   status: string;
   attempts: number;
+  /** 直近の失敗理由。打ち止めの通知・レスポンスに載せる(SELECTしない経路もあるので任意) */
+  error?: string | null;
 };
 
 /** 1回の実行で許すリトライ回数。これを超えたら failed のまま放置してTAROに見せる */
@@ -337,6 +339,21 @@ export function pickNext(rows: CrosspostRow[]): CrosspostRow | null {
     return a.id - b.id;
   });
   return candidates[0];
+}
+
+/**
+ * 打ち止め(試行回数を使い切った failed)の行を返す。
+ *
+ * ⚠️ これが cron の「静かな穴」を塞ぐ。pickNext は attempts >= MAX_ATTEMPTS の failed を
+ * 候補から外すので、同じ配信先が3回失敗して諦めた瞬間から route は
+ * `{"ok":true,"posted":false,"note":"配信対象なし"}` を返すようになる。
+ * 「まだ配信できていない行が残っている」のに正常扱いになり、ワークフローは永久に緑。
+ * (2026-08-10からのX全滅を5日間見逃した件と同じ壊れ方を、失敗回数を重ねた後に再演する)
+ *
+ * 呼び出し側は「本当に対象なし(空)」と「打ち止めで諦めた(1件以上)」を必ず区別すること。
+ */
+export function findStalled(rows: CrosspostRow[]): CrosspostRow[] {
+  return rows.filter((r) => r.status === 'failed' && r.attempts >= MAX_ATTEMPTS);
 }
 
 export type ClassifiedRows = {

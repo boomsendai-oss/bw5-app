@@ -165,21 +165,32 @@ export default function MemberInstagramPage() {
                     {e.member_name}
                     <span className="ml-2 text-xs font-normal text-navy-500">{e.member_name_kana}</span>
                   </div>
-                  <div className="text-sm text-navy-700 mt-0.5">
-                    <a
-                      href={`https://www.instagram.com/${e.handle}/`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-brand-700 underline"
-                    >
-                      @{e.handle}
-                    </a>
-                    <span className="ml-2 text-xs text-navy-500">{ownerKindLabel(e.owner_kind)}のアカウント</span>
+                  <div className="text-sm text-navy-700 mt-1 space-y-0.5">
+                    {([['self', e.handle_self], ['mother', e.handle_mother], ['father', e.handle_father]] as const)
+                      .filter(([, h]) => !!h)
+                      .map(([kind, h]) => (
+                        <div key={kind}>
+                          <span className="inline-block w-8 text-xs text-navy-500">{ownerKindLabel(kind)}</span>
+                          <a
+                            href={`https://www.instagram.com/${h}/`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-brand-700 underline"
+                          >
+                            @{h}
+                          </a>
+                          {e.mention_kind === kind && (
+                            <span className="ml-2 text-[10px] font-bold text-brand-700 bg-brand-50 border border-brand-200 rounded-full px-1.5 py-0.5">
+                              メンション先
+                            </span>
+                          )}
+                        </div>
+                      ))}
                   </div>
                 </div>
                 <span className={`text-[11px] font-bold rounded-full px-2 py-0.5 border ${CONFIDENCE_STYLE[e.suggestion.confidence]}`}>
                   {e.match_state === 'approved'
-                    ? `紐付け済み: ${e.matched_member_name ?? `会員#${e.matched_member_id}`}`
+                    ? `紐付け済み: ${e.matched_member_name ?? `会員#${e.matched_member_id}`}${e.matched_by === 'auto' ? '（自動）' : ''}`
                     : e.match_state === 'rejected'
                       ? '保留にした'
                       : `候補 ${e.suggestion.confidence}`}
@@ -209,7 +220,8 @@ export default function MemberInstagramPage() {
                             </span>
                             {c.overwrites && (
                               <div className="text-xs text-amber-700 mt-0.5">
-                                ⚠ この会員には既に @{c.existing_handle} が入っています。承認すると上書きされます
+                                ⚠ この会員には既に別の値が入っています（本人:{c.existing.self ?? '—'} / 母:
+                                {c.existing.mother ?? '—'} / 父:{c.existing.father ?? '—'}）。承認すると置き換わります
                               </div>
                             )}
                           </div>

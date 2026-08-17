@@ -6,11 +6,14 @@
 
 import { useEffect, useState } from 'react';
 import { getPublicView, submit, loadOwn, updateOwn, deleteOwn, type PublicView } from './actions';
-import { OWNER_KINDS, ownerKindLabel, MAX_ENTRIES, type OwnerKind } from '@/lib/instagramCollect';
+import { MAX_ENTRIES } from '@/lib/instagramCollect';
 
-type Row = { memberName: string; memberNameKana: string; handle: string; ownerKind: '' | OwnerKind };
+type Row = { memberName: string; memberNameKana: string; handleSelf: string; handleMother: string; handleFather: string };
 
-const emptyRow = (): Row => ({ memberName: '', memberNameKana: '', handle: '', ownerKind: '' });
+const emptyRow = (): Row => ({ memberName: '', memberNameKana: '', handleSelf: '', handleMother: '', handleFather: '' });
+
+/** 3枠のうち1つでも入っていれば送信できる。1人分でも埋まっていればボタンを押せる。 */
+const hasAnyHandle = (r: Row) => !!(r.handleSelf.trim() || r.handleMother.trim() || r.handleFather.trim());
 const TOKEN_KEY = 'boom_ig_collect_token';
 
 export default function IgCollectPage() {
@@ -46,8 +49,9 @@ export default function IgCollectPage() {
           r.submission.entries.map((e) => ({
             memberName: e.memberName,
             memberNameKana: e.memberNameKana,
-            handle: e.handle,
-            ownerKind: e.ownerKind,
+            handleSelf: e.handleSelf ?? '',
+            handleMother: e.handleMother ?? '',
+            handleFather: e.handleFather ?? '',
           }))
         );
         setEditing(true);
@@ -189,8 +193,14 @@ export default function IgCollectPage() {
               {rows.map((r, i) => (
                 <div key={i} className="rounded-lg bg-slate-50 px-3 py-2">
                   <div className="text-sm font-bold text-slate-800">{r.memberName}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">
-                    @{r.handle}（{r.ownerKind ? ownerKindLabel(r.ownerKind) : '未選択'}のアカウント）
+                  <div className="text-xs text-slate-500 mt-0.5 space-y-0.5">
+                    {([['本人', r.handleSelf], ['母', r.handleMother], ['父', r.handleFather]] as const)
+                      .filter(([, h]) => h.trim())
+                      .map(([label, h]) => (
+                        <div key={label}>
+                          {label}：@{h.trim()}
+                        </div>
+                      ))}
                   </div>
                 </div>
               ))}
@@ -276,40 +286,35 @@ export default function IgCollectPage() {
                   />
                 </label>
 
-                <label className="block">
+                <div>
                   <span className="text-xs text-slate-500">Instagramのアカウント名</span>
-                  <input
-                    value={r.handle}
-                    onChange={(e) => setRow(i, { handle: e.target.value })}
-                    placeholder="例）boom_sendai"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2.5 text-base text-slate-900 bg-white"
-                  />
-                  <span className="block text-[11px] text-slate-400 mt-1">
+                  <span className="block text-[11px] text-slate-400 mt-0.5 mb-1.5">
+                    分かるものだけで大丈夫です。1つでも入っていれば送信できます。
+                  </span>
+                  <div className="space-y-2">
+                    {([
+                      ['handleSelf', '本人', '例）boom_sendai'],
+                      ['handleMother', '母', 'お母さまのアカウント'],
+                      ['handleFather', '父', 'お父さまのアカウント'],
+                    ] as const).map(([key, label, ph]) => (
+                      <div key={key} className="flex items-center gap-2">
+                        <span className="w-10 shrink-0 text-sm text-slate-600 text-center">{label}</span>
+                        <input
+                          value={r[key]}
+                          onChange={(e) => setRow(i, { [key]: e.target.value } as Partial<Row>)}
+                          placeholder={ph}
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          className="flex-1 min-w-0 border border-slate-300 rounded-lg px-3 py-2.5 text-base text-slate-900 bg-white"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <span className="block text-[11px] text-slate-400 mt-1.5">
                     プロフィール画面の「@」から始まる名前です。@は付けても付けなくても大丈夫です。
                     プロフィールのURLを貼っていただいても構いません。
                   </span>
-                </label>
-
-                <div>
-                  <span className="text-xs text-slate-500">どなたのアカウントですか？</span>
-                  <div className="mt-1 grid grid-cols-4 gap-1.5">
-                    {OWNER_KINDS.map((k) => (
-                      <button
-                        key={k}
-                        onClick={() => setRow(i, { ownerKind: k })}
-                        className={`rounded-lg py-2 text-sm font-bold border ${
-                          r.ownerKind === k
-                            ? 'bg-teal-600 text-white border-teal-600'
-                            : 'bg-white text-slate-600 border-slate-300'
-                        }`}
-                      >
-                        {ownerKindLabel(k)}
-                      </button>
-                    ))}
-                  </div>
                 </div>
               </div>
             ))}
@@ -327,8 +332,8 @@ export default function IgCollectPage() {
 
             <button
               onClick={onSubmit}
-              disabled={busy}
-              className="w-full rounded-2xl bg-teal-600 text-white text-base font-bold py-3 disabled:opacity-50"
+              disabled={busy || !rows.some(hasAnyHandle)}
+              className="w-full rounded-2xl bg-teal-600 text-white text-base font-bold py-3 disabled:opacity-40"
             >
               {busy ? '送信中…' : editing ? '内容を更新する' : '送信する'}
             </button>

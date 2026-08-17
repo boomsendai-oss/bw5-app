@@ -17,6 +17,7 @@ import {
   YT_DESCRIPTION_MAX,
   buildXReplyCta,
   classifyByEnabled,
+  findStalled,
   type CrosspostRow,
 } from '../crosspost';
 import {
@@ -289,6 +290,50 @@ describe('classifyByEnabled', () => {
     expect(out.actionable.map((x) => x.id)).toEqual([1, 2]);
     expect(out.toSkip).toEqual([]);
     expect(out.toRevive).toEqual([]);
+  });
+});
+
+// 「配信対象なし」と「打ち止めで諦めた」の区別。
+// pickNext は attempts を使い切った failed を候補から外すので、放置すると
+// 未配信の行が残ったまま cron が ok:true を返し続ける(=永久に緑)。
+describe('findStalled', () => {
+  const row = (o: Partial<CrosspostRow>): CrosspostRow => ({
+    id: 1,
+    reel_id: 1,
+    platform: 'youtube',
+    status: 'pending',
+    attempts: 0,
+    ...o,
+  });
+
+  it('試行回数を使い切った failed を打ち止めとして拾う', () => {
+    const out = findStalled([row({ id: 1, status: 'failed', attempts: MAX_ATTEMPTS })]);
+    expect(out.map((r) => r.id)).toEqual([1]);
+  });
+
+  it('まだ試行回数が残っている failed は打ち止めではない(pickNext が拾える)', () => {
+    expect(findStalled([row({ status: 'failed', attempts: MAX_ATTEMPTS - 1 })])).toEqual([]);
+  });
+
+  it('pending / posted / posting / skipped は打ち止めではない', () => {
+    expect(
+      findStalled([
+        row({ id: 1, status: 'pending', attempts: MAX_ATTEMPTS }),
+        row({ id: 2, status: 'posted', attempts: MAX_ATTEMPTS }),
+        row({ id: 3, status: 'posting', attempts: MAX_ATTEMPTS }),
+        row({ id: 4, status: 'skipped', attempts: MAX_ATTEMPTS }),
+      ])
+    ).toEqual([]);
+  });
+
+  it('打ち止めが無ければ空(=本当に配信対象なし)', () => {
+    expect(findStalled([row({ status: 'pending' })])).toEqual([]);
+  });
+
+  it('pickNext が null を返す状況でも打ち止めなら検知できる', () => {
+    const rows = [row({ id: 1, status: 'failed', attempts: MAX_ATTEMPTS })];
+    expect(pickNext(rows)).toBeNull();
+    expect(findStalled(rows)).toHaveLength(1);
   });
 });
 
