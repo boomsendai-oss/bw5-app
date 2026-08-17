@@ -6,6 +6,7 @@ import {
   validateCollectInput,
   suggestMatches,
   generateEditToken,
+  normalizeName,
   type MemberForIgMatch,
 } from '../instagramCollect';
 
@@ -245,6 +246,37 @@ describe('suggestMatches', () => {
     );
     expect(r[0].confidence).toBe('要確認');
     expect(r[0].candidates[0].status).toBe('withdrawn');
+  });
+});
+
+describe('normalizeName（異体字の寄せ）', () => {
+  it('旧字体/異体字を新字体に寄せる（実データで取り違えが起きた組み合わせ）', () => {
+    expect(normalizeName('髙橋 凛花')).toBe(normalizeName('高橋凛花'));
+    expect(normalizeName('大澤 覇溜')).toBe(normalizeName('大沢覇溜'));
+    expect(normalizeName('齋藤 玲奈')).toBe(normalizeName('斉藤玲奈'));
+    expect(normalizeName('渡邊 一郎')).toBe(normalizeName('渡辺一郎'));
+    expect(normalizeName('山﨑 花子')).toBe(normalizeName('山崎花子'));
+  });
+
+  it('空白と記号を落とす', () => {
+    expect(normalizeName(' 木村　花子 ')).toBe('木村花子');
+    expect(normalizeName('木村・花子')).toBe('木村花子');
+  });
+
+  it('別人まで寄せない（読みや送り仮名は触らない）', () => {
+    expect(normalizeName('高橋凛花')).not.toBe(normalizeName('高橋凛'));
+    expect(normalizeName('高橋愛依')).not.toBe(normalizeName('高橋愛衣'));
+  });
+});
+
+describe('suggestMatches の異体字対応', () => {
+  it('会員が異体字で登録されていても漢字フォールバックで当たる', () => {
+    const r = suggestMatches(
+      [{ id: 20, memberName: '高橋 凛花', memberNameKana: 'タカハシ リン', handle: 'rin', ownerKind: 'self' }],
+      [{ id: 5, hacomono_member_id: 'M005', full_name: '髙橋 凛花', full_name_kana: 'タカハシ リンカ', status: 'active', instagram_handle: null }]
+    );
+    expect(r[0].confidence).toBe('高');
+    expect(r[0].candidates[0].reason).toBe('name');
   });
 });
 

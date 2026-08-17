@@ -47,6 +47,13 @@ export async function runMigrations(c: Client): Promise<void> {
   await addColumnIfMissing(c, 'event_signup_settings', 'share_token', 'TEXT');
   // 出演者募集: 9/26(BOOMER'S FIGHT)への出欠再確認 'yes'/'no'/NULL=未回答。本番は台帳 20260806_performer_availability.sql
   await addColumnIfMissing(c, 'event_signup_performers', 'availability', 'TEXT');
+  // 出演者→会員の接続(2026-08-17)。本番は台帳 20260817_performer_member_link.sql
+  await addColumnIfMissing(c, 'performers', 'member_id', 'INTEGER');
+  await addColumnIfMissing(c, 'performers', 'is_external', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumnIfMissing(c, 'performers', 'instagram_handle', 'TEXT');
+  await addColumnIfMissing(c, 'performers', 'handle_mother', 'TEXT');
+  await addColumnIfMissing(c, 'performers', 'handle_father', 'TEXT');
+  await addColumnIfMissing(c, 'performers', 'tag_consent', 'INTEGER');
   // 会員Instagram(2026-08-14): 会員のInstagramはこの3列が正本。本番は台帳 20260814_instagram_collect.sql
   await addColumnIfMissing(c, 'boom_members', 'instagram_handle', 'TEXT');
   await addColumnIfMissing(c, 'boom_members', 'instagram_owner_kind', 'TEXT');

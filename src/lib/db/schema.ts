@@ -143,11 +143,21 @@ export function getSchemaStatements(): InStatement[] {
       args: [],
     },
     {
+      // instagram_handle/handle_mother/handle_father は本番に既存(台帳外・2026-08-05手動適用)。
+      // member_id/is_external は台帳 20260817_performer_member_link.sql。
+      // ハンドルの正本は boom_members 側。ここに残すのは**非会員の出演者**用
+      // (外部参加者・特別ナンバーのゲストは会員でないため boom_members に置き場が無い)。
       sql: `CREATE TABLE IF NOT EXISTS performers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       m_id TEXT NOT NULL,
       sort_order INTEGER DEFAULT 0,
+      instagram_handle TEXT,
+      handle_mother TEXT,
+      handle_father TEXT,
+      tag_consent INTEGER,
+      member_id INTEGER,
+      is_external INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY (m_id) REFERENCES performances(m_id)
     )`,
       args: [],

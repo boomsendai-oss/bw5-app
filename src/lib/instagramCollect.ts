@@ -189,9 +189,27 @@ export type MatchSuggestion = {
   confidence: '高' | '要確認' | 'なし';
 };
 
-/** 漢字氏名の比較用正規化(空白と記号だけ落とす。字体は寄せない)。 */
-function normalizeName(s: string): string {
-  return (s ?? '').replace(/[\s　・,、.。\-ー－/]/g, '');
+/**
+ * 漢字氏名の比較用正規化。空白・記号を落としたうえで、**旧字体/異体字を新字体に寄せる**。
+ *
+ * HACOMONOの会員名は戸籍どおりの異体字(髙・﨑・邊・澤・齋)で登録されている一方、
+ * 出演者名簿や本人の手入力は新字体で書かれることが多い。実データで
+ * 「髙橋 凛花(会員) と 高橋凛花(出演者名簿)」「大澤(会員) と 大沢」が実際に取り違えられていた
+ * (2026-08-15調査)。ここを寄せないと同一人物が別人として未突合に落ちる。
+ *
+ * ⚠️ 寄せるのは字体だけ。読みや送り仮名は寄せない(別人を同一視する事故を避けるため)。
+ */
+export function normalizeName(s: string): string {
+  return (s ?? '')
+    .replace(/[\s　・,、.。\-ー－/]/g, '')
+    .replace(/髙/g, '高')
+    .replace(/﨑/g, '崎')
+    .replace(/[邊邉]/g, '辺')
+    .replace(/澤/g, '沢')
+    .replace(/[齋齊]/g, '斉')
+    .replace(/濵/g, '浜')
+    .replace(/嶋/g, '島')
+    .replace(/冨/g, '富');
 }
 
 const isActive = (status: string) => (status ?? '').trim() === 'active';
