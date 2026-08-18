@@ -264,6 +264,10 @@ function DraftEditor({ draft, onSaved, onMsg, lessons = [] }: { draft: Draft; on
   const [lessonId, setLessonId] = useState<number | null>(draft.lesson_master_id ?? null);
   const [mentions, setMentions] = useState(draft.mention_handles ?? '');
   const [saving, setSaving] = useState(false);
+  // 保存失敗をカードの中で大きく見せる(TARO 2026-08-18: エラーがページ上部の小さな帯に出るだけで、
+  // スマホでは見えず「入れたのに消えた」事故になった)
+  const [cardError, setCardError] = useState('');
+  const [autoSavedAt, setAutoSavedAt] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
 
   let candidates: Candidate[] = [];
@@ -285,9 +289,24 @@ function DraftEditor({ draft, onSaved, onMsg, lessons = [] }: { draft: Draft; on
     });
     const j = await r.json();
     setSaving(false);
-    if (!r.ok) { onMsg(j.error ?? '保存失敗'); return false; }
+    if (!r.ok) { setCardError(j.error ?? '保存に失敗しました'); onMsg(j.error ?? '保存失敗'); return false; }
+    setCardError('');
     return true;
   };
+
+  // 入力の自動保存(1.2秒手が止まったら下書き保存)。「リールを作る」前に離脱しても入力が消えない。
+  // 検証エラー(action付きのみ)はここでは起きない=秒数だけでも保存できる。
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    const t = setTimeout(() => {
+      patch({}).then((ok) => {
+        if (ok) setAutoSavedAt(new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }));
+      });
+    }, 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [className, instructor, daytime, danceStart, danceEnd, coverAt, coverChoice, lessonId, mentions]);
 
   const submit = async () => {
     if (await patch({}, 'submit')) { onMsg(`「${className || draft.drive_name}」のリール生成を開始しました（完成すると"投稿待ち"に出ます）`); onSaved(); }
@@ -383,7 +402,17 @@ function DraftEditor({ draft, onSaved, onMsg, lessons = [] }: { draft: Draft; on
         </label>
       )}
 
-      <div className="flex justify-end gap-2">
+      {cardError && (
+        <div className="mb-3 rounded-lg border-2 border-red-300 bg-red-50 text-red-700 text-sm font-bold px-3 py-2.5">
+          ⚠️ {cardError}
+        </div>
+      )}
+
+      <div className="flex justify-end items-center gap-2">
+        {autoSavedAt && !saving && !cardError && (
+          <span className="mr-auto text-[11px] text-navy-400">✓ {autoSavedAt} 自動保存済み</span>
+        )}
+        {saving && <span className="mr-auto text-[11px] text-navy-400">保存中…</span>}
         <button disabled={saving} onClick={() => patch({}).then((ok) => ok && onMsg('下書きを保存しました'))}
           className="px-3 py-1.5 text-xs rounded-md border border-navy-200 text-navy-600 hover:bg-sand-100 disabled:opacity-50">下書き保存</button>
         <button disabled={saving} onClick={submit}
