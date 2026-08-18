@@ -27,6 +27,7 @@ export default function SharedRosterPage({ params }: { params: Promise<{ code: s
   const { code, token } = usePromise(params);
   const [res, setRes] = useState<SharedRosterResult | null>(null);
   const [tab, setTab] = useState<string>('all'); // 'all' | part.key
+  const [sortKey, setSortKey] = useState<'created' | 'name' | 'avail'>('created');
 
   useEffect(() => {
     (async () => setRes(await getSharedRosterAction(code, token)))();
@@ -50,8 +51,17 @@ export default function SharedRosterPage({ params }: { params: Promise<{ code: s
   }
 
   const r = res.roster;
-  const shown =
+  const filtered =
     tab === 'all' ? allPerformers : allPerformers.filter((p) => (p.parts as string[]).includes(tab));
+  const availRank = (a: 'yes' | 'no' | null) => (a === 'yes' ? 0 : a == null ? 1 : 2);
+  const shown = [...filtered].sort((a, b) => {
+    if (sortKey === 'name') return a.name.localeCompare(b.name, 'ja');
+    if (sortKey === 'avail') {
+      const d = availRank(a.availability) - availRank(b.availability);
+      return d !== 0 ? d : a.name.localeCompare(b.name, 'ja');
+    }
+    return 0;
+  });
   const labelOf = (k: string) => r.parts.find((p) => p.key === k)?.label ?? k;
 
   return (
@@ -112,6 +122,21 @@ export default function SharedRosterPage({ params }: { params: Promise<{ code: s
               </button>
             );
           })}
+        </div>
+
+        {/* 並び替え */}
+        <div className="flex items-center justify-end gap-1">
+          {([['created', '申込順'], ['name', '名前順'], ['avail', '出欠順']] as const).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setSortKey(k)}
+              className={`rounded-full px-3 py-1 text-[11px] font-bold border transition ${
+                sortKey === k ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-500 border-slate-300'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         {/* 名簿 */}

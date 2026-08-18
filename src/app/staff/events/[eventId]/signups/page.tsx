@@ -57,6 +57,7 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
   const [signups, setSignups] = useState<Signup[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterPart, setFilterPart] = useState<string>('all');
+  const [sortKey, setSortKey] = useState<'created' | 'name' | 'avail'>('created');
   const [showLog, setShowLog] = useState(false);
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [auditLoaded, setAuditLoaded] = useState(false);
@@ -130,12 +131,27 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
   const availNo = flat.filter((p) => p.availability === 'no').length;
   const availNone = flat.filter((p) => p.availability == null).length;
 
-  const visibleSignups =
+  const filteredSignups =
     filterPart === 'all'
       ? signups
       : signups
           .map((s) => ({ ...s, performers: s.performers.filter((p) => p.parts.includes(filterPart)) }))
           .filter((s) => s.performers.length > 0);
+
+  // 出欠の並び順: ◯(出られる)→未回答→✕(出られない)
+  const availRank = (a: 'yes' | 'no' | null) => (a === 'yes' ? 0 : a == null ? 1 : 2);
+  const visibleSignups = [...filteredSignups].sort((a, b) => {
+    if (sortKey === 'name') {
+      return (a.performers[0]?.name ?? '').localeCompare(b.performers[0]?.name ?? '', 'ja');
+    }
+    if (sortKey === 'avail') {
+      const ra = Math.min(...a.performers.map((p) => availRank(p.availability)));
+      const rb = Math.min(...b.performers.map((p) => availRank(p.availability)));
+      if (ra !== rb) return ra - rb;
+      return (a.performers[0]?.name ?? '').localeCompare(b.performers[0]?.name ?? '', 'ja');
+    }
+    return a.createdAt.localeCompare(b.createdAt);
+  });
 
   return (
     <div>
@@ -283,6 +299,18 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
             <h2 className="text-sm font-bold text-navy-800 flex items-center gap-1.5">
               <Users className="size-4 text-brand-600" />出演者名簿
             </h2>
+            {/* 並び替え */}
+            <div className="inline-flex rounded-lg border border-sand-200 bg-sand-50 p-0.5">
+              {([['created', '申込順'], ['name', '名前順'], ['avail', '出欠順']] as const).map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setSortKey(k)}
+                  className={`rounded-md px-3 py-1 text-xs font-bold transition ${sortKey === k ? 'bg-white text-navy-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             {/* パート絞り込み（セグメント） */}
             <div className="inline-flex rounded-lg border border-sand-200 bg-sand-50 p-0.5">
               <button
