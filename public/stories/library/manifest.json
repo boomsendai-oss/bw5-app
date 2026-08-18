@@ -245,6 +245,32 @@
           "instructor": "TARO"
         }
       ]
+    },
+    {
+      "file": "15_日曜SP_おっちゃん.jpg",
+      "weekday": 0,
+      "mentions": [
+        "occhan.88"
+      ],
+      "lessons": [
+        {
+          "start": "14:00",
+          "instructor": "おっちゃん"
+        }
+      ]
+    },
+    {
+      "file": "22_日曜SP_ちゃんなつ1900.jpg",
+      "weekday": 0,
+      "mentions": [
+        "chamnatsu"
+      ],
+      "lessons": [
+        {
+          "start": "19:00",
+          "instructor": "ちゃんなつ"
+        }
+      ]
     }
   ]
 }

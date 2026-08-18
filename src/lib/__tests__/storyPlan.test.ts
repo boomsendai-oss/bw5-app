@@ -21,6 +21,22 @@ describe('matchDeclaredLesson (台帳の宣言レッスンが当日カレンダ�
     expect(matchDeclaredLesson(cal, KNOWN, { start: '11:00', instructor: 'K@TTSU' })).toBe(false);
   });
 
+  it('全角＠で書かれた講師名でも一致する(NFKC正規化)', () => {
+    // 実例: 2026-09-12 の「多賀城HOUSE【K＠TTSU】」。全角のまま比較すると講師名なし扱いになり素材が出なかった
+    const cal = [ev('11:00', '多賀城HOUSE【K＠TTSU】')];
+    expect(matchDeclaredLesson(cal, KNOWN, { start: '11:00', instructor: 'K@TTSU' })).toBe(true);
+  });
+
+  it('全角英字で書かれた講師名でも一致する(NFKC正規化)', () => {
+    const cal = [ev('18:30', '【ＫＥＩＫＯ】多賀城 JAZZ')];
+    expect(matchDeclaredLesson(cal, KNOWN, { start: '18:30', instructor: 'KEIKO' })).toBe(true);
+  });
+
+  it('全角で正規化しても別の講師には一致しない', () => {
+    const cal = [ev('11:00', '多賀城HOUSE【K＠TTSU】')];
+    expect(matchDeclaredLesson(cal, KNOWN, { start: '11:00', instructor: 'AOI' })).toBe(false);
+  });
+
   it('同時刻に複数レッスンがあれば、その中の一致で判定する', () => {
     const cal = [ev('11:00', '【 KEIKO】キッズ はじめてのHIPHOP🔰'), ev('11:00', '【AOI】多賀城 HIPHOP 初級')];
     expect(matchDeclaredLesson(cal, KNOWN, { start: '11:00', instructor: 'AOI' })).toBe(true);

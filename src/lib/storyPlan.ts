@@ -147,20 +147,25 @@ export function matchDeclaredLesson(
   d: DeclaredLesson
 ): boolean {
   const start = d.start.slice(0, 5);
-  const who = d.instructor.trim().toUpperCase();
+  // 全角と半角の揺れを吸収してから比較する(NFKC)。
+  // 実害: カレンダーに「多賀城HOUSE【K＠TTSU】」(＠が全角)と入っていた回があり、
+  // 講師名 K@TTSU と一致せず「講師名なし」と判定され、素材が選ばれず未投稿になった(2026-09-12)。
+  const norm = (v: string) => v.normalize('NFKC').toUpperCase();
+  const who = norm(d.instructor.trim());
+  const known = knownNames.map(norm);
   const atTime = calLessons.filter((l) => l.start === start);
   if (atTime.length === 0) return false;
   return atTime.some((l) => {
-    const title = l.summary.toUpperCase();
+    const title = norm(l.summary);
     const daiko = l.summary.match(/代講[\s:：]*([^\s　]+)/);
-    if (daiko) return daiko[1].toUpperCase().includes(who) || who.includes(daiko[1].toUpperCase());
+    if (daiko) return norm(daiko[1]).includes(who) || who.includes(norm(daiko[1]));
     // タイトルに講師名が無い予定は「レッスンである保証が無い」ので一致とみなさない。
     // ⚠️2026-08-08の誤配信: 当日11:00にあったのは「⚔️ダンスバトル練習会」だけだったのに、
     //   旧実装は「講師名なし→時刻一致でOK」としていたため、多賀城AOI/多賀城KATTSUの2枚が
     //   "カレンダーに実在する"と誤判定され、休みの多賀城クラスの告知が自動投稿された。
     //   BOOMのレッスン予定は必ずタイトルに講師名が入る運用(【講師名】クラス名)なので、
     //   名前が取れない予定は落として良い(=誤配信より未投稿を選ぶ)。
-    return knownNames.filter((n) => title.includes(n)).includes(who);
+    return known.filter((n) => title.includes(n)).includes(who);
   });
 }
 
