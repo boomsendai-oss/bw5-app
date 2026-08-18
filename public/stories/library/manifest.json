@@ -209,6 +209,24 @@
           "instructor": "KEIKO"
         }
       ]
+    },
+    {
+      "file": "20_日曜SP_サユキちゃんなつ.jpg",
+      "weekday": 0,
+      "mentions": [
+        "sayu_sayuki",
+        "chamnatsu"
+      ],
+      "lessons": [
+        {
+          "start": "14:00",
+          "instructor": "SAYUKI"
+        },
+        {
+          "start": "16:00",
+          "instructor": "ちゃんなつ"
+        }
+      ]
     }
   ]
 }
