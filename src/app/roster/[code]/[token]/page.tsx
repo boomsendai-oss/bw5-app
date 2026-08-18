@@ -28,6 +28,7 @@ export default function SharedRosterPage({ params }: { params: Promise<{ code: s
   const [res, setRes] = useState<SharedRosterResult | null>(null);
   const [tab, setTab] = useState<string>('all'); // 'all' | part.key
   const [sortKey, setSortKey] = useState<'created' | 'name' | 'avail'>('created');
+  const [filterAvail, setFilterAvail] = useState<'all' | 'yes' | 'no' | 'none'>('all');
 
   useEffect(() => {
     (async () => setRes(await getSharedRosterAction(code, token)))();
@@ -51,8 +52,11 @@ export default function SharedRosterPage({ params }: { params: Promise<{ code: s
   }
 
   const r = res.roster;
-  const filtered =
+  const tabFiltered =
     tab === 'all' ? allPerformers : allPerformers.filter((p) => (p.parts as string[]).includes(tab));
+  const matchAvail = (a: 'yes' | 'no' | null) =>
+    filterAvail === 'all' || (filterAvail === 'none' ? a == null : a === filterAvail);
+  const filtered = tabFiltered.filter((p) => matchAvail(p.availability));
   const availRank = (a: 'yes' | 'no' | null) => (a === 'yes' ? 0 : a == null ? 1 : 2);
   const shown = [...filtered].sort((a, b) => {
     if (sortKey === 'name') return a.name.localeCompare(b.name, 'ja');
@@ -124,6 +128,29 @@ export default function SharedRosterPage({ params }: { params: Promise<{ code: s
           })}
         </div>
 
+        {/* 9/26出欠で絞り込み */}
+        <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+          {([['all', '全員'], ['yes', '9/26出られる'], ['no', '出られない'], ['none', '未回答']] as const).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setFilterAvail(k)}
+              className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold border transition ${
+                filterAvail === k
+                  ? k === 'yes'
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : k === 'no'
+                      ? 'bg-rose-600 text-white border-rose-600'
+                      : k === 'none'
+                        ? 'bg-amber-500 text-white border-amber-500'
+                        : 'bg-slate-700 text-white border-slate-700'
+                  : 'bg-white text-slate-500 border-slate-300'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* 並び替え */}
         <div className="flex items-center justify-end gap-1">
           {([['created', '申込順'], ['name', '名前順'], ['avail', '出欠順']] as const).map(([k, label]) => (
@@ -143,7 +170,7 @@ export default function SharedRosterPage({ params }: { params: Promise<{ code: s
         <section className="rounded-xl border border-slate-200 bg-white overflow-hidden">
           {shown.length === 0 ? (
             <div className="py-10 text-center text-sm text-slate-400">
-              {allPerformers.length === 0 ? 'まだ申込がありません' : 'このパートの出演者はいません'}
+              {allPerformers.length === 0 ? 'まだ申込がありません' : '条件に合う出演者はいません'}
             </div>
           ) : (
             <ul className="divide-y divide-slate-100">

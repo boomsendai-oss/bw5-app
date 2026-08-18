@@ -58,6 +58,7 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
   const [loading, setLoading] = useState(true);
   const [filterPart, setFilterPart] = useState<string>('all');
   const [sortKey, setSortKey] = useState<'created' | 'name' | 'avail'>('created');
+  const [filterAvail, setFilterAvail] = useState<'all' | 'yes' | 'no' | 'none'>('all');
   const [showLog, setShowLog] = useState(false);
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [auditLoaded, setAuditLoaded] = useState(false);
@@ -131,11 +132,20 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
   const availNo = flat.filter((p) => p.availability === 'no').length;
   const availNone = flat.filter((p) => p.availability == null).length;
 
-  const filteredSignups =
+  const partFiltered =
     filterPart === 'all'
       ? signups
       : signups
           .map((s) => ({ ...s, performers: s.performers.filter((p) => p.parts.includes(filterPart)) }))
+          .filter((s) => s.performers.length > 0);
+
+  const matchAvail = (a: 'yes' | 'no' | null) =>
+    filterAvail === 'all' || (filterAvail === 'none' ? a == null : a === filterAvail);
+  const filteredSignups =
+    filterAvail === 'all'
+      ? partFiltered
+      : partFiltered
+          .map((s) => ({ ...s, performers: s.performers.filter((p) => matchAvail(p.availability)) }))
           .filter((s) => s.performers.length > 0);
 
   // 出欠の並び順: ◯(出られる)→未回答→✕(出られない)
@@ -299,6 +309,28 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
             <h2 className="text-sm font-bold text-navy-800 flex items-center gap-1.5">
               <Users className="size-4 text-brand-600" />出演者名簿
             </h2>
+            {/* 9/26出欠で絞り込み */}
+            <div className="inline-flex rounded-lg border border-sand-200 bg-sand-50 p-0.5">
+              {([['all', '全員'], ['yes', '出られる'], ['no', '出られない'], ['none', '未回答']] as const).map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setFilterAvail(k)}
+                  className={`rounded-md px-3 py-1 text-xs font-bold transition ${
+                    filterAvail === k
+                      ? k === 'yes'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : k === 'no'
+                          ? 'bg-rose-600 text-white shadow-sm'
+                          : k === 'none'
+                            ? 'bg-amber-500 text-white shadow-sm'
+                            : 'bg-white text-navy-800 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             {/* 並び替え */}
             <div className="inline-flex rounded-lg border border-sand-200 bg-sand-50 p-0.5">
               {([['created', '申込順'], ['name', '名前順'], ['avail', '出欠順']] as const).map(([k, label]) => (
@@ -343,7 +375,7 @@ export default function SignupsPage({ params }: { params: Promise<{ eventId: str
 
             {visibleSignups.length === 0 ? (
               <div className="py-12 text-center text-sm text-muted-foreground">
-                {signups.length === 0 ? 'まだ申込がありません' : 'このパートの出演者はいません'}
+                {signups.length === 0 ? 'まだ申込がありません' : '条件に合う出演者はいません'}
               </div>
             ) : (
               visibleSignups.map((s, idx) => (
