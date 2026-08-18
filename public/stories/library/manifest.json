@@ -196,6 +196,19 @@
           "instructor": "Ryuki"
         }
       ]
+    },
+    {
+      "file": "19_火曜SP_KEIKOジャズ強化.jpg",
+      "weekday": 2,
+      "mentions": [
+        "m55keiko"
+      ],
+      "lessons": [
+        {
+          "start": "19:00",
+          "instructor": "KEIKO"
+        }
+      ]
     }
   ]
 }
