@@ -211,9 +211,20 @@ export async function GET(req: NextRequest) {
       const jst = new Date(new Date(String(d.shot_at)).getTime() + 9 * 3600 * 1000);
       const date = jst.toISOString().slice(0, 10);
       const hhmm = jst.toISOString().slice(11, 16);
+      // ハンドルの参照先は2段: ①会員名簿(本人アカ) ②収集フォームの承認済みエントリ
+      // (母/父アカは収集セッションの設計で会員名簿へは流れないため、フォーム側を直接読む。
+      //  2026-08-18: HOUSE受講者の母アカ承認済みがチップに出なかった実害への対応)
       const att = await getAll(
-        `SELECT r.start_time, r.end_time, r.program_name, r.full_name, r.boom_member_id, m.instagram_handle
-         FROM hacomono_reservations r LEFT JOIN boom_members m ON m.id = r.boom_member_id
+        `SELECT r.start_time, r.end_time, r.program_name, r.full_name, r.boom_member_id,
+                COALESCE(m.instagram_handle, e.handle) AS instagram_handle,
+                CASE WHEN m.instagram_handle IS NOT NULL AND trim(m.instagram_handle) != '' THEN 'self' ELSE e.owner_kind END AS owner_kind
+         FROM hacomono_reservations r
+         LEFT JOIN boom_members m ON m.id = r.boom_member_id
+         LEFT JOIN (
+           SELECT matched_member_id, MIN(id) AS eid FROM instagram_entries
+            WHERE match_state = 'approved' AND matched_member_id IS NOT NULL GROUP BY matched_member_id
+         ) pick ON pick.matched_member_id = r.boom_member_id
+         LEFT JOIN instagram_entries e ON e.id = pick.eid
          WHERE r.lesson_date = ? AND r.status LIKE '%チェックイン%'`,
         [date]
       );
@@ -229,7 +240,11 @@ export async function GET(req: NextRequest) {
       const hasHandle = (a: Record<string, unknown>) => a.instagram_handle && String(a.instagram_handle).trim();
       castSuggestById[String(d.id)] = {
         source: `${date.slice(5).replace('-', '/')} ${lesson.start} ${lesson.program} の受講者(チェックイン済)`,
-        known: here.filter(hasHandle).map((a) => ({ kind: 'member' as const, id: Number(a.boom_member_id), name: String(a.full_name), handle: String(a.instagram_handle).trim() })),
+        known: here.filter(hasHandle).map((a) => ({
+          kind: 'member' as const, id: Number(a.boom_member_id),
+          name: String(a.full_name) + (a.owner_kind === 'mother' ? '（母）' : a.owner_kind === 'father' ? '（父）' : ''),
+          handle: String(a.instagram_handle).trim(),
+        })),
         unknown: here.filter((a) => !hasHandle(a)).map((a) => ({ kind: 'member' as const, id: Number(a.boom_member_id), name: String(a.full_name) })),
       };
     }
