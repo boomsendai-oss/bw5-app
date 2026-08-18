@@ -42,6 +42,11 @@ type Draft = {
   mention_handles: string | null;
   collaborators: string | null;
   instructor_handle: string | null;
+  cast_suggest: {
+    source: string;
+    known: Array<{ kind: 'member' | 'performer'; id: number; name: string; handle: string }>;
+    unknown: Array<{ kind: 'member' | 'performer'; id: number; name: string }>;
+  } | null;
   updated_at: string;
 };
 type Lesson = { id: number; class_name: string; dw: number; st: string; et: string | null; instructor: string | null };
@@ -1248,6 +1253,54 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
           CASTをキャプションに反映
         </button>
       </label>
+
+      {/* CAST候補(TARO 2026-08-18): クラス=撮影回の受講者(会員名簿とID直結) / 発表会=演目の出演者名簿。
+          タップでCAST欄に追加。未登録の子も名前で見える=本人に直接聞いて、その場で登録できる。 */}
+      {draft.cast_suggest && (draft.cast_suggest.known.length > 0 || draft.cast_suggest.unknown.length > 0) && (
+        <div className="mb-3 rounded-lg bg-sand-50 border border-sand-200 p-2.5">
+          <p className="text-[11px] text-navy-500 mb-1.5">
+            候補：{draft.cast_suggest.source}
+            （登録あり{draft.cast_suggest.known.length}人・未登録{draft.cast_suggest.unknown.length}人）
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {draft.cast_suggest.known.map((k) => {
+              const included = cast.split(/[\s,、，]+/).includes(k.handle);
+              return (
+                <button key={`k${k.kind}${k.id}`} type="button" disabled={busy || included}
+                  onClick={() => setCast((prev) => (prev.trim() ? prev.trim() + ' ' : '') + k.handle)}
+                  className={`px-2.5 py-1.5 rounded-full text-xs border ${included ? 'bg-brand-100 text-brand-700 border-brand-300' : 'bg-white text-navy-700 border-brand-300 hover:bg-brand-50'}`}>
+                  {included ? '✓ ' : '＋ '}{k.name}
+                </button>
+              );
+            })}
+            {draft.cast_suggest.unknown.map((u) => (
+              <button key={`u${u.kind}${u.id}`} type="button" disabled={busy}
+                onClick={async () => {
+                  const h = window.prompt(`${u.name} さんのInstagramユーザー名（@は不要）\n登録すると次回から候補に出ます`);
+                  if (!h || !h.trim()) return;
+                  const r = await fetch('/api/staff/reel-drafts', {
+                    method: 'POST', headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      action: u.kind === 'member' ? 'set_member_handle' : 'set_performer_handle',
+                      target_id: u.id, handle: h.trim(),
+                    }),
+                  });
+                  const j = await r.json();
+                  if (!r.ok) { onMsg(j.error ?? '登録失敗'); return; }
+                  setCast((prev) => (prev.trim() ? prev.trim() + ' ' : '') + j.handle);
+                  onMsg(`${u.name} さんのハンドルを登録しました（次回から自動で候補に出ます）`);
+                  onChanged();
+                }}
+                className="px-2.5 py-1.5 rounded-full text-xs border border-dashed border-navy-300 text-navy-400 hover:bg-sand-100">
+                ✎ {u.name}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-navy-400 mt-1.5">
+            タップした人だけCASTに載ります。点線の子はハンドル未登録（本人に聞いたらタップして登録）
+          </p>
+        </div>
+      )}
 
       <div className="border-t border-sand-100 pt-3">
         <p className="text-[11px] text-navy-500 mb-2">確認できたら投稿予約（ここで初めてInstagramに出ます）</p>

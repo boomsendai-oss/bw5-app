@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll, getOne, execute } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { pickLessonForShot, normalizeIgHandle, type CastSuggest, type AttendLesson } from '@/lib/castSuggest';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -182,6 +183,63 @@ export async function GET(req: NextRequest) {
        d.updated_at DESC
      LIMIT 100`
   );
+  // CAST候補(TARO 2026-08-18設計): 投稿待ち(review)のカードにだけ出す。
+  // クラス=撮影回の受講者(hacomono_reservations.boom_member_id→会員名簿にID直結・名前照合なし)
+  // 発表会=その演目の出演者名簿(performers)。ハンドル未登録の子も名前で見せる
+  // (TAROが本人に直接聞いて集める運用)。載せるかは毎回TAROのタップ=同意判断は人間に残す。
+  const castSuggestById: Record<string, CastSuggest> = {};
+  try {
+    const review = rows.filter((r) => r.status === 'review');
+    const stageRows = review.filter((r) => isStage(r.kind));
+    if (stageRows.length > 0) {
+      const perf = await getAll('SELECT id, m_id, name, instagram_handle FROM performers');
+      for (const d of stageRows) {
+        const m = String(d.drive_name ?? '').match(/^M(\d+)/);
+        if (!m) continue;
+        const mid = 'M' + parseInt(m[1], 10);
+        const ps = perf.filter((x) => String(x.m_id) === mid);
+        if (ps.length === 0) continue;
+        const hasHandle = (x: Record<string, unknown>) => x.instagram_handle && String(x.instagram_handle).trim();
+        castSuggestById[String(d.id)] = {
+          source: 'この演目の出演者名簿',
+          known: ps.filter(hasHandle).map((x) => ({ kind: 'performer' as const, id: Number(x.id), name: String(x.name), handle: String(x.instagram_handle).trim() })),
+          unknown: ps.filter((x) => !hasHandle(x)).map((x) => ({ kind: 'performer' as const, id: Number(x.id), name: String(x.name) })),
+        };
+      }
+    }
+    for (const d of review.filter((r) => !isStage(r.kind) && r.shot_at)) {
+      const jst = new Date(new Date(String(d.shot_at)).getTime() + 9 * 3600 * 1000);
+      const date = jst.toISOString().slice(0, 10);
+      const hhmm = jst.toISOString().slice(11, 16);
+      const att = await getAll(
+        `SELECT r.start_time, r.end_time, r.program_name, r.full_name, r.boom_member_id, m.instagram_handle
+         FROM hacomono_reservations r LEFT JOIN boom_members m ON m.id = r.boom_member_id
+         WHERE r.lesson_date = ? AND r.status LIKE '%チェックイン%'`,
+        [date]
+      );
+      if (att.length === 0) continue;
+      const lessons2: AttendLesson[] = [...new Map(att.map((a) => [
+        `${a.start_time}|${a.program_name}`,
+        { start: String(a.start_time), end: a.end_time ? String(a.end_time) : null, program: String(a.program_name) },
+      ])).values()];
+      const lesson = pickLessonForShot(lessons2, hhmm);
+      if (!lesson) continue;
+      const here = att.filter((a) => String(a.start_time) === lesson.start && String(a.program_name) === lesson.program && a.boom_member_id != null);
+      if (here.length === 0) continue;
+      const hasHandle = (a: Record<string, unknown>) => a.instagram_handle && String(a.instagram_handle).trim();
+      castSuggestById[String(d.id)] = {
+        source: `${date.slice(5).replace('-', '/')} ${lesson.start} ${lesson.program} の受講者(チェックイン済)`,
+        known: here.filter(hasHandle).map((a) => ({ kind: 'member' as const, id: Number(a.boom_member_id), name: String(a.full_name), handle: String(a.instagram_handle).trim() })),
+        unknown: here.filter((a) => !hasHandle(a)).map((a) => ({ kind: 'member' as const, id: Number(a.boom_member_id), name: String(a.full_name) })),
+      };
+    }
+  } catch {
+    // 候補が出せなくてもカード自体は使える
+  }
+  for (const r of rows) {
+    (r as Record<string, unknown>).cast_suggest = castSuggestById[String(r.id)] ?? null;
+  }
+
   // Mac常駐の生存記録も返す(TARO 2026-08-04)。Macがスリープしていると常駐が止まり、
   // 「生成」を押しても何も起きない。画面で気づけるようにするため。
   const signal = await getOne(
@@ -305,6 +363,7 @@ export async function POST(req: NextRequest) {
     stage_no?: string; title?: string; class_name?: string; class_label?: string; instructor?: string;
     dance_start?: number; dance_end?: number; cover_at?: number; cover_choice?: number; stage_kf?: string;
     lesson_master_id?: number;
+    handle?: string; target_id?: number; // set_member_handle / set_performer_handle 用
   };
   try {
     body = await req.json();
@@ -498,6 +557,24 @@ export async function POST(req: NextRequest) {
     await execute('UPDATE reel_draft SET status = ?, reel_queue_id = NULL, updated_at = ? WHERE id = ?',
       ['review', now, id]);
     return NextResponse.json({ ok: true, status: 'review' });
+  }
+
+  // CAST候補の未登録者にハンドルを登録する(TARO 2026-08-18: 本人に直接聞いて集める運用)。
+  // クラスリール候補 → 会員名簿(boom_members) / 発表会リール候補 → 出演者名簿(performers)。
+  if (body.action === 'set_member_handle' || body.action === 'set_performer_handle') {
+    const handle = normalizeIgHandle(body.handle as string);
+    if (!handle) return NextResponse.json({ error: 'ユーザー名の形式が不正です(英数字・ピリオド・アンダースコアのみ)' }, { status: 400 });
+    const targetId = Number(body.target_id);
+    if (!Number.isFinite(targetId)) return NextResponse.json({ error: 'target_id が必要です' }, { status: 400 });
+    const now = new Date().toISOString();
+    if (body.action === 'set_member_handle') {
+      const r = await execute('UPDATE boom_members SET instagram_handle = ?, updated_at = ? WHERE id = ?', [handle, now, targetId]);
+      if (Number(r.rowsAffected ?? 0) === 0) return NextResponse.json({ error: '会員が見つかりません' }, { status: 404 });
+    } else {
+      const r = await execute('UPDATE performers SET instagram_handle = ? WHERE id = ?', [handle, targetId]);
+      if (Number(r.rowsAffected ?? 0) === 0) return NextResponse.json({ error: '出演者が見つかりません' }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, handle });
   }
 
   return NextResponse.json(
