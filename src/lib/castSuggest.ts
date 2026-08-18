@@ -45,3 +45,15 @@ export function normalizeIgHandle(raw: string | null | undefined): string | null
 
 export type CastPerson = { kind: 'member' | 'performer'; id: number; name: string; handle?: string };
 export type CastSuggest = { source: string; known: CastPerson[]; unknown: CastPerson[] };
+
+/**
+ * 日本語氏名の照合用正規化。空白・異体字のゆれを吸収する。
+ * 発表会の出演者名簿(performers.name)と会員名簿(boom_members.full_name)を結ぶ用途。
+ * ⚠️ 同名2人がいる場合は照合しない(誤タグ防止)。呼び出し側で 'DUP' を弾くこと。
+ */
+export function normalizeJaName(s: string | null | undefined): string {
+  return String(s ?? '')
+    .normalize('NFKC')
+    .replace(/[\s　]+/g, '')
+    .replace(/髙/g, '高').replace(/﨑/g, '崎').replace(/邊|邉/g, '辺').replace(/齋|齊/g, '斎');
+}

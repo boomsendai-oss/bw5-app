@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll, getOne, execute } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
-import { pickLessonForShot, normalizeIgHandle, type CastSuggest, type AttendLesson } from '@/lib/castSuggest';
+import { pickLessonForShot, normalizeIgHandle, normalizeJaName, type CastSuggest, type AttendLesson } from '@/lib/castSuggest';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -193,18 +193,52 @@ export async function GET(req: NextRequest) {
     const stageRows = review.filter((r) => isStage(r.kind));
     if (stageRows.length > 0) {
       const perf = await getAll('SELECT id, m_id, name, instagram_handle FROM performers');
+      // ハンドルの正本は会員名簿の3枠(2026-08-17移行済・performersのハンドル列はほぼ空)。
+      // 出演者名簿は「誰が出たか」のリストとして使い、ハンドルは氏名の正規化一致で会員名簿から引く。
+      // 同名2人は照合しない(誤タグ防止=unknown側に出す)。
+      const members = await getAll(
+        `SELECT id, full_name,
+                COALESCE(NULLIF(trim(instagram_handle), ''),
+                         NULLIF(trim(instagram_handle_mother), ''),
+                         NULLIF(trim(instagram_handle_father), '')) AS handle,
+                CASE WHEN NULLIF(trim(instagram_handle), '') IS NOT NULL THEN 'self'
+                     WHEN NULLIF(trim(instagram_handle_mother), '') IS NOT NULL THEN 'mother'
+                     WHEN NULLIF(trim(instagram_handle_father), '') IS NOT NULL THEN 'father'
+                END AS owner_kind
+           FROM boom_members`
+      );
+      const memberByName = new Map<string, { id: number; handle: string | null; ownerKind: string | null } | 'DUP'>();
+      for (const m of members) {
+        const k = normalizeJaName(String(m.full_name));
+        memberByName.set(k, memberByName.has(k) ? 'DUP' : {
+          id: Number(m.id),
+          handle: m.handle ? String(m.handle) : null,
+          ownerKind: m.owner_kind ? String(m.owner_kind) : null,
+        });
+      }
       for (const d of stageRows) {
         const m = String(d.drive_name ?? '').match(/^M(\d+)/);
         if (!m) continue;
         const mid = 'M' + parseInt(m[1], 10);
         const ps = perf.filter((x) => String(x.m_id) === mid);
         if (ps.length === 0) continue;
-        const hasHandle = (x: Record<string, unknown>) => x.instagram_handle && String(x.instagram_handle).trim();
-        castSuggestById[String(d.id)] = {
-          source: 'この演目の出演者名簿',
-          known: ps.filter(hasHandle).map((x) => ({ kind: 'performer' as const, id: Number(x.id), name: String(x.name), handle: String(x.instagram_handle).trim() })),
-          unknown: ps.filter((x) => !hasHandle(x)).map((x) => ({ kind: 'performer' as const, id: Number(x.id), name: String(x.name) })),
-        };
+        const known: CastSuggest['known'] = [];
+        const unknown: CastSuggest['unknown'] = [];
+        for (const x of ps) {
+          const own = x.instagram_handle && String(x.instagram_handle).trim(); // 旧倉庫に残っている分は尊重
+          const hit = memberByName.get(normalizeJaName(String(x.name)));
+          if (own) {
+            known.push({ kind: 'performer', id: Number(x.id), name: String(x.name), handle: String(own) });
+          } else if (hit && hit !== 'DUP' && hit.handle) {
+            const label = hit.ownerKind === 'mother' ? '（母）' : hit.ownerKind === 'father' ? '（父）' : '';
+            known.push({ kind: 'member', id: hit.id, name: String(x.name) + label, handle: hit.handle });
+          } else if (hit && hit !== 'DUP') {
+            unknown.push({ kind: 'member', id: hit.id, name: String(x.name) });
+          } else {
+            unknown.push({ kind: 'performer', id: Number(x.id), name: String(x.name) });
+          }
+        }
+        castSuggestById[String(d.id)] = { source: 'この演目の出演者名簿', known, unknown };
       }
     }
     for (const d of review.filter((r) => !isStage(r.kind) && r.shot_at)) {
