@@ -84,6 +84,37 @@ BOOMダンススクールの常設運営機能 + 各イベント機能を統合�
 - ドリルダウンの子ページは `backHref` で親ページを指定する
 - 全幅の兄弟として置き、`max-w-*`/`p-*` コンテナの中に入れない。色はブランド(navyタイトル/sand境界/teal操作)
 
+### 10. 会員のInstagramハンドルは `boom_members` の3枠が正本
+
+**参照先はここだけ。** 他のテーブルから引かないこと。
+
+```sql
+COALESCE(NULLIF(trim(m.instagram_handle), ''),          -- 本人
+         NULLIF(trim(m.instagram_handle_mother), ''),   -- 母
+         NULLIF(trim(m.instagram_handle_father), ''))   -- 父
+```
+
+優先度は **本人 > 母 > 父**（純関数は `pickMentionHandle()` / `src/lib/instagramCollect.ts`）。
+
+- ❌ **`instagram_handle` だけを見ない**。母・父しか登録が無い会員が丸ごと漏れる
+- ❌ **`instagram_entries` を参照先にしない**。あれは収集フォームの**受信箱(生ログ)**。
+  フォームを通していない会員（発表会名簿からの移行分）は行が無いので構造的に漏れる
+- ❌ **`performers.instagram_handle` / `handle_mother` / `handle_father` を見ない**。
+  会員分は 2026-08-17 に `boom_members` へ移した。残っているのは**非会員の出演者**のみ
+  （外部ゲストは会員でないため `boom_members` に置き場が無い）
+
+**レッスンの受講者からメンション先を引く経路**:
+`hacomono_reservations`（lesson_date + status='チェックイン'）→ `boom_member_id` → 上記3枠。
+
+**迷ったら実データで決着させる**（意見をすり合わせない）:
+
+```
+node scripts/verify_ig_handle_sources.mjs [YYYY-MM-DD]
+```
+
+読み方のA/B比較を出力する。2026-08-18にこの食い違いで実害
+（3/21 多賀城HOUSEのCAST候補が5人→3人に欠けた）が出たため用意した。
+
 ## ディレクトリ構成 (要点)
 
 ```
