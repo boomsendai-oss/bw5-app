@@ -227,6 +227,24 @@
           "instructor": "ちゃんなつ"
         }
       ]
+    },
+    {
+      "file": "21_土曜_エキスパート1100_強化1230.jpg",
+      "weekday": 6,
+      "mentions": [
+        "kattsu_ziel",
+        "taro_bsb"
+      ],
+      "lessons": [
+        {
+          "start": "11:00",
+          "instructor": "K@TTSU"
+        },
+        {
+          "start": "12:30",
+          "instructor": "TARO"
+        }
+      ]
     }
   ]
 }
