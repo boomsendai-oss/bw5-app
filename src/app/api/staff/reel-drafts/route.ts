@@ -192,7 +192,7 @@ export async function GET(req: NextRequest) {
     const review = rows.filter((r) => r.status === 'review');
     const stageRows = review.filter((r) => isStage(r.kind));
     if (stageRows.length > 0) {
-      const perf = await getAll('SELECT id, m_id, name, instagram_handle FROM performers');
+      const perf = await getAll('SELECT id, m_id, name, instagram_handle, handle_mother, handle_father FROM performers');
       // ハンドルの正本は会員名簿の3枠(2026-08-17移行済・performersのハンドル列はほぼ空)。
       // 出演者名簿は「誰が出たか」のリストとして使い、ハンドルは氏名の正規化一致で会員名簿から引く。
       // 同名2人は照合しない(誤タグ防止=unknown側に出す)。
@@ -225,10 +225,17 @@ export async function GET(req: NextRequest) {
         const known: CastSuggest['known'] = [];
         const unknown: CastSuggest['unknown'] = [];
         for (const x of ps) {
-          const own = x.instagram_handle && String(x.instagram_handle).trim(); // 旧倉庫に残っている分は尊重
+          // 非会員の出演者(外部ゲスト・講師の家族など)は boom_members に置き場が無いため
+          // performers 側の3枠に入れる。会員側と同じく 本人 > 母 > 父 の優先度で選ぶ。
+          const ownPick = [
+            [x.instagram_handle, ''],
+            [x.handle_mother, '（母）'],
+            [x.handle_father, '（父）'],
+          ].find(([h]) => h && String(h).trim()) as [unknown, string] | undefined;
+          const own = ownPick ? String(ownPick[0]).trim() : '';
           const hit = memberByName.get(normalizeJaName(String(x.name)));
           if (own) {
-            known.push({ kind: 'performer', id: Number(x.id), name: String(x.name), handle: String(own) });
+            known.push({ kind: 'performer', id: Number(x.id), name: String(x.name) + ownPick![1], handle: own });
           } else if (hit && hit !== 'DUP' && hit.handle) {
             const label = hit.ownerKind === 'mother' ? '（母）' : hit.ownerKind === 'father' ? '（父）' : '';
             known.push({ kind: 'member', id: hit.id, name: String(x.name) + label, handle: hit.handle });
