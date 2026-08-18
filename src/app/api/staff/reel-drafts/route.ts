@@ -211,20 +211,26 @@ export async function GET(req: NextRequest) {
       const jst = new Date(new Date(String(d.shot_at)).getTime() + 9 * 3600 * 1000);
       const date = jst.toISOString().slice(0, 10);
       const hhmm = jst.toISOString().slice(11, 16);
-      // ハンドルの参照先は2段: ①会員名簿(本人アカ) ②収集フォームの承認済みエントリ
-      // (母/父アカは収集セッションの設計で会員名簿へは流れないため、フォーム側を直接読む。
-      //  2026-08-18: HOUSE受講者の母アカ承認済みがチップに出なかった実害への対応)
+      // ハンドルの参照先は **会員名簿(boom_members)だけ**。
+      //
+      // boom_members は本人/母/父の3枠を持ち、収集フォームで承認された分も
+      // 発表会名簿から移行した分も、すべてここに入る(2026-08-17に3枠化)。
+      // メンションに使う1つは 本人 > 母 > 父 の優先度で選ぶ(pickMentionHandle と同じ規則)。
+      //
+      // ⚠️ instagram_entries は「フォーム回答の受信箱(生ログ)」であって参照先ではない。
+      //   そちらを読むと、フォーム経由でない会員(発表会名簿からの移行分)が丸ごと欠ける。
+      //   実害: 3/21 多賀城HOUSE で内海さん・佐々木さんが候補に出なかった(2026-08-18)。
       const att = await getAll(
         `SELECT r.start_time, r.end_time, r.program_name, r.full_name, r.boom_member_id,
-                COALESCE(m.instagram_handle, e.handle) AS instagram_handle,
-                CASE WHEN m.instagram_handle IS NOT NULL AND trim(m.instagram_handle) != '' THEN 'self' ELSE e.owner_kind END AS owner_kind
+                COALESCE(NULLIF(trim(m.instagram_handle), ''),
+                         NULLIF(trim(m.instagram_handle_mother), ''),
+                         NULLIF(trim(m.instagram_handle_father), '')) AS instagram_handle,
+                CASE WHEN NULLIF(trim(m.instagram_handle), '') IS NOT NULL THEN 'self'
+                     WHEN NULLIF(trim(m.instagram_handle_mother), '') IS NOT NULL THEN 'mother'
+                     WHEN NULLIF(trim(m.instagram_handle_father), '') IS NOT NULL THEN 'father'
+                END AS owner_kind
          FROM hacomono_reservations r
          LEFT JOIN boom_members m ON m.id = r.boom_member_id
-         LEFT JOIN (
-           SELECT matched_member_id, MIN(id) AS eid FROM instagram_entries
-            WHERE match_state = 'approved' AND matched_member_id IS NOT NULL GROUP BY matched_member_id
-         ) pick ON pick.matched_member_id = r.boom_member_id
-         LEFT JOIN instagram_entries e ON e.id = pick.eid
          WHERE r.lesson_date = ? AND r.status LIKE '%チェックイン%'`,
         [date]
       );
