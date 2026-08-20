@@ -181,9 +181,9 @@ export function buildDailyPostParts(
   for (const ev of sorted) {
     const name = classNameFromSummary(ev.summary);
     if (!name) continue;
-    const venue = shortVenue(ev.location);
-    const item = venue ? `${name}(${venue})` : name;
-    const line = `▫${jstHhmm(ev.startIso)} ${item}`;
+    // 会場は載せない(TARO指示2026-08-20): カレンダーの場所欄は住所等で「(K)」のような
+    // 意味不明な断片になる+水金は会場週替わりのため誤誘導リスク。会場はLINE/カレンダー参照に倒す
+    const line = `▫${jstHhmm(ev.startIso)} ${name}`;
     if (!lines.includes(line)) lines.push(line);
   }
   if (lines.length === 0) return null;

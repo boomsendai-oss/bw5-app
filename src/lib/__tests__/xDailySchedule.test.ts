@@ -16,12 +16,13 @@ describe('buildDailyPostParts (本日のレッスン・毎朝の層0投稿)', ()
     expect(parts[0]).toContain('【本日のレッスン】8/7(金)');
   });
 
-  it('行は ▫HH:MM クラス名(会場) 形式・JST時刻', () => {
+  it('行は ▫HH:MM クラス名 形式・JST時刻・会場は載せない(TARO指示2026-08-20)', () => {
     const parts = buildDailyPostParts(
       [ev('2026-08-07T08:00:00Z', '【AZUMA】キッズHIPHOP', '多賀城スタジオ')],
       { month: 8, day: 7, weekday: 5 }
     )!;
-    expect(parts.join('\n')).toContain('▫17:00 キッズHIPHOP(多賀城スタジオ)');
+    expect(parts.join('\n')).toContain('▫17:00 キッズHIPHOP');
+    expect(parts.join('\n')).not.toContain('多賀城スタジオ');
   });
 
   it('時刻順に並ぶ', () => {
