@@ -1103,9 +1103,13 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
 
   const schedule = async (scheduledAt?: string) => {
     setBusy(true);
-    // キャプション・共同投稿の編集を反映してから予約(予約時にreel_queueへコピーされるため先に保存)
+    // キャプション・共同投稿の編集を反映してから予約(予約時にreel_queueへコピーされるため先に保存)。
+    // CAST欄に入力があれば「反映」ボタンを押し忘れていても、予約時に必ずキャプションへ入れる
+    // (2026-08-20: チップで13人選んだのにCAST行なしで予約された実害への対応)
+    const finalCaption = cast.trim() ? upsertCastLine(caption, cast) : caption;
+    if (finalCaption !== caption) setCaption(finalCaption);
     const patch: Record<string, unknown> = { id: draft.id };
-    if (caption !== (draft.caption ?? '')) patch.caption = caption;
+    if (finalCaption !== (draft.caption ?? '')) patch.caption = finalCaption;
     if (cast !== (draft.mention_handles ?? '')) patch.mention_handles = cast.trim() || null;
     if (collab !== (draft.collaborators ?? '')) patch.collaborators = collab.trim() || null;
     if (Object.keys(patch).length > 1) {
