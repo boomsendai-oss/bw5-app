@@ -50,10 +50,16 @@ function getEnv() {
   return { appId: process.env.THREADS_APP_ID, appSecret: process.env.THREADS_APP_SECRET };
 }
 
-/** env が設定済みか (未設定ならcronは Threads を触らない) */
+/**
+ * env が設定済みか (未設定ならcronは Threads を触らない)。
+ * ⚠️ appSecret は要求しない: シークレットが要るのは初回OAuth(code→トークン交換)だけで、
+ * 投稿(postText)もトークン更新(refresh_access_token)も保存済みトークンのみで動く。
+ * 両方必須にしていたため、シークレットを持たない環境では稼働できる状態なのに
+ * dormant のまま止まっていた (2026-08-21修正)。再連携が必要になったら requireEnv() が明示的に落ちる。
+ */
 export function configured(): boolean {
-  const { appId, appSecret } = getEnv();
-  return !!(appId && appSecret);
+  const { appId } = getEnv();
+  return !!appId;
 }
 
 function requireEnv() {
