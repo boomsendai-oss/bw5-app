@@ -3,6 +3,8 @@ import { execute, getAll, getOne } from '@/lib/db';
 import { nowUtcIso } from '@/lib/dateJst';
 import {
   buildXText,
+  xWeightedLength,
+  X_TEXT_MAX,
   buildXReplyCta,
   buildYouTubeMeta,
   buildThreadsText,
@@ -351,8 +353,16 @@ export async function POST(req: NextRequest) {
       if (needed > 17) {
         return await fail(`動画が大きすぎて無料枠に収まりません (推定${needed}リクエスト/上限17)`);
       }
+      // 本文は動画を上げる**前**に検算する。Xは日本語を1文字=2で数えるので、
+      // 超過したまま送ると「動画は上がったのにツイートだけ403」になり、
+      // 無料枠だけ消えて何も残らない(2026-08-21に実際に起きた)。
+      const xText = buildXText(safeCaption);
+      const weight = xWeightedLength(xText);
+      if (weight > X_TEXT_MAX) {
+        return await fail(`本文がXの上限を超えています (X換算${weight}/${X_TEXT_MAX}文字)`);
+      }
       const mediaId = await uploadVideo(bytes);
-      const tweetId = await postTweet(buildXText(safeCaption), undefined, undefined, [mediaId]);
+      const tweetId = await postTweet(xText, undefined, undefined, [mediaId]);
       externalId = tweetId;
       permalink = `https://x.com/i/status/${tweetId}`;
 

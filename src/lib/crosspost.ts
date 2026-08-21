@@ -1,7 +1,8 @@
 // リールの他SNS横展開 — 純関数のみ(API呼び出しは youtube.ts / xApi.ts 側)。
 //
 // Instagram向けに書いたキャプションをそのまま他所へ流すと、それぞれの作法から外れる:
-//   - X: 280文字。ハッシュタグを盛ると読みにくく、リンクも文字数を食う
+//   - X: 280文字。ただし**日本語は1文字=2でカウントされる**(xWeightedLength)。
+//        ハッシュタグを盛ると読みにくく、リンクも文字数を食う
 //   - YouTube: タイトルと説明が別。#Shorts が無いとShortsとして扱われないことがある
 // ここでプラットフォームごとに整形する。
 
@@ -16,7 +17,7 @@ import {
 export const CROSSPOST_PLATFORMS = ['youtube', 'x', 'threads', 'facebook', 'tiktok'] as const;
 export type Platform = (typeof CROSSPOST_PLATFORMS)[number];
 
-/** X の本文上限(通常アカウント) */
+/** X の本文上限(通常アカウント)。単位は素の文字数ではなく重み付き文字数 */
 export const X_TEXT_MAX = 280;
 /** Threads の本文上限 */
 export const THREADS_TEXT_MAX = 500;
@@ -134,6 +135,55 @@ function truncate(s: string, max: number): string {
 }
 
 /**
+ * Xが実際に数える「重み付き文字数」。
+ *
+ * ⚠️ **Xは日本語(かな・漢字)と絵文字を1文字=2としてカウントする**。
+ *    素の文字数で280に切ると、日本語主体の本文は実際には280を超えていて投稿が弾かれる。
+ *    2026-08-21に実害: 231文字(X換算416)の本文が `POST /2/tweets` で403になり、
+ *    リール#2/#10だけが延々と配信されないまま止まっていた。動画のサイズは無関係。
+ *
+ * 重みの定義は twitter-text の既定設定に合わせる — 下の範囲だけ1、それ以外は2。
+ */
+const X_LIGHT_RANGES: readonly (readonly [number, number])[] = [
+  [0, 4351],
+  [8192, 8205],
+  [8208, 8223],
+  [8242, 8247],
+];
+
+export function xWeightedLength(s: string): number {
+  let n = 0;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0) ?? 0;
+    n += X_LIGHT_RANGES.some(([a, b]) => cp >= a && cp <= b) ? 1 : 2;
+  }
+  return n;
+}
+
+/**
+ * X向けに重み付き文字数で切り詰める。
+ * 文の途中でぶつ切りにすると読み物として成立しないので、収まる範囲の
+ * 最後の文末(。)か改行まで戻す。戻しすぎる(6割未満になる)ときだけ「…」で切る。
+ */
+function truncateForX(s: string, max: number): string {
+  if (xWeightedLength(s) <= max) return s;
+  const budget = max - 2; // 末尾の「…」は全角=2
+  let n = 0;
+  let out = '';
+  for (const ch of s) {
+    const w = xWeightedLength(ch);
+    if (n + w > budget) break;
+    out += ch;
+    n += w;
+  }
+  const cut = Math.max(out.lastIndexOf('\n'), out.lastIndexOf('。'));
+  if (cut >= 0 && xWeightedLength(out.slice(0, cut + 1)) >= budget * 0.6) {
+    return out.slice(0, cut + 1).trim();
+  }
+  return `${out}…`;
+}
+
+/**
  * Instagram向けの文言をX向けに言い換える。
  *
  * キャプションは「プロフィールの公式LINEから」のようにInstagram前提で書かれている。
@@ -153,17 +203,19 @@ function localizeForX(body: string): string {
 export function buildXText(caption: string, opts?: { maxTags?: number }): string {
   const { body, tags } = splitCaption(caption);
   const maxTags = opts?.maxTags ?? 3;
-  const base = truncate(localizeForX(body), X_TEXT_MAX);
-  if ([...base].length >= X_TEXT_MAX - 8) return base;
+  // ⚠️ ここの長さ判定はすべて xWeightedLength を使う。素の文字数で数えると
+  //    日本語の本文が上限を超えたままXへ送られ、403で弾かれる(xWeightedLength参照)
+  const base = truncateForX(localizeForX(body), X_TEXT_MAX);
+  if (xWeightedLength(base) >= X_TEXT_MAX - 8) return base;
 
   let out = base;
   for (const tag of tags.slice(0, maxTags)) {
     const next = `${out}\n${tag}`;
-    if ([...next].length > X_TEXT_MAX) break;
+    if (xWeightedLength(next) > X_TEXT_MAX) break;
     // 同じ行に足せるならそちらを優先(改行を無駄に増やさない)
     const inline = out.endsWith('\n') ? `${out}${tag}` : `${out} ${tag}`;
-    out = [...inline].length <= X_TEXT_MAX ? inline : next;
-    if ([...out].length > X_TEXT_MAX) break;
+    out = xWeightedLength(inline) <= X_TEXT_MAX ? inline : next;
+    if (xWeightedLength(out) > X_TEXT_MAX) break;
   }
   return out;
 }

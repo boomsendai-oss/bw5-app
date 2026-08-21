@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   splitCaption,
   buildXText,
+  xWeightedLength,
   buildYouTubeMeta,
   sanitizeHandlesForOtherPlatform,
   THREADS_MENTIONABLE_HANDLES,
@@ -578,5 +579,37 @@ describe('sanitizeHandlesForOtherPlatform: 音楽クレジット(2026-08-10)', (
 
   it('置換でハンドルが消えラベルだけ残った行は落ちる(講師以外のラベルも)', () => {
     expect(sanitizeHandlesForOtherPlatform('担当：@unknown_person', NAMES2)).toBe('');
+  });
+});
+
+
+// Xは日本語を1文字=2で数える。ここを素の文字数で見ていたせいで、日本語主体の
+// 長いキャプションが `POST /2/tweets` に403で弾かれ、リール#2/#10が数週間
+// 配信されないまま止まっていた(2026-08-21)。二度と静かに壊れないよう固定する。
+describe('Xの重み付き文字数', () => {
+  it('日本語と絵文字は2、英数字と記号は1で数える', () => {
+    expect(xWeightedLength('abc123')).toBe(6);
+    expect(xWeightedLength('あア漢')).toBe(6);
+    expect(xWeightedLength('🕺')).toBe(2);
+    expect(xWeightedLength('a あ')).toBe(4); // 半角スペースは1
+  });
+
+  it('日本語だけの長文でも X_TEXT_MAX を重み付きで超えない', () => {
+    const body = 'あ'.repeat(400);
+    const out = buildXText(`${body}\n\n#仙台ダンススクール #ダンススクール`);
+    expect(xWeightedLength(out)).toBeLessThanOrEqual(X_TEXT_MAX);
+  });
+
+  it('切り詰めるときは文末か改行まで戻して、途中でぶつ切りにしない', () => {
+    const body = ['一行目です。', '二行目です。', 'あ'.repeat(200)].join('\n');
+    const out = buildXText(body);
+    expect(xWeightedLength(out)).toBeLessThanOrEqual(X_TEXT_MAX);
+    expect(out.startsWith('一行目です。')).toBe(true);
+  });
+
+  it('上限に収まる本文は一切削らない(既存の投稿文を壊さない)', () => {
+    const caption = '多賀城HOUSE ／ 土曜 11:00\n🕺講師：AOI\n\n#仙台ダンススクール';
+    expect(buildXText(caption)).toContain('多賀城HOUSE');
+    expect(buildXText(caption)).toContain('#仙台ダンススクール');
   });
 });
