@@ -37,7 +37,7 @@ export default async function Bf6TopPage() {
             <p className="mt-4 text-4xl font-black italic md:mt-6 md:text-6xl">
               2026.9.26 <span className="text-xl md:text-3xl">SAT</span>
             </p>
-            <p className="mt-1 text-xs font-bold text-neutral-400 md:mt-2 md:text-sm">OPEN 14:30(予定)</p>
+            <p className="mt-1 text-xs font-bold text-neutral-400 md:mt-2 md:text-sm">OPEN 14:30</p>
             <div className="mt-6 hidden gap-3 md:flex">
               <Link
                 href="/bf6/entry"
@@ -63,17 +63,13 @@ export default async function Bf6TopPage() {
               <p className="text-lg font-black text-white">2026.9.26 <span className="text-sm">SAT</span></p>
             </Bf6DetailBlock>
             <Bf6DetailBlock en="TIME" ja="時間">
-              <p className="font-bold text-neutral-200">OPEN 14:30(予定)</p>
+              <p className="font-bold text-orange-400">バトルエントリー者 集合 13:30</p>
+              <p className="font-bold text-neutral-200">OPEN 14:30</p>
               <p className="font-bold text-neutral-200">CLOSE 18:00頃</p>
-              <div className="mt-3 rounded-lg bg-red-950/40 p-3 ring-1 ring-red-900">
-                <p className="text-[11px] font-black tracking-widest text-red-400">出場者の集合時刻</p>
-                <p className="mt-1 text-lg font-black text-white">13:30 集合 / 14:00 受付締切</p>
-                <p className="mt-1 text-xs leading-relaxed text-neutral-300">
-                  9階ホール前で受付を行います。受付で<strong className="text-white">組み合わせ抽選(くじ引き)</strong>を行いますので、
-                  時間内にお越しください。
-                </p>
-              </div>
-              <p className="mt-2 text-xs text-neutral-400">※ タイムテーブルは追って発表いたします</p>
+              <p className="mt-2 text-xs text-neutral-400">
+                ※ バトルエントリー者は9階ホール前で受付(14:00締切)。受付で組み合わせ抽選を行います
+              </p>
+              <p className="text-xs text-neutral-400">※ タイムテーブルは追って発表いたします</p>
             </Bf6DetailBlock>
             <div className="md:row-span-3">
             <Bf6DetailBlock en="FEE" ja="料金">

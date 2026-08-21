@@ -4,7 +4,9 @@ import { sendEmail } from '@/lib/email';
 import { bf6DivisionLabel, bf6GradeLabel, formatReceiptNo } from '@/lib/bf6';
 import type { OwnBf6Order } from '@/lib/bf6Db';
 
-const BASE_URL = 'https://bw5-app.vercel.app';
+// 告知はすべて boomersfight.vercel.app で統一している(bw5-app も同じサイトに解決するが
+// 受け手に「別サイト?」と見せないため、メール内のリンクも告知側のドメインに揃える)。
+const BASE_URL = 'https://boomersfight.vercel.app';
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 
 export function buildBf6OrderEmail(order: OwnBf6Order, editToken: string): { subject: string; text: string } {
@@ -65,17 +67,18 @@ export function buildBf6OrderEmail(order: OwnBf6Order, editToken: string): { sub
     lines.push(`${BASE_URL}/bf6/entries`);
   }
   lines.push('');
-  lines.push('日時: 2026年9月26日(土) OPEN 14:30(予定)');
+  lines.push('日時: 2026年9月26日(土) OPEN 14:30');
   lines.push('会場: SSM(仙台スクールオブミュージック&ダンス専門学校) 9階ホール');
   if (isEntry) {
     // 出場者は開場より1時間早い集合。受付でくじ引き(組み合わせ抽選)を行うため、
     // 遅れると抽選に入れず不利になる。観覧のみの方には出さない。
     lines.push('');
-    lines.push('▼ 出場者の集合時刻');
+    lines.push('▼ バトルエントリー者の集合時刻');
     lines.push('  13:30 集合(9階ホール前で受付)');
     lines.push('  14:00 受付締切');
     lines.push('  受付で組み合わせ抽選(くじ引き)を行いますので、');
     lines.push('  時間内にお越しください。');
+    lines.push('  遅れると抽選に参加できず、運営サイドで決定を行う場合があります。');
     lines.push('  ※ 観覧の方の開場は 14:30 です');
   }
   lines.push('');

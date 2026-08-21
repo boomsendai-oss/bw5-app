@@ -42,7 +42,7 @@ describe('buildBf6OrderEmail — 出場者の集合案内', () => {
     const { text } = buildBf6OrderEmail(order({ items: [entryItem] }), 'tok');
     expect(text).toContain('13:30');
     expect(text).toContain('14:00');
-    expect(text).toContain('出場者');
+    expect(text).toContain("バトルエントリー者");
   });
 
   it('エントリーを含む注文には くじ引き(組み合わせ抽選) の案内を書く', () => {

@@ -26,7 +26,7 @@ import {
   isValidBf6Phone,
   type Bf6Division,
 } from '@/lib/bf6';
-import { Bf6Hero, Bf6Card, Bf6SectionTitle, Bf6Field, Bf6NumberSelect, Bf6Shell, inputCls, inputClsWith } from '../ui';
+import { Bf6Hero, Bf6CallTimeNotice, Bf6Card, Bf6SectionTitle, Bf6Field, Bf6NumberSelect, Bf6Shell, inputCls, inputClsWith } from '../ui';
 
 const TOKEN_KEY = 'bf6_order_token';
 
@@ -318,6 +318,7 @@ export default function Bf6EntryPage() {
   return (
     <Shell>
       <Bf6Hero title="BATTLE ENTRY" subtitle="バトルエントリー / 2026.9.26 SAT — SSM 9階ホール" />
+      <Bf6CallTimeNotice />
       {ssmHint && (
         <div className="mx-4 mt-4 rounded-2xl border-2 border-red-600 bg-red-950/40 p-4">
           <p className="text-sm font-black text-red-300">SSMの学生の方へ</p>

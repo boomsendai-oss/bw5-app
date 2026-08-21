@@ -8,7 +8,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getBf6SsmStatus, submitBf6SsmEntry } from '../actions';
 import { isValidBf6Email, isValidBf6Phone, isKatakanaText } from '@/lib/bf6';
-import { Bf6Card, Bf6Field, Bf6Hero, Bf6SectionTitle, Bf6Shell, btnPrimaryCls, inputCls, inputClsWith } from '../ui';
+import { Bf6CallTimeNotice, Bf6Card, Bf6Field, Bf6Hero, Bf6SectionTitle, Bf6Shell, btnPrimaryCls, inputCls, inputClsWith } from '../ui';
 
 export default function Bf6SsmPage() {
   const router = useRouter();
@@ -187,6 +187,7 @@ export default function Bf6SsmPage() {
     <Bf6Shell>
       <div>
         <Bf6Hero title="SSM ENTRY" subtitle="SSM学生 無料エントリー / 一般部門" />
+        <Bf6CallTimeNotice />
         <div className="px-4 py-6">
           {remaining !== null && (
             <p className="mb-4 rounded-xl border-2 border-red-600 bg-red-950/40 p-3 text-center text-sm font-bold text-red-300">

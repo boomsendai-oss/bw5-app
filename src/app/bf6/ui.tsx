@@ -182,3 +182,22 @@ export function Bf6NumberSelect({ value, onChange }: { value: number; onChange: 
     </select>
   );
 }
+
+/**
+ * 出場者の集合時刻バナー。バトルエントリー(有料)とSSM学生無料枠の
+ * 両フォームで共用する。片方だけ直し忘れる事故を防ぐため必ずこれを使う。
+ */
+export function Bf6CallTimeNotice() {
+  return (
+    <div className="mx-4 mt-4 rounded-2xl border border-orange-500/60 bg-orange-950/30 p-4">
+      <p className="text-sm font-black text-orange-400">バトルエントリー者は 13:30 集合です</p>
+      <p className="mt-1 text-xs leading-relaxed text-neutral-300">
+        当日は <span className="font-bold text-white">13:30</span> に SSM 9階ホール前へお越しください
+        (受付は <span className="font-bold text-white">14:00 締切</span>)。
+        受付で<span className="font-bold text-white">組み合わせ抽選(くじ引き)</span>を行います。
+        遅れると抽選に参加できず、運営サイドで決定を行う場合があります。
+      </p>
+      <p className="mt-1 text-xs text-neutral-400">※ 観覧の方の開場は 14:30 です</p>
+    </div>
+  );
+}
