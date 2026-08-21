@@ -90,11 +90,12 @@ export default function TshirtSettingsPage() {
               <Input type="number" value={s.unitPrice} onChange={(e) => set('unitPrice', Number(e.target.value))} />
             </div>
             <div>
-              <Label className="text-xs">郵送料（円）</Label>
+              <Label className="text-xs">郵送料（円・1注文あたり）</Label>
               <Input type="number" value={s.shippingFee} onChange={(e) => set('shippingFee', Number(e.target.value))} />
             </div>
           </div>
           <p className="text-[11px] text-slate-500">
+            郵送料は<strong>1注文につき1回だけ</strong>加算します（何枚頼まれても一律・TARO決定 2026-08-21）。
             価格を変えても、すでに入っている注文の金額は変わりません（注文時の価格で確定します）。
           </p>
         </Section>

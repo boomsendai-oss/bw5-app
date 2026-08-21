@@ -231,7 +231,10 @@ export default function TshirtOrderPage() {
               k="受付期間"
               v={`${fmtDate(settings.openAt)} 〜 ${fmtDate(settings.closeAt)}`}
             />
-            <SpecRow k="郵送をご希望の方" v={`全国一律 +${yen(settings.shippingFee)}`} />
+            <SpecRow
+              k="郵送をご希望の方"
+              v={`全国一律 +${yen(settings.shippingFee)}（何枚でも一律です）`}
+            />
           </dl>
         </div>
       </section>
@@ -314,7 +317,7 @@ export default function TshirtOrderPage() {
                     郵送を希望する
                   </span>
                   <span className="block mt-1 text-[11px] text-white/35">
-                    レッスンに来られない方はこちら（+{yen(settings.shippingFee)}）
+                    レッスンに来られない方はこちら（何枚でも一律 +{yen(settings.shippingFee)}）
                   </span>
                 </span>
               </label>
@@ -344,10 +347,26 @@ export default function TshirtOrderPage() {
               )}
             </div>
 
-            {/* 合計 */}
-            <div className="border-t border-white/10 pt-7 flex items-baseline justify-between">
-              <span className="text-[11px] tracking-[0.25em] text-white/40">合計</span>
-              <span className="text-2xl font-light tracking-wide">{yen(total)}</span>
+            {/* 合計。郵送を選んだときは内訳を出す(送料が枚数分に見えないように) */}
+            <div className="border-t border-white/10 pt-7">
+              {wantsShipping && (
+                <div className="mb-3 space-y-1 text-[12px] text-white/40">
+                  <div className="flex justify-between">
+                    <span>
+                      Tシャツ {yen(settings.unitPrice)} × {qty}枚
+                    </span>
+                    <span>{yen(settings.unitPrice * qty)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>郵送料（何枚でも一律）</span>
+                    <span>{yen(settings.shippingFee)}</span>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-baseline justify-between">
+                <span className="text-[11px] tracking-[0.25em] text-white/40">合計</span>
+                <span className="text-2xl font-light tracking-wide">{yen(total)}</span>
+              </div>
             </div>
 
             {error && (
