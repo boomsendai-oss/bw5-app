@@ -1,5 +1,11 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
+
+// ブラウザの上下バーの色。既定はBW5オレンジ(#f27a1a)で、黒基調のこのページだと
+// iPhoneで上下にオレンジの帯が見切れる。ここと layout.tsx のブートストラップの両方で黒にする。
+export const viewport: Viewport = {
+  themeColor: '#0b0b0c',
+};
 
 // LINE等のリンクプレビュー用。サイト既定(BW5発表会)のタイトルを商品名で上書きする。
 export const metadata: Metadata = {
@@ -20,5 +26,15 @@ export const metadata: Metadata = {
 };
 
 export default function TshirtLayout({ children }: { children: ReactNode }) {
-  return children;
+  return (
+    <>
+      {/*
+        globals.css の body は BW5オレンジ(--bg-primary: #f27a1a)。
+        iPhoneでスクロールを端まで弾ませると、その地色が上下にオレンジの帯として見える。
+        このルートにいる間だけ黒で塗り潰す(離れれば自動で元に戻る)。
+      */}
+      <style>{'body{background:#0b0b0c}'}</style>
+      {children}
+    </>
+  );
 }

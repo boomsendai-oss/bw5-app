@@ -3,7 +3,7 @@
 // BOOM オフィシャルTシャツ 公開注文ページ。
 // デザイン方針: マット黒 + 白/グレーの階調のみ。余白を大きく取り、商品写真を主役にする
 // (アパレルECの商品ページの見え方。BOOMブランド3色はここでは使わない=TARO指定)。
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import {
   getOrderView,
@@ -14,6 +14,7 @@ import {
   type PublicOrderView,
 } from './actions';
 import { TSHIRT_SIZES, type TshirtSize } from '@/lib/tshirtOrder';
+import ProductShowcase from './ProductShowcase';
 
 const TOKEN_KEY = 'boom_tshirt_order_token';
 
@@ -31,6 +32,9 @@ function fmtDate(iso: string): string {
 export default function TshirtOrderPage() {
   const [view, setView] = useState<PublicOrderView | null>(null);
   const [loading, setLoading] = useState(true);
+  // 演出を入れてフォームが下に伸びたぶん、注文への導線を常に出しておく
+  const orderRef = useRef<HTMLDivElement>(null);
+  const [showBar, setShowBar] = useState(false);
 
   const [name, setName] = useState('');
   const [size, setSize] = useState<TshirtSize | ''>('');
@@ -70,6 +74,33 @@ export default function TshirtOrderPage() {
 
   const settings = view?.settings ?? null;
   const state = view?.state ?? 'open';
+
+  // 注文バーの出し入れ。
+  //   出す条件 = 1画面ぶんスクロールした後（最初の1画面は商品だけ見せたいので出さない）
+  //   引っ込める条件 = 注文フォームが画面に入った（同じボタンが二重に見えないように）
+  useEffect(() => {
+    const el = orderRef.current;
+    if (!el) return;
+    let formVisible = false;
+    const evaluate = () => {
+      const pastHero = window.scrollY > window.innerHeight * 0.8;
+      setShowBar(pastHero && !formVisible);
+    };
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        formVisible = entry.isIntersecting;
+        evaluate();
+      },
+      { rootMargin: '-15% 0px 0px 0px' }
+    );
+    io.observe(el);
+    window.addEventListener('scroll', evaluate, { passive: true });
+    evaluate();
+    return () => {
+      io.disconnect();
+      window.removeEventListener('scroll', evaluate);
+    };
+  }, [loading, state]);
 
   const total = useMemo(() => {
     if (!settings) return 0;
@@ -198,13 +229,12 @@ export default function TshirtOrderPage() {
   // ---------- 注文フォーム ----------
   return (
     <main className="min-h-screen bg-[#0b0b0c] text-white">
-      {/* ヒーロー: 商品写真を主役に */}
-      <section className="px-6 pt-14 pb-4">
-        <div className="mx-auto max-w-lg text-center">
-          <p className="text-[10px] tracking-[0.45em] text-white/35 uppercase">BOOM Official</p>
-          <ProductImage settings={settings} />
-        </div>
-      </section>
+      {/* ヒーロー: スクロールに合わせて商品が動く(Appleの製品ページのような見せ方) */}
+      <ProductShowcase
+        imageUrl={settings.imageUrl}
+        productName={settings.productName}
+        priceLabel={yen(settings.unitPrice)}
+      />
 
       {/* 商品情報 */}
       <section className="px-6">
@@ -240,7 +270,7 @@ export default function TshirtOrderPage() {
       </section>
 
       {/* 注文フォーム */}
-      <section className="px-6 pt-16 pb-24">
+      <section ref={orderRef} className="px-6 pt-16 pb-24">
         <div className="mx-auto max-w-lg">
           <p className="text-[10px] tracking-[0.4em] text-white/35 uppercase">
             {editing ? 'Edit your order' : 'Order'}
@@ -391,6 +421,28 @@ export default function TshirtOrderPage() {
           </div>
         </div>
       </section>
+
+      {/* 画面下の注文バー: フォームが見えていない間だけ出す */}
+      <div
+        className={`fixed inset-x-0 bottom-0 z-20 transition-all duration-300 ${
+          showBar ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'
+        }`}
+      >
+        <div className="bg-[#0b0b0c]/90 backdrop-blur-md border-t border-white/10 px-5 py-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto max-w-lg flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[10px] tracking-[0.2em] text-white/35 truncate">オフィシャルTシャツ</p>
+              <p className="text-[15px] font-light">{yen(settings.unitPrice)}</p>
+            </div>
+            <button
+              onClick={() => orderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="shrink-0 bg-white text-black px-7 py-3 text-[11px] tracking-[0.25em] font-medium hover:bg-white/85 transition"
+            >
+              注文する
+            </button>
+          </div>
+        </div>
+      </div>
     </main>
   );
 }

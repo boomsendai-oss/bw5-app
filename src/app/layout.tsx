@@ -50,6 +50,8 @@ export default function RootLayout({
                 var p = location.pathname;
                 var isStaff = p.indexOf('/staff/') === 0 || p === '/staff' || p.indexOf('/admin') === 0;
                 var isBf6 = p.indexOf('/bf6') === 0;
+                // 物販ページ(黒×黒Tシャツ等)は黒基調。BW5オレンジのバーが上下に出ると台無しになる
+                var isDark = isBf6 || p.indexOf('/merch') === 0;
                 var d = document, head = d.head;
                 function rm(sel){var ns=head.querySelectorAll(sel);for(var i=0;i<ns.length;i++){ns[i].parentNode.removeChild(ns[i]);}}
                 // Next.js が自動注入する manifest を含めて全削除 → 必要なものだけを再注入
@@ -61,7 +63,7 @@ export default function RootLayout({
                 function add(tag, attrs){var e = d.createElement(tag); for(var k in attrs){e.setAttribute(k, attrs[k]);} head.appendChild(e); return e;}
                 // theme-color もパス別: スタッフ=ネイビー / BF6=黒(イベント配色) / それ以外=BW5オレンジ
                 rm('meta[name="theme-color"]');
-                add('meta', {name: 'theme-color', content: isStaff ? '#101040' : isBf6 ? '#0a0a0a' : '#f27a1a'});
+                add('meta', {name: 'theme-color', content: isStaff ? '#101040' : isDark ? '#0a0a0a' : '#f27a1a'});
                 if (!isStaff) {
                   add('link', {rel: 'manifest', href: '/main-manifest.webmanifest'});
                   add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
