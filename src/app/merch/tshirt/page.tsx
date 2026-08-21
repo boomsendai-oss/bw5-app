@@ -14,7 +14,7 @@ import {
   type PublicOrderView,
 } from './actions';
 import { TSHIRT_SIZES, type TshirtSize } from '@/lib/tshirtOrder';
-import ProductShowcase from './ProductShowcase';
+import TurntableShowcase from './TurntableShowcase';
 
 const TOKEN_KEY = 'boom_tshirt_order_token';
 
@@ -230,11 +230,7 @@ export default function TshirtOrderPage() {
   return (
     <main className="min-h-screen bg-[#0b0b0c] text-white">
       {/* ヒーロー: スクロールに合わせて商品が動く(Appleの製品ページのような見せ方) */}
-      <ProductShowcase
-        imageUrl={settings.imageUrl}
-        productName={settings.productName}
-        priceLabel={yen(settings.unitPrice)}
-      />
+      <TurntableShowcase productName={settings.productName} />
 
       {/* 商品情報 */}
       <section className="px-6">

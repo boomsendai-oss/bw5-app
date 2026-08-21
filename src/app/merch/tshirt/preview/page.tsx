@@ -4,15 +4,18 @@
 // 3案を上のボタンで切り替えて、同じ商品で同じ文言のままスクロール感だけ比べる。
 import { useState } from 'react';
 import ProductShowcase, { type ShowcaseVariant } from '../ProductShowcase';
+import TurntableShowcase from '../TurntableShowcase';
 
-const VARIANTS: { key: ShowcaseVariant; label: string; note: string }[] = [
+type PreviewKey = ShowcaseVariant | 'turn';
+const VARIANTS: { key: PreviewKey; label: string; note: string }[] = [
+  { key: 'turn', label: 'D 回転', note: '3Dで回した48コマをスクロールで送る(Apple方式)' },
   { key: 'still', label: 'A 静', note: '商品は動かさない。文字だけがゆっくり入れ替わる' },
   { key: 'light', label: 'B 光', note: '商品は静止。生地の上を光が一度だけ通る' },
   { key: 'drift', label: 'C 流', note: '商品がゆっくり上へ流れる。わずかに近づく' },
 ];
 
 export default function ShowcasePreviewPage() {
-  const [v, setV] = useState<ShowcaseVariant>('light');
+  const [v, setV] = useState<PreviewKey>('turn');
   const current = VARIANTS.find((x) => x.key === v)!;
 
   return (
@@ -40,12 +43,16 @@ export default function ShowcasePreviewPage() {
 
       {/* 切り替えたら演出を作り直す(keyを変える)。スクロール位置は上に戻す */}
       <div className="pt-[76px]">
-        <ProductShowcase
-          key={v}
-          variant={v}
-          imageUrl="/merch/tshirt_black_black.png"
-          productName="BOOM オフィシャルTシャツ（黒×黒モデル）"
-        />
+        {v === 'turn' ? (
+          <TurntableShowcase key={v} productName="BOOM オフィシャルTシャツ（黒×黒モデル）" />
+        ) : (
+          <ProductShowcase
+            key={v}
+            variant={v}
+            imageUrl="/merch/tshirt_black_black.png"
+            productName="BOOM オフィシャルTシャツ（黒×黒モデル）"
+          />
+        )}
       </div>
 
       <section className="px-6 pb-32">
