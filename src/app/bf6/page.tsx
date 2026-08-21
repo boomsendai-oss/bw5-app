@@ -6,6 +6,7 @@ import { BF6_DIVISIONS } from '@/lib/bf6';
 import { calcBf6Remaining, getBf6Faqs, getBf6Settings, getBf6Usage, getPublicBf6Entries } from '@/lib/bf6Db';
 import { getBf6StreamConfig } from '@/lib/bf6StreamDb';
 import { Bf6DetailBlock, Bf6SectionHead, Bf6Shell } from './ui';
+import { Bf6FloatingCta } from './FloatingCta';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,7 @@ export default async function Bf6TopPage() {
 
   return (
     <Bf6Shell full>
+      <Bf6FloatingCta />
       <div>
         {/* ヒーロー = フライヤー本体(タイトルは画像側が担う。テキストの重複を避ける)。
             PCはフライヤー+日付/CTAの2カラムでダイナミックに(ダンスライブ参考) */}
@@ -38,7 +40,7 @@ export default async function Bf6TopPage() {
               2026.9.26 <span className="text-xl md:text-3xl">SAT</span>
             </p>
             <p className="mt-1 text-xs font-bold text-neutral-400 md:mt-2 md:text-sm">OPEN 14:30</p>
-            <div className="mt-6 hidden gap-3 md:flex">
+            <div className="mt-6 flex gap-3">
               <Link
                 href="/bf6/entry"
                 className="flex h-14 flex-1 items-center justify-center rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] font-black"
@@ -302,7 +304,7 @@ export default async function Bf6TopPage() {
             ))}
           </div>
 
-          <div className="mt-4 space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
+          <div id="bf6-entry-cta" className="mt-4 space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
             <Link
               href="/bf6/entry"
               className="flex h-[68px] w-full items-center justify-center rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] text-lg font-black md:h-20 md:text-xl"

@@ -75,7 +75,7 @@ export function buildBf6OrderEmail(order: OwnBf6Order, editToken: string): { sub
     lines.push('');
     lines.push('▼ バトルエントリー者の集合時刻');
     lines.push('  13:30 集合(9階ホール前で受付)');
-    lines.push('  14:00 受付締切');
+    lines.push('  14:00 締切');
     lines.push('  受付で組み合わせ抽選(くじ引き)を行いますので、');
     lines.push('  時間内にお越しください。');
     lines.push('  遅れると抽選に参加できず、運営サイドで決定を行う場合があります。');

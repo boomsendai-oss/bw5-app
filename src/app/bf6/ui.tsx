@@ -193,7 +193,7 @@ export function Bf6CallTimeNotice() {
       <p className="text-sm font-black text-orange-400">バトルエントリー者は 13:30 集合です</p>
       <p className="mt-1 text-xs leading-relaxed text-neutral-300">
         当日は <span className="font-bold text-white">13:30</span> に SSM 9階ホール前へお越しください
-        (受付は <span className="font-bold text-white">14:00 締切</span>)。
+        (<span className="font-bold text-white">14:00 締切</span>)。
         受付で<span className="font-bold text-white">組み合わせ抽選(くじ引き)</span>を行います。
         遅れると抽選に参加できず、運営サイドで決定を行う場合があります。
       </p>
