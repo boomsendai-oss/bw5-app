@@ -1,28 +1,30 @@
 'use client';
 
-// 商品ヒーローのスクロール演出（Appleの製品ページのような見せ方・TARO指定 2026-08-21）。
+// 商品ヒーローのスクロール演出。
 //
-// 仕組み: 縦に長い枠(下の SCROLL_VH)を置き、その中で商品を sticky で画面に貼り付ける。
-// 枠を通り過ぎる間のスクロール量を 0→1 の進行度に変換し、拡大・傾き・寄りに割り当てる。
-// 章ごとのコピーは進行度に合わせて入れ替わる。
+// 設計方針（2026-08-21 TARO指摘を受けて作り直し）:
+//  1. **大きく拡大しない**。元写真が 553px しかなく、以前の2.45倍は実効4.6倍の
+//     引き伸ばしでボケていた。ボケた絵が伸び縮みすると安っぽく見える
+//  2. **平面写真を3D回転させない**。紙が回っているようにしか見えない
+//  3. **動きは一方向・ゆっくり・ばね減衰**。往復させると落ち着きが無くなる
+//  4. 商品は基本 **動かさない**。動かすのは光と文字
 //
-// ⚠️ 動きを減らす設定(prefers-reduced-motion)の人には静止版を出す。
-//    画面の高さが低い端末でも破綻しないよう svh を使う。
+// 仕組み: 縦に長い枠の中で商品を sticky で画面に留め、枠の通過率(0→1)を
+// ばねで滑らかにしてから各値へ割り当てる。
 import { useEffect, useRef, type RefObject } from 'react';
 import Image from 'next/image';
 import {
   motion,
   useMotionValue,
   useReducedMotion,
+  useSpring,
   useTransform,
   type MotionValue,
 } from 'framer-motion';
 
-// 演出に使う縦幅(vh)。長すぎるとフォームに辿り着けないので、章の数ぶんだけ。
-const SCROLL_VH = 300;
+export type ShowcaseVariant = 'still' | 'light' | 'drift';
 
-// 胸のプリント位置(画像内の相対座標)。寄りのときはここを中心に拡大する。
-const PRINT_ORIGIN = '50% 44%';
+const SCROLL_VH = 300;
 
 interface Chapter {
   eyebrow: string;
@@ -51,24 +53,31 @@ const CHAPTERS: Chapter[] = [
 export default function ProductShowcase({
   imageUrl,
   productName,
-  priceLabel,
+  variant = 'light',
 }: {
   imageUrl: string;
   productName: string;
-  priceLabel: string;
+  priceLabel?: string;
+  variant?: ShowcaseVariant;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
-  const scrollYProgress = useSectionProgress(ref);
+  const raw = useSectionProgress(ref);
 
-  // 1章=引き / 2章=寄り(プリント) / 3章=引き戻して着用イメージ
-  const scale = useTransform(scrollYProgress, [0, 0.34, 0.62, 1], [1, 1.12, 2.45, 0.96]);
-  const rotateY = useTransform(scrollYProgress, [0, 0.34, 0.62, 1], [0, -13, -2, 6]);
-  const rotateX = useTransform(scrollYProgress, [0, 0.5, 1], [0, 5, -3]);
-  const glow = useTransform(scrollYProgress, [0, 0.34, 0.62, 1], [0.1, 0.16, 0.26, 0.12]);
+  // スクロール量をそのまま使うと指の動きに1:1で貼りつき、機械的に見える。
+  // ばねで少し遅らせて追従させると、ぬるっとした質感になる。
+  const p = useSpring(raw, { stiffness: 90, damping: 26, mass: 0.6, restDelta: 0.0005 });
+
+  // 商品は「置いてある」状態を保つ。動かすのはごくわずか。
+  const scale = useTransform(p, [0, 1], variant === 'drift' ? [1, 1.1] : [1, 1.04]);
+  const y = useTransform(p, [0, 1], variant === 'drift' ? ['4%', '-6%'] : ['0%', '0%']);
+
+  // 光沢: 商品の形で切り抜いた光が、上から下へ一度だけ通る。
+  // 「光の角度でロゴが浮かぶ」という商品の売りを、そのまま画面上で見せる。
+  const sheen = useTransform(p, [0.1, 0.85], ['-35%', '135%']);
+  const sheenOpacity = useTransform(p, [0.05, 0.2, 0.75, 0.9], [0, 1, 1, 0]);
 
   if (reduced) {
-    // 「視差効果を減らす」設定の人には静止した商品カットだけ見せる
     return (
       <section className="px-6 pt-14">
         <div className="mx-auto max-w-lg text-center">
@@ -82,57 +91,82 @@ export default function ProductShowcase({
   return (
     <section ref={ref} style={{ height: `${SCROLL_VH}vh` }} className="relative">
       <div className="sticky top-0 h-[100svh] overflow-hidden flex flex-col items-center justify-center">
-        {/* 商品 */}
-        <motion.div
-          className="relative w-[min(88vw,460px)] aspect-square"
-          style={{ perspective: 1200 }}
-        >
-          <motion.div
+        <motion.div style={{ scale, y }} className="relative w-[min(78vw,400px)] aspect-square">
+          {/* 商品の背後の淡い光。黒地に黒Tシャツが沈まないための最低限 */}
+          <div
             className="absolute inset-0"
             style={{
-              scale,
-              rotateY,
-              rotateX,
-              transformOrigin: PRINT_ORIGIN,
-              transformStyle: 'preserve-3d',
+              background:
+                'radial-gradient(circle at 50% 46%, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.03) 45%, transparent 70%)',
             }}
-          >
-            <Glow opacity={glow} />
-            <Image
-              src={imageUrl}
-              alt={productName}
-              fill
-              priority
-              sizes="(max-width: 640px) 88vw, 460px"
-              className="object-contain"
-            />
-          </motion.div>
+          />
+          <Image
+            src={imageUrl}
+            alt={productName}
+            fill
+            priority
+            sizes="(max-width: 640px) 78vw, 400px"
+            className="object-contain"
+          />
+
+          {variant === 'light' && (
+            <Sheen imageUrl={imageUrl} yPos={sheen} opacity={sheenOpacity} />
+          )}
         </motion.div>
 
-        {/* 章ごとのコピー（進行度で入れ替わる） */}
-        <div className="relative mt-6 h-32 w-full px-8">
+        <div className="relative mt-8 h-32 w-full px-8">
           {CHAPTERS.map((c, i) => (
-            <ChapterCopy key={c.eyebrow} chapter={c} index={i} progress={scrollYProgress} />
+            <ChapterCopy key={c.eyebrow} chapter={c} index={i} progress={p} />
           ))}
         </div>
 
-        {/* 最初だけ出るスクロールの合図 */}
-        <ScrollHint progress={scrollYProgress} />
-      </div>
-
-      {/* 演出の終わりに商品名と価格を置き、そのまま下の詳細へつなぐ */}
-      <div className="sr-only">
-        {productName} {priceLabel}
+        <ScrollHint progress={p} />
       </div>
     </section>
   );
 }
 
-// 実際にスクロールしている要素を親から探す。
-// このアプリは globals.css の `body { overflow-x: hidden }` により **body 自体がスクロール枠**
-// になっており(片方の軸を visible 以外にすると、もう片方が auto になるCSSの仕様)、
-// window は動かない。framer-motion の useScroll は既定で window を見るため反応しない。
-// どのページに置かれても動くよう、実行時に本当のスクロール枠を突き止める。
+// 商品のPNG(背景透過)をマスクに使い、光をTシャツの形の中だけに通す。
+// 四角い光が横切るのと違って、生地の上を光が滑って見える。
+function Sheen({
+  imageUrl,
+  yPos,
+  opacity,
+}: {
+  imageUrl: string;
+  yPos: MotionValue<string>;
+  opacity: MotionValue<number>;
+}) {
+  const mask = {
+    maskImage: `url(${imageUrl})`,
+    WebkitMaskImage: `url(${imageUrl})`,
+    maskSize: 'contain',
+    WebkitMaskSize: 'contain',
+    maskRepeat: 'no-repeat',
+    WebkitMaskRepeat: 'no-repeat',
+    maskPosition: 'center',
+    WebkitMaskPosition: 'center',
+  } as const;
+
+  return (
+    <motion.div style={{ ...mask, opacity }} className="absolute inset-0 pointer-events-none">
+      <motion.div
+        style={{ y: yPos }}
+        className="absolute inset-x-0 h-[45%]"
+        // 白すぎると生地が飛ぶので、ごく薄い帯を斜めにかける
+      >
+        <div
+          className="w-full h-full"
+          style={{
+            background:
+              'linear-gradient(175deg, transparent 0%, rgba(255,255,255,0.16) 45%, rgba(255,255,255,0.26) 52%, rgba(255,255,255,0.10) 60%, transparent 100%)',
+          }}
+        />
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function findScroller(el: HTMLElement): HTMLElement | null {
   let node: HTMLElement | null = el.parentElement;
   while (node) {
@@ -140,12 +174,15 @@ function findScroller(el: HTMLElement): HTMLElement | null {
     if ((oy === 'auto' || oy === 'scroll') && node.scrollHeight > node.clientHeight) return node;
     node = node.parentElement;
   }
-  return null; // 見つからなければ window スクロール
+  return null;
 }
 
 const clamp01 = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
 
-// 対象セクションの通過率を 0→1 で返す(useScroll の offset:['start start','end end'] 相当)。
+// 対象セクションの通過率 0→1。
+// ⚠️ globals.css の `body { overflow-x: hidden }` により body 側がスクロール枠に
+//    なり得るため、framer-motion の useScroll(既定でwindow監視)では反応しない。
+//    実行時に本当のスクロール枠を突き止める。
 function useSectionProgress(ref: RefObject<HTMLDivElement | null>): MotionValue<number> {
   const progress = useMotionValue(0);
 
@@ -175,20 +212,6 @@ function useSectionProgress(ref: RefObject<HTMLDivElement | null>): MotionValue<
   return progress;
 }
 
-function Glow({ opacity }: { opacity: MotionValue<number> }) {
-  return (
-    <motion.div
-      className="absolute inset-0 -z-10"
-      style={{
-        opacity,
-        background:
-          'radial-gradient(circle at 50% 44%, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.25) 38%, transparent 68%)',
-      }}
-    />
-  );
-}
-
-// 章のコピー。担当区間に入るとふわっと出て、抜けると消える。
 function ChapterCopy({
   chapter,
   index,
@@ -201,41 +224,45 @@ function ChapterCopy({
   const span = 1 / CHAPTERS.length;
   const start = index * span;
   const end = start + span;
-  const fade = span * 0.28;
-
-  // 最初の章は開いた瞬間から見えていること / 最後の章は下まで出しっぱなしにする
+  const fade = span * 0.3;
   const isFirst = index === 0;
   const isLast = index === CHAPTERS.length - 1;
-  // 前の章が消えるのと同じ区間で次の章が現れるように、入りを担当区間より手前から始める。
-  // (入りと出をずらすと、切り替わりの瞬間にどちらも消えて文字が無くなる)
+
   const opacity = useTransform(
     progress,
     [start - fade, start, end - fade, end],
     isFirst ? [1, 1, 1, 0] : isLast ? [0, 1, 1, 1] : [0, 1, 1, 0]
   );
-  const y = useTransform(progress, [start - fade, start], isFirst ? [0, 0] : [14, 0]);
+  // 上に流れながら消える(Appleの縦組みの見せ方)。動きは10px程度に抑える
+  const y = useTransform(
+    progress,
+    [start - fade, start, end - fade, end],
+    isFirst ? [0, 0, 0, -10] : isLast ? [10, 0, 0, 0] : [10, 0, 0, -10]
+  );
 
   return (
     <motion.div
       style={{ opacity, y }}
       className="absolute inset-x-0 text-center pointer-events-none"
     >
-      <p className="text-[10px] tracking-[0.4em] text-white/35 uppercase">{chapter.eyebrow}</p>
-      <h2 className="mt-3 text-[26px] font-light tracking-wide text-white">{chapter.title}</h2>
-      <p className="mt-3 text-[13px] leading-relaxed text-white/50">{chapter.body}</p>
+      <p className="text-[10px] tracking-[0.4em] text-white/30 uppercase">{chapter.eyebrow}</p>
+      <h2 className="mt-3.5 text-[27px] font-light tracking-[0.02em] text-white leading-snug">
+        {chapter.title}
+      </h2>
+      <p className="mt-3.5 text-[13px] leading-relaxed text-white/45">{chapter.body}</p>
     </motion.div>
   );
 }
 
 function ScrollHint({ progress }: { progress: MotionValue<number> }) {
-  const opacity = useTransform(progress, [0, 0.08], [1, 0]);
+  const opacity = useTransform(progress, [0, 0.06], [1, 0]);
   return (
     <motion.div
       style={{ opacity }}
       className="absolute bottom-8 inset-x-0 flex flex-col items-center gap-2 pointer-events-none"
     >
-      <span className="text-[9px] tracking-[0.35em] text-white/30 uppercase">Scroll</span>
-      <span className="block h-8 w-px bg-gradient-to-b from-white/40 to-transparent" />
+      <span className="text-[9px] tracking-[0.35em] text-white/25 uppercase">Scroll</span>
+      <span className="block h-8 w-px bg-gradient-to-b from-white/30 to-transparent" />
     </motion.div>
   );
 }
