@@ -17,6 +17,13 @@ const WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'] as const;
 /** ツイート1本の本文上限の目安 (全角換算で140字だが余裕を持たせる) */
 const PART_CHAR_BUDGET = 130;
 
+/**
+ * ツイート1本の絶対上限。これを超えるpartは投稿時に弾かれるので必ず下回ること。
+ * (CTA結合の判定に `PART_CHAR_BUDGET + 20` を使っていたため150字のpartが生まれうる
+ *  潜在バグがあった・2026-08-21修正)
+ */
+const PART_HARD_LIMIT = 140;
+
 /** ISO日時をJSTの {month, day, weekday} に変換 */
 function jstParts(iso: string): { month: number; day: number; weekday: number; ymd: string } {
   const d = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000);
@@ -58,15 +65,20 @@ export function shortVenue(location: string | null | undefined): string {
 
 export type WeeklyDayLine = { ymd: string; line: string };
 
-/** 1行(1日分チャンク)の文字数上限。ツイート予算(130)より小さくして行単位の詰め込みを保証する */
-const LINE_CHAR_BUDGET = 110;
+/**
+ * 1行(1日分チャンク)の文字数上限。ツイート予算(130)より小さくして行単位の詰め込みを保証する。
+ * ヘッダー(約26字)と同じpartに載っても140字を超えないよう100に設定 (講師名表示で行が伸びたため
+ * 110では超過するケースが出た・2026-08-21)。
+ */
+const LINE_CHAR_BUDGET = 100;
 
 /**
  * カレンダーイベント → 曜日ごとの行に整形。
  * - 【休講】イベントは除外
  * - 同名クラスの重複(同日)は1つに
  * - クラス数が多く1行がLINE_CHAR_BUDGETを超える日は複数行に分割 (2行目以降のラベルは `▫7/26(日)…`)
- * 例: `▫7/20(月) キッズHIPHOP(長町コナスポ)・HOUSE(GOAT)`
+ * - 会場は載せない/講師名は載せる (日次投稿と同じ扱い・TARO指示2026-08-21)
+ * 例: `▫7/20(月) 【Ryuki】キッズHIPHOP・【K@TTSU】HOUSE`
  */
 export function buildDayLines(events: WeeklyCalEvent[]): WeeklyDayLine[] {
   const byDay = new Map<string, { label: string; items: string[] }>();
@@ -74,10 +86,8 @@ export function buildDayLines(events: WeeklyCalEvent[]): WeeklyDayLine[] {
   for (const ev of sorted) {
     if (ev.summary.includes('【休講】')) continue;
     const { month, day, weekday, ymd } = jstParts(ev.startIso);
-    const name = classNameFromSummary(ev.summary);
-    if (!name) continue;
-    const venue = shortVenue(ev.location);
-    const item = venue ? `${name}(${venue})` : name;
+    const item = classLabelWithInstructor(ev.summary);
+    if (!item) continue;
     let entry = byDay.get(ymd);
     if (!entry) {
       entry = { label: `▫${month}/${day}(${WEEKDAY_JA[weekday]})`, items: [] };
@@ -129,9 +139,10 @@ export function buildWeeklyPostParts(
       parts.push(current);
       current = line;
     } else if (candidate.length > PART_CHAR_BUDGET) {
-      // ヘッダー直後の1行で予算超過 — 行が長すぎてもそのまま積む(次から分割)
-      parts.push(candidate);
-      current = '';
+      // ヘッダー直後の1行で予算超過 — 連結せずヘッダーだけを独立partにして行は次partへ
+      // (連結すると140字を超えたpartができてしまう)
+      parts.push(current);
+      current = line;
       continue;
     } else {
       current = candidate;
@@ -142,7 +153,7 @@ export function buildWeeklyPostParts(
 
   // CTAは最後のpartに収まるなら結合、無理なら独立part
   const last = parts[parts.length - 1];
-  if (last && `${last}\n\n${cta}`.length <= PART_CHAR_BUDGET + 20) {
+  if (last && `${last}\n\n${cta}`.length <= PART_HARD_LIMIT) {
     parts[parts.length - 1] = `${last}\n\n${cta}`;
   } else {
     parts.push(cta);
@@ -222,7 +233,7 @@ export function buildDailyPostParts(
   if (current) parts.push(current);
 
   const last = parts[parts.length - 1];
-  if (last && `${last}\n\n${cta}`.length <= PART_CHAR_BUDGET + 20) {
+  if (last && `${last}\n\n${cta}`.length <= PART_HARD_LIMIT) {
     parts[parts.length - 1] = `${last}\n\n${cta}`;
   } else {
     parts.push(cta);

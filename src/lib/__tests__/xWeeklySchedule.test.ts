@@ -42,7 +42,16 @@ describe('buildDayLines', () => {
       ev('【TARO】キッズHIPHOP', '2026-07-20T08:00:00Z', '長町コナスポスタジオ'),
     ]);
     expect(lines).toHaveLength(1); // 7/21は休講のみ→行が立たない
-    expect(lines[0].line).toBe('▫7/20(月) キッズHIPHOP(長町コナスポ)・HOUSE(GOAT)');
+    // 会場は載せない/講師名は載せる (日次と同じ扱い・TARO指示2026-08-21)
+    expect(lines[0].line).toBe('▫7/20(月) 【TARO】キッズHIPHOP・【K@TTSU】HOUSE');
+  });
+
+  it('クラス名が講師名で始まる場合は講師名を重複させない', () => {
+    const lines = buildDayLines([
+      ev('【SAYUKI】SAYUKI FREESTYLE', '2026-07-20T05:00:00Z', 'AZUMA スタジオ'),
+    ]);
+    expect(lines[0].line).toContain('【SAYUKI】FREESTYLE');
+    expect(lines[0].line).not.toContain('【SAYUKI】SAYUKI');
   });
 
   it('JSTの日付境界で振り分ける (UTC 15時 = JST 翌日0時)', () => {
