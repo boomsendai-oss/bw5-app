@@ -67,6 +67,17 @@ export function buildBf6OrderEmail(order: OwnBf6Order, editToken: string): { sub
   lines.push('');
   lines.push('日時: 2026年9月26日(土) OPEN 14:30(予定)');
   lines.push('会場: SSM(仙台スクールオブミュージック&ダンス専門学校) 9階ホール');
+  if (isEntry) {
+    // 出場者は開場より1時間早い集合。受付でくじ引き(組み合わせ抽選)を行うため、
+    // 遅れると抽選に入れず不利になる。観覧のみの方には出さない。
+    lines.push('');
+    lines.push('▼ 出場者の集合時刻');
+    lines.push('  13:30 集合(9階ホール前で受付)');
+    lines.push('  14:00 受付締切');
+    lines.push('  受付で組み合わせ抽選(くじ引き)を行いますので、');
+    lines.push('  時間内にお越しください。');
+    lines.push('  ※ 観覧の方の開場は 14:30 です');
+  }
   lines.push('');
   lines.push('内容の変更・キャンセルはBOOM公式LINEまでご連絡ください。');
   lines.push('');

@@ -65,6 +65,14 @@ export default async function Bf6TopPage() {
             <Bf6DetailBlock en="TIME" ja="時間">
               <p className="font-bold text-neutral-200">OPEN 14:30(予定)</p>
               <p className="font-bold text-neutral-200">CLOSE 18:00頃</p>
+              <div className="mt-3 rounded-lg bg-red-950/40 p-3 ring-1 ring-red-900">
+                <p className="text-[11px] font-black tracking-widest text-red-400">出場者の集合時刻</p>
+                <p className="mt-1 text-lg font-black text-white">13:30 集合 / 14:00 受付締切</p>
+                <p className="mt-1 text-xs leading-relaxed text-neutral-300">
+                  9階ホール前で受付を行います。受付で<strong className="text-white">組み合わせ抽選(くじ引き)</strong>を行いますので、
+                  時間内にお越しください。
+                </p>
+              </div>
               <p className="mt-2 text-xs text-neutral-400">※ タイムテーブルは追って発表いたします</p>
             </Bf6DetailBlock>
             <div className="md:row-span-3">
