@@ -50,3 +50,4 @@ backup/
 
 # fixed_qr discover.mjs output (PII含むスクショ/HTML。ローカル調査専用)
 scripts/fixed_qr/discover_out/
+.env.vercel-prod-snapshot

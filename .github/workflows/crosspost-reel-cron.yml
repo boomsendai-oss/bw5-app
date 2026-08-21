@@ -52,5 +52,15 @@ jobs:
           #   成功        : {"ok":true,"posted":true,...}
           #   対象なし    : {"ok":true,"posted":false,"note":"配信対象なし"} など
           #   失敗(要対応): {"ok":false,...}
+          # ⚠️ もう一つの穴: 同じ配信先が3回失敗すると route 側の pickNext が
+          # その行を候補から外し、「配信対象なし」= ok:true に戻ってしまう
+          # (未配信の行が残っているのに永久に緑)。route は打ち止め件数を stalled で返し、
+          # 1件以上なら ok:false にするので下の ok チェックでも赤くなるが、
+          # 「今回の配信が失敗した」のか「打ち止めの行が残っている」のかを分けて出す。
+          STALLED=$(echo "$BODY" | jq -r '.stalled // 0' 2>/dev/null || echo 0)
+          if [ "$STALLED" != "0" ]; then
+            echo "::error::自動再試行を諦めた配信先が ${STALLED}件あります(未配信のまま放置されます)。原因を直して該当行を pending/attempts=0 に戻してください: $BODY"
+            exit 1
+          fi
           echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
             || { echo "::error::二次配信に失敗しました (ok != true): $BODY"; exit 1; }

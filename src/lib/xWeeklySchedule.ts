@@ -33,6 +33,22 @@ export function classNameFromSummary(summary: string): string {
   return summary.replace(/^【[^】]*】/, '').trim();
 }
 
+/**
+ * `【講師】クラス名` を投稿用の `【講師】クラス名` に整形する (2026-08-21・TARO指示のC案)。
+ * クラス名だけだと「HIPHOP 中級」のように誰のクラスか分からないため講師名を残す。
+ * クラス名が講師名で始まる場合(例: `【SAYUKI】SAYUKI FREESTYLE`)は重複を除去する。
+ */
+export function classLabelWithInstructor(summary: string): string {
+  const m = summary.match(/^【([^】]*)】\s*(.*)$/);
+  const instructor = m ? m[1].trim() : '';
+  let name = (m ? m[2] : summary).trim();
+  if (instructor && name.toLowerCase().startsWith(instructor.toLowerCase())) {
+    name = name.slice(instructor.length).trim() || name;
+  }
+  if (!name) return '';
+  return instructor ? `【${instructor}】${name}` : name;
+}
+
 /** スタジオ名を投稿向けに短縮 (最初の空白まで。7文字を超える場合は6文字に丸める) */
 export function shortVenue(location: string | null | undefined): string {
   if (!location) return '';
@@ -179,11 +195,12 @@ export function buildDailyPostParts(
 
   const lines: string[] = [];
   for (const ev of sorted) {
-    const name = classNameFromSummary(ev.summary);
-    if (!name) continue;
+    const label = classLabelWithInstructor(ev.summary);
+    if (!label) continue;
     // 会場は載せない(TARO指示2026-08-20): カレンダーの場所欄は住所等で「(K)」のような
     // 意味不明な断片になる+水金は会場週替わりのため誤誘導リスク。会場はLINE/カレンダー参照に倒す
-    const line = `▫${jstHhmm(ev.startIso)} ${name}`;
+    // 講師名は載せる(TARO指示2026-08-21・C案): クラス名だけでは誰のクラスか伝わらない
+    const line = `▫${jstHhmm(ev.startIso)} ${label}`;
     if (!lines.includes(line)) lines.push(line);
   }
   if (lines.length === 0) return null;
