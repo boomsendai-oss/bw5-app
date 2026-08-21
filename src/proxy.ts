@@ -19,6 +19,14 @@ export function proxy(req: NextRequest) {
       url.pathname = '/bf6';
       return NextResponse.redirect(url);
     }
+    // 物販ドメイン(shop.boom-sendai.com)のトップは商品ページを出す。
+    // ここは redirect ではなく rewrite にして、共有されるURLを
+    // 「shop.boom-sendai.com」だけの短い形に保つ。
+    if (host.startsWith('shop.')) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/merch/tshirt';
+      return NextResponse.rewrite(url);
+    }
     return NextResponse.next();
   }
 
