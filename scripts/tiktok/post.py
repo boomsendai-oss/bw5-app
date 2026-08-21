@@ -214,32 +214,48 @@ def run(job_path: Path, dry_run: bool) -> int:
                 print(f"✗ 「カバーを編集」が見つかりません（画面: {shot}）")
                 return 4
             page.wait_for_timeout(2500)
-            # モーダル内の画像用 file input
-            cover_input = page.locator('input[type="file"][accept*="image"]').last
-            cover_input.set_input_files(str(cover))
-
-            # ⚠️ ここで固定秒だけ待って保存すると、画像の反映が間に合わず
-            #    **真っ黒なカバーで確定してしまう**(2026-08-14の自動投稿で実際に発生。
-            #    カバーは後から変更できないため取り返しがつかない)。
-            #    「カバーをアップロード」の文字が消える=独自カバーが入った合図なので、
-            #    それを確認できるまで待つ。
-            for _ in range(30):
-                page.wait_for_timeout(1000)
-                if not page.evaluate(
+            # カバー画像を入れる。
+            # ⚠️ `input[type=file]` を直接掴んではいけない。TikTokは「カバーをアップロード」を
+            #    押した瞬間にファイル選択を作る方式で、モーダルを開いただけでは input が無い
+            #    (2026-08-21にUI変更を確認)。旧コードは存在しない input に set_input_files して
+            #    **黙って何もせず**、そのまま保存され真っ黒のカバーで確定していた(8/14の事故)。
+            # ⚠️ 1回では入らないことがあるので、入るまでやり直す。入らなければ投稿しない。
+            #    「カバーをアップロード」の文字が消える = 独自カバーが入った合図。
+            def cover_applied() -> bool:
+                return not page.evaluate(
                     """(words) => {
                         const d = [...document.querySelectorAll('[role="dialog"], .TUXModal, [class*="modal"]')]
                             .find(x => /カバーを編集|Edit cover/.test(x.innerText));
                         return d ? words.some(w => d.innerText.includes(w)) : true;
                     }""",
                     T["upload_cover"],
-                ):
+                )
+
+            applied = False
+            for attempt in range(3):
+                try:
+                    with page.expect_file_chooser(timeout=15_000) as fc:
+                        page.get_by_text(T["upload_cover"][0]).first.click()
+                    fc.value.set_files(str(cover))
+                except Exception as e:
+                    print(f"  カバー選択に失敗(試行{attempt + 1}): {str(e)[:80]}")
+                    page.wait_for_timeout(2000)
+                    continue
+                for _ in range(15):
+                    page.wait_for_timeout(1000)
+                    if cover_applied():
+                        applied = True
+                        break
+                if applied:
                     break
-            else:
+                print(f"  カバーが反映されないのでやり直します(試行{attempt + 1})")
+            if not applied:
                 shot = job_path.parent / "error_cover_apply.png"
                 page.screenshot(path=str(shot), full_page=True)
                 print(f"✗ カバー画像が反映されませんでした（画面: {shot}）")
                 return 5
             page.wait_for_timeout(1500)
+
             # カバー編集の「保存」は、フレーム選択のcanvasが上に重なっていて
             # 普通の click() だと "subtree intercepts pointer events" で弾かれる。
             # 手作業と同じくイベントを直接発火させる。
