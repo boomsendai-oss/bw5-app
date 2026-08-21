@@ -217,7 +217,29 @@ def run(job_path: Path, dry_run: bool) -> int:
             # モーダル内の画像用 file input
             cover_input = page.locator('input[type="file"][accept*="image"]').last
             cover_input.set_input_files(str(cover))
-            page.wait_for_timeout(3500)
+
+            # ⚠️ ここで固定秒だけ待って保存すると、画像の反映が間に合わず
+            #    **真っ黒なカバーで確定してしまう**(2026-08-14の自動投稿で実際に発生。
+            #    カバーは後から変更できないため取り返しがつかない)。
+            #    「カバーをアップロード」の文字が消える=独自カバーが入った合図なので、
+            #    それを確認できるまで待つ。
+            for _ in range(30):
+                page.wait_for_timeout(1000)
+                if not page.evaluate(
+                    """(words) => {
+                        const d = [...document.querySelectorAll('[role="dialog"], .TUXModal, [class*="modal"]')]
+                            .find(x => /カバーを編集|Edit cover/.test(x.innerText));
+                        return d ? words.some(w => d.innerText.includes(w)) : true;
+                    }""",
+                    T["upload_cover"],
+                ):
+                    break
+            else:
+                shot = job_path.parent / "error_cover_apply.png"
+                page.screenshot(path=str(shot), full_page=True)
+                print(f"✗ カバー画像が反映されませんでした（画面: {shot}）")
+                return 5
+            page.wait_for_timeout(1500)
             # カバー編集の「保存」は、フレーム選択のcanvasが上に重なっていて
             # 普通の click() だと "subtree intercepts pointer events" で弾かれる。
             # 手作業と同じくイベントを直接発火させる。

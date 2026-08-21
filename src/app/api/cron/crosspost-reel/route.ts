@@ -79,10 +79,46 @@ export async function POST(req: NextRequest) {
 
   // skipped も読む。envが後から入った時に pending へ戻すため(classifyByEnabled)
   // error も読む。打ち止め(findStalled)の理由をレスポンス/通知に載せるため
-  const rows = (await getAll(
+  const allRows = (await getAll(
     `SELECT id, reel_id, platform, status, attempts, error FROM reel_crossposts
      WHERE status IN ('pending', 'failed', 'skipped')`
   )) as CrosspostRow[];
+
+  // TikTokだけは持ち主が違う。APIが審査却下(個人/社内利用はサポート外)になったため、
+  // 2026-08-12から**Mac常駐(reel_pipeline.mjs)がブラウザで投稿**している。
+  // ここでenv未設定として 'skipped' に上書きすると、常駐が書いた失敗理由が消え、
+  // かつ 'skipped' は常駐の拾い対象なので延々と往復してしまう。**触らない**。
+  const rows = allRows.filter((r) => r.platform !== 'tiktok');
+
+  // 常駐が投稿に失敗した行は、このcron以外に誰も見ていない = 黙って埋もれる。
+  // 気づけるように、諦めた行を1回だけTAROへ通知する(通知済みは error に印を付けて再送しない)。
+  const NOTIFIED = '[通知済]';
+  const tiktokFailed = allRows.filter(
+    (r) => r.platform === 'tiktok' && r.status === 'failed' && !String(r.error ?? '').startsWith(NOTIFIED)
+  );
+  for (const r of tiktokFailed) {
+    try {
+      await notifyTaro({
+        subjectPrefix: '[BOOM SNS]',
+        subject: `TikTokへの投稿に失敗しました (reel #${r.reel_id})`,
+        body: [
+          `リール: reel_queue #${r.reel_id} (reel_crossposts #${r.id})`,
+          `試行回数: ${r.attempts}`,
+          '',
+          `エラー: ${r.error ?? '(理由の記録なし)'}`,
+          '',
+          'TikTokはMac常駐がブラウザで投稿しています。ログイン切れかキャプチャの可能性があります。',
+          '手動で出す場合: TikTok Studio のアップロード画面で動画とカバーを選ぶ(2クリック)。',
+        ].join('\n'),
+      });
+      await execute(`UPDATE reel_crossposts SET error=? WHERE id=?`, [
+        `${NOTIFIED} ${String(r.error ?? '').slice(0, 480)}`,
+        r.id,
+      ]);
+    } catch (e) {
+      console.warn(`TikTok失敗の通知に失敗: ${e instanceof Error ? e.message : e}`);
+    }
+  }
 
   const enabled = new Set<string>();
   if (ytConfigured()) enabled.add('youtube');
