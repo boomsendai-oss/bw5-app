@@ -116,7 +116,7 @@ export const POST = withAuth(async (req: NextRequest) => {
         skipped.push(d);
         continue;
       }
-      await upsertDaySlot(d, time, mediaPath, mediaType, note);
+      await upsertDaySlot(d, time, mediaPath, mediaType, note, body.mentions ? String(body.mentions) : null);
       created++;
     }
     return NextResponse.json({ ok: true, created, skipped });
@@ -171,7 +171,7 @@ export const POST = withAuth(async (req: NextRequest) => {
       return NextResponse.json({ error: '1日に置ける枠は3つまでです' }, { status: 400 });
     }
     await upsertDaySlot(date, time, mediaPath, body.mediaType === 'video' ? 'video' : 'image',
-      body.note ? String(body.note) : null);
+      body.note ? String(body.note) : null, body.mentions ? String(body.mentions) : null);
     return NextResponse.json({ ok: true, slots: await listDaySlots(date) });
   }
 

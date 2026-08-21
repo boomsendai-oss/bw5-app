@@ -175,8 +175,18 @@ export async function POST(req: NextRequest) {
 
       // library-auto は台帳(manifest)由来の宣言/メンションをmediaが直接持つ(sidecar {base}.json は無い)
       // pin(その日の指定)はTAROが目で選んだ1本。sidecarもカレンダー照合も無し。
+      // 枠(slot)はレッスン告知ではないのでカレンダー照合しないが、メンションは持てる
+      // (ゲスト講師のワークショップ等で本人をタグ付けする・TARO 2026-08-21)。
+      const slotHit = media.base.startsWith('slot:')
+        ? slots.find((sl) => `slot:${date}:${sl.slotTime}` === media.base)
+        : null;
       const sidecar = media.base.startsWith('pin:') || media.base.startsWith('slot:')
-        ? { lessons: undefined, mentions: undefined }
+        ? {
+            lessons: undefined,
+            mentions: slotHit?.mentions
+              ? String(slotHit.mentions).split(/[\s,、，]+/).map((h) => h.replace(/^@+/, '')).filter(Boolean)
+              : undefined,
+          }
         : media.source === 'library-auto'
           ? { lessons: media.lessons, mentions: media.mentions }
           : await loadSidecar(origin, media.base);

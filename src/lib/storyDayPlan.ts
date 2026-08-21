@@ -88,6 +88,8 @@ export type DaySlot = {
   mediaPath: string;
   mediaType: 'image' | 'video';
   note: string | null;
+  /** ストーリーにタグ付けするIGユーザー名(スペース区切り)。ゲスト講師の告知等で使う */
+  mentions: string | null;
 };
 
 function toSlot(r: Record<string, unknown>): DaySlot {
@@ -98,13 +100,14 @@ function toSlot(r: Record<string, unknown>): DaySlot {
     mediaPath: String(r.media_path),
     mediaType: r.media_type === 'video' ? 'video' : 'image',
     note: r.note ? String(r.note) : null,
+    mentions: r.mentions ? String(r.mentions) : null,
   };
 }
 
 export async function listDaySlots(date: string): Promise<DaySlot[]> {
   try {
     const rows = await getAll(
-      'SELECT id, date, slot_time, media_path, media_type, note FROM story_day_slot WHERE date = ? ORDER BY slot_time',
+      'SELECT id, date, slot_time, media_path, media_type, note, mentions FROM story_day_slot WHERE date = ? ORDER BY slot_time',
       [date]
     );
     return rows.map(toSlot);
@@ -120,16 +123,17 @@ export async function listDaySlotsFor(dates: string[]): Promise<Record<string, D
 }
 
 export async function upsertDaySlot(
-  date: string, slotTime: string, mediaPath: string, mediaType: 'image' | 'video', note: string | null
+  date: string, slotTime: string, mediaPath: string, mediaType: 'image' | 'video', note: string | null,
+  mentions: string | null = null
 ): Promise<void> {
   const now = nowUtcIso();
   await execute(
-    `INSERT INTO story_day_slot (date, slot_time, media_path, media_type, note, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO story_day_slot (date, slot_time, media_path, media_type, note, mentions, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(date, slot_time) DO UPDATE SET
        media_path = excluded.media_path, media_type = excluded.media_type,
-       note = excluded.note, updated_at = excluded.updated_at`,
-    [date, slotTime, mediaPath, mediaType, note, now, now]
+       note = excluded.note, mentions = excluded.mentions, updated_at = excluded.updated_at`,
+    [date, slotTime, mediaPath, mediaType, note, mentions, now, now]
   );
 }
 
@@ -161,7 +165,7 @@ export function expandRecurringDates(weekdays: number[], fromDate: string, until
 export async function listUpcomingSlots(fromDate: string): Promise<DaySlot[]> {
   try {
     const rows = await getAll(
-      'SELECT id, date, slot_time, media_path, media_type, note FROM story_day_slot WHERE date >= ? ORDER BY date, slot_time',
+      'SELECT id, date, slot_time, media_path, media_type, note, mentions FROM story_day_slot WHERE date >= ? ORDER BY date, slot_time',
       [fromDate]
     );
     return rows.map(toSlot);
