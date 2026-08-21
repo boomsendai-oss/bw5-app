@@ -74,7 +74,6 @@ export default async function StaffBf6Page() {
           <NavCard href="/staff/bf6/entries" title="エントリー一覧" note="本名・連絡先・状態変更" />
           <NavCard href="/staff/bf6/tickets" title="観覧一覧" note="観覧のみ購入含む" />
           <NavCard href="/staff/bf6/payments" title="Stripe突合" note="Webhook記録と金額照合" />
-          <NavCard href="/staff/bf6/broadcast" title="一斉メール" note="エントリー者へのお知らせ" />
           <NavCard href="/staff/bf6/settings" title="設定" note="定員・料金・受付ON/OFF" />
         </section>
       </div>

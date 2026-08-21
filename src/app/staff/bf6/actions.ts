@@ -76,10 +76,3 @@ export async function staffSaveSettings(form: Bf6SettingsForm): Promise<void> {
   revalidatePath('/staff/bf6');
   revalidatePath('/bf6');
 }
-
-export async function staffSendBf6Broadcast(key: string): Promise<{ sent: number; failed: number; alreadySent?: boolean }> {
-  const { sendBf6Broadcast } = await import('@/lib/bf6Broadcast');
-  const r = await sendBf6Broadcast(key);
-  revalidatePath('/staff/bf6/broadcast');
-  return r;
-}
