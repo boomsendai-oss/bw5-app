@@ -277,16 +277,28 @@ export const TIKTOK_TITLE_MAX = 2200;
 /**
  * TikTok用のキャプション。
  *
- * TikTokは**プロフィールにリンクを置ける**(Instagramと同じ)ので、
- * 「プロフィールのリンクから」という言い回しはそのまま通じる。言い換えない。
+ * ⚠️ **BOOMのTikTokプロフィールにはリンクを置けない**(2026-08-21 確認)。
+ *    TikTokのプロフィールURL欄は「フォロワー1,000人以上」か「ビジネスアカウント」が条件で、
+ *    BOOMは20人。しかも現行アプリ(v46.4.0)にはアカウント種別の切替が無く、
+ *    代替の企業認証は**法人番号が必要=個人事業主のBOOMでは申請できない**。
+ *    そのためInstagram前提の「プロフィールのリンクから」は**嘘になる**ので言い換える。
+ *    行き先は自己紹介欄に文字で載せている公式LINEのURL。
+ *
  * 本文中のURLはタップできないため、導線を足しても意味がないので足さない。
  */
 export function buildTikTokTitle(caption: string): string {
   const { body, tags } = splitCaption(caption);
+  // 「プロフィールのリンク」「プロフィールの公式LINE」→「プロフィールに載せている公式LINE」
+  // (リンクは存在せず、自己紹介欄にURLを文字で書いてある状態のため)
+  const localized = body
+    .replace(/プロフィールのリンク（公式LINE）/g, 'プロフィールに載せている公式LINE')
+    .replace(/プロフィールのリンク\(公式LINE\)/g, 'プロフィールに載せている公式LINE')
+    .replace(/プロフィールのリンク/g, 'プロフィールに載せている公式LINE')
+    .replace(/プロフィールの公式LINE/g, 'プロフィールに載せている公式LINE');
   const tagLine = tags.join(' ');
   const fixed = tagLine ? `\n\n${tagLine}` : '';
   const budget = TIKTOK_TITLE_MAX - [...fixed].length;
-  return `${truncate(body.trim(), Math.max(0, budget))}${fixed}`.trim();
+  return `${truncate(localized.trim(), Math.max(0, budget))}${fixed}`.trim();
 }
 
 /**

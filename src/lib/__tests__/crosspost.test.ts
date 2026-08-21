@@ -517,10 +517,23 @@ describe('buildThreadsText', () => {
 });
 
 describe('buildTikTokTitle', () => {
-  // TikTokはプロフィールにリンクを置けるので「プロフィールから」はそのまま通じる
-  it('「プロフィール」を言い換えない', () => {
+  // BOOMのTikTokにはリンクを置けない(フォロワー1,000人未満・個人事業主で企業認証も不可)。
+  // 「プロフィールのリンクから」は嘘になるので、実態(自己紹介欄のLINE URL)に言い換える
+  it('存在しない「プロフィールのリンク」を実態に言い換える', () => {
     const out = buildTikTokTitle('ご予約はプロフィールのリンクから。\n\n#仙台ダンス');
-    expect(out).toContain('プロフィールのリンクから');
+    expect(out).toContain('プロフィールに載せている公式LINEから');
+    expect(out).not.toContain('プロフィールのリンク');
+  });
+
+  it('「プロフィールの公式LINE」も同じ言い回しに揃える', () => {
+    const out = buildTikTokTitle('体験・受講の相談はプロフィールの公式LINEから\n\n#仙台ダンス');
+    expect(out).toContain('プロフィールに載せている公式LINEから');
+  });
+
+  it('「プロフィールのリンク（公式LINE）」も重複した言い回しにならない', () => {
+    const out = buildTikTokTitle('ご予約はプロフィールのリンク（公式LINE）から。\n\n#仙台ダンス');
+    expect(out).toContain('プロフィールに載せている公式LINEから');
+    expect(out).not.toContain('公式LINE（公式LINE）');
   });
 
   it('タグは全部残す(Xと違って本文が短いので削る必要がない)', () => {
