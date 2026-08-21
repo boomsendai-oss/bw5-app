@@ -60,8 +60,14 @@ async function run(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, skipped: 'no-lessons', day: ymd, events: events.length });
   }
 
-  // 予約 = 当日 12:30 JST。層0なので approved 直接投入
-  const scheduledAt = new Date(`${ymd}T12:30:00+09:00`).toISOString();
+  // 予約 = 当日 12:30 JST。層0なので approved 直接投入。
+  // ⚠️ GH Actionsのcronは実測で12:40前後まで遅れて発火する(2026-08-21調査)。
+  // 12:30固定だと「生まれた時点で予約時刻を過ぎている」状態になり、投稿cronの2時間猶予を
+  // 最初から食いつぶす(8/12-14の3日分が期限切れ自動見送りで未投稿になった原因)。
+  // そのため過去にならないよう max(12:30, いま+2分) にする。
+  const preferred = new Date(`${ymd}T12:30:00+09:00`).getTime();
+  const floor = Date.now() + 2 * 60 * 1000;
+  const scheduledAt = new Date(Math.max(preferred, floor)).toISOString();
   const rx = await execute(
     "INSERT INTO x_posts (account, parts, scheduled_at, status) VALUES ('boom', ?, ?, 'approved')",
     [JSON.stringify(parts), scheduledAt]
