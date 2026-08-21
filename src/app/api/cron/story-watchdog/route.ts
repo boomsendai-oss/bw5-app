@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAll, getOne } from '@/lib/db';
+import { getAll, getOne, execute } from '@/lib/db';
 import { todayJst, weekdayJst } from '@/lib/dateJst';
 import { configured, connectionStatus, refreshTokenIfStale } from '@/lib/instagram';
 import { findChainMediaList, loadSidecar, checkSchedule } from '@/lib/storyPlan';
 import { notifyTaro } from '@/lib/notify';
 import { evaluateSyncFreshness } from '@/lib/syncWatchdog';
+import { findUpcomingReturns, isNotifyWindow, buildReturnNotice } from '@/lib/kyukaiWatch';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,6 +25,8 @@ function slotKey(u: string): string {
 //        (GH cron不発の自動復旧)。二重投稿は post-story 側の claim ロックで構造的に防止。
 //   (3) 通知: 自己修復後もなお残る異常(mismatch/エラー/タグ劣化/トークン)だけを1通。
 //        GH不発を自動復旧した場合は低刺激の情報通知(GHの不調をTAROが把握できるように)。
+//   (2d) 休会の自動復会予告: 翌月に休会が満了して自動復会する会員を月1回TAROへ知らせる
+//        (会員規約v1 第9条6項の運用実体。専用cronを足すとVercel無料枠の本数上限に当たるため相乗り)。
 //   (4) ハートビート: HEALTHCHECKS_URL 設定時、通知が必要なのに送れた時だけ success ping。
 // 全て正常なら無音。素材が無い日(火曜など)も無音。壁時計JST9時前は投稿判定しない。
 // 認証: sync-lesson-calendar と同じ CRON_SECRET(Vercelが Authorization: Bearer で送る)。
@@ -179,12 +182,57 @@ export async function GET(req: NextRequest) {
     // 非致命
   }
 
-  if (!configured()) {
-    if (anomalies.length > 0) await safeNotify('設定未完了', anomalies);
-    return NextResponse.json({ ok: true, configured: false, anomalies });
+  // 休会の予告は Instagram の設定状態と無関係に動かす必要があるため、
+  // configured() の早期returnより前で日付を確定し、先に処理しておく。
+  // (IG連携が切れている間に自動復会の予告が止まると、気づかない課金が再発する)
+  const date = todayJst();
+
+  // (2d) 休会の自動復会予告(会員規約v1 第9条6項)。
+  // 休会は最長6ヶ月で、満了すると本人の手続き無しに元プランへ戻り月会費の引き落としが再開する。
+  // 予告が無かったために復会に気づかず3ヶ月分を払い続けた会員が実在した(2026-08-21発覚)ため、
+  // 月初に1回だけ「翌月に復会する人」をTAROへ知らせる。
+  // 在籍データは同期の遅れで古くなることがあるので、最新CSV由来の hacomono_all_members を見る
+  // (boom_members 側は自動復会後もしばらく '休会' のまま残ることを実データで確認済み)。
+  // ストーリー監視を巻き込まないよう、失敗しても握りつぶす。
+  let kyukaiNotified = 0;
+  try {
+    if (isNotifyWindow(date)) {
+      const rows = await getAll(
+        "SELECT kaiin_no, full_name, plan_started_at FROM hacomono_all_members WHERE plan_code = 'P00091'"
+      );
+      const upcoming = findUpcomingReturns(rows, date);
+      const notice = buildReturnNotice(upcoming);
+      if (notice) {
+        // 月1回に抑止。story-watchdogは毎日走るので、これが無いと毎朝同じ通知が飛ぶ。
+        const inserted = await execute(
+          `INSERT INTO staff_notifications (type, title, detail, severity)
+           SELECT 'kyukai_return_soon', ?, ?, 'warn'
+           WHERE NOT EXISTS (
+             SELECT 1 FROM staff_notifications
+             WHERE type='kyukai_return_soon' AND created_at > datetime('now','-20 days')
+           )`,
+          [`💤 ${notice.subject}`, notice.body]
+        );
+        if (inserted.rowsAffected > 0) {
+          kyukaiNotified = upcoming.length;
+          try {
+            await notifyTaro({ subjectPrefix: '[BOOM 休会]', subject: notice.subject, body: notice.body });
+          } catch (e) {
+            // 通知チャネルが落ちてもアプリ内通知は残るので、監視本体は続行する
+            console.error(`休会予告の通知に失敗: ${e instanceof Error ? e.message : e}`);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(`休会の自動復会予告に失敗(ストーリー側は継続): ${e instanceof Error ? e.message : e}`);
   }
 
-  const date = todayJst();
+  if (!configured()) {
+    if (anomalies.length > 0) await safeNotify('設定未完了', anomalies);
+    return NextResponse.json({ ok: true, configured: false, anomalies, kyukaiNotified });
+  }
+
   const weekday = weekdayJst(date);
   const origin = SITE_ORIGIN; // post-storyと必ず同じoriginにする(素材URL一致→誤検知・二重投稿を防ぐ)
   const jstHour = new Date(Date.now() + 9 * 3600 * 1000).getUTCHours();
@@ -304,6 +352,7 @@ export async function GET(req: NextRequest) {
     posted: postedCount,
     selfHealAttempted,
     reelRecovered,
+    kyukaiNotified,
     anomalies,
     notes,
     notified: needNotify ? notifySucceeded : undefined,
