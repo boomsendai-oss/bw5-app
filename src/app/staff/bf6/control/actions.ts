@@ -35,3 +35,9 @@ export async function controlSeedBracket(division: Bf6DrawDivision): Promise<{ c
   revalidatePath('/staff/bf6/control');
   return r;
 }
+
+export async function controlResetBracket(division: Bf6DrawDivision): Promise<void> {
+  const { resetBf6Bracket } = await import('@/lib/bf6ScreenDb');
+  await resetBf6Bracket(division);
+  revalidatePath('/staff/bf6/control');
+}

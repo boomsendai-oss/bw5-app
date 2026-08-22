@@ -140,3 +140,9 @@ export async function listBf6SlotNames(division: Bf6DrawDivision): Promise<Map<n
   }
   return map;
 }
+
+/** トーナメントをリセット(試合結果と組み合わせを消す)。抽選(bf_draw)は消さない。 */
+export async function resetBf6Bracket(division: Bf6DrawDivision): Promise<void> {
+  await execute('DELETE FROM bf_match WHERE division = ?', [division]);
+  await setBf6ScreenState({ mode: 'logo', round: null, matchNo: null });
+}

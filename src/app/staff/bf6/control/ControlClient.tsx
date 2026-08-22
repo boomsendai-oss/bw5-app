@@ -4,7 +4,7 @@
 // LED側には出力用の映像だけが行く(別機器で /bf6/screen を開いているため)。
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { controlSeedBracket, controlSetMode, controlSetWinner, controlShowVs } from './actions';
+import { controlResetBracket, controlSeedBracket, controlSetMode, controlSetWinner, controlShowVs } from './actions';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 import type { Match, Round } from '@/lib/bf6Bracket';
 import type { ScreenMode, ScreenState, SlotName } from '@/lib/bf6ScreenDb';
@@ -52,6 +52,14 @@ export function ControlClient({
           <iframe src="/bf6/screen" title="LEDプレビュー" className="h-full w-full" />
         </div>
       </div>
+
+      {s.mode === 'vs' && matches.length === 0 && (
+        <p className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800 ring-1 ring-amber-300">
+          VSモードですが、この部門のトーナメントがまだありません。
+          映す試合が無いときLEDにはロゴが出ます(観客に崩れた画面を見せないため)。
+          下の「くじ引きの結果からトーナメントを作る」を押してください。
+        </p>
+      )}
 
       {/* モード切替(常時自由) */}
       <div>
@@ -149,6 +157,23 @@ export function ControlClient({
           </div>
         )}
       </div>
+
+      {matches.length > 0 && (
+        <details className="rounded-2xl border border-sand-300 bg-white p-4">
+          <summary className="cursor-pointer text-xs font-bold text-neutral-400">トーナメントをリセット</summary>
+          <p className="mt-2 text-xs text-neutral-500">
+            この部門の試合結果と組み合わせを消します。くじ引きの結果(枠の割当)は残ります。
+            練習で動かしたあと、本番前に一度押してください。
+          </p>
+          <button
+            disabled={pending}
+            onClick={() => { if (confirm(`${DIVS.find((d) => d.key === s.division)?.label}部門の試合結果を消します。よろしいですか?`)) run(() => controlResetBracket(s.division)); }}
+            className="mt-3 w-full rounded-xl bg-red-600 py-3 text-sm font-black text-white disabled:opacity-50"
+          >
+            この部門をリセット
+          </button>
+        </details>
+      )}
 
       {/* 手動で任意の試合を出す */}
       {matches.length > 0 && (
