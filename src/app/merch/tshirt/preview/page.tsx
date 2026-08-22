@@ -5,10 +5,12 @@
 import { useState } from 'react';
 import ProductShowcase, { type ShowcaseVariant } from '../ProductShowcase';
 import TurntableShowcase from '../TurntableShowcase';
+import PantherHero from '../PantherHero';
 
-type PreviewKey = ShowcaseVariant | 'turn';
+type PreviewKey = ShowcaseVariant | 'turn' | 'panther';
 const VARIANTS: { key: PreviewKey; label: string; note: string }[] = [
   { key: 'turn', label: 'D 回転', note: '3Dで回した48コマをスクロールで送る(Apple方式)' },
+  { key: 'panther', label: 'E 動画', note: 'ハイブランド風。黒豹×実物Tシャツの16:9を上部に帯で流す' },
   { key: 'still', label: 'A 静', note: '商品は動かさない。文字だけがゆっくり入れ替わる' },
   { key: 'light', label: 'B 光', note: '商品は静止。生地の上を光が一度だけ通る' },
   { key: 'drift', label: 'C 流', note: '商品がゆっくり上へ流れる。わずかに近づく' },
@@ -43,7 +45,9 @@ export default function ShowcasePreviewPage() {
 
       {/* 切り替えたら演出を作り直す(keyを変える)。スクロール位置は上に戻す */}
       <div className="pt-[76px]">
-        {v === 'turn' ? (
+        {v === 'panther' ? (
+          <PantherHero key={v} />
+        ) : v === 'turn' ? (
           <TurntableShowcase key={v} productName="BOOM オフィシャルTシャツ（黒×黒モデル）" />
         ) : (
           <ProductShowcase
