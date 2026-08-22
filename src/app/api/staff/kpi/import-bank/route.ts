@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { execute, getAll, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { parseCSV, rowsToDicts, parseDate } from '@/lib/csvUtil';
+import { classifyHacomonoDeposit, HACOMONO_DEPOSIT_LABELS } from '@/lib/expenseImport';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -98,11 +99,16 @@ export async function POST(req: NextRequest) {
         const pat = (r.match_pattern ?? '').normalize('NFKC').toLowerCase();
         if (pat && all.includes(pat)) { matchedRecurring = r; break; }
       }
-      const category = matchedRecurring?.category ?? guessCategory(description, counterparty);
-      const subcategory = matchedRecurring?.subcategory ?? null;
+      // hacomono売上入金(3系統)は名義+着金日で判別しラベルを確定させる(申し送り2026-08-22)。
+      // 経費ではないので expenses には入れず、未確定キューにも残さない(confirmed=1)。
+      const hacomonoStream = amount > 0 ? classifyHacomonoDeposit(`${description} ${counterparty}`, txnDate) : null;
+      const category = hacomonoStream
+        ? HACOMONO_DEPOSIT_LABELS[hacomonoStream]
+        : matchedRecurring?.category ?? guessCategory(description, counterparty);
+      const subcategory = hacomonoStream ? null : matchedRecurring?.subcategory ?? null;
 
       // 銀行明細に登録 (出金 かつ recurring 一致なら confirmed=1)
-      const autoConfirm = amount < 0 && matchedRecurring;
+      const autoConfirm = (amount < 0 && matchedRecurring) || hacomonoStream !== null;
       await execute(
         `INSERT INTO bank_transactions (txn_date, amount, description, counterparty, balance_after, expense_category, confirmed, imported_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)

@@ -369,3 +369,64 @@ describe('RECURRING_SEED', () => {
     for (const s of RECURRING_SEED) expect(allowed.has(s.category)).toBe(true);
   });
 });
+
+// ============================================
+// hacomono 売上入金の3系統判別 (WS P・申し送り2026-08-22)
+// 仕様: ~/BOOM/経費/hacomono入金サイクル_2026-08-22.md
+// ============================================
+function gmoDeposit(description: string, deposit: number, date: string) {
+  return { date, description, withdraw: 0, deposit };
+}
+
+describe('classify: GMO入金 → hacomono売上の3系統', () => {
+  it('イプシロン名義・中旬着金 → 前月16〜末日決済分(月会費の大口)', () => {
+    const r = classify(gmoDeposit('振込  ジ－エムオ－イプシロン（カ', 884690, '2026-08-14'), MASTERS, 'gmo');
+    expect(r).toMatchObject({ action: 'ignore', label: '売上入金(hacomonoカード・前月16〜末日決済分)' });
+  });
+
+  it('イプシロン名義・月末着金 → 当月1〜15日決済分', () => {
+    const r = classify(gmoDeposit('振込  ジ－エムオ－イプシロン（カ', 142403, '2026-06-30'), MASTERS, 'gmo');
+    expect(r).toMatchObject({ action: 'ignore', label: '売上入金(hacomonoカード・当月1〜15日決済分)' });
+  });
+
+  it('ペイメントゲートウェイ名義 → オンライン口座振替(着金日によらず1系統)', () => {
+    const r = classify(gmoDeposit('振込  ジ－エムオ－ペイメントゲ－トウエイ（カ', 56980, '2026-06-30'), MASTERS, 'gmo');
+    expect(r).toMatchObject({ action: 'ignore', label: '売上入金(hacomono口座振替・前月27日振替分)' });
+  });
+
+  it('半角カナ表記(全銀原本の形)でも同じ判定になる ※NFKCで吸収', () => {
+    expect(classify(gmoDeposit('ｼﾞ-ｴﾑｵ-ｲﾌﾟｼﾛﾝ(ｶ', 79731, '2026-08-31'), MASTERS, 'gmo')).toMatchObject({
+      label: '売上入金(hacomonoカード・当月1〜15日決済分)',
+    });
+    expect(classify(gmoDeposit('ｼﾞ-ｴﾑｵ-ﾍﾟｲﾒﾝﾄｹﾞ-ﾄｳｴｲ(ｶ', 59400, '2026-08-31'), MASTERS, 'gmo')).toMatchObject({
+      label: '売上入金(hacomono口座振替・前月27日振替分)',
+    });
+  });
+
+  it('長音符(ー)表記のゆれも吸収する ※NFKCでは-に揃わないため', () => {
+    const r = classify(gmoDeposit('振込  ジーエムオーイプシロン（カ', 826292, '2026-07-15'), MASTERS, 'gmo');
+    expect(r).toMatchObject({ label: '売上入金(hacomonoカード・前月16〜末日決済分)' });
+  });
+
+  it('締めの境界: 20日=中旬扱い / 21日=月末扱い', () => {
+    expect(classify(gmoDeposit('振込  ジ－エムオ－イプシロン（カ', 1, '2026-08-20'), MASTERS, 'gmo')).toMatchObject({
+      label: '売上入金(hacomonoカード・前月16〜末日決済分)',
+    });
+    expect(classify(gmoDeposit('振込  ジ－エムオ－イプシロン（カ', 1, '2026-08-21'), MASTERS, 'gmo')).toMatchObject({
+      label: '売上入金(hacomonoカード・当月1〜15日決済分)',
+    });
+  });
+
+  it('hacomono以外の入金は従来どおり 経費外(入金) のまま', () => {
+    expect(classify(gmoDeposit('振込  カトウ　アユコ ほうきぼし支店 5694874', 16000, '2026-05-02'), MASTERS, 'gmo')).toMatchObject({
+      action: 'ignore',
+      label: '経費外(入金)',
+    });
+    expect(classify(gmoDeposit('普通預金 利息', 527, '2026-05-01'), MASTERS, 'gmo')).toMatchObject({ label: '経費外(入金)' });
+  });
+
+  it('出金側に同名義が出ても売上入金ラベルは付かない(入金限定)', () => {
+    const r = classify(gmoRow('振込 ジ－エムオ－イプシロン（カ', 10000), MASTERS, 'gmo');
+    expect(r.label).not.toContain('売上入金');
+  });
+});

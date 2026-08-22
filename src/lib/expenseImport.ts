@@ -322,6 +322,66 @@ const GMO_IGNORE: ReadonlyArray<readonly [string, string]> = [
 const RAKUTEN_PRIVATE_SKIP: readonly string[] = ['オオエドオンセン', '楽天モバイル', 'オプテージ', '年会費', 'チユーリツヒ'];
 
 export const DEPOSIT_LABEL = '経費外(入金)';
+
+// --------------------------------------------
+// hacomono 売上入金の3系統判別 (申し送り 2026-08-22 / 家計セッション調査・TARO確認済)
+// 根拠: ~/BOOM/経費/hacomono入金サイクル_2026-08-22.md
+//
+// GMOに毎月3回入る売上はすべて hacomono 経由で、締め日だけが違う。
+//   カード決済(BOOMは「月2回入金」を選択):
+//     - 月末締め → 翌月15日入金 … 月会費(毎月20日決済)が乗る大口。着金は13〜15日
+//     - 15日締め → 当月末日入金 … 当月1〜15日の単発チケット/入会金/体験料/リトライ
+//   オンライン口座振替(GMOペイメントゲートウェイ経由):
+//     - 毎月27日振替 → 翌月末入金
+// 月末はカード(15日締め)と口座振替が同日に着金するが**別系統**なので仕訳を分ける。
+// 名義だけではカード2本を区別できないため、着金日で割る。
+// --------------------------------------------
+
+/** hacomono売上入金の系統。仕訳を分けるための識別子。 */
+export type HacomonoDepositStream = 'card_prev_2nd_half' | 'card_this_1st_half' | 'direct_debit';
+
+/** 系統 → bank_transactions.expense_category に入れるラベル。「売上入金(」始まりで統一。 */
+export const HACOMONO_DEPOSIT_LABELS: Readonly<Record<HacomonoDepositStream, string>> = {
+  card_prev_2nd_half: '売上入金(hacomonoカード・前月16〜末日決済分)',
+  card_this_1st_half: '売上入金(hacomonoカード・当月1〜15日決済分)',
+  direct_debit: '売上入金(hacomono口座振替・前月27日振替分)',
+};
+
+/**
+ * 名義照合用の正規化。normalizeDesc に加えて長音・ハイフン類と空白を落とす。
+ * 全銀原本は半角カナ `ｼﾞ-ｴﾑｵ-ｲﾌﾟｼﾛﾝ(ｶ`、GMOのCSVは全角 `ジ－エムオ－イプシロン（カ` で
+ * NFKC後はどちらも `ジ-エムオ-イプシロン(カ` になるが、`ジーエムオー…`(長音符U+30FC)は
+ * NFKCでは `-` に揃わない。表記ゆれで取りこぼすと売上が「経費外(入金)」に紛れるため、
+ * 区切り文字ごと落として比較する。
+ */
+function normalizePayerName(s: string): string {
+  return normalizeDesc(s).replace(/[-ー－―‐−\s]/g, '');
+}
+
+const EPSILON_PAYER = normalizePayerName('ジ－エムオ－イプシロン');
+const PAYMENT_GATEWAY_PAYER = normalizePayerName('ジ－エムオ－ペイメントゲ－トウエイ');
+
+/**
+ * カード決済の2本を着金日で割る境界日。
+ * 実績の着金日は 中旬=13〜15日 / 月末=26〜31日 で、休業日に当たると前倒しされる
+ * (例: 2025-12-26・2026-05-29)。両側に十分な余白がある20日を境にする。
+ */
+const CARD_PAYOUT_BOUNDARY_DAY = 20;
+
+/**
+ * GMO入金1行が hacomono 売上のどの系統かを判定する。hacomono由来でなければ null。
+ * @param all 摘要+メモを連結した生文字列 (正規化前でよい)
+ * @param isoDate 着金日 'YYYY-MM-DD'
+ */
+export function classifyHacomonoDeposit(all: string, isoDate: string): HacomonoDepositStream | null {
+  const payer = normalizePayerName(all);
+  if (payer.includes(PAYMENT_GATEWAY_PAYER)) return 'direct_debit';
+  if (!payer.includes(EPSILON_PAYER)) return null;
+  const day = Number(isoDate.slice(8, 10));
+  if (!Number.isFinite(day) || day === 0) return null;
+  return day <= CARD_PAYOUT_BOUNDARY_DAY ? 'card_prev_2nd_half' : 'card_this_1st_half';
+}
+
 export const TRANSFER_LABEL = '経費外(振込=給与/その他・payroll側)';
 
 /**
@@ -365,7 +425,11 @@ export function classify(row: ParsedRow, masters: Master[], source: ImportSource
 
   if (source === 'gmo') {
     // 入金: bank_transactionsへ保存のみ・経費処理なし。未確定キューに残さないようラベル付きignore。
-    if (!isWithdraw) return { action: 'ignore', label: DEPOSIT_LABEL };
+    // hacomono売上(3系統)は仕訳で分けるため名義+着金日で細分ラベルを付ける(申し送り2026-08-22)。
+    if (!isWithdraw) {
+      const stream = classifyHacomonoDeposit(`${row.description} ${row.memo ?? ''}`, row.date);
+      return { action: 'ignore', label: stream ? HACOMONO_DEPOSIT_LABELS[stream] : DEPOSIT_LABEL };
+    }
     // 照合規約(import-bank準拠): `${description} ${counterparty}` 相当 = 摘要+メモ列
     const all = normalizeDesc(`${row.description} ${row.memo ?? ''}`);
     for (const [pat, label] of GMO_IGNORE) {
