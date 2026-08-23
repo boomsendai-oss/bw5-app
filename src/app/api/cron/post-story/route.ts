@@ -8,7 +8,11 @@ import { getDayPlan, listDaySlots } from '@/lib/storyDayPlan';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+// 動画スロットはInstagramが素材を取りに来て変換し終わるまで待つ必要があり、60秒では足りない。
+// 60秒だとポーリング上限(下記publishStoryの待ち時間)と関数の寿命が同じになり、
+// 「関数が殺される→catchが動かない→claimが解放されずログも残らない」状態で永久に詰まる。
+// 2026-08-23のBW6ティザー(7.9MB/10秒)がこれで未投稿になった。動画を出すpost-reelと同じ300秒に揃える。
+export const maxDuration = 300;
 
 // 正準ベースURL。cron/watchdog/デプロイ固有URLでoriginが変わると、素材URLが変わって
 // 冪等ガード・claimロックがすり抜け二重投稿する事故があった(2026-07-22)。素材URLは常にこの
@@ -69,13 +73,38 @@ async function logResult(
 // 同時に走っても、あるスロットを実際に publish するのは最初に claim できた1プロセスだけ。
 // UNIQUE(date, video_path) の INSERT が通れば所有権獲得、衝突(rowsAffected=0)なら他が処理中。
 // publish 失敗時は releaseClaim で解放し、次回の再投稿を可能にする。
+// 関数がVercelに強制終了されると catch が動かず claim が残る(=そのスロットは二度と投稿されない)。
+// 実際に2026-08-23の12:00枠がこれで詰まった。一定時間を過ぎた claim は「持ち主が死んだ」と
+// みなして回収する。関数の寿命(maxDuration=300秒)より十分長くしてあるので、
+// 生きている処理の claim を横から奪うことはない。
+const STALE_CLAIM_MS = 15 * 60 * 1000;
+
 async function claimSlot(date: string, videoPath: string): Promise<boolean> {
   try {
     const res = await execute(
       'INSERT INTO story_post_claim (date, video_path, created_at) VALUES (?, ?, ?) ON CONFLICT(date, video_path) DO NOTHING',
       [date, videoPath, nowUtcIso()]
     );
-    return (res.rowsAffected ?? 0) > 0;
+    if ((res.rowsAffected ?? 0) > 0) return true;
+
+    // 衝突した= 誰かが持っている。持ち主が生きているのか、死んだ残骸なのかを created_at で判定する。
+    // ここに来る時点で「投稿済み(posted)ログ」の冪等チェックは通過済み＝まだ投稿されていない。
+    const row = await getOne(
+      'SELECT created_at FROM story_post_claim WHERE date = ? AND video_path = ?',
+      [date, videoPath]
+    );
+    const age = row?.created_at ? Date.now() - new Date(String(row.created_at)).getTime() : 0;
+    if (!row || !(age > STALE_CLAIM_MS)) return false; // 生きている処理が持っている
+    await execute('DELETE FROM story_post_claim WHERE date = ? AND video_path = ?', [date, videoPath]);
+    const retry = await execute(
+      'INSERT INTO story_post_claim (date, video_path, created_at) VALUES (?, ?, ?) ON CONFLICT(date, video_path) DO NOTHING',
+      [date, videoPath, nowUtcIso()]
+    );
+    const took = (retry.rowsAffected ?? 0) > 0;
+    if (took) {
+      console.warn(`古いclaimを回収して再投稿します(${Math.round(age / 60000)}分前・${videoPath})`);
+    }
+    return took;
   } catch {
     // claim表が未適用(migration前)なら可用性優先でロック無し投稿を続行する
     return true;

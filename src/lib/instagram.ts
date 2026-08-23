@@ -280,8 +280,11 @@ async function publishStory(
     }
   }
 
-  // 動画処理待ち: 最大60秒、3秒間隔でポーリング(画像はほぼ即時FINISHED)
-  const deadline = Date.now() + 60_000;
+  // 動画処理待ち: 最大150秒、3秒間隔でポーリング(画像はほぼ即時FINISHED)。
+  // 60秒だと呼び出し元(post-story)の関数寿命と同値になり、タイムアウトのthrowより先に
+  // 関数ごと殺されて後始末(claim解放・エラーログ)が走らなかった。関数側を300秒に上げたので
+  // ここは余裕を残した150秒にし、超過時は必ず自前のthrow→claim解放→次のcronで再試行に乗せる。
+  const deadline = Date.now() + 150_000;
   let statusCode = 'IN_PROGRESS';
   while (Date.now() < deadline) {
     const sres = await fetch(`${GRAPH}/${GRAPH_VERSION}/${creationId}?fields=status_code&access_token=${token}`);
