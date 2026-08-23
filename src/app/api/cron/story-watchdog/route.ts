@@ -6,6 +6,8 @@ import { findChainMediaList, loadSidecar, checkSchedule } from '@/lib/storyPlan'
 import { notifyTaro } from '@/lib/notify';
 import { evaluateSyncFreshness } from '@/lib/syncWatchdog';
 import { findUpcomingReturns, isNotifyWindow, buildReturnNotice } from '@/lib/kyukaiWatch';
+import { listDaySlots } from '@/lib/storyDayPlan';
+import { findOverdueSlots, describeOverdueSlot, hhmmToMinutes } from '@/lib/slotWatch';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -14,8 +16,38 @@ export const maxDuration = 60;
 // 正準ベースURL。post-story と必ず同じoriginで素材URLを作らないと、投稿済みを"未投稿"と誤検知して
 // 自己修復が二重投稿を起こす(2026-07-22の事故原因)。判定も origin非依存の pathname で行う。
 const SITE_ORIGIN = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '') || 'https://bw5-app.vercel.app';
+// post-story と同じ規則(末尾 #HH:MM は同じ素材を1日2回出す枠の識別子)。ここが食い違うと
+// 投稿済みを未投稿と誤検知して警報が鳴り続ける。
 function slotKey(u: string): string {
-  try { return new URL(u).pathname; } catch { return u; }
+  try { const x = new URL(u); return x.pathname + x.hash; } catch { return u; }
+}
+
+// 枠(story_day_slot)の投稿漏れを探す。従来の evaluatePlan は曜日ライブラリ/日付指定しか見ておらず、
+// 朝のレッスン告知さえ出ていれば昼夜の枠が落ちても無音だった(2026-08-23のBW6ティザー未投稿)。
+// 当日ぶんに加えて前日ぶんも点検する。夜21:00の枠が落ちた場合、次にこの見張りが動くのは
+// 翌朝9:10なので、当日だけ見ていると永久に検知できない。
+const SLOT_GRACE_MIN = 60;
+
+async function findMissedSlots(date: string, nowHhmm: string): Promise<string[]> {
+  const nowMin = hhmmToMinutes(nowHhmm) ?? 0;
+  const out: string[] = [];
+  const yesterday = new Date(`${date}T00:00:00Z`);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const prev = yesterday.toISOString().slice(0, 10);
+
+  for (const [d, minutes] of [[date, nowMin], [prev, nowMin + 1440]] as Array<[string, number]>) {
+    const slots = await listDaySlots(d);
+    if (slots.length === 0) continue;
+    const rows = await getAll(
+      "SELECT video_path FROM story_post_log WHERE date = ? AND status = 'posted'",
+      [d]
+    );
+    const postedKeys = rows.map((r) => slotKey(String(r.video_path)));
+    for (const o of findOverdueSlots(slots, postedKeys, minutes, SLOT_GRACE_MIN)) {
+      out.push(describeOverdueSlot(d, o));
+    }
+  }
+  return out;
 }
 
 // GET /api/cron/story-watchdog
@@ -269,6 +301,15 @@ export async function GET(req: NextRequest) {
     postedCount = ev.postedCount;
     // 自己修復後もなお残る欠落(=mismatch等の要人手)・タグ劣化を通知対象へ
     anomalies.push(...ev.missing, ...ev.tagDegraded);
+  }
+
+  // (2a) 枠(時間帯別のお知らせ)の投稿漏れ。レッスン告知と違い「後から出せば済む」ものではなく、
+  // バトルのカウントダウンのように日付そのものが意味を持つ枠があるため、必ずTAROへ知らせる。
+  try {
+    const nowHhmm = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(11, 16);
+    anomalies.push(...(await findMissedSlots(date, nowHhmm)));
+  } catch (e) {
+    console.warn(`枠の投稿漏れチェックに失敗(他の監視は継続): ${e instanceof Error ? e.message : e}`);
   }
 
   // (2b) リールの見張り: 予約時刻を過ぎたのに未投稿なら自己修復、その他の異常は通知

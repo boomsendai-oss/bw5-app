@@ -19,8 +19,17 @@ export const maxDuration = 300;
 // 安定エイリアスから作り、重複判定はorigin非依存の pathname で行う。
 const SITE_ORIGIN = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '') || 'https://bw5-app.vercel.app';
 // URLからoriginを剥がしたパス(= スロットの安定ID)。重複判定はこれで行う。
+// 末尾の #HH:MM は「同じ画像を1日に2回出す枠」を別物として扱うための識別子(下記 dedupKey)。
+// pathname だけにすると、9/24のように同じ素材を12:30と21:00に置いた2枠が
+// 「投稿済み(冪等)」で潰し合い、片方が静かに出ないまま終わる。
 function slotKey(u: string): string {
-  try { return new URL(u).pathname; } catch { return u; }
+  try { const x = new URL(u); return x.pathname + x.hash; } catch { return u; }
+}
+
+/** 枠は素材パスが同じでも時刻が違えば別の投稿。ログ・冪等判定・claimのキーを時刻込みにする。 */
+function slotTimeOf(base: string, date: string): string {
+  const prefix = `slot:${date}:`;
+  return base.startsWith(prefix) ? base.slice(prefix.length) : '';
 }
 
 // 日次ストーリー自動投稿 (毎朝 JST 8:00 に GitHub Actions cron から叩かれる)。
@@ -192,7 +201,9 @@ export async function POST(req: NextRequest) {
     for (const media of mediaList) {
       // 冪等性: 同じ素材を同じ日に二度投稿しない(スロット単位。手動テストや二重発火対策)。
       // 判定は origin非依存の pathname で行う(過去にorigin差で二重投稿した事故の恒久対策)。
-      const key = slotKey(media.url);
+      const slotTime = slotTimeOf(media.base, date);
+      const logPath = slotTime ? `${media.url}#${slotTime}` : media.url;
+      const key = slotKey(logPath);
       const postedToday = await getAll(
         "SELECT video_path FROM story_post_log WHERE date = ? AND status = 'posted'",
         [date]
@@ -225,7 +236,7 @@ export async function POST(req: NextRequest) {
       const check = await checkSchedule(date, sidecar.lessons);
       if (check.result === 'mismatch') {
         const detail = check.problems.join(' / ');
-        await logResult(date, weekday, media.url, 'skipped_schedule_mismatch', undefined, detail);
+        await logResult(date, weekday, logPath, 'skipped_schedule_mismatch', undefined, detail);
         results.push({ media: media.base, skipped: `スケジュール不一致: ${detail}` });
         continue;
       }
@@ -261,7 +272,7 @@ export async function POST(req: NextRequest) {
           media.type === 'image'
             ? await publishStoryImage(media.url, requestedMentions)
             : await publishStoryVideo(media.url, requestedMentions);
-        await logResult(date, weekday, media.url, 'posted', mediaId, undefined, {
+        await logResult(date, weekday, logPath, 'posted', mediaId, undefined, {
           requested: requestedMentions,
           applied: mentionsApplied,
           failed: mentionsFailed,
@@ -272,7 +283,7 @@ export async function POST(req: NextRequest) {
         const msg = e instanceof Error ? e.message : String(e);
         // publish失敗: claimを解放して次回の再投稿を可能にする
         await releaseClaim(date, key);
-        await logResult(date, weekday, media.url, 'error', undefined, msg);
+        await logResult(date, weekday, logPath, 'error', undefined, msg);
         errorCount++;
         results.push({ media: media.base, error: msg });
         // 1本失敗しても残りのスロットは投稿を試みる
