@@ -41,10 +41,10 @@ describe('buildKioskCheckoutFormParams', () => {
 });
 
 describe('parseKioskWebhookEvent', () => {
-  const baseEvent = (metadata: Record<string, string>) => ({
+  const baseEvent = (metadata: Record<string, string>, paymentStatus = 'paid') => ({
     id: 'evt_1',
     type: 'checkout.session.completed',
-    data: { object: { id: 'cs_1', amount_total: 7000, currency: 'jpy', metadata } },
+    data: { object: { id: 'cs_1', amount_total: 7000, currency: 'jpy', payment_status: paymentStatus, metadata } },
   });
 
   it('kiosk_order_id を読み取る', () => {
@@ -52,6 +52,11 @@ describe('parseKioskWebhookEvent', () => {
     expect(ev?.orderId).toBe(42);
     expect(ev?.sessionId).toBe('cs_1');
     expect(ev?.amountTotal).toBe(7000);
+  });
+
+  it('payment_status を読み取る(PayPay等の非同期決済でunpaidがあり得る)', () => {
+    expect(parseKioskWebhookEvent(baseEvent({ kiosk_order_id: '1' }, 'paid'))?.paymentStatus).toBe('paid');
+    expect(parseKioskWebhookEvent(baseEvent({ kiosk_order_id: '1' }, 'unpaid'))?.paymentStatus).toBe('unpaid');
   });
 
   it('kiosk_order_id が無いイベント(BF6等)は orderId=null', () => {

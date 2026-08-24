@@ -408,16 +408,24 @@ export interface KioskWebhookEventInput {
   sessionId: string;
   orderId: number | null;
   amountTotal: number | null;
+  /** Checkout Sessionの payment_status。非同期決済(PayPay等)の処理中は 'unpaid'。 */
+  paymentStatus?: string;
 }
 
 export type ApplyKioskWebhookResult =
   | { status: 'paid'; orderId: number; amountMismatch: boolean }
-  | { status: 'duplicate' | 'ignored' | 'order_not_found' | 'not_updated' };
+  | { status: 'duplicate' | 'ignored' | 'order_not_found' | 'not_updated' | 'async_pending' | 'payment_failed' };
+
+/** 非同期決済の処理中に仮押さえを延長する時間。 */
+const ASYNC_HOLD_EXTENSION_MINUTES = 30;
 
 /**
  * 検証済みWebhookイベントを適用する。
  * - kiosk_payments に stripe_event_id UNIQUE で記録=同一イベント再送は何もしない(冪等)
- * - checkout.session.completed で pending/expired → paid + 実在庫減
+ * - checkout.session.completed (payment_status=paid) / async_payment_succeeded で
+ *   pending/expired → paid + 実在庫減
+ * - completed でも payment_status=unpaid(非同期決済の処理中)は paid 化せず、
+ *   仮押さえを延長して async_payment_succeeded/failed を待つ
  * - 期限切れ後の入金は paid_after_expired=1(在庫マイナスの可能性をスタッフ画面で警告)
  * - 金額不一致でも paid にする(入金事実を優先)が amount_mismatch=1 を立てる
  */
@@ -428,7 +436,12 @@ export async function applyKioskWebhookEvent(ev: KioskWebhookEventInput, rawPayl
     [ev.eventId, ev.type, ev.sessionId, ev.orderId, ev.amountTotal ?? 0, rawPayload.slice(0, 20000), nowIso()]
   );
   if (Number(inserted.rowsAffected ?? 0) === 0) return { status: 'duplicate' };
-  if (ev.type !== 'checkout.session.completed') return { status: 'ignored' };
+  const KNOWN_TYPES = [
+    'checkout.session.completed',
+    'checkout.session.async_payment_succeeded',
+    'checkout.session.async_payment_failed',
+  ];
+  if (!KNOWN_TYPES.includes(ev.type)) return { status: 'ignored' };
 
   const row = ev.orderId != null
     ? await getOne('SELECT * FROM kiosk_orders WHERE id = ? LIMIT 1', [ev.orderId])
@@ -436,6 +449,26 @@ export async function applyKioskWebhookEvent(ev: KioskWebhookEventInput, rawPayl
   if (!row) return { status: 'order_not_found' };
   const orderId = Number(row.id);
   const wasExpired = String(row.status) === 'expired';
+
+  if (ev.type === 'checkout.session.async_payment_failed') {
+    // 非同期決済の失敗=入金なし。仮押さえを解放する(paid済みには作用しない)
+    await execute("UPDATE kiosk_orders SET status = 'expired', updated_at = ? WHERE id = ? AND status = 'pending'", [
+      nowIso(),
+      orderId,
+    ]);
+    return { status: 'payment_failed' };
+  }
+
+  if (ev.type === 'checkout.session.completed' && ev.paymentStatus === 'unpaid') {
+    // 非同期決済の処理中。入金確定は async_payment_succeeded で来るので、
+    // それまで仮押さえが切れないよう延長だけしておく
+    const extendedTo = new Date(Date.now() + ASYNC_HOLD_EXTENSION_MINUTES * 60 * 1000).toISOString();
+    await execute(
+      "UPDATE kiosk_orders SET expires_at = ?, stripe_session_id = ?, updated_at = ? WHERE id = ? AND status = 'pending'",
+      [extendedTo, ev.sessionId, nowIso(), orderId]
+    );
+    return { status: 'async_pending' };
+  }
 
   try {
     const applied = await withWriteTx(async (tx) => {

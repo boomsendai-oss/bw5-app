@@ -83,6 +83,9 @@ export interface KioskWebhookEvent {
   sessionId: string;
   orderId: number | null;
   amountTotal: number | null;
+  /** 'paid' | 'unpaid' | 'no_payment_required'。PayPay等の非同期決済では
+   *  checkout.session.completed 時点で 'unpaid'(処理中)があり得る。 */
+  paymentStatus: string;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- Stripeイベントは動的構造 */
@@ -96,6 +99,7 @@ export function parseKioskWebhookEvent(event: any): KioskWebhookEvent | null {
     sessionId: typeof obj.id === 'string' ? obj.id : '',
     orderId: raw != null && /^\d+$/.test(String(raw)) ? Number(raw) : null,
     amountTotal: typeof obj.amount_total === 'number' ? obj.amount_total : null,
+    paymentStatus: typeof obj.payment_status === 'string' ? obj.payment_status : '',
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

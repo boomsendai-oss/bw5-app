@@ -138,6 +138,47 @@ describe('Webhook適用(決済の正本)', () => {
     sessionId: `cs_test_${eventId}`,
     orderId,
     amountTotal: amount,
+    paymentStatus: 'paid',
+  });
+
+  it('completedでもpayment_status=unpaid(非同期決済の処理中)はpaid化せず仮押さえを延長する', async () => {
+    const { productId } = await setupSale({ stock: 5 });
+    const res = await k.createKioskStripeOrder([{ productId, variantId: null, qty: 1 }]);
+    if (!res.ok) throw new Error('setup failed');
+    const before = await core.getOne('SELECT expires_at FROM kiosk_orders WHERE id = ?', [res.orderId]);
+    const result = await k.applyKioskWebhookEvent({ ...ev(res.orderId, 'evt_async_1', 3500), paymentStatus: 'unpaid' }, '{}');
+    expect(result.status).toBe('async_pending');
+    expect(await k.getKioskOrderStatus(res.orderId)).toBe('pending');
+    expect(await stockOf(productId)).toBe(5);
+    const after = await core.getOne('SELECT expires_at FROM kiosk_orders WHERE id = ?', [res.orderId]);
+    expect(String(after?.expires_at) > String(before?.expires_at)).toBe(true);
+  });
+
+  it('async_payment_succeeded で paid 化し在庫が減る', async () => {
+    const { productId } = await setupSale({ stock: 5 });
+    const res = await k.createKioskStripeOrder([{ productId, variantId: null, qty: 1 }]);
+    if (!res.ok) throw new Error('setup failed');
+    await k.applyKioskWebhookEvent({ ...ev(res.orderId, 'evt_async_2', 3500), paymentStatus: 'unpaid' }, '{}');
+    const result = await k.applyKioskWebhookEvent(
+      { ...ev(res.orderId, 'evt_async_3', 3500), type: 'checkout.session.async_payment_succeeded' },
+      '{}'
+    );
+    expect(result.status).toBe('paid');
+    expect(await stockOf(productId)).toBe(4);
+  });
+
+  it('async_payment_failed で仮押さえが解放される', async () => {
+    const { saleId, productId } = await setupSale({ stock: 5 });
+    const res = await k.createKioskStripeOrder([{ productId, variantId: null, qty: 2 }]);
+    if (!res.ok) throw new Error('setup failed');
+    const result = await k.applyKioskWebhookEvent(
+      { ...ev(res.orderId, 'evt_async_4', 7000), type: 'checkout.session.async_payment_failed', paymentStatus: 'unpaid' },
+      '{}'
+    );
+    expect(result.status).toBe('payment_failed');
+    expect(await k.getKioskOrderStatus(res.orderId)).toBe('expired');
+    const catalog = await k.getKioskCatalog(saleId);
+    expect(catalog[0].available).toBe(5);
   });
 
   it('checkout.session.completed で paid 化し実在庫が減る', async () => {
