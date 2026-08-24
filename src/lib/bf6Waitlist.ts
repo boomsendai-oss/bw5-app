@@ -66,3 +66,11 @@ export function isOfferActionable(s: OfferState, nowIso: string): OfferAction {
   if (s.status !== 'offered' || !s.offerExpiresAt) return 'not_offered';
   return s.offerExpiresAt > nowIso ? 'ok' : 'expired';
 }
+
+/** 期限を日本語で表示する(メール・画面共通)。 */
+export function formatOfferDeadline(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(new Date(iso).getTime() + 9 * 3600 * 1000);
+  const w = ['日', '月', '火', '水', '木', '金', '土'][d.getUTCDay()];
+  return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日(${w}) ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}

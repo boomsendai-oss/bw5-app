@@ -76,6 +76,7 @@ export default async function StaffBf6Page() {
           <NavCard href="/staff/bf6/payments" title="Stripe突合" note="Webhook記録と金額照合" />
           <NavCard href="/staff/bf6/reception" title="当日受付" note="チェックイン+くじ引き" />
           <NavCard href="/staff/bf6/control" title="LED操作卓" note="会場スクリーンの切替" />
+          <NavCard href="/staff/bf6/waitlist" title="キャンセル待ち" note="繰り上げ通知を手動で送る" />
           <NavCard href="/staff/bf6/broadcast" title="一斉メール" note="エントリー者へのお知らせ" />
           <NavCard href="/staff/bf6/settings" title="設定" note="定員・料金・受付ON/OFF" />
         </section>

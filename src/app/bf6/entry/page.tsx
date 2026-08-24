@@ -447,6 +447,14 @@ export default function Bf6EntryPage() {
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${remaining > 0 ? 'bg-neutral-950 text-neutral-400' : 'bg-yellow-100 text-yellow-700'}`}>
                                   {remaining > 0 ? `限定${ctx.capacity[d.key]}名` : '満枠'}
                                 </span>
+                                {remaining <= 0 && (
+                                  <Link
+                                    href={`/bf6/waitlist?d=${d.key}`}
+                                    className="rounded-full bg-orange-600 px-2.5 py-0.5 text-xs font-black text-white"
+                                  >
+                                    キャンセル待ち
+                                  </Link>
+                                )}
                               </span>
                               <span className="block text-xs text-neutral-400">{d.note}</span>
                               {reason && reason !== '満枠' && <span className="block text-xs font-bold text-red-500">{reason}</span>}

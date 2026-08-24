@@ -83,3 +83,30 @@ export async function staffSendBf6Broadcast(key: string): Promise<{ sent: number
   revalidatePath('/staff/bf6/broadcast');
   return r;
 }
+
+// ===== キャンセル待ち =====
+
+export async function staffOfferNextWaitlist(division: string): Promise<
+  { ok: true; dancerName: string; email: string } | { ok: false; error: string }
+> {
+  const { offerNext } = await import('@/lib/bf6WaitlistDb');
+  const { sendWaitlistOfferEmail } = await import('@/lib/bf6WaitlistEmail');
+  const { formatOfferDeadline } = await import('@/lib/bf6Waitlist');
+
+  const row = await offerNext(division);
+  if (!row) return { ok: false, error: '繰り上げできる方がいません(待機中の方が0名です)' };
+  try {
+    await sendWaitlistOfferEmail(row, formatOfferDeadline(row.offerExpiresAt ?? ''));
+  } catch (e) {
+    return { ok: false, error: `通知メールの送信に失敗しました: ${e instanceof Error ? e.message : e}` };
+  }
+  revalidatePath('/staff/bf6/waitlist');
+  return { ok: true, dancerName: row.dancerName, email: row.email };
+}
+
+export async function staffExpireStaleOffers(): Promise<number> {
+  const { expireStaleOffers } = await import('@/lib/bf6WaitlistDb');
+  const n = await expireStaleOffers();
+  revalidatePath('/staff/bf6/waitlist');
+  return n;
+}
