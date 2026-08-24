@@ -399,6 +399,132 @@ export async function voidKioskOrder(orderId: number, reason: string): Promise<b
 }
 
 // ---------------------------------------------------------------------------
+// スタッフ画面用: 一覧・レポート・在庫補正
+// ---------------------------------------------------------------------------
+
+export async function listKioskSales(): Promise<Array<KioskSale & { createdAt: string }>> {
+  await initDb();
+  const rows = await getAll('SELECT * FROM kiosk_sales ORDER BY id DESC');
+  return rows.map((r) => ({
+    id: Number(r.id),
+    name: String(r.name),
+    eventDate: String(r.event_date ?? ''),
+    active: Number(r.active) === 1,
+    createdAt: String(r.created_at ?? ''),
+  }));
+}
+
+export async function updateKioskProduct(
+  id: number,
+  p: { name: string; price: number; imageUrl: string; description: string; sortOrder: number; active: boolean }
+): Promise<void> {
+  await execute(
+    'UPDATE kiosk_products SET name = ?, price = ?, image_url = ?, description = ?, sort_order = ?, active = ? WHERE id = ?',
+    [p.name, p.price, p.imageUrl, p.description, p.sortOrder, p.active ? 1 : 0, id]
+  );
+}
+
+/** 在庫補正(絶対値で上書き。±指定より数え直しと相性が良い)。 */
+export async function setKioskProductStock(productId: number, stock: number): Promise<void> {
+  await execute('UPDATE kiosk_products SET stock = ? WHERE id = ?', [stock, productId]);
+}
+
+export async function setKioskVariantStock(variantId: number, stock: number): Promise<void> {
+  await execute('UPDATE kiosk_product_variants SET stock = ? WHERE id = ?', [stock, variantId]);
+}
+
+export async function deleteKioskVariant(variantId: number): Promise<void> {
+  await execute('DELETE FROM kiosk_product_variants WHERE id = ?', [variantId]);
+}
+
+export interface KioskOrderItemView {
+  productName: string;
+  variantLabel: string;
+  unitPrice: number;
+  qty: number;
+}
+
+export interface KioskOrderView {
+  orderId: number;
+  paymentMethod: string;
+  status: string;
+  amountTotal: number;
+  amountMismatch: boolean;
+  paidAfterExpired: boolean;
+  voidReason: string;
+  createdAt: string;
+  items: KioskOrderItemView[];
+}
+
+export interface KioskSalesReport {
+  totals: { total: number; cash: number; stripe: number; orderCount: number };
+  byProduct: Array<{ productName: string; variantLabel: string; qty: number; amount: number }>;
+  orders: KioskOrderView[];
+}
+
+/**
+ * 販売会の売上レポート。金額は明細の単価スナップショット×数量で集計する
+ * (商品マスタの現在価格は使わない=P4教訓)。paidのみ計上・voidedは一覧にだけ出す。
+ */
+export async function getKioskSalesReport(saleId: number): Promise<KioskSalesReport> {
+  await initDb();
+  await sweepExpiredKioskOrders();
+  const orderRows = await getAll(
+    "SELECT * FROM kiosk_orders WHERE sale_id = ? AND status != 'expired' ORDER BY id DESC",
+    [saleId]
+  );
+  const itemRows = await getAll(
+    'SELECT i.* FROM kiosk_order_items i JOIN kiosk_orders o ON o.id = i.order_id WHERE o.sale_id = ?',
+    [saleId]
+  );
+  const itemsByOrder = new Map<number, KioskOrderItemView[]>();
+  for (const r of itemRows) {
+    const list = itemsByOrder.get(Number(r.order_id)) ?? [];
+    list.push({
+      productName: String(r.product_name),
+      variantLabel: String(r.variant_label ?? ''),
+      unitPrice: Number(r.unit_price),
+      qty: Number(r.qty),
+    });
+    itemsByOrder.set(Number(r.order_id), list);
+  }
+
+  const orders: KioskOrderView[] = orderRows.map((o) => ({
+    orderId: Number(o.id),
+    paymentMethod: String(o.payment_method),
+    status: String(o.status),
+    amountTotal: Number(o.amount_total),
+    amountMismatch: Number(o.amount_mismatch) === 1,
+    paidAfterExpired: Number(o.paid_after_expired) === 1,
+    voidReason: String(o.void_reason ?? ''),
+    createdAt: String(o.created_at ?? ''),
+    items: itemsByOrder.get(Number(o.id)) ?? [],
+  }));
+
+  const paid = orders.filter((o) => o.status === 'paid');
+  const totals = {
+    total: paid.reduce((s, o) => s + o.amountTotal, 0),
+    cash: paid.filter((o) => o.paymentMethod === 'cash').reduce((s, o) => s + o.amountTotal, 0),
+    stripe: paid.filter((o) => o.paymentMethod === 'stripe').reduce((s, o) => s + o.amountTotal, 0),
+    orderCount: paid.length,
+  };
+
+  const byProductMap = new Map<string, { productName: string; variantLabel: string; qty: number; amount: number }>();
+  for (const o of paid) {
+    for (const it of o.items) {
+      const key = `${it.productName} ${it.variantLabel}`;
+      const cur = byProductMap.get(key) ?? { productName: it.productName, variantLabel: it.variantLabel, qty: 0, amount: 0 };
+      cur.qty += it.qty;
+      cur.amount += it.unitPrice * it.qty;
+      byProductMap.set(key, cur);
+    }
+  }
+  const byProduct = [...byProductMap.values()].sort((a, b) => b.amount - a.amount);
+
+  return { totals, byProduct, orders };
+}
+
+// ---------------------------------------------------------------------------
 // Webhook適用(決済の正本・冪等)
 // ---------------------------------------------------------------------------
 
