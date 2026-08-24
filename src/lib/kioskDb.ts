@@ -7,8 +7,8 @@
 import { execute, getAll, getOne, withWriteTx, initDb } from '@/lib/db';
 import type { Transaction } from '@libsql/client';
 
-export const KIOSK_HOLD_MINUTES = 5;
-export const KIOSK_MAX_QTY_PER_ORDER = 10;
+export { KIOSK_HOLD_MINUTES, KIOSK_MAX_QTY_PER_ORDER } from '@/lib/kioskShared';
+import { KIOSK_HOLD_MINUTES, KIOSK_MAX_QTY_PER_ORDER } from '@/lib/kioskShared';
 
 function nowIso(): string {
   return new Date().toISOString();
