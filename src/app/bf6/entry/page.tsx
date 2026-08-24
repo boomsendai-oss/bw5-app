@@ -465,6 +465,12 @@ export default function Bf6EntryPage() {
                       バトルに出るのは初めて
                       <span className="font-normal text-neutral-400">(ビギナー部門は必須)</span>
                     </label>
+                    <p className="mt-1.5 pl-8 text-[11px] leading-relaxed text-neutral-400">
+                      イベントとして開催されているバトル(他団体を含む)への出場歴で判断します。
+                      <span className="text-neutral-300">練習会やレッスン内のサイファー・模擬バトルは含みません。</span>
+                      <br />
+                      本番当日(9/26)までに公式なバトルへ出場した場合は対象外となり、小中学生部門への変更をお願いします。
+                    </p>
                     {row.divisions.length > 0 && pricing && (
                       <p className="mt-3 rounded-lg bg-neutral-800/60 px-3 py-2 text-sm text-neutral-400">
                         この出場者のエントリー料:

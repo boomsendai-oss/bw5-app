@@ -278,6 +278,15 @@ export default async function Bf6TopPage() {
                     </ul>
                   </div>
                 </div>
+                <div className="overflow-hidden rounded-xl bg-neutral-900 ring-1 ring-neutral-700">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/bf6/cast-ayumi.jpg" alt="DJ ayumi" className="aspect-square w-full object-cover object-top" />
+                  <div className="p-3">
+                    <p className="text-[11px] font-bold tracking-widest text-red-500">FLOOR DJ</p>
+                    <p className="mt-0.5 text-xl font-black italic text-white">DJ ayumi</p>
+                    <p className="text-[11px] font-bold tracking-wide text-neutral-500">宮城</p>
+                  </div>
+                </div>
               </div>
             </Bf6DetailBlock>
           </div>
