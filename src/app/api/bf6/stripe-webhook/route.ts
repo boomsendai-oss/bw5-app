@@ -3,6 +3,7 @@
 // 署名のない/不正な要求は400で弾く。決済確定はこのWebhookが正本(設計書v2)。
 import { NextRequest, NextResponse } from 'next/server';
 import { parseBf6WebhookEvent, verifyStripeSignature } from '@/lib/bf6Stripe';
+import { parseKioskWebhookEvent } from '@/lib/kioskStripe';
 import { applyBf6WebhookEvent } from '@/lib/bf6Db';
 import { sendBf6OrderEmail } from '@/lib/bf6Email';
 import { handleBf6StreamPurchase } from '@/lib/bf6StreamDb';
@@ -30,6 +31,12 @@ export async function POST(req: NextRequest) {
   }
   const ev = parseBf6WebhookEvent(event);
   if (!ev) return NextResponse.json({ error: 'invalid event' }, { status: 400 });
+
+  // 無人物販kiosk(/api/kiosk/stripe-webhook)宛のイベントは同一Stripeアカウントのため
+  // ここにも届く。BF6の注文ではないので order_not_found のログを出さず受領だけ返す。
+  if (parseKioskWebhookEvent(event)?.orderId != null) {
+    return NextResponse.json({ received: true, result: 'not_bf6' });
+  }
 
   try {
     const result = await applyBf6WebhookEvent(ev, payload);
