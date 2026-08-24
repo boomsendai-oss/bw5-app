@@ -53,3 +53,16 @@ export function validateWaitlistInput(input: WaitlistInput): WaitlistInput | str
   return { buyerName, email, phone, dancerName, dancerKana, performerName,
     grade: input.grade, genre, rep, instagram: input.instagram.trim() };
 }
+
+export type OfferState = { status: string; offerExpiresAt: string | null };
+export type OfferAction = 'ok' | 'expired' | 'not_offered' | 'already_done';
+
+/**
+ * 繰り上げリンクを踏んだときに操作を受け付けてよいか。
+ * 期限切れ・二重操作・未通知を分けて返し、画面で理由を出せるようにする。
+ */
+export function isOfferActionable(s: OfferState, nowIso: string): OfferAction {
+  if (s.status === 'accepted' || s.status === 'declined') return 'already_done';
+  if (s.status !== 'offered' || !s.offerExpiresAt) return 'not_offered';
+  return s.offerExpiresAt > nowIso ? 'ok' : 'expired';
+}

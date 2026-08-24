@@ -21,3 +21,6 @@ CREATE TABLE IF NOT EXISTS bf_waitlist (
   UNIQUE(division, position)
 );
 CREATE INDEX IF NOT EXISTS idx_bf_waitlist_div ON bf_waitlist(division, status, position);
+
+ALTER TABLE bf_waitlist ADD COLUMN token TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bf_waitlist_token ON bf_waitlist(token) WHERE token IS NOT NULL;

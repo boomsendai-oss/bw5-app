@@ -1,13 +1,15 @@
 // キャンセル待ちの保存。順番(position)の採番は同時申込で重複しないよう原子的に行う。
 import { getAll, getOne, execute } from './db';
 import { nowUtcIso, todayJst } from './dateJst';
-import { WAITLIST_CAPACITY, canJoinWaitlist, offerDeadlineHours, type WaitlistInput, type WaitlistGate } from './bf6Waitlist';
+import { generateEditToken } from './eventSignup';
+import { WAITLIST_CAPACITY, canJoinWaitlist, isOfferActionable, offerDeadlineHours,
+  type WaitlistInput, type WaitlistGate, type OfferAction } from './bf6Waitlist';
 
 export type WaitlistRow = {
   id: number; division: string; position: number; status: string;
   dancerName: string; performerName: string; grade: string; rep: string;
   email: string; phone: string; buyerName: string;
-  offerExpiresAt: string | null; createdAt: string;
+  offerExpiresAt: string | null; token: string | null; createdAt: string;
 };
 
 function toRow(r: Record<string, unknown>): WaitlistRow {
@@ -17,6 +19,7 @@ function toRow(r: Record<string, unknown>): WaitlistRow {
     performerName: String(r.performer_name), grade: String(r.grade), rep: String(r.rep),
     email: String(r.email), phone: String(r.phone), buyerName: String(r.buyer_name),
     offerExpiresAt: r.offer_expires_at ? String(r.offer_expires_at) : null,
+    token: r.token ? String(r.token) : null,
     createdAt: String(r.created_at ?? ''),
   };
 }
@@ -80,11 +83,13 @@ export async function offerNext(division: string): Promise<WaitlistRow | null> {
   if (!row) return null;
   const hours = offerDeadlineHours(todayJst());
   const expires = new Date(Date.now() + hours * 3600 * 1000).toISOString();
-  await execute(
-    "UPDATE bf_waitlist SET status = 'offered', offered_at = ?, offer_expires_at = ? WHERE id = ? AND status = 'waiting'",
-    [nowUtcIso(), expires, Number(row.id)]
+  const token = generateEditToken();
+  const r = await execute(
+    "UPDATE bf_waitlist SET status = 'offered', offered_at = ?, offer_expires_at = ?, token = ? WHERE id = ? AND status = 'waiting'",
+    [nowUtcIso(), expires, token, Number(row.id)]
   );
-  return toRow({ ...row, status: 'offered', offer_expires_at: expires });
+  if ((r.rowsAffected ?? 0) === 0) return null; // 他の操作が先に進めた
+  return toRow({ ...row, status: 'offered', offer_expires_at: expires, token });
 }
 
 export async function setWaitlistStatus(id: number, status: string): Promise<void> {
@@ -92,3 +97,39 @@ export async function setWaitlistStatus(id: number, status: string): Promise<voi
 }
 
 export { WAITLIST_CAPACITY };
+
+/** トークンから1件引く(承諾/辞退リンク用)。 */
+export async function findWaitlistByToken(token: string): Promise<WaitlistRow | null> {
+  const r = await getOne('SELECT * FROM bf_waitlist WHERE token = ?', [token]).catch(() => null);
+  return r ? toRow(r) : null;
+}
+
+export type RespondResult = { ok: true; action: 'accepted' | 'declined' } | { ok: false; reason: OfferAction };
+
+/**
+ * 本人が承諾/辞退する。期限切れ・二重操作はここで弾く。
+ * 承諾しても代金は預からない(当日会場で現金払い)。
+ */
+export async function respondToOffer(token: string, accept: boolean): Promise<RespondResult> {
+  const row = await findWaitlistByToken(token);
+  if (!row) return { ok: false, reason: 'not_offered' };
+  const gate = isOfferActionable({ status: row.status, offerExpiresAt: row.offerExpiresAt }, nowUtcIso());
+  if (gate !== 'ok') return { ok: false, reason: gate };
+
+  const next = accept ? 'accepted' : 'declined';
+  const r = await execute(
+    "UPDATE bf_waitlist SET status = ?, resolved_at = ? WHERE id = ? AND status = 'offered'",
+    [next, nowUtcIso(), row.id]
+  );
+  if ((r.rowsAffected ?? 0) === 0) return { ok: false, reason: 'already_done' };
+  return { ok: true, action: next };
+}
+
+/** 期限を過ぎた繰り上げを失効させる。戻り値は失効した件数。 */
+export async function expireStaleOffers(): Promise<number> {
+  const r = await execute(
+    "UPDATE bf_waitlist SET status = 'expired', resolved_at = ? WHERE status = 'offered' AND offer_expires_at <= ?",
+    [nowUtcIso(), nowUtcIso()]
+  );
+  return r.rowsAffected ?? 0;
+}

@@ -216,3 +216,53 @@ export async function submitBf6SsmEntry(
   if (order) await sendBf6OrderEmail(order, created.editToken);
   return { ok: true, token: created.editToken };
 }
+
+// ===== キャンセル待ち =====
+
+export async function getBf6WaitlistStatus(division: string): Promise<{
+  remaining: number; waiting: number; capacity: number; gate: string;
+}> {
+  const { getBf6Settings, getBf6Usage, calcBf6Remaining } = await import('@/lib/bf6Db');
+  const { countWaiting } = await import('@/lib/bf6WaitlistDb');
+  const { canJoinWaitlist, WAITLIST_CAPACITY } = await import('@/lib/bf6Waitlist');
+  const [settings, usage] = await Promise.all([getBf6Settings(), getBf6Usage()]);
+  const remaining = calcBf6Remaining(settings, usage).divisions[division as 'beginner'] ?? 0;
+  const waiting = await countWaiting(division);
+  return { remaining, waiting, capacity: WAITLIST_CAPACITY, gate: canJoinWaitlist({ remaining, waiting }) };
+}
+
+export async function submitBf6Waitlist(
+  division: string,
+  input: import('@/lib/bf6Waitlist').WaitlistInput
+): Promise<{ ok: true; position: number } | { ok: false; error: string }> {
+  const { validateWaitlistInput } = await import('@/lib/bf6Waitlist');
+  const { joinWaitlist, listWaitlist } = await import('@/lib/bf6WaitlistDb');
+  const { sendWaitlistJoinedEmail } = await import('@/lib/bf6WaitlistEmail');
+
+  const v = validateWaitlistInput(input);
+  if (typeof v === 'string') return { ok: false, error: v };
+
+  const status = await getBf6WaitlistStatus(division);
+  const r = await joinWaitlist(division, status.remaining, v);
+  if (!r.ok) {
+    return {
+      ok: false,
+      error: r.reason === 'not_full'
+        ? 'この部門はまだ空きがあります。通常のエントリーからお申し込みください'
+        : `キャンセル待ちは${status.capacity}名までです。現在は満員のため受け付けできません`,
+    };
+  }
+  const rows = await listWaitlist(division);
+  const me = rows.find((x) => x.position === r.position);
+  if (me) await sendWaitlistJoinedEmail(me, Math.max(0, r.position - 1));
+  return { ok: true, position: r.position };
+}
+
+export async function respondBf6Waitlist(
+  token: string,
+  accept: boolean
+): Promise<{ ok: true; action: string } | { ok: false; reason: string }> {
+  const { respondToOffer } = await import('@/lib/bf6WaitlistDb');
+  const r = await respondToOffer(token, accept);
+  return r.ok ? { ok: true, action: r.action } : { ok: false, reason: r.reason };
+}
