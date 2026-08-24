@@ -28,6 +28,26 @@ export function hhmmToMinutes(hhmm: string): number | null {
 }
 
 /**
+ * post-story の冪等判定(同じ日の同じ枠は cron が何度走っても1回しか投稿しない)。
+ * postedKeys は story_post_log の slotKey 済みキー(origin非依存の pathname + '#HH:MM')。
+ * slotTime が空なら通常素材(朝の告知・pin)、あれば時間帯別の枠。
+ *
+ * 枠は「時刻つきキー」に加えて「素のパス」とも照合する。冪等キーの形式を
+ * 時刻なし→時刻つきへ変えた 2026-08-23、同日中に旧形式で記録済みの行(id=71)と
+ * 新キーが一致せず、夕方のcronが同じ枠を再投稿した(id=72)。チェック側が旧形式を
+ * 知らないとキー形式の変更が即・二重投稿になるため、判定は findOverdueSlots と
+ * 同じ両対応ルールに固定する(watchdogと食い違うと誤警報/二重投稿のどちらかが起きる)。
+ * 通常素材は逆に時刻つきキーと照合しない(枠との同日併用は別カウントが仕様)。
+ */
+export function alreadyPostedToday(postedKeys: string[], pathKey: string, slotTime: string): boolean {
+  const posted = new Set(postedKeys);
+  if (slotTime !== '') {
+    return posted.has(`${pathKey}#${slotTime}`) || posted.has(pathKey);
+  }
+  return posted.has(pathKey);
+}
+
+/**
  * 予定時刻から graceMinutes 以上過ぎたのに投稿ログが無い枠を返す。
  *
  * nowMinutes は「その枠の日付の 0:00 から見た現在の分」。前日ぶんを点検するときは
@@ -41,14 +61,13 @@ export function findOverdueSlots(
   nowMinutes: number,
   graceMinutes = 60
 ): OverdueSlot[] {
-  const posted = new Set(postedKeys);
   const out: OverdueSlot[] = [];
   for (const sl of slots) {
     const due = hhmmToMinutes(sl.slotTime);
     if (due === null) continue;
     const late = nowMinutes - due;
     if (late < graceMinutes) continue; // まだ猶予の中(cronの遅延は正常)
-    if (posted.has(`${sl.mediaPath}#${sl.slotTime}`) || posted.has(sl.mediaPath)) continue;
+    if (alreadyPostedToday(postedKeys, sl.mediaPath, sl.slotTime)) continue;
     out.push({ slotTime: sl.slotTime, mediaPath: sl.mediaPath, note: sl.note, lateMinutes: late });
   }
   return out;

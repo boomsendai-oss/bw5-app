@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findOverdueSlots, hhmmToMinutes, describeOverdueSlot } from '../slotWatch';
+import { findOverdueSlots, hhmmToMinutes, describeOverdueSlot, alreadyPostedToday } from '../slotWatch';
 
 const slot = (slotTime: string, mediaPath: string, note: string | null = null) => ({ slotTime, mediaPath, note });
 
@@ -59,6 +59,36 @@ describe('findOverdueSlots', () => {
   it('壊れた時刻の枠は無視して他を評価し続ける', () => {
     const mixed = [slot('99:99', '/stories/a.png'), slot('12:00', '/stories/b.png')];
     expect(findOverdueSlots(mixed, [], hhmmToMinutes('23:00')!).map((x) => x.mediaPath)).toEqual(['/stories/b.png']);
+  });
+});
+
+describe('alreadyPostedToday (post-storyの冪等判定)', () => {
+  const path = '/stories/extra/bw6_teaser_2026.mp4';
+
+  it('【2026-08-23再現】旧形式(時刻なし)の投稿記録があれば、枠の2回目のcronはskipする', () => {
+    // 実データ: id=71 が旧コードで時刻なしで記録済み → 夕方のcron(枠12:00)は再投稿してはいけない
+    expect(alreadyPostedToday([path], path, '12:00')).toBe(true);
+  });
+
+  it('新形式(時刻つき)の投稿記録と一致すればskipする', () => {
+    expect(alreadyPostedToday([`${path}#12:00`], path, '12:00')).toBe(true);
+  });
+
+  it('未投稿の枠はskipしない', () => {
+    expect(alreadyPostedToday([], path, '12:00')).toBe(false);
+  });
+
+  it('同じ素材を1日2回出す枠は別々に数える(12:30投稿済みでも21:00は出す)', () => {
+    expect(alreadyPostedToday(['/stories/extra/cd0.png#12:30'], '/stories/extra/cd0.png', '21:00')).toBe(false);
+  });
+
+  it('通常素材(枠でない)は素のパス一致でskipする', () => {
+    expect(alreadyPostedToday(['/stories/sat.mp4'], '/stories/sat.mp4', '')).toBe(true);
+    expect(alreadyPostedToday([], '/stories/sat.mp4', '')).toBe(false);
+  });
+
+  it('通常素材は枠の記録(時刻つき)とは照合しない(朝の告知と枠の同日併用を壊さない)', () => {
+    expect(alreadyPostedToday(['/stories/sat.mp4#12:00'], '/stories/sat.mp4', '')).toBe(false);
   });
 });
 

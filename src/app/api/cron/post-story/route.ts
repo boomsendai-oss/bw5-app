@@ -5,6 +5,7 @@ import { configured as igConfigured, publishStoryVideo, publishStoryImage, refre
 import { pickNextQueueItem, markQueueItemPosted } from '@/lib/storyQueue';
 import { WEEKDAY_FILES, findChainMediaList, loadSidecar, checkSchedule, resolveMentions, type ChainMedia } from '@/lib/storyPlan';
 import { getDayPlan, listDaySlots } from '@/lib/storyDayPlan';
+import { alreadyPostedToday } from '@/lib/slotWatch';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -201,6 +202,9 @@ export async function POST(req: NextRequest) {
     for (const media of mediaList) {
       // 冪等性: 同じ素材を同じ日に二度投稿しない(スロット単位。手動テストや二重発火対策)。
       // 判定は origin非依存の pathname で行う(過去にorigin差で二重投稿した事故の恒久対策)。
+      // 照合は alreadyPostedToday に一本化。枠は時刻なしの旧形式ログとも照合する —
+      // キー形式を時刻つきへ変えた2026-08-23、ここが新キーの完全一致だけだったため
+      // 旧形式で記録済みの同じ枠(id=71)を「未投稿」と誤判定し再投稿した(id=72)。
       const slotTime = slotTimeOf(media.base, date);
       const logPath = slotTime ? `${media.url}#${slotTime}` : media.url;
       const key = slotKey(logPath);
@@ -208,7 +212,8 @@ export async function POST(req: NextRequest) {
         "SELECT video_path FROM story_post_log WHERE date = ? AND status = 'posted'",
         [date]
       );
-      if (postedToday.some((r) => slotKey(String(r.video_path)) === key)) {
+      const postedKeys = postedToday.map((r) => slotKey(String(r.video_path)));
+      if (alreadyPostedToday(postedKeys, slotKey(media.url), slotTime)) {
         results.push({ media: media.base, skipped: '投稿済み(冪等)' });
         continue;
       }
