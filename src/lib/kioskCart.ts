@@ -25,12 +25,13 @@ function sameLine(l: CartLine, productId: number, variantId: number | null): boo
   return l.productId === productId && l.variantId === variantId;
 }
 
-export function addToCart(cart: CartLine[], input: CartAddInput): CartLine[] {
+export function addToCart(cart: CartLine[], input: CartAddInput, qty = 1): CartLine[] {
   const max = input.max ?? KIOSK_MAX_QTY_PER_ORDER;
+  const add = Math.max(1, qty);
   const existing = cart.find((l) => sameLine(l, input.productId, input.variantId));
   if (existing) {
     return cart.map((l) =>
-      sameLine(l, input.productId, input.variantId) ? { ...l, qty: Math.min(l.qty + 1, max), max } : l
+      sameLine(l, input.productId, input.variantId) ? { ...l, qty: Math.min(l.qty + add, max), max } : l
     );
   }
   return [
@@ -41,7 +42,7 @@ export function addToCart(cart: CartLine[], input: CartAddInput): CartLine[] {
       name: input.name,
       variantLabel: input.variantLabel,
       price: input.price,
-      qty: 1,
+      qty: Math.min(add, max),
       max,
     },
   ];

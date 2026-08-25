@@ -17,6 +17,7 @@ import {
   staffSetProductStock,
   staffSetVariantStock,
   staffUpdateProduct,
+  staffUpdateSale,
   staffVoidOrder,
   type KioskStaffView,
 } from './actions';
@@ -144,7 +145,7 @@ export default function KioskStaffPage() {
           </div>
         </div>
 
-        {tab === 'sales' && <SalesTab view={view} onCreate={(name, date) => run(() => staffCreateSale(name, date), '販売会を作成しました')} />}
+        {tab === 'sales' && <SalesTab view={view} run={run} onCreate={(name, date) => run(() => staffCreateSale(name, date), '販売会を作成しました')} />}
         {tab === 'products' && view.selectedSaleId != null && (
           <ProductsTab view={view} saleId={view.selectedSaleId} run={run} />
         )}
@@ -159,7 +160,15 @@ export default function KioskStaffPage() {
   );
 }
 
-function SalesTab({ view, onCreate }: { view: KioskStaffView; onCreate: (name: string, date: string) => void }) {
+function SalesTab({
+  view,
+  onCreate,
+  run,
+}: {
+  view: KioskStaffView;
+  onCreate: (name: string, date: string) => void;
+  run: (fn: () => Promise<unknown>, okMsg: string) => Promise<void>;
+}) {
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
   return (
@@ -181,18 +190,39 @@ function SalesTab({ view, onCreate }: { view: KioskStaffView; onCreate: (name: s
         </div>
         <p className="mt-2 text-xs text-navy-500">
           作成しただけではiPadに出ません。上の「この販売会をiPadに表示」で切り替えたものだけが表示されます。
+          名前はiPadトップのタイトルとしてそのまま出ます。
         </p>
       </div>
       <ul className="space-y-2">
         {view.sales.map((s) => (
-          <li key={s.id} className="flex items-center gap-3 rounded-lg border border-sand-200 bg-white px-4 py-2 text-sm">
-            <span className="font-bold">{s.name}</span>
-            <span className="text-navy-500">{s.eventDate}</span>
-            {s.active && <span className="rounded bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-700">iPad表示中</span>}
-          </li>
+          <SaleRow key={s.id} s={s} run={run} />
         ))}
       </ul>
     </div>
+  );
+}
+
+function SaleRow({
+  s,
+  run,
+}: {
+  s: KioskStaffView['sales'][number];
+  run: (fn: () => Promise<unknown>, okMsg: string) => Promise<void>;
+}) {
+  const [name, setName] = useState(s.name);
+  const [date, setDate] = useState(s.eventDate);
+  const dirty = name !== s.name || date !== s.eventDate;
+  return (
+    <li className="flex flex-wrap items-center gap-3 rounded-lg border border-sand-200 bg-white px-4 py-2 text-sm">
+      <Input value={name} onChange={(e) => setName(e.target.value)} className="w-72" />
+      <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-40" />
+      {s.active && <span className="rounded bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-700">iPad表示中</span>}
+      {dirty && (
+        <Button size="sm" onClick={() => run(() => staffUpdateSale(s.id, name, date), '販売会を更新しました(iPadのタイトルにも反映)')}>
+          保存
+        </Button>
+      )}
+    </li>
   );
 }
 
@@ -262,7 +292,8 @@ function ProductCard({
   const [name, setName] = useState(p.name);
   const [price, setPrice] = useState(String(p.price));
   const [stock, setStock] = useState(String(p.stock));
-  const [vLabel, setVLabel] = useState('');
+  const [vColor, setVColor] = useState('');
+  const [vSize, setVSize] = useState('');
   const [vStock, setVStock] = useState('0');
   const [uploading, setUploading] = useState(false);
 
@@ -348,15 +379,16 @@ function ProductCard({
             <VariantChip key={v.id} v={v} run={run} />
           ))}
           <div className="flex items-center gap-1">
-            <Input value={vLabel} onChange={(e) => setVLabel(e.target.value)} placeholder="サイズ名" className="h-8 w-24 text-sm" />
-            <Input type="number" value={vStock} onChange={(e) => setVStock(e.target.value)} className="h-8 w-20 text-sm" />
+            <Input value={vColor} onChange={(e) => setVColor(e.target.value)} placeholder="カラー(任意)" className="h-8 w-28 text-sm" />
+            <Input value={vSize} onChange={(e) => setVSize(e.target.value)} placeholder="サイズ" className="h-8 w-20 text-sm" />
+            <Input type="number" value={vStock} onChange={(e) => setVStock(e.target.value)} placeholder="在庫" className="h-8 w-20 text-sm" />
             <Button
               variant="outline"
               size="sm"
-              disabled={!vLabel.trim()}
+              disabled={!vSize.trim()}
               onClick={() =>
-                run(() => staffAddVariant(p.id, vLabel, Number(vStock) || 0), 'サイズを追加しました').then(() => {
-                  setVLabel('');
+                run(() => staffAddVariant(p.id, vColor, vSize, Number(vStock) || 0), 'サイズを追加しました').then(() => {
+                  setVSize('');
                   setVStock('0');
                 })
               }

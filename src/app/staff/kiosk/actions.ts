@@ -6,8 +6,9 @@
 import { isAuthorizedServer } from '@/lib/eventAuth';
 import {
   addKioskProduct,
-  addKioskVariant,
+  addKioskVariantCS,
   createKioskSale,
+  updateKioskSale,
   deleteKioskVariant,
   getKioskCatalog,
   getKioskSalesReport,
@@ -95,10 +96,16 @@ export async function staffSetProductStock(productId: number, stock: number): Pr
   await setKioskProductStock(productId, stock);
 }
 
-export async function staffAddVariant(productId: number, label: string, stock: number): Promise<number> {
+export async function staffUpdateSale(saleId: number, name: string, eventDate: string): Promise<void> {
   await requireStaff();
-  if (!label.trim()) throw new Error('サイズ名を入れてください');
-  return addKioskVariant(productId, label.trim(), Math.max(0, stock));
+  if (!name.trim()) throw new Error('販売会の名前を入れてください');
+  await updateKioskSale(saleId, name.trim(), eventDate.trim());
+}
+
+export async function staffAddVariant(productId: number, color: string, size: string, stock: number): Promise<number> {
+  await requireStaff();
+  if (!size.trim()) throw new Error('サイズ名を入れてください');
+  return addKioskVariantCS(productId, { color: color.trim(), size: size.trim(), stock: Math.max(0, stock) });
 }
 
 export async function staffSetVariantStock(variantId: number, stock: number): Promise<void> {

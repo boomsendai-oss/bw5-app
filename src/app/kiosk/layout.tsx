@@ -14,5 +14,11 @@ export const viewport: Viewport = {
 };
 
 export default function KioskLayout({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-dvh bg-[#F4EDE5] text-navy-900 select-none">{children}</div>;
+  return (
+    <div className="min-h-dvh bg-[#F4EDE5] text-navy-900 select-none">
+      {/* ルートlayoutのbody背景(BW5オレンジ)がオーバースクロールで見えないように上書き */}
+      <style>{`body { background: #F4EDE5; }`}</style>
+      {children}
+    </div>
+  );
 }

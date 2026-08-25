@@ -54,3 +54,13 @@ describe('kioskCart', () => {
     expect(cart[0].productId).toBe(2);
   });
 });
+
+describe('複数枚まとめて追加', () => {
+  it('qty指定でまとめてカゴに入る(上限クリップも効く)', () => {
+    let cart: CartLine[] = [];
+    cart = addToCart(cart, { ...sticker, max: 5 }, 3);
+    expect(cart[0].qty).toBe(3);
+    cart = addToCart(cart, { ...sticker, max: 5 }, 4);
+    expect(cart[0].qty).toBe(5);
+  });
+});

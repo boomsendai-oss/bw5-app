@@ -30,6 +30,8 @@ export interface KioskSale {
 export interface KioskVariantView {
   id: number;
   label: string;
+  color: string;
+  size: string;
   stock: number;
   available: number;
 }
@@ -95,13 +97,26 @@ export async function addKioskProduct(
 }
 
 export async function addKioskVariant(productId: number, label: string, stock: number): Promise<number> {
+  return addKioskVariantCS(productId, { color: '', size: label, stock });
+}
+
+/** カラー/サイズを分けて登録する。labelは表示・注文スナップショット用の合成文字列。 */
+export async function addKioskVariantCS(
+  productId: number,
+  v: { color: string; size: string; stock: number }
+): Promise<number> {
   await initDb();
-  const res = await execute('INSERT INTO kiosk_product_variants (product_id, label, stock, sort_order) VALUES (?, ?, ?, 0)', [
-    productId,
-    label,
-    stock,
-  ]);
+  const label = [v.color, v.size].filter(Boolean).join(' ');
+  const res = await execute(
+    'INSERT INTO kiosk_product_variants (product_id, label, color, size, stock, sort_order) VALUES (?, ?, ?, ?, ?, 0)',
+    [productId, label, v.color, v.size, v.stock]
+  );
   return Number(res.lastInsertRowid);
+}
+
+export async function updateKioskSale(id: number, name: string, eventDate: string): Promise<void> {
+  await initDb();
+  await execute('UPDATE kiosk_sales SET name = ?, event_date = ? WHERE id = ?', [name, eventDate, id]);
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +175,8 @@ export async function getKioskCatalog(saleId: number): Promise<KioskProductView[
       .map((v) => ({
         id: Number(v.id),
         label: String(v.label),
+        color: String(v.color ?? ''),
+        size: String(v.size ?? ''),
         stock: Number(v.stock),
         available: Math.max(0, Number(v.stock) - (holds.byVariant.get(Number(v.id)) ?? 0)),
       }));

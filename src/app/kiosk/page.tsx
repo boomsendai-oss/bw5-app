@@ -1,8 +1,10 @@
 'use client';
 
 // 無人物販kiosk (iPad向け・ガイドアクセスでロックして会場に設置)。
-// 画面フロー: アトラクト → カタログ → カゴ → QR決済 or 現金 → 完了 → 自動リセット。
-// 決済完了の検知は /api/kiosk/order/[id]/status のポーリング(設計書: SSEより堅い)。
+// 画面フロー: 商品いちらん(トップ) → 商品詳細(カラー/サイズ/枚数) → カゴ → QR決済 or 現金 → 完了。
+// TAROフィードバック(2026-08-25)反映: アトラクト画面廃止・カラー行+サイズプルダウン・
+// 枚数まとめ入れ・「お会計に進む」導線・決済ボタンは手段名を主文言に。
+// 決済完了の検知は /api/kiosk/order/[id]/status のポーリング。
 // オフライン・API障害時は「現金でお願いします」に縮退する。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
@@ -21,6 +23,8 @@ const yen = (n: number) => '¥' + n.toLocaleString('ja-JP');
 interface CatalogVariant {
   id: number;
   label: string;
+  color: string;
+  size: string;
   available: number;
 }
 interface CatalogProduct {
@@ -38,9 +42,8 @@ interface Catalog {
 }
 
 type Screen =
-  | { kind: 'attract' }
   | { kind: 'catalog' }
-  | { kind: 'variant'; product: CatalogProduct }
+  | { kind: 'product'; product: CatalogProduct }
   | { kind: 'cart' }
   | { kind: 'cashConfirm' }
   | { kind: 'qr'; orderId: number; qrDataUrl: string; amountTotal: number; expiresAt: number }
@@ -52,7 +55,7 @@ const DONE_RESET_MS = 8_000;
 const POLL_MS = 2_500;
 
 export default function KioskPage() {
-  const [screen, setScreen] = useState<Screen>({ kind: 'attract' });
+  const [screen, setScreen] = useState<Screen>({ kind: 'catalog' });
   const [catalog, setCatalog] = useState<Catalog>({ sale: null, products: [] });
   const [cart, setCart] = useState<CartLine[]>([]);
   const [busy, setBusy] = useState(false);
@@ -66,25 +69,25 @@ export default function KioskPage() {
       const res = await fetch('/api/kiosk/catalog', { cache: 'no-store' });
       if (!res.ok) throw new Error('catalog');
       setCatalog(await res.json());
-      if (screenRef.current.kind === 'offline') setScreen({ kind: 'attract' });
+      if (screenRef.current.kind === 'offline') setScreen({ kind: 'catalog' });
     } catch {
-      if (screenRef.current.kind === 'attract') setScreen({ kind: 'offline' });
+      if (screenRef.current.kind === 'catalog') setScreen({ kind: 'offline' });
     }
   }, []);
 
-  // 初回+定期リロード(在庫の他端末反映)。オフライン復帰の再試行も兼ねる
+  // 初回+定期リロード(在庫の反映)。オフライン復帰の再試行も兼ねる
   useEffect(() => {
     loadCatalog();
     const t = setInterval(() => {
-      if (screenRef.current.kind === 'attract' || screenRef.current.kind === 'offline') loadCatalog();
+      if (screenRef.current.kind === 'catalog' || screenRef.current.kind === 'offline') loadCatalog();
     }, 30_000);
     return () => clearInterval(t);
   }, [loadCatalog]);
 
-  const resetToAttract = useCallback(() => {
+  const resetToTop = useCallback(() => {
     setCart([]);
     setNotice('');
-    setScreen({ kind: 'attract' });
+    setScreen({ kind: 'catalog' });
     loadCatalog();
   }, [loadCatalog]);
 
@@ -93,7 +96,7 @@ export default function KioskPage() {
     fetch(`/api/kiosk/order/${orderId}/cancel`, { method: 'POST' }).catch(() => undefined);
   }, []);
 
-  // 無操作リセット(QR画面は独自の期限管理があるため除外)
+  // 無操作リセット(トップとQR・完了・オフラインは除外)
   useEffect(() => {
     const mark = () => {
       lastTouchRef.current = Date.now();
@@ -101,14 +104,14 @@ export default function KioskPage() {
     window.addEventListener('pointerdown', mark);
     const t = setInterval(() => {
       const s = screenRef.current;
-      if (s.kind === 'attract' || s.kind === 'qr' || s.kind === 'done' || s.kind === 'offline') return;
-      if (Date.now() - lastTouchRef.current > IDLE_RESET_MS) resetToAttract();
+      if (s.kind === 'catalog' || s.kind === 'qr' || s.kind === 'done' || s.kind === 'offline') return;
+      if (Date.now() - lastTouchRef.current > IDLE_RESET_MS) resetToTop();
     }, 5_000);
     return () => {
       window.removeEventListener('pointerdown', mark);
       clearInterval(t);
     };
-  }, [resetToAttract]);
+  }, [resetToTop]);
 
   // QR画面: 決済完了ポーリング + 期限切れ自動リセット
   useEffect(() => {
@@ -119,7 +122,7 @@ export default function KioskPage() {
         cancelOrder(orderId);
         setNotice('時間切れになりました。もう一度お試しください');
         setCart([]);
-        setScreen({ kind: 'attract' });
+        setScreen({ kind: 'catalog' });
         return;
       }
       try {
@@ -130,7 +133,7 @@ export default function KioskPage() {
         else if (status === 'expired' || status === 'voided') {
           setNotice('お支払いが確認できませんでした。もう一度お試しください');
           setCart([]);
-          setScreen({ kind: 'attract' });
+          setScreen({ kind: 'catalog' });
         }
       } catch {
         /* 一時的な通信エラーは次のポーリングで再試行 */
@@ -142,25 +145,9 @@ export default function KioskPage() {
   // 完了画面: 自動で先頭へ
   useEffect(() => {
     if (screen.kind !== 'done') return;
-    const t = setTimeout(resetToAttract, DONE_RESET_MS);
+    const t = setTimeout(resetToTop, DONE_RESET_MS);
     return () => clearTimeout(t);
-  }, [screen, resetToAttract]);
-
-  const tapProduct = (p: CatalogProduct) => {
-    if (p.available <= 0) return;
-    if (p.variants.length > 0) {
-      setScreen({ kind: 'variant', product: p });
-      return;
-    }
-    setCart((c) => addToCart(c, { productId: p.id, variantId: null, name: p.name, variantLabel: '', price: p.price, max: Math.min(p.available, KIOSK_MAX_QTY_PER_ORDER) }));
-    setScreen({ kind: 'catalog' });
-  };
-
-  const tapVariant = (p: CatalogProduct, v: CatalogVariant) => {
-    if (v.available <= 0) return;
-    setCart((c) => addToCart(c, { productId: p.id, variantId: v.id, name: p.name, variantLabel: v.label, price: p.price, max: Math.min(v.available, KIOSK_MAX_QTY_PER_ORDER) }));
-    setScreen({ kind: 'catalog' });
-  };
+  }, [screen, resetToTop]);
 
   const startStripe = async () => {
     if (busy || cart.length === 0) return;
@@ -237,56 +224,16 @@ export default function KioskPage() {
     );
   }
 
-  if (screen.kind === 'attract') {
-    const featured = catalog.products.filter((p) => p.imageUrl);
+  if (screen.kind === 'product') {
     return (
-      <button type="button" className="block min-h-dvh w-full cursor-pointer text-left" onClick={() => catalog.sale && setScreen({ kind: 'catalog' })}>
-        <Center>
-          {notice && <Banner>{notice}</Banner>}
-          <p className="text-2xl font-bold tracking-widest text-brand-600">BOOM GOODS</p>
-          <h1 className="mt-2 text-5xl font-extrabold">{catalog.sale ? catalog.sale.name : '準備中です'}</h1>
-          {featured.length > 0 && (
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-6">
-              {featured.slice(0, 3).map((p) => (
-                /* eslint-disable-next-line @next/next/no-img-element -- 動的な商品写真 */
-                <img key={p.id} src={p.imageUrl} alt={p.name} className="h-56 w-56 rounded-2xl object-cover shadow-lg" />
-              ))}
-            </div>
-          )}
-          {catalog.sale && (
-            <div className="mt-12 animate-pulse rounded-full bg-navy-900 px-12 py-6 text-3xl font-bold text-white">
-              タップしてスタート
-            </div>
-          )}
-        </Center>
-      </button>
-    );
-  }
-
-  if (screen.kind === 'variant') {
-    const p = screen.product;
-    return (
-      <div className="mx-auto flex min-h-dvh max-w-3xl flex-col items-center justify-center gap-8 p-8">
-        <h2 className="text-4xl font-bold">{p.name}</h2>
-        <p className="text-2xl text-navy-700">サイズを選んでください</p>
-        <div className="flex flex-wrap justify-center gap-5">
-          {p.variants.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              disabled={v.available <= 0}
-              onClick={() => tapVariant(p, v)}
-              className="min-w-32 rounded-2xl border-4 border-navy-900 bg-white px-8 py-6 text-3xl font-bold disabled:border-navy-100 disabled:text-navy-300"
-            >
-              {v.label}
-              {v.available <= 0 ? <span className="block text-base font-normal">売り切れ</span> : v.available <= 3 ? <span className="block text-base font-normal text-red-600">残り{v.available}</span> : null}
-            </button>
-          ))}
-        </div>
-        <BigButton subtle onClick={() => setScreen({ kind: 'catalog' })}>
-          ← もどる
-        </BigButton>
-      </div>
+      <ProductScreen
+        product={screen.product}
+        onBack={() => setScreen({ kind: 'catalog' })}
+        onAdd={(input, qty) => {
+          setCart((c) => addToCart(c, input, qty));
+          setScreen({ kind: 'catalog' });
+        }}
+      />
     );
   }
 
@@ -294,9 +241,11 @@ export default function KioskPage() {
     const secondsLeft = Math.max(0, Math.round((screen.expiresAt - Date.now()) / 1000));
     return (
       <div className="mx-auto flex min-h-dvh max-w-3xl flex-col items-center justify-center gap-6 p-8 text-center">
-        <h2 className="text-4xl font-bold">スマホのカメラで読み取って
+        <h2 className="text-4xl font-bold">
+          スマホのカメラで読み取って
           <br />
-          お支払いください</h2>
+          お支払いください
+        </h2>
         <p className="text-2xl font-bold text-brand-700">{yen(screen.amountTotal)}</p>
         {/* eslint-disable-next-line @next/next/no-img-element -- クライアント生成のQR data URL */}
         <img src={screen.qrDataUrl} alt="お支払いQRコード" className="h-80 w-80 rounded-xl bg-white p-3 shadow-lg" />
@@ -335,7 +284,7 @@ export default function KioskPage() {
         <h2 className="text-4xl font-bold">現金でのお支払い</h2>
         <p className="rounded-2xl bg-white px-10 py-6 text-5xl font-extrabold text-brand-700 shadow">{yen(total)}</p>
         <p className="text-2xl leading-relaxed text-navy-800">
-          上の金額を<span className="font-bold">貯金箱</span>に入れましたか？
+          この金額を<span className="font-bold">貯金箱</span>に入れてください
           <br />
           <span className="text-lg text-navy-500">(おつりは出ません。ぴったりの金額をお願いします)</span>
         </p>
@@ -385,15 +334,16 @@ export default function KioskPage() {
             <span>合計 {count}点</span>
             <span className="text-4xl font-extrabold">{yen(total)}</span>
           </div>
-          <div className="mt-5 grid grid-cols-2 gap-4">
+          <p className="mt-4 text-center text-lg font-bold text-white/80">お支払い方法を選んでください</p>
+          <div className="mt-2 grid grid-cols-2 gap-4">
             <button
               type="button"
               disabled={cart.length === 0 || busy}
               onClick={startStripe}
               className="rounded-2xl bg-brand-500 px-6 py-6 text-2xl font-bold disabled:opacity-40"
             >
-              {busy ? '準備中…' : 'QRコードで支払う'}
-              <span className="block text-sm font-normal">カード / PayPay / Apple Pay</span>
+              {busy ? '準備中…' : 'カード / PayPay / Apple Pay'}
+              <span className="block text-base font-normal">支払い用QRコードを表示</span>
             </button>
             <button
               type="button"
@@ -401,8 +351,8 @@ export default function KioskPage() {
               onClick={() => setScreen({ kind: 'cashConfirm' })}
               className="rounded-2xl bg-white px-6 py-6 text-2xl font-bold text-navy-900 disabled:opacity-40"
             >
-              現金で支払いました
-              <span className="block text-sm font-normal">貯金箱に入れてからタップ</span>
+              現金
+              <span className="block text-base font-normal">この金額を貯金箱に入れてください</span>
             </button>
           </div>
         </div>
@@ -413,18 +363,12 @@ export default function KioskPage() {
     );
   }
 
-  // catalog
+  // catalog (トップ)
   return (
-    <div className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-4 p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold">{catalog.sale?.name ?? '商品いちらん'}</h2>
-        <button
-          type="button"
-          onClick={() => setScreen({ kind: 'cart' })}
-          className="rounded-full bg-navy-900 px-8 py-4 text-2xl font-bold text-white"
-        >
-          カゴ {count > 0 && <span className="ml-1 rounded-full bg-brand-500 px-3 py-1">{count}</span>}
-        </button>
+    <div className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-4 p-6 pb-32">
+      <div className="text-center">
+        <p className="text-lg font-bold tracking-widest text-brand-600">BOOM GOODS</p>
+        <h1 className="text-3xl font-extrabold">{catalog.sale ? catalog.sale.name : '準備中です'}</h1>
       </div>
       {notice && <Banner>{notice}</Banner>}
       <div className="grid flex-1 grid-cols-2 content-start gap-5 md:grid-cols-3">
@@ -433,7 +377,7 @@ export default function KioskPage() {
             key={p.id}
             type="button"
             disabled={p.available <= 0}
-            onClick={() => tapProduct(p)}
+            onClick={() => setScreen({ kind: 'product', product: p })}
             className="rounded-2xl bg-white p-4 text-left shadow disabled:opacity-50"
           >
             {p.imageUrl ? (
@@ -451,14 +395,168 @@ export default function KioskPage() {
             ) : null}
           </button>
         ))}
+        {catalog.sale && catalog.products.length === 0 && (
+          <p className="col-span-full py-16 text-center text-2xl text-navy-500">商品を準備中です</p>
+        )}
       </div>
-      <div className="flex items-center justify-between">
-        <button type="button" onClick={resetToAttract} className="py-2 text-lg text-navy-500 underline">
-          ← 最初にもどる
-        </button>
+      <div className="flex items-center justify-end">
         <a href="/kiosk/legal" className="py-2 text-sm text-navy-400 underline">
           特定商取引法に基づく表記
         </a>
+      </div>
+      {count > 0 && (
+        <div className="fixed inset-x-0 bottom-0 p-4">
+          <button
+            type="button"
+            onClick={() => setScreen({ kind: 'cart' })}
+            className="mx-auto flex w-full max-w-3xl items-center justify-between rounded-2xl bg-navy-900 px-8 py-5 text-white shadow-2xl"
+          >
+            <span className="text-2xl font-bold">お会計に進む →</span>
+            <span className="text-2xl font-extrabold">
+              {count}点 {yen(total)}
+            </span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 商品詳細: カラー行 + サイズプルダウン + 枚数 → カゴに入れる。 */
+function ProductScreen({
+  product: p,
+  onBack,
+  onAdd,
+}: {
+  product: CatalogProduct;
+  onBack: () => void;
+  onAdd: (input: { productId: number; variantId: number | null; name: string; variantLabel: string; price: number; max: number }, qty: number) => void;
+}) {
+  const colors = useMemo(() => {
+    const seen: string[] = [];
+    for (const v of p.variants) if (!seen.includes(v.color)) seen.push(v.color);
+    return seen;
+  }, [p.variants]);
+  const hasColors = colors.some((c) => c !== '');
+
+  const [color, setColor] = useState(colors[0] ?? '');
+  const [variantId, setVariantId] = useState<number | ''>('');
+  const [qty, setQty] = useState(1);
+
+  const sizesOfColor = p.variants.filter((v) => v.color === color);
+  const selectedVariant = p.variants.find((v) => v.id === variantId) ?? null;
+  const maxQty = Math.min(p.variants.length > 0 ? (selectedVariant?.available ?? 0) : p.available, KIOSK_MAX_QTY_PER_ORDER);
+  const canAdd = p.variants.length === 0 ? p.available > 0 : selectedVariant != null && selectedVariant.available > 0;
+
+  return (
+    <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 p-8">
+      <div className="flex items-start gap-6">
+        {p.imageUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element -- 動的な商品写真 */
+          <img src={p.imageUrl} alt={p.name} className="h-48 w-48 rounded-2xl object-cover shadow" />
+        ) : (
+          <div className="flex h-48 w-48 items-center justify-center rounded-2xl bg-sand-100 text-6xl">🛍️</div>
+        )}
+        <div>
+          <h2 className="text-4xl font-bold">{p.name}</h2>
+          <p className="mt-2 text-3xl font-extrabold text-brand-700">{yen(p.price)}</p>
+          {p.description && <p className="mt-3 text-lg text-navy-600">{p.description}</p>}
+        </div>
+      </div>
+
+      {hasColors && (
+        <div>
+          <p className="mb-2 text-xl font-bold">カラー</p>
+          <div className="flex flex-wrap gap-3">
+            {colors.map((c) => {
+              const colorAvailable = p.variants.filter((v) => v.color === c).reduce((s, v) => s + v.available, 0);
+              return (
+                <button
+                  key={c || '(単色)'}
+                  type="button"
+                  disabled={colorAvailable <= 0}
+                  onClick={() => {
+                    setColor(c);
+                    setVariantId('');
+                    setQty(1);
+                  }}
+                  className={`rounded-2xl border-4 px-6 py-4 text-2xl font-bold disabled:border-navy-100 disabled:text-navy-300 ${
+                    color === c ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-navy-200 bg-white'
+                  }`}
+                >
+                  {c || 'その他'}
+                  {colorAvailable <= 0 && <span className="block text-sm font-normal">売り切れ</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {p.variants.length > 0 && (
+        <div>
+          <p className="mb-2 text-xl font-bold">サイズ</p>
+          <select
+            value={variantId}
+            onChange={(e) => {
+              setVariantId(e.target.value === '' ? '' : Number(e.target.value));
+              setQty(1);
+            }}
+            className="w-full max-w-sm rounded-2xl border-4 border-navy-200 bg-white px-5 py-4 text-2xl font-bold"
+          >
+            <option value="">サイズを選んでください</option>
+            {sizesOfColor.map((v) => (
+              <option key={v.id} value={v.id} disabled={v.available <= 0}>
+                {v.size || v.label}
+                {v.available <= 0 ? '(売り切れ)' : v.available <= 3 ? ` (残り${v.available})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div>
+        <p className="mb-2 text-xl font-bold">枚数</p>
+        <div className="flex items-center gap-4">
+          <button type="button" onClick={() => setQty((q) => Math.max(1, q - 1))} className="h-16 w-16 rounded-full bg-sand-100 text-4xl font-bold">
+            −
+          </button>
+          <span className="w-14 text-center text-4xl font-bold">{qty}</span>
+          <button
+            type="button"
+            onClick={() => setQty((q) => Math.min(Math.max(1, maxQty), q + 1))}
+            className="h-16 w-16 rounded-full bg-sand-100 text-4xl font-bold"
+          >
+            ＋
+          </button>
+          {selectedVariant && selectedVariant.available <= 3 && <span className="text-lg text-red-600">残り{selectedVariant.available}</span>}
+        </div>
+      </div>
+
+      <div className="mt-auto flex items-center justify-between gap-4">
+        <BigButton subtle onClick={onBack}>
+          ← もどる
+        </BigButton>
+        <button
+          type="button"
+          disabled={!canAdd}
+          onClick={() =>
+            onAdd(
+              {
+                productId: p.id,
+                variantId: selectedVariant?.id ?? null,
+                name: p.name,
+                variantLabel: selectedVariant?.label ?? '',
+                price: p.price,
+                max: Math.max(1, maxQty),
+              },
+              qty
+            )
+          }
+          className="flex-1 rounded-2xl bg-brand-500 px-8 py-6 text-3xl font-bold text-white disabled:opacity-40"
+        >
+          カゴに入れる {qty > 1 ? `(${qty}点)` : ''}
+        </button>
       </div>
     </div>
   );

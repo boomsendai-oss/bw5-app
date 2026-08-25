@@ -102,3 +102,28 @@ describe('在庫補正', () => {
     expect(Number(vrow?.stock)).toBe(1);
   });
 });
+
+describe('販売会の編集', () => {
+  it('名前と開催日をスタッフが変更できる', async () => {
+    const id = await k.createKioskSale('旧名', '2026-09-26');
+    await k.updateKioskSale(id, 'BOOMER FIGHT物販', '2026-09-27');
+    const row = await core.getOne('SELECT name, event_date FROM kiosk_sales WHERE id = ?', [id]);
+    expect(String(row?.name)).toBe('BOOMER FIGHT物販');
+    expect(String(row?.event_date)).toBe('2026-09-27');
+  });
+});
+
+describe('バリエーションのカラー/サイズ', () => {
+  it('カラーとサイズを分けて登録でき、カタログにも両方返る(labelは表示用合成)', async () => {
+    const saleId = await k.createKioskSale('CS販売会', '2026-09-26');
+    const p = await k.addKioskProduct(saleId, { name: 'CS商品', price: 1000, stock: 0 });
+    await k.addKioskVariantCS(p, { color: 'ホワイト', size: 'M', stock: 3 });
+    await k.addKioskVariantCS(p, { color: '', size: 'F', stock: 2 });
+    const catalog = await k.getKioskCatalog(saleId);
+    const vs = catalog[0].variants;
+    expect(vs[0].color).toBe('ホワイト');
+    expect(vs[0].size).toBe('M');
+    expect(vs[0].label).toBe('ホワイト M');
+    expect(vs[1].label).toBe('F');
+  });
+});

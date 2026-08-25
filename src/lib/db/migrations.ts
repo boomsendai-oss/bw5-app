@@ -64,6 +64,9 @@ export async function runMigrations(c: Client): Promise<void> {
   await addColumnIfMissing(c, 'instagram_entries', 'handle_self', 'TEXT');
   await addColumnIfMissing(c, 'instagram_entries', 'handle_mother', 'TEXT');
   await addColumnIfMissing(c, 'instagram_entries', 'handle_father', 'TEXT');
+  // kioskバリエーションのカラー/サイズ分離(2026-08-25)。本番は台帳 20260825_kiosk_variant_color.sql
+  await addColumnIfMissing(c, 'kiosk_product_variants', 'color', "TEXT NOT NULL DEFAULT ''");
+  await addColumnIfMissing(c, 'kiosk_product_variants', 'size', "TEXT NOT NULL DEFAULT ''");
   // 体験予約 担当周知(WS T / 2026-07-18)の trial_records 列(course_type/dance_experience/
   // referral_source)は台帳 scripts/migrations/20260718_trial_notify_fields.sql で追加する。
   // 本番は SKIP_DB_INIT=1 でこの runMigrations 自体が走らないため、ここに書いても本番へ届かない。
