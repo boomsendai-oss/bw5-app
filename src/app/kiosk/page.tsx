@@ -406,13 +406,14 @@ export default function KioskPage() {
       </div>
       {count > 0 && (
         <div className="fixed inset-x-0 bottom-0 p-4">
+          {/* TARO要望(2026-08-25): 目立つオレンジで。kioskはイベント現場UIなのでブランド3色縛りの対象外 */}
           <button
             type="button"
             onClick={() => setScreen({ kind: 'cart' })}
-            className="mx-auto flex w-full max-w-3xl items-center justify-between rounded-2xl bg-navy-900 px-8 py-5 text-white shadow-2xl"
+            className="mx-auto flex w-full max-w-3xl items-center justify-between rounded-2xl bg-orange-500 px-8 py-6 text-white shadow-2xl ring-4 ring-white/60"
           >
-            <span className="text-2xl font-bold">お会計に進む →</span>
-            <span className="text-2xl font-extrabold">
+            <span className="text-3xl font-extrabold">お会計に進む →</span>
+            <span className="text-3xl font-extrabold">
               {count}点 {yen(total)}
             </span>
           </button>

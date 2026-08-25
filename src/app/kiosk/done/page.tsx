@@ -1,5 +1,7 @@
 // お客さんのスマホ側の決済完了ページ(Stripe Checkoutのsuccess_url)。
 // 完了の正本はWebhook→iPad画面。ここは「iPadを見てね」の案内だけ。
+import CloseButton from './CloseButton';
+
 export const metadata = { title: 'お支払い完了 - BOOM GOODS' };
 
 export default function KioskDonePage() {
@@ -14,7 +16,9 @@ export default function KioskDonePage() {
         <br />
         <span className="font-bold">商品をお持ちください。</span>
       </p>
-      <p className="mt-4 text-sm text-navy-500">このページは閉じて大丈夫です</p>
+      <div className="mt-4">
+        <CloseButton />
+      </div>
     </div>
   );
 }

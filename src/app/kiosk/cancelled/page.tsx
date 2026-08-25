@@ -1,4 +1,6 @@
 // お客さんのスマホ側のキャンセルページ(Stripe Checkoutのcancel_url)。
+import CloseButton from '../done/CloseButton';
+
 export const metadata = { title: 'お支払いキャンセル - BOOM GOODS' };
 
 export default function KioskCancelledPage() {
@@ -10,7 +12,9 @@ export default function KioskCancelledPage() {
         <br />
         レジのiPadのQRコードを読み直してください。
       </p>
-      <p className="mt-4 text-sm text-navy-500">このページは閉じて大丈夫です</p>
+      <div className="mt-4">
+        <CloseButton />
+      </div>
     </div>
   );
 }
