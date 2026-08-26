@@ -4,6 +4,7 @@ import { bf6DivisionLabel, bf6GradeLabel, formatReceiptNo } from '@/lib/bf6';
 import { listBf6OrdersStaff, SSM_FREE_NOTE } from '@/lib/bf6Db';
 import StatusButtons from '../StatusButtons';
 import EntryEditor from '../EntryEditor';
+import RefundNotice from '../RefundNotice';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,6 +84,12 @@ export default async function StaffBf6EntriesPage() {
                   </p>
                 )}
               </div>
+              <RefundNotice
+                payMethod={o.payMethod}
+                paymentStatus={o.paymentStatus}
+                amountTotal={o.amountTotal}
+                paymentIntentId={o.paymentIntentId}
+              />
               <div className="mt-3 border-t border-sand-100 pt-2">
                 <StatusButtons orderId={o.orderId} current={o.paymentStatus} />
               </div>

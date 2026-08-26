@@ -121,6 +121,37 @@ export async function listBf6CheckedIn(): Promise<Set<number>> {
   return new Set(rows.map((r) => Number(r.item_id)));
 }
 
+/**
+ * キャンセルされた申込の抽選枠・受付を手放す。
+ *
+ * これを忘れると、キャンセル済みの人がトーナメント表とVS画面に残り続ける
+ * (bf_draw は payment_status を見ていないため、自動では消えない)。
+ * 枠は item_id = NULL に戻すだけで削除しない。組み合わせの番号を保つため。
+ * bf_match は slot_no を参照しているので、空いた枠は不戦勝として扱われる。
+ */
+export async function releaseBf6EntrySlots(
+  orderId: number
+): Promise<{ slots: number; checkins: number }> {
+  const items = await getAll(
+    "SELECT id FROM bf_order_items WHERE order_id = ? AND item_type = 'entry'",
+    [orderId]
+  );
+  let slots = 0;
+  let checkins = 0;
+  for (const it of items) {
+    const itemId = Number(it.id);
+    const d = await execute('UPDATE bf_draw SET item_id = NULL, drawn_at = NULL WHERE item_id = ?', [
+      itemId,
+    ]).catch(() => ({ rowsAffected: 0 }));
+    const c = await execute('DELETE FROM bf_checkin WHERE item_id = ?', [itemId]).catch(() => ({
+      rowsAffected: 0,
+    }));
+    slots += Number(d.rowsAffected ?? 0);
+    checkins += Number(c.rowsAffected ?? 0);
+  }
+  return { slots, checkins };
+}
+
 export type ReceptionEntrant = {
   itemId: number;
   orderId: number;

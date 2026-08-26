@@ -6,6 +6,8 @@
 import { getAll, execute, withWriteTx } from '@/lib/db';
 import type { Transaction } from '@libsql/client';
 import { generateEditToken } from '@/lib/eventSignup';
+import { requiresSlotRelease } from '@/lib/bf6Cancel';
+import { releaseBf6EntrySlots } from '@/lib/bf6DrawDb';
 import {
   DEFAULT_BF6_SETTINGS,
   buildBf6OrderItems,
@@ -270,6 +272,8 @@ export interface StaffBf6Order {
   paymentStatus: string;
   amountTotal: number;
   stripeSessionId: string;
+  /** Stripeの返金操作で検索するID。事前カード決済で入金済みのものだけ入る。 */
+  paymentIntentId: string;
   editToken: string;
   createdAt: string;
   items: OwnBf6Item[];
@@ -280,6 +284,14 @@ export async function listBf6OrdersStaff(): Promise<StaffBf6Order[]> {
   await sweepExpiredBf6Orders();
   const orders = await getAll('SELECT * FROM bf_orders ORDER BY id DESC');
   const items = await getAll('SELECT * FROM bf_order_items ORDER BY order_id, sort_order, id');
+  // 返金時にStripeで検索するIDを注文に紐づける(1注文=1決済の前提)
+  const pays = await getAll(
+    "SELECT order_id, payment_intent_id FROM bf_payments WHERE payment_intent_id != '' ORDER BY id"
+  ).catch(() => []);
+  const piByOrder = new Map<number, string>();
+  for (const p of pays) {
+    if (p.order_id != null) piByOrder.set(Number(p.order_id), String(p.payment_intent_id));
+  }
   /* eslint-disable @typescript-eslint/no-explicit-any -- DB行 */
   const byOrder = new Map<number, any[]>();
   for (const i of items) {
@@ -297,6 +309,7 @@ export async function listBf6OrdersStaff(): Promise<StaffBf6Order[]> {
     paymentStatus: String(o.payment_status),
     amountTotal: Number(o.amount_total),
     stripeSessionId: String(o.stripe_session_id ?? ''),
+    paymentIntentId: piByOrder.get(Number(o.id)) ?? '',
     editToken: String(o.edit_token),
     createdAt: String(o.created_at),
     items: (byOrder.get(Number(o.id)) ?? []).map((i: any) => ({
@@ -448,7 +461,12 @@ export async function listBf6PaymentsStaff(): Promise<StaffBf6Payment[]> {
   }));
 }
 
-/** 手動ステータス変更(スタッフ操作: 当日現金の入金確認・キャンセル・返金)。 */
+/**
+ * 手動ステータス変更(スタッフ操作: 当日現金の入金確認・キャンセル・返金)。
+ *
+ * キャンセル系にしたときは抽選枠と受付も同時に手放す。画面側の操作順に依存させると
+ * 「キャンセルしたのにトーナメント表に残っている」が起きるため、ここで必ず巻き取る。
+ */
 export async function setBf6OrderStatusStaff(orderId: number, status: string): Promise<boolean> {
   if (!['paid', 'cash_due', 'canceled', 'refunded'].includes(status)) return false;
   const r = await execute('UPDATE bf_orders SET payment_status = ?, updated_at = ? WHERE id = ?', [
@@ -456,7 +474,9 @@ export async function setBf6OrderStatusStaff(orderId: number, status: string): P
     nowIso(),
     orderId,
   ]);
-  return Number(r.rowsAffected ?? 0) > 0;
+  const ok = Number(r.rowsAffected ?? 0) > 0;
+  if (ok && requiresSlotRelease(status)) await releaseBf6EntrySlots(orderId);
+  return ok;
 }
 
 /** 自分の申込1件をトークン完全一致で返す(列挙不可)。 */

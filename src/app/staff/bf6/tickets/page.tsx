@@ -3,6 +3,7 @@ import StaffPageHeader from '@/components/StaffPageHeader';
 import { formatReceiptNo } from '@/lib/bf6';
 import { listBf6OrdersStaff } from '@/lib/bf6Db';
 import StatusButtons from '../StatusButtons';
+import { refundState } from '@/lib/bf6Cancel';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +58,21 @@ export default async function StaffBf6TicketsPage() {
                     <td className="px-3 py-2">{adult?.qty ?? 0}</td>
                     <td className="px-3 py-2">{child?.qty ?? 0}</td>
                     <td className="px-3 py-2">{yen(o.amountTotal)}</td>
-                    <td className="px-3 py-2 text-xs">{o.paymentStatus}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {o.paymentStatus}
+                      {(() => {
+                        const r = refundState(o);
+                        if (r.kind !== 'due') return null;
+                        return (
+                          <span className="mt-1 block font-bold text-red-600">
+                            要返金 {yen(r.amount)}
+                            {o.paymentIntentId && (
+                              <span className="block font-mono font-normal break-all text-red-700">{o.paymentIntentId}</span>
+                            )}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="px-3 py-2"><StatusButtons orderId={o.orderId} current={o.paymentStatus} /></td>
                   </tr>
                 );
