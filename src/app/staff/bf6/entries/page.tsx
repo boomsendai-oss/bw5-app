@@ -5,6 +5,8 @@ import { listBf6OrdersStaff, SSM_FREE_NOTE } from '@/lib/bf6Db';
 import StatusButtons from '../StatusButtons';
 import EntryEditor from '../EntryEditor';
 import RefundNotice from '../RefundNotice';
+import CancelMailButton from '../CancelMailButton';
+import { requiresSlotRelease } from '@/lib/bf6Cancel';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,6 +92,9 @@ export default async function StaffBf6EntriesPage() {
                 amountTotal={o.amountTotal}
                 paymentIntentId={o.paymentIntentId}
               />
+              {requiresSlotRelease(o.paymentStatus) && (
+                <CancelMailButton orderId={o.orderId} email={o.email} />
+              )}
               <div className="mt-3 border-t border-sand-100 pt-2">
                 <StatusButtons orderId={o.orderId} current={o.paymentStatus} />
               </div>

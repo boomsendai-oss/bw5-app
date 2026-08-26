@@ -110,3 +110,33 @@ export async function staffExpireStaleOffers(): Promise<number> {
   revalidatePath('/staff/bf6/waitlist');
   return n;
 }
+
+// ===== キャンセル完了メール =====
+
+/**
+ * キャンセル完了メールを1件送る。手動送信(TARO 2026-08-26)。
+ * 返金はStripeで人が実行するので、返金が済んだのを確認してから押す運用にする。
+ */
+export async function staffSendCancelMail(
+  orderId: number
+): Promise<{ ok: true; to: string } | { ok: false; error: string }> {
+  const { listBf6OrdersStaff } = await import('@/lib/bf6Db');
+  const { sendCancelMailForOrder } = await import('@/lib/bf6CancelSend');
+  const order = (await listBf6OrdersStaff()).find((o) => o.orderId === orderId);
+  if (!order) return { ok: false, error: '該当の申込が見つかりません' };
+  const r = await sendCancelMailForOrder({
+    orderId: order.orderId,
+    buyerName: order.buyerName,
+    email: order.email,
+    payMethod: order.payMethod,
+    paymentStatus: order.paymentStatus,
+    amountTotal: order.amountTotal,
+    items: order.items.map((i) => ({
+      itemType: i.itemType,
+      dancerName: i.dancerName,
+      divisions: i.divisions,
+    })),
+  });
+  revalidatePath('/staff/bf6/entries');
+  return r;
+}
