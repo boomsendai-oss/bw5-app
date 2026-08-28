@@ -27,6 +27,8 @@ const STUDIOS = [
   { id: 10, name: 'マイダンスショップ', aliases: [] },
   { id: 12, name: '宮城野区文化センター　リハーサル室', aliases: ['宮城野区文化センター'] },
   { id: 90, name: '戦災復興記念館　展示ホール', aliases: ['戦災復興記念館'] },
+  { id: 91, name: '七ヶ浜町中央公民館 中会議室', aliases: ['七ヶ浜町中央公民館', '生涯学習センター'] },
+  { id: 92, name: 'エルパーク仙台　フィットネススタジオ', aliases: ['エルパーク', '男女共同参画'] },
 ];
 
 const ev = (o: Partial<CalendarEvent>): CalendarEvent => ({
@@ -112,6 +114,14 @@ describe('resolveStudio — 表記ゆれは起こる前提', () => {
     expect(resolveStudio('スタジオAZUMA', STUDIOS)).toMatchObject({ id: 4 });
     expect(resolveStudio('七ヶ浜健康スポーツセンター「アクアリーナ」, 日本、〒985-0802', STUDIOS)).toMatchObject({ id: 8 });
   });
+  it('施設名の途中に括弧が挟まる公共施設も拾える', () => {
+    // 正式名「七ヶ浜町中央公民館 中会議室」に対し、カレンダーは
+    // 「七ヶ浜町中央公民館(生涯学習センター) 中会議室」と書かれている
+    expect(resolveStudio('七ヶ浜町中央公民館(生涯学習センター) 中会議室', STUDIOS)).toMatchObject({ id: 91 });
+    // 領収書名義は「男女共同参画推進センター」だが会場はエルパーク仙台
+    expect(resolveStudio('エルパーク仙台　フィットネススタジオ', STUDIOS)).toMatchObject({ id: 92 });
+  });
+
   it('より具体的な別名を優先する (GOAT小スタジオ が GOAT に負けない)', () => {
     expect(resolveStudio('GOAT小スタジオ', STUDIOS)).toMatchObject({ id: 2 });
   });
