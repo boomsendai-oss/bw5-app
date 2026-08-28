@@ -102,6 +102,13 @@ export function parseInstructor(summary: string, instructors: NamedRef[]): Parse
     if (hit) return { id: hit.id, name: hit.name, substitute: false };
   }
 
+  // 6. 区切り文字で区切られたセグメントの完全一致 (`七ヶ浜HIPHOP 初級クラス|TARO`)。
+  //    完全一致に限るので、クラス名の一部を講師名と誤認する余地がない。
+  for (const seg of s.split(/[|｜/／]/)) {
+    const hit = lookup(seg);
+    if (hit) return { id: hit.id, name: hit.name, substitute: false };
+  }
+
   // 3 & 4. 先頭一致(長い名前から試して部分被りを避ける)
   const head = normKey(s);
   const sorted = [...instructors].sort((a, b) => normKey(b.name).length - normKey(a.name).length);

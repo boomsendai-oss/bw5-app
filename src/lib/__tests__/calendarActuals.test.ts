@@ -81,6 +81,11 @@ describe('parseInstructor — 実データの5パターン', () => {
       id: 12, name: 'KOKEKO', substitute: true,
     });
   });
+  it('区切り文字のあとに名前が来る形 (実データ: 七ヶ浜HIPHOP 初級クラス|TARO)', () => {
+    expect(parseInstructor('七ヶ浜HIPHOP 初級クラス|TARO', INSTRUCTORS)).toMatchObject({ id: 3, name: 'TARO' });
+    expect(parseInstructor('七ヶ浜HIPHOP 初級クラス｜KEIKO', INSTRUCTORS)).toMatchObject({ id: 4 });
+  });
+
   it('名簿に無い名前は null (推測しない)', () => {
     expect(parseInstructor('⚔️ダンスバトル練習会', INSTRUCTORS)).toBeNull();
     expect(parseInstructor('体験レッスン', INSTRUCTORS)).toBeNull();
