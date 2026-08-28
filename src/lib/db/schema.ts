@@ -1244,6 +1244,7 @@ export function getSchemaStatements(): InStatement[] {
       expires_at TEXT NOT NULL DEFAULT '',
       amount_mismatch INTEGER NOT NULL DEFAULT 0,
       paid_after_expired INTEGER NOT NULL DEFAULT 0,
+      base_synced INTEGER NOT NULL DEFAULT 0,
       void_reason TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL

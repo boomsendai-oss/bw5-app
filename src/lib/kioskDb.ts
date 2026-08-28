@@ -604,6 +604,43 @@ export async function getKioskSalesReport(saleId: number): Promise<KioskSalesRep
 }
 
 // ---------------------------------------------------------------------------
+// BASE在庫反映(イベント後にkioskの売上をBASEへ返す)
+// ---------------------------------------------------------------------------
+
+export interface UnsyncedBaseSales {
+  orderIds: number[];
+  lines: Array<{ baseItemId: number; variantLabel: string; qty: number }>;
+}
+
+/** paid・BASE由来商品・未同期の売上明細を抽出する(取消済みは含まない)。 */
+export async function getUnsyncedBaseSales(saleId: number): Promise<UnsyncedBaseSales> {
+  await initDb();
+  const rows = await getAll(
+    `SELECT o.id AS order_id, p.base_item_id, i.variant_label, i.qty
+     FROM kiosk_orders o
+     JOIN kiosk_order_items i ON i.order_id = o.id
+     JOIN kiosk_products p ON p.id = i.product_id
+     WHERE o.sale_id = ? AND o.status = 'paid' AND o.base_synced = 0 AND p.base_item_id IS NOT NULL`,
+    [saleId]
+  );
+  const orderIds = [...new Set(rows.map((r) => Number(r.order_id)))];
+  return {
+    orderIds,
+    lines: rows.map((r) => ({
+      baseItemId: Number(r.base_item_id),
+      variantLabel: String(r.variant_label ?? ''),
+      qty: Number(r.qty),
+    })),
+  };
+}
+
+export async function markKioskOrdersBaseSynced(orderIds: number[]): Promise<void> {
+  if (orderIds.length === 0) return;
+  const placeholders = orderIds.map(() => '?').join(',');
+  await execute(`UPDATE kiosk_orders SET base_synced = 1 WHERE id IN (${placeholders})`, orderIds);
+}
+
+// ---------------------------------------------------------------------------
 // Webhook適用(決済の正本・冪等)
 // ---------------------------------------------------------------------------
 

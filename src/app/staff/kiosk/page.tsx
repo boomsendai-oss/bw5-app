@@ -9,8 +9,11 @@ import { Input } from '@/components/ui/input';
 import {
   getKioskStaffView,
   staffActivateSale,
+  staffApplyBaseSync,
   staffImportBaseItem,
   staffListBaseItems,
+  staffPreviewBaseSync,
+  type BaseSyncPreview,
   type StaffBaseItem,
   staffAddProduct,
   staffAddVariant,
@@ -517,6 +520,92 @@ function VariantChip({
   );
 }
 
+/** イベント後にkioskの売上をBASE在庫へ反映する(プレビュー→確認→反映)。 */
+function BaseSyncPanel({ saleId, onDone }: { saleId: number; onDone: () => void }) {
+  const [preview, setPreview] = useState<BaseSyncPreview | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const loadPreview = async () => {
+    setBusy(true);
+    try {
+      setPreview(await staffPreviewBaseSync(saleId));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'プレビューの取得に失敗しました');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const apply = async () => {
+    if (!confirm('BASEのネットショップ在庫を上の内容で減らします。よろしいですか？')) return;
+    setBusy(true);
+    try {
+      const res = await staffApplyBaseSync(saleId);
+      res.warnings.forEach((w) => toast.warning(w));
+      toast.success(`${res.appliedOrders}件の注文をBASE在庫に反映しました`);
+      setPreview(null);
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '反映に失敗しました');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-sand-200 bg-white p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-bold text-navy-900">売上をBASE在庫に反映</h3>
+          <p className="mt-1 text-xs text-navy-500">
+            イベント終了後に1回押すと、ここで売れた分(BASEから取り込んだ商品のみ)をBASEのネットショップ在庫から差し引きます。
+            反映済みの注文は二重に引かれません。反映後に注文を取消した場合はBASE側で手で戻してください。
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={loadPreview} disabled={busy}>
+          {busy ? '確認中…' : '反映内容を確認'}
+        </Button>
+      </div>
+      {preview && (
+        <div className="mt-3">
+          {preview.rows.length === 0 ? (
+            <p className="py-2 text-sm text-navy-500">反映する売上はありません(すべて反映済みか、BASE由来の商品の売上がまだありません)</p>
+          ) : (
+            <>
+              <table className="w-full text-sm">
+                <tbody>
+                  {preview.rows.map((r) => (
+                    <tr key={`${r.itemName}:${r.variantLabel}`} className="border-t border-sand-100">
+                      <td className="py-1.5">
+                        {r.itemName}
+                        {r.variantLabel && <span className="ml-1 text-navy-500">({r.variantLabel})</span>}
+                      </td>
+                      <td className="text-right">{r.soldQty}点 売れた</td>
+                      <td className="w-40 text-right">
+                        BASE在庫 {r.baseStockNow} → <b>{r.baseStockAfter}</b>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {preview.warnings.map((w) => (
+                <p key={w} className="mt-2 text-xs font-bold text-amber-700">
+                  ⚠️ {w}
+                </p>
+              ))}
+              <div className="mt-3 text-right">
+                <Button onClick={apply} disabled={busy}>
+                  {busy ? '反映中…' : `この内容でBASEに反映する(${preview.orderCount}件の注文)`}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReportTab({
   view,
   saleId,
@@ -588,6 +677,8 @@ function ReportTab({
           </tbody>
         </table>
       </div>
+
+      <BaseSyncPanel saleId={saleId} onDone={() => run(async () => undefined, '反映が完了しました')} />
 
       <div className="rounded-xl border border-sand-200 bg-white p-4">
         <h3 className="font-bold text-navy-900">注文一覧</h3>

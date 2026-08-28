@@ -12,7 +12,9 @@ import {
   deleteKioskVariant,
   getKioskCatalog,
   getKioskSalesReport,
+  getUnsyncedBaseSales,
   importBaseProductToSale,
+  markKioskOrdersBaseSynced,
   listKioskSales,
   setActiveKioskSale,
   setKioskProductStock,
@@ -25,8 +27,9 @@ import {
 } from '@/lib/kioskDb';
 import { buildKioskOrdersCsv, type KioskCsvRow } from '@/lib/kioskCsv';
 import { getAll } from '@/lib/db';
-import { fetchItem, fetchItems } from '@/lib/base';
+import { fetchItem, fetchItems, updateItem, updateItemVariations } from '@/lib/base';
 import { mapBaseItemToKioskProduct } from '@/lib/kioskBaseImport';
+import { applyPlanToBaseItem, computeBaseSyncPlan } from '@/lib/kioskBaseSync';
 
 async function requireStaff(): Promise<void> {
   if (!(await isAuthorizedServer())) throw new Error('Unauthorized');
@@ -170,6 +173,98 @@ export async function staffImportBaseItem(saleId: number, itemId: number): Promi
   const mapped = mapBaseItemToKioskProduct(item);
   const res = await importBaseProductToSale(saleId, itemId, mapped);
   return { created: res.created };
+}
+
+// ───────────────── イベント後: 売上をBASE在庫へ反映 ─────────────────
+
+export interface BaseSyncPreviewRow {
+  itemName: string;
+  variantLabel: string;
+  soldQty: number;
+  baseStockNow: number;
+  baseStockAfter: number;
+}
+
+export interface BaseSyncPreview {
+  rows: BaseSyncPreviewRow[];
+  warnings: string[];
+  orderCount: number;
+}
+
+async function buildBaseSyncState(saleId: number) {
+  const unsynced = await getUnsyncedBaseSales(saleId);
+  const plan = computeBaseSyncPlan(unsynced.lines);
+  const itemIds = [...new Set(plan.map((p) => p.baseItemId))];
+  const items = [];
+  for (const id of itemIds) {
+    const item = await fetchItem(id);
+    if (item) items.push(item);
+  }
+  return { unsynced, plan, items };
+}
+
+/** 反映前プレビュー: 何を何枚減らし、BASE在庫がいくつになるか。 */
+export async function staffPreviewBaseSync(saleId: number): Promise<BaseSyncPreview> {
+  await requireStaff();
+  const { unsynced, plan, items } = await buildBaseSyncState(saleId);
+  const rows: BaseSyncPreviewRow[] = [];
+  const warnings: string[] = [];
+  for (const item of items) {
+    const applied = applyPlanToBaseItem(item, plan);
+    warnings.push(...applied.warnings);
+    for (const p of plan.filter((x) => x.baseItemId === item.item_id)) {
+      const before =
+        p.variantLabel === ''
+          ? Number(item.stock ?? 0)
+          : Number(item.variations?.find((v) => String(v.variation) === p.variantLabel)?.variation_stock ?? 0);
+      const after =
+        p.variantLabel === ''
+          ? (applied.stock ?? 0)
+          : (applied.variations.find((v) => v.name === p.variantLabel)?.stock ?? before);
+      rows.push({ itemName: String(item.title ?? ''), variantLabel: p.variantLabel, soldQty: p.soldQty, baseStockNow: before, baseStockAfter: after });
+    }
+  }
+  return { rows, warnings, orderCount: unsynced.orderIds.length };
+}
+
+/**
+ * BASEへ実際に反映する。商品ごとに全量送信し、成功した商品だけに紐づく注文を
+ * 同期済みにする(再実行での二重減算を防ぐ)。
+ */
+export async function staffApplyBaseSync(saleId: number): Promise<{ appliedOrders: number; warnings: string[] }> {
+  await requireStaff();
+  const { unsynced, plan, items } = await buildBaseSyncState(saleId);
+  if (plan.length === 0) return { appliedOrders: 0, warnings: ['反映する売上がありません'] };
+
+  const warnings: string[] = [];
+  const succeededItems = new Set<number>();
+  for (const item of items) {
+    const applied = applyPlanToBaseItem(item, plan);
+    warnings.push(...applied.warnings);
+    const res =
+      applied.variations.length > 0
+        ? await updateItemVariations(item.item_id, applied.variations)
+        : await updateItem(item.item_id, { stock: applied.stock ?? 0 });
+    if (res.success) succeededItems.add(item.item_id);
+    else warnings.push(`${item.title}: BASEの更新に失敗しました(${res.error})`);
+  }
+
+  // 全明細が成功済み商品に属する注文だけを同期済みにする
+  const linesByOrder = await getAll(
+    `SELECT o.id AS order_id, p.base_item_id FROM kiosk_orders o
+     JOIN kiosk_order_items i ON i.order_id = o.id
+     JOIN kiosk_products p ON p.id = i.product_id
+     WHERE o.id IN (${unsynced.orderIds.map(() => '?').join(',') || 'NULL'}) AND p.base_item_id IS NOT NULL`,
+    unsynced.orderIds
+  );
+  const okOrders = unsynced.orderIds.filter((oid) =>
+    linesByOrder.filter((r) => Number(r.order_id) === oid).every((r) => succeededItems.has(Number(r.base_item_id)))
+  );
+  await markKioskOrdersBaseSynced(okOrders);
+  if (okOrders.length < unsynced.orderIds.length) {
+    warnings.push('一部の注文はBASE更新失敗のため未反映のままです。再実行の前にBASEの在庫を目視確認してください');
+  }
+  return { appliedOrders: okOrders.length, warnings };
 }
 
 /** 注文明細CSV(クライアント側でBlobダウンロードする)。 */

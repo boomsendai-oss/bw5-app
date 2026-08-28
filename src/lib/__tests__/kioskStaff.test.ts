@@ -175,3 +175,33 @@ describe('BASE取り込み', () => {
     expect(vs.find((v) => v.label === 'ブルー L')?.stock).toBe(3);
   });
 });
+
+describe('BASE在庫反映(売上の抽出とフラグ)', () => {
+  it('paid+base_item_idあり+未同期の明細だけが抽出され、markで同期済みになる', async () => {
+    const saleId = await k.createKioskSale('同期販売会', '2026-09-26');
+    await k.setActiveKioskSale(saleId);
+    const imp = await k.importBaseProductToSale(saleId, 888001, {
+      name: '同期シャツ', price: 1000, imageUrl: '', stock: 0,
+      variants: [{ color: 'ブラック', size: 'S', stock: 10 }],
+    });
+    const manual = await k.addKioskProduct(saleId, { name: '手動商品', price: 500, stock: 10 });
+    const catalog = await k.getKioskCatalog(saleId);
+    const vId = catalog.find((p) => p.id === imp.productId)!.variants[0].id;
+
+    const o1 = await k.createKioskCashOrder([{ productId: imp.productId, variantId: vId, qty: 2 }]);
+    const o2 = await k.createKioskCashOrder([{ productId: manual, variantId: null, qty: 1 }]);
+    if (!o1.ok || !o2.ok) throw new Error('setup');
+    // 取消済みは含まれない
+    const o3 = await k.createKioskCashOrder([{ productId: imp.productId, variantId: vId, qty: 1 }]);
+    if (!o3.ok) throw new Error('setup');
+    await k.voidKioskOrder(o3.orderId, 'test');
+
+    const unsynced = await k.getUnsyncedBaseSales(saleId);
+    expect(unsynced.lines).toEqual([{ baseItemId: 888001, variantLabel: 'ブラック S', qty: 2 }]);
+    expect(unsynced.orderIds).toEqual([o1.orderId]);
+
+    await k.markKioskOrdersBaseSynced(unsynced.orderIds);
+    const after = await k.getUnsyncedBaseSales(saleId);
+    expect(after.lines).toEqual([]);
+  });
+});

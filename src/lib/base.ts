@@ -298,6 +298,41 @@ export async function updateItem(
 }
 
 /**
+ * バリエーション在庫の一括更新。BASEの items/edit はバリエーションを
+ * 「送った配列で置き換える」仕様のため、必ず全バリエーションを渡すこと
+ * (一部だけ送ると残りが消える)。variation_id を添えれば既存行の更新になる。
+ */
+export async function updateItemVariations(
+  itemId: number,
+  variations: Array<{ variationId: number; name: string; stock: number }>
+): Promise<{ success: true } | { success: false; error: string }> {
+  const token = await getValidAccessToken();
+  if (!token) return { success: false, error: 'not authorized' };
+
+  const body = new URLSearchParams();
+  body.set('item_id', String(itemId));
+  variations.forEach((v, i) => {
+    body.set(`variation_id[${i}]`, String(v.variationId));
+    body.set(`variation[${i}]`, v.name);
+    body.set(`variation_stock[${i}]`, String(v.stock));
+  });
+
+  const res = await fetch(`${BASE_API}/items/edit`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    return { success: false, error: `${res.status}: ${errText.slice(0, 200)}` };
+  }
+  return { success: true };
+}
+
+/**
  * shop URL を組み立てる（itemページ）
  */
 export function buildItemUrl(shopUrl: string, itemId: number) {
