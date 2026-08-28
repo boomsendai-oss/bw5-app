@@ -50,6 +50,7 @@ export default function RootLayout({
                 var p = location.pathname;
                 var isStaff = p.indexOf('/staff/') === 0 || p === '/staff' || p.indexOf('/admin') === 0;
                 var isBf6 = p.indexOf('/bf6') === 0;
+                var isKiosk = p.indexOf('/kiosk') === 0;
                 // 物販ページ(黒×黒Tシャツ等)は黒基調。BW5オレンジのバーが上下に出ると台無しになる
                 var isDark = isBf6 || p.indexOf('/merch') === 0;
                 var d = document, head = d.head;
@@ -63,8 +64,15 @@ export default function RootLayout({
                 function add(tag, attrs){var e = d.createElement(tag); for(var k in attrs){e.setAttribute(k, attrs[k]);} head.appendChild(e); return e;}
                 // theme-color もパス別: スタッフ=ネイビー / BF6=黒(イベント配色) / それ以外=BW5オレンジ
                 rm('meta[name="theme-color"]');
-                add('meta', {name: 'theme-color', content: isStaff ? '#101040' : isDark ? '#0a0a0a' : '#f27a1a'});
-                if (!isStaff) {
+                add('meta', {name: 'theme-color', content: isKiosk ? '#F4EDE5' : isStaff ? '#101040' : isDark ? '#0a0a0a' : '#f27a1a'});
+                if (isKiosk) {
+                  // 無人物販kiosk: iPadのホーム画面登録で専用アイコン/名前+全画面(standalone)
+                  add('link', {rel: 'manifest', href: '/kiosk-manifest.webmanifest'});
+                  add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
+                  add('meta', {name: 'mobile-web-app-capable', content: 'yes'});
+                  add('meta', {name: 'apple-mobile-web-app-title', content: 'BOOMレジ'});
+                  add('link', {rel: 'apple-touch-icon', href: '/images/icon-kiosk.png'});
+                } else if (!isStaff) {
                   add('link', {rel: 'manifest', href: '/main-manifest.webmanifest'});
                   add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
                   add('meta', {name: 'mobile-web-app-capable', content: 'yes'});
