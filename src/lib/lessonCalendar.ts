@@ -31,6 +31,67 @@ export async function fetchLessonsForDate(date: string): Promise<{ lessons: Cale
   return { lessons: await fetchViaIcs(date), source: 'ics' };
 }
 
+/**
+ * 期間内のレッスンイベントを **Calendar APIのみ** で取得する(月次締めの実績用)。
+ *
+ * 日次の告知(fetchLessonsForDate)と違い ICS フォールバックを持たない。
+ * GoogleのICSは数時間キャッシュされるため、**金額の根拠に古いデータを黙って使う方が危険**
+ * だから。取れなければ例外にして呼び出し側で止める。
+ * singleEvents=true なので繰り返し・例外・移動・キャンセルはGoogle側で解決済み。
+ */
+export async function fetchEventsForRange(
+  fromDate: string,
+  toDate: string
+): Promise<{ id: string; date: string; start: string; end: string; summary: string; location: string | null }[]> {
+  const clientId = process.env.GOOGLE_CAL_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CAL_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error('GoogleカレンダーのクライアントIDが未設定');
+  const row = await getOne('SELECT value FROM settings WHERE key = ?', [REFRESH_TOKEN_KEY]);
+  const refreshToken = row?.value as string | undefined;
+  if (!refreshToken) throw new Error('Googleカレンダーのrefresh tokenが未保存');
+
+  const oauth2 = new google.auth.OAuth2(clientId, clientSecret);
+  oauth2.setCredentials({ refresh_token: refreshToken });
+  const cal = google.calendar({ version: 'v3', auth: oauth2 });
+
+  const out: { id: string; date: string; start: string; end: string; summary: string; location: string | null }[] = [];
+  let pageToken: string | undefined;
+  do {
+    const res = await cal.events.list({
+      calendarId: 'primary',
+      timeMin: `${fromDate}T00:00:00+09:00`,
+      timeMax: `${toDate}T23:59:59+09:00`,
+      singleEvents: true,
+      orderBy: 'startTime',
+      maxResults: 250,
+      pageToken,
+    });
+    for (const ev of res.data.items ?? []) {
+      if (ev.status === 'cancelled') continue;
+      const sdt = ev.start?.dateTime;
+      const edt = ev.end?.dateTime;
+      if (!sdt || !edt || !ev.summary) continue; // 終日イベントはレッスンではない
+      const fmt = (iso: string) =>
+        new Date(iso).toLocaleString('ja-JP', {
+          timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', hour12: false,
+        });
+      const [d, t] = fmt(sdt).split(' ');
+      const [, te] = fmt(edt).split(' ');
+      out.push({
+        id: ev.id ?? '',
+        date: d.replace(/\//g, '-'),
+        start: t,
+        end: te,
+        summary: ev.summary,
+        location: ev.location ?? null,
+      });
+    }
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return out;
+}
+
 async function fetchViaApi(date: string): Promise<CalendarLesson[] | null> {
   const clientId = process.env.GOOGLE_CAL_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CAL_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
