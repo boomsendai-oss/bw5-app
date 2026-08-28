@@ -1,0 +1,38 @@
+# 月次締めの自動実行
+# 毎日 JST 4:07 = UTC 19:07(前日)。日次同期(0/6/12/18時)とずらし、
+# GH Actions の混雑する00分を避ける(過去に0/20/40分で60〜90分遅延した実績あり)。
+#
+# 毎日: 当月(月初は前月も)のカレンダー実績を lesson_instances へ同期
+# 月初1〜3日: 前月の給与draftとスタジオ料を生成してTAROへメール
+# 常時: 締めが進んでいなければ催促
+#
+# 確定・明細配布・振込CSVは自動化しない(お金が動く操作は人間のゲート)。
+name: monthly-close
+on:
+  schedule:
+    - cron: '7 19 * * *'
+  workflow_dispatch: {}
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Call /api/cron/monthly-close
+        run: |
+          set -e
+          RESP=$(curl -s --max-time 120 -w '\n%{http_code}' \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/monthly-close)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # HTTPコードだけ見ると、同期が全部失敗しても緑のままになる(2026-08-12の教訓)。
+          # 本文の ok を見て、errors が入っていたら赤にする。
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::月次締めでエラーが発生しました: $BODY"; exit 1; }
+          # 締め遅延・要確認は「異常」ではないので赤にしない(メールで届く)。
+          # オオカミ少年化させると本当の失敗を見逃すため。
+          echo "$BODY" | jq -r 'if .overdue then "::warning::前月の給与が未確定のままです" else empty end'
+          echo "$BODY" | jq -r '(.syncs[] | select(.needsReview > 0))
+            | "::warning::\(.year_month): カレンダーが読めない予定が \(.needsReview) 件あります"'
