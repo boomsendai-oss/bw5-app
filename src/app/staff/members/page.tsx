@@ -41,6 +41,13 @@ type Member = {
   lstep_links: LstepLink[];
 };
 
+type MemberSurveyAnswer = {
+  surveyId: number;
+  surveyTitle: string;
+  submittedAt: string;
+  summary: string[];
+};
+
 export default function MembersPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [q, setQ] = useState('');
@@ -48,6 +55,27 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [selected, setSelected] = useState<Member | null>(null);
+  const [surveyAnswers, setSurveyAnswers] = useState<MemberSurveyAnswer[]>([]);
+
+  // 詳細ダイアログを開いたら、その会員に紐付いたアンケート回答履歴を取得(WS AO)
+  useEffect(() => {
+    setSurveyAnswers([]);
+    if (!selected) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/staff/members/${selected.id}/surveys`, { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setSurveyAnswers(data.answers ?? []);
+      } catch {
+        /* 履歴取得失敗は詳細表示自体を妨げない */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
 
   const load = useCallback(async (query: string, plan: string) => {
     setLoading(true);
@@ -269,6 +297,35 @@ export default function MembersPage() {
                               {l.blocked === 1 && <Badge variant="destructive" className="text-[10px]">ブロック中</Badge>}
                             </div>
                             <div className="text-[10px] text-neutral-400 mt-0.5">ID: {l.lstep_id}</div>
+                          </CardContent>
+                        </Card>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section>
+                <h3 className="text-xs font-semibold text-neutral-500 mb-1">
+                  アンケート回答 ({surveyAnswers.length})
+                </h3>
+                {surveyAnswers.length === 0 ? (
+                  <p className="text-xs text-neutral-500">紐付いたアンケート回答はありません</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {surveyAnswers.map((a, i) => (
+                      <li key={`${a.surveyId}-${i}`}>
+                        <Card>
+                          <CardContent className="p-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-neutral-800 truncate text-xs">{a.surveyTitle}</span>
+                              <span className="text-[10px] text-neutral-400 shrink-0">{a.submittedAt.slice(0, 10)}</span>
+                            </div>
+                            <ul className="mt-1 space-y-0.5">
+                              {a.summary.map((line, j) => (
+                                <li key={j} className="text-[11px] text-neutral-600">{line}</li>
+                              ))}
+                            </ul>
                           </CardContent>
                         </Card>
                       </li>
