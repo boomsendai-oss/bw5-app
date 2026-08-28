@@ -8,12 +8,35 @@ const slot = (o: Partial<MasterSlotLite>): MasterSlotLite => ({
 });
 const res = (o: Partial<ResolvedLesson>): ResolvedLesson => ({
   event_id: 'e1', date: '2026-08-19', start: '18:30', end: '20:00', duration_minutes: 90,
-  cancelled: false, substitute: false, instructor_id: 3, instructor_name: 'TARO',
+  cancelled: false, substitute: false, payable: true, instructor_id: 3, instructor_name: 'TARO',
   studio_id: 90, studio_name: '戦災復興記念館　展示ホール', class_name: 'TARO hiphop 入門初級',
   issues: [], ...o,
 });
 
 describe('reconcileDay', () => {
+  it('【回帰】給与対象外の予定は、時間が近くても他会場の枠を曖昧にしない', () => {
+    // 2026-08-23の事故: GOATのバトル練習会(14:30)がAZUMAの日曜枠と時間が近いだけで
+    // 曖昧扱いになり、枠が未書き込み→master展開で埋め戻され開催していない給与が付いた
+    const p = reconcileDay(
+      [slot({ master_id: 30, start_time: '14:00', studio_id: 4, instructor_id: 6 })],
+      [res({ class_name: 'ダンスバトル練習会', payable: false, instructor_id: null, studio_id: 1, start: '14:30' })]
+    );
+    expect(p.skipped).toHaveLength(0);
+    expect(p.removed).toHaveLength(1);            // AZUMAの枠は「開催されなかった」
+    expect(p.needsReview).toHaveLength(0);        // 練習会は要確認に積まない
+    expect(p.extra).toHaveLength(1);              // 会場は使うのでスタジオ料用に残す
+    expect(p.extra[0]).toMatchObject({ instructor_id: null, studio_id: 1 });
+  });
+
+  it('読めない予定でも会場が枠と違えば、枠は未開催と判定してよい', () => {
+    const p = reconcileDay(
+      [slot({ studio_id: 4 })],
+      [res({ issues: ['講師が特定できない'], instructor_id: null, studio_id: 1 })]
+    );
+    expect(p.removed).toHaveLength(1);
+    expect(p.skipped).toHaveLength(0);
+  });
+
   it('開始時刻が一致する枠は、カレンダーの会場・講師で上書きする(週替わり会場の反映)', () => {
     const p = reconcileDay([slot({})], [res({})]);
     expect(p.keep).toHaveLength(1);
@@ -34,8 +57,11 @@ describe('reconcileDay', () => {
     expect(p.keep).toHaveLength(0);
   });
 
-  it('要確認(issuesあり)の予定は書き込まず、枠にも触らない', () => {
-    const p = reconcileDay([slot({})], [res({ issues: ['講師が特定できない'], instructor_id: null })]);
+  it('要確認(issuesあり)の予定は書き込まず、枠にも触らない ※同じ会場のとき', () => {
+    const p = reconcileDay(
+      [slot({ studio_id: 90 })],
+      [res({ issues: ['講師が特定できない'], instructor_id: null, studio_id: 90 })]
+    );
     expect(p.keep).toHaveLength(0);
     expect(p.removed).toHaveLength(0); // 消しもしない = 判断を人に残す
     expect(p.needsReview).toHaveLength(1);

@@ -60,7 +60,10 @@ const MATCH_WINDOW_MIN = 60;
 export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]): DayPlan {
   const plan: DayPlan = { keep: [], removed: [], extra: [], needsReview: [], skipped: [] };
 
+  // 給与対象外(練習会など)は枠にマッチさせない。会場だけ使うので extra として残す。
+  const nonPayable = events.filter((e) => !e.payable && !e.cancelled);
   const usable = events.filter((e) => {
+    if (!e.payable) return false;
     if (e.issues.length > 0) { plan.needsReview.push(e); return false; }
     return true;
   });
@@ -90,9 +93,16 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]):
     if (ei === undefined) {
       // 読めなかった予定と時間が重なる枠は「未開催」と断定できない。
       // その予定こそがこの枠の実績かもしれないので、消さずに人の判断へ回す。
-      const ambiguous = plan.needsReview.some(
-        (e) => Math.abs(toMin(e.start) - toMin(s.start_time)) <= MATCH_WINDOW_MIN
-      );
+      // 会場が読めていて枠の会場と違うなら、時間が重なっていても別物。
+      // (2026-08-28の事故: GOATのバトル練習会がAZUMAの日曜枠と「時間が近い」だけで
+      //  曖昧扱いになり、枠が未書き込みのまま master展開に埋め戻されて
+      //  **開催していないレッスンに給与が付いた**。「触らない」は中立ではなく
+      //  「開催したことにする」だと判明したため、会場で切れるものは切る)
+      const ambiguous = plan.needsReview.some((e) => {
+        if (Math.abs(toMin(e.start) - toMin(s.start_time)) > MATCH_WINDOW_MIN) return false;
+        if (e.studio_id != null && s.studio_id != null && e.studio_id !== s.studio_id) return false;
+        return true;
+      });
       if (ambiguous) { plan.skipped.push(s); return; }
       // カレンダーに対応する予定が無い = 開催されなかった
       plan.removed.push({
@@ -118,6 +128,14 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]):
       note: 'カレンダー実績',
     });
   });
+
+  for (const e of nonPayable) {
+    plan.extra.push({
+      master_id: null, date: e.date, start_time: e.start, end_time: e.end,
+      instructor_id: null, studio_id: e.studio_id, status: 'scheduled',
+      note: `給与対象外: ${e.class_name}`.slice(0, 120),
+    });
+  }
 
   usable.forEach((e, ei) => {
     if (eventTaken.has(ei) || e.cancelled) return;

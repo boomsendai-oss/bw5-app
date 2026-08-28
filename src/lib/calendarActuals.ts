@@ -35,8 +35,21 @@ export type ResolvedLesson = {
   studio_id: number | null;
   studio_name: string | null;
   class_name: string;
+  payable: boolean;   // 講師への支払いが発生するレッスンか(練習会などは false)
   issues: string[];
 };
+
+/**
+ * 講師への支払いが発生しない予定。会場は使うのでスタジオ料は計上するが、給与は付けない。
+ * TARO確認(2026-08-28): ダンスバトル練習会はTAROが見ているが給与の対象にならない。
+ * これを「講師が読めない」として要確認に積むと、本物の要確認が埋もれる。
+ */
+const NON_PAYABLE_PATTERNS: readonly string[] = ['練習会', '自主練'];
+
+export function isNonPayableEvent(summary: string): boolean {
+  const s = stripDecorations(summary);
+  return NON_PAYABLE_PATTERNS.some((p) => s.includes(p));
+}
 
 /** 絵文字・装飾記号を除去して空白を詰める。`★おっちゃんNJS` → `おっちゃんNJS` */
 export function stripDecorations(s: string): string {
@@ -185,8 +198,9 @@ export function resolveCalendarEvent(
   const studio = resolveStudio(event.location, studios);
   const dur = toMinutes(event.end) - toMinutes(event.start);
 
+  const payable = !isNonPayableEvent(event.summary);
   const issues: string[] = [];
-  if (!cancelled) {
+  if (!cancelled && payable) {
     if (!inst) issues.push('講師が特定できない');
     if (!studio) issues.push('会場が特定できない');
     if (inst?.substitute) issues.push('代講のため単価が自動で決まらない');
@@ -206,6 +220,7 @@ export function resolveCalendarEvent(
     studio_id: studio?.id ?? null,
     studio_name: studio?.name ?? null,
     class_name: extractClassName(event.summary),
+    payable,
     issues,
   };
 }

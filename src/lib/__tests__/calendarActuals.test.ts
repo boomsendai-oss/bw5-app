@@ -160,10 +160,21 @@ describe('resolveCalendarEvent — 1件を実績行にする', () => {
 
   it('講師が読めなければ要確認', () => {
     const r = resolveCalendarEvent(
-      ev({ summary: '⚔️ダンスバトル練習会', location: 'GOAT DANCE STUDIO' }), INSTRUCTORS, STUDIOS
+      ev({ summary: '長町 HIPHOP クラス', location: 'GOAT DANCE STUDIO' }), INSTRUCTORS, STUDIOS
     );
     expect(r.instructor_id).toBeNull();
     expect(r.issues).toContain('講師が特定できない');
+  });
+
+  it('練習会は給与対象外。講師が読めなくても要確認に積まない', () => {
+    // TARO確認(2026-08-28): ダンスバトル練習会はTAROが見ているが給与は付かない。
+    // これを要確認に積むと本物の要確認が埋もれる。会場は使うので studio は解決する。
+    const r = resolveCalendarEvent(
+      ev({ summary: '⚔️ダンスバトル練習会', location: 'GOAT DANCE STUDIO' }), INSTRUCTORS, STUDIOS
+    );
+    expect(r.payable).toBe(false);
+    expect(r.issues).toEqual([]);
+    expect(r.studio_id).toBe(1);
   });
 
   it('休講なら会場も講師も読めなくても要確認にしない (支払いが発生しないため)', () => {
