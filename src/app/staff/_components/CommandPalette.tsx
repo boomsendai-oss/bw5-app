@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Hash,
   Sparkles,
+  ShoppingBag,
 } from 'lucide-react';
 import {
   CommandDialog,
@@ -58,6 +59,7 @@ const pages: PageEntry[] = [
   { title: '映像予約', href: '/staff/video-preorders', icon: Video },
   { title: '休講申請', href: '/staff/cancel-requests', icon: XCircle },
   { title: 'イベント', href: '/staff/events', icon: PartyPopper },
+  { title: 'レジ(無人物販)', href: '/staff/kiosk', icon: ShoppingBag },
 ];
 
 type ActionEntry = {

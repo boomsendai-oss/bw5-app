@@ -26,6 +26,7 @@ import {
   Hash,
   Sparkles,
   TrendingUp,
+  ShoppingBag,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -95,6 +96,7 @@ const opsNavItems: NavItem[] = [
   { title: 'クチコミ声がけ', href: '/staff/review-outreach', icon: Megaphone },
   { title: 'SEO順位', href: '/staff/seo', icon: TrendingUp },
   { title: 'イベント', href: '/staff/events', icon: PartyPopper },
+  { title: 'レジ(無人物販)', href: '/staff/kiosk', icon: ShoppingBag },
 ];
 
 function NavGroup({
