@@ -4,6 +4,7 @@ import {
   minutesBetween as minutesBetweenShared,
   buildExpandedKeys,
   expandMasterSlots,
+  isInactiveStatus,
 } from './lessonResolver';
 
 export type BillingLine = {
@@ -206,7 +207,10 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
   // 日次バッファ(daily_buffer_minutes)は後段でこのキーごとに1回だけ加算する。
   const hourlyDayKeys = new Set<string>();
   // 連名(2人体制)で同じ枠が人数ぶん増えるため dedupeVenueSlots で畳む。
-  for (const ins of dedupeVenueSlots(instances.filter((i) => !isInactiveStatus(i.status) && i.studio_id))) {
+  const activeInstances = instances.filter(
+    (i): i is InstanceRow & { studio_id: number } => !isInactiveStatus(i.status) && i.studio_id != null
+  );
+  for (const ins of dedupeVenueSlots(activeInstances)) {
     const result = resultsMap.get(ins.studio_id);
     const studio = studioMap.get(ins.studio_id);
     if (!result || !studio) continue;
