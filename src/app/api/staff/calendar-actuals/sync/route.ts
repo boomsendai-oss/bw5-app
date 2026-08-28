@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAll, getOne, execute } from '@/lib/db';
+import { getAll, getOne, batch } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { fetchEventsForRange } from '@/lib/lessonCalendar';
 import { expandMasterSlots } from '@/lib/lessonResolver';
@@ -118,33 +118,40 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  let written = 0;
-  for (const w of [...keep, ...removed].map(clean)) {
-    await execute(
-      `INSERT INTO lesson_instances (master_id, date, start_time, end_time, studio_id, instructor_id, status, notes, auto_materialized)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-       ON CONFLICT(master_id, date) DO UPDATE SET
-         start_time=excluded.start_time, end_time=excluded.end_time,
-         studio_id=excluded.studio_id, instructor_id=excluded.instructor_id,
-         status=excluded.status, notes=excluded.notes, updated_at=CURRENT_TIMESTAMP`,
-      [w.master_id, w.date, w.start_time, w.end_time, w.studio_id, w.instructor_id, w.status, w.note]
-    );
-    written++;
-  }
-  // 単発は UNIQUE(master_id,date) が効かない(master_id NULL)ので、重複チェックしてから入れる
+  // 1件ずつ execute すると80件超で maxDuration=60 を超える(2026-08-28に実測)。
+  // batch() でまとめて投げる。1トランザクションなので途中で切れて半端に書かれることもない。
+  const UPSERT = `INSERT INTO lesson_instances
+      (master_id, date, start_time, end_time, studio_id, instructor_id, status, notes, auto_materialized)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+     ON CONFLICT(master_id, date) DO UPDATE SET
+       start_time=excluded.start_time, end_time=excluded.end_time,
+       studio_id=excluded.studio_id, instructor_id=excluded.instructor_id,
+       status=excluded.status, notes=excluded.notes, updated_at=CURRENT_TIMESTAMP`;
+
+  const stmts = [...keep, ...removed].map(clean).map((w) => ({
+    sql: UPSERT,
+    args: [w.master_id, w.date, w.start_time, w.end_time, w.studio_id, w.instructor_id, w.status, w.note],
+  }));
+
+  // 単発は UNIQUE(master_id,date) が効かない(master_id NULL)ので、既存を先に引いて重複を避ける
+  const existingExtras = (await getAll(
+    `SELECT date, start_time, COALESCE(instructor_id, -1) AS iid FROM lesson_instances
+     WHERE master_id IS NULL AND date BETWEEN ? AND ?`,
+    [`${ym}-01`, limit]
+  )) as unknown as { date: string; start_time: string; iid: number }[];
+  const seen = new Set(existingExtras.map((e) => `${e.date}_${e.start_time}_${e.iid}`));
   for (const w of extra.map(clean)) {
-    const dup = await getOne(
-      `SELECT id FROM lesson_instances WHERE master_id IS NULL AND date = ? AND start_time = ?
-         AND COALESCE(instructor_id, -1) = COALESCE(?, -1)`,
-      [w.date, w.start_time, w.instructor_id]
-    );
-    if (dup) continue;
-    await execute(
-      `INSERT INTO lesson_instances (master_id, date, start_time, end_time, studio_id, instructor_id, status, notes, auto_materialized)
-       VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      [w.date, w.start_time, w.end_time, w.studio_id, w.instructor_id, w.status, w.note]
-    );
-    written++;
+    const k = `${w.date}_${w.start_time}_${w.instructor_id ?? -1}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    stmts.push({
+      sql: `INSERT INTO lesson_instances
+              (master_id, date, start_time, end_time, studio_id, instructor_id, status, notes, auto_materialized)
+            VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      args: [w.date, w.start_time, w.end_time, w.studio_id, w.instructor_id, w.status, w.note],
+    });
   }
-  return NextResponse.json({ ...summary, written });
+
+  await batch(stmts);
+  return NextResponse.json({ ...summary, written: stmts.length });
 }
