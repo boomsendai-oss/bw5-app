@@ -4,6 +4,7 @@ import { getAll, getOne, execute, withWriteTx } from '@/lib/db';
 import { nowUtcIso } from '@/lib/dateJst';
 import {
   generateSurveySlug,
+  optionLabel,
   OTHER_KEY,
   type AnswerRow,
   type QuestionDef,
@@ -52,10 +53,18 @@ function rowToSurvey(r: any): SurveyRow {
 }
 
 function rowToQuestion(r: any): QuestionDef {
+  // options_json: 通常設問=配列 / grid設問={rows, cols} のオブジェクト
   let options: { key: string; label: string }[] = [];
+  let rows: { key: string; label: string }[] = [];
+  let cols: { key: string; label: string }[] = [];
   try {
     const parsed = JSON.parse(String(r.options_json || '[]'));
-    if (Array.isArray(parsed)) options = parsed;
+    if (Array.isArray(parsed)) {
+      options = parsed;
+    } else if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed.rows)) rows = parsed.rows;
+      if (Array.isArray(parsed.cols)) cols = parsed.cols;
+    }
   } catch {
     options = [];
   }
@@ -66,6 +75,8 @@ function rowToQuestion(r: any): QuestionDef {
     qtype: String(r.qtype) as Qtype,
     required: Number(r.required) === 1,
     options,
+    rows,
+    cols,
     allowOther: Number(r.allow_other) === 1,
   };
 }
@@ -112,9 +123,11 @@ export async function getSurveyBySlug(slug: string): Promise<SurveyWithQuestions
 async function insertQuestions(tx: any, surveyId: number, questions: QuestionDef[]): Promise<void> {
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
+    const optionsJson =
+      q.qtype === 'grid' ? JSON.stringify({ rows: q.rows ?? [], cols: q.cols ?? [] }) : JSON.stringify(q.options);
     await tx.execute({
       sql: 'INSERT INTO survey_questions (survey_id, sort_order, question_key, label, qtype, required, options_json, allow_other) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      args: [surveyId, i, q.questionKey, q.label, q.qtype, q.required ? 1 : 0, JSON.stringify(q.options), q.allowOther ? 1 : 0],
+      args: [surveyId, i, q.questionKey, q.label, q.qtype, q.required ? 1 : 0, optionsJson, q.allowOther ? 1 : 0],
     });
   }
 }
@@ -368,7 +381,7 @@ export async function listMemberSurveyAnswers(boomMemberId: number): Promise<Mem
   const out: MemberSurveyAnswer[] = [];
   for (const r of responses) {
     const rows = await getAll(
-      `SELECT q.label, q.options_json, a.option_key, a.text_value
+      `SELECT q.id, q.question_key, q.label, q.qtype, q.required, q.options_json, q.allow_other, a.option_key, a.text_value
        FROM survey_answers a JOIN survey_questions q ON q.id = a.question_id
        WHERE a.response_id = ? ORDER BY q.sort_order ASC, a.id ASC`,
       [Number(r.id)]
@@ -380,14 +393,7 @@ export async function listMemberSurveyAnswers(boomMemberId: number): Promise<Mem
       if (row.option_key === OTHER_KEY) {
         value = `その他: ${row.text_value ?? ''}`;
       } else if (row.option_key) {
-        let optLabel = String(row.option_key);
-        try {
-          const opts = JSON.parse(String(row.options_json || '[]')) as { key: string; label: string }[];
-          optLabel = opts.find((o) => o.key === row.option_key)?.label ?? optLabel;
-        } catch {
-          /* options_json欠損時はkeyのまま表示 */
-        }
-        value = optLabel;
+        value = optionLabel(rowToQuestion(row), String(row.option_key));
       } else {
         value = String(row.text_value ?? '');
       }

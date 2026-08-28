@@ -6,6 +6,8 @@ import {
   generateSurveySlug,
   aggregateAnswers,
   crossTab,
+  gridCellKey,
+  optionLabel,
   OTHER_KEY,
   type QuestionDef,
   type AnswerRow,
@@ -247,6 +249,98 @@ describe('aggregateAnswers', () => {
     expect(genre.otherTexts).toEqual(['POP']);
     const voice = agg.find((a) => a.questionKey === 'voice')!;
     expect(voice.texts).toEqual(['土曜に増やしてほしい']);
+  });
+});
+
+const GRID_Q: QuestionDef = {
+  id: 21,
+  questionKey: 'schedule',
+  label: '通える曜日と時間帯',
+  qtype: 'grid',
+  required: true,
+  options: [],
+  rows: [
+    { key: 'mon', label: '月曜' },
+    { key: 'thu', label: '木曜' },
+    { key: 'sat', label: '土曜' },
+  ],
+  cols: [
+    { key: 't16', label: '16時台' },
+    { key: 't18', label: '18時台' },
+    { key: 'am', label: '午前' },
+  ],
+  allowOther: false,
+};
+
+describe('grid設問 (曜日×時間帯のマス目)', () => {
+  it('定義: 正常なgridを受理する', () => {
+    const v = validateSurveyDefinition({
+      title: 'g',
+      questions: [
+        {
+          questionKey: 'schedule',
+          label: '通える曜日と時間帯',
+          qtype: 'grid',
+          required: true,
+          options: [],
+          rows: [{ key: 'mon', label: '月曜' }],
+          cols: [{ key: 't18', label: '18時台' }],
+          allowOther: false,
+        },
+      ],
+    });
+    expect(typeof v).not.toBe('string');
+    if (typeof v === 'string') return;
+    expect(v.questions[0].rows).toHaveLength(1);
+    expect(v.questions[0].cols).toHaveLength(1);
+  });
+  it('定義: gridで行または列が空は拒否', () => {
+    const base = { questionKey: 's', label: 'x', qtype: 'grid', required: false, options: [], allowOther: false };
+    expect(
+      typeof validateSurveyDefinition({ title: 'g', questions: [{ ...base, rows: [], cols: [{ key: 'a', label: 'A' }] }] })
+    ).toBe('string');
+    expect(
+      typeof validateSurveyDefinition({ title: 'g', questions: [{ ...base, rows: [{ key: 'a', label: 'A' }], cols: [] }] })
+    ).toBe('string');
+  });
+  it('定義: grid以外にrows/colsを渡しても無視される', () => {
+    const v = validateSurveyDefinition(validDef);
+    if (typeof v === 'string') throw new Error(v);
+    expect(v.questions[0].rows).toEqual([]);
+  });
+  it('回答: セル選択(複数曜日×各時間帯)を受理する', () => {
+    const v = validateResponseInput([GRID_Q], {
+      answers: {
+        schedule: { optionKeys: [gridCellKey('mon', 't18'), gridCellKey('thu', 't16'), gridCellKey('sat', 'am')] },
+      },
+    });
+    expect(typeof v).not.toBe('string');
+    if (typeof v === 'string') return;
+    expect(v.answers[0].optionKeys).toHaveLength(3);
+  });
+  it('回答: 存在しないセルは拒否', () => {
+    expect(
+      typeof validateResponseInput([GRID_Q], { answers: { schedule: { optionKeys: [gridCellKey('sun', 't18')] } } })
+    ).toBe('string');
+  });
+  it('回答: requiredのgrid未選択は拒否', () => {
+    expect(typeof validateResponseInput([GRID_Q], { answers: {} })).toBe('string');
+  });
+  it('集計: セルごとの件数がgridCellsに出る', () => {
+    const rows: AnswerRow[] = [
+      { response_id: 1, question_id: 21, option_key: gridCellKey('mon', 't18'), text_value: null },
+      { response_id: 2, question_id: 21, option_key: gridCellKey('mon', 't18'), text_value: null },
+      { response_id: 2, question_id: 21, option_key: gridCellKey('sat', 'am'), text_value: null },
+    ];
+    const agg = aggregateAnswers([GRID_Q], rows);
+    expect(agg[0].total).toBe(2);
+    expect(agg[0].gridCells.find((c) => c.rowKey === 'mon' && c.colKey === 't18')?.count).toBe(2);
+    expect(agg[0].gridCells.find((c) => c.rowKey === 'sat' && c.colKey === 'am')?.count).toBe(1);
+  });
+  it('optionLabel: gridセルは「行×列」で表示・その他/通常選択肢も解決', () => {
+    expect(optionLabel(GRID_Q, gridCellKey('mon', 't18'))).toBe('月曜×18時台');
+    expect(optionLabel(QS[0], 'mon')).toBe('月');
+    expect(optionLabel(QS[1], OTHER_KEY)).toBe('その他');
   });
 });
 

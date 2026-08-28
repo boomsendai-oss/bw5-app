@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { getSurveyById, listResponses } from '@/lib/surveyDb';
-import { OTHER_KEY } from '@/lib/survey';
+import { OTHER_KEY, optionLabel } from '@/lib/survey';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         a.optionKey === OTHER_KEY
           ? `その他:${a.textValue ?? ''}`
           : a.optionKey
-            ? q.options.find((o) => o.key === a.optionKey)?.label ?? a.optionKey
+            ? optionLabel(q, a.optionKey)
             : a.textValue ?? '';
       const list = byQuestion.get(a.questionId) ?? [];
       list.push(value);

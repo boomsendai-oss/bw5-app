@@ -4,7 +4,7 @@
 // 集計は survey.ts の純関数をブラウザ側で実行する(回答データはこのページに来た時点でスタッフ認証済)。
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { aggregateAnswers, crossTab, OTHER_KEY, type AnswerRow, type QuestionDef } from '@/lib/survey';
+import { aggregateAnswers, crossTab, gridCellKeys, optionLabel as resolveOptionLabel, OTHER_KEY, type AnswerRow, type QuestionDef } from '@/lib/survey';
 import type { ResponseListItem } from '@/lib/surveyDb';
 import { staffResolveMatch, staffSearchMembers, staffSetSurveyStatus, type MemberHit } from '../actions';
 import SurveyBuilder from '../SurveyBuilder';
@@ -145,6 +145,8 @@ export default function SurveyDetailClient({
               qtype: q.qtype,
               required: q.required,
               options: q.options.map((o) => ({ key: o.key, label: o.label })),
+              gridRows: (q.rows ?? []).map((o) => ({ key: o.key, label: o.label })),
+              gridCols: (q.cols ?? []).map((o) => ({ key: o.key, label: o.label })),
               allowOther: q.allowOther,
             })),
           }}
@@ -163,12 +165,42 @@ function AggTab({ questions, rows }: { questions: QuestionDef[]; rows: AnswerRow
     <div className="space-y-3">
       {agg.map((q, i) => {
         const max = Math.max(1, ...q.optionCounts.map((o) => o.count));
+        const def = questions.find((qq) => qq.id === q.questionId);
         return (
           <div key={q.questionId} className="rounded-xl border border-sand-200 bg-white p-4">
             <div className="text-sm font-bold text-navy-800">
               Q{i + 1}. {q.label} <span className="text-xs font-normal text-slate-400">({q.total}人回答)</span>
             </div>
-            {q.qtype === 'text' ? (
+            {q.qtype === 'grid' && def ? (
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-xs">
+                  <thead>
+                    <tr>
+                      <th className="p-2" />
+                      {(def.cols ?? []).map((c) => (
+                        <th key={c.key} className="p-2 text-center font-bold text-navy-700 whitespace-nowrap">{c.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(def.rows ?? []).map((r) => (
+                      <tr key={r.key} className="border-t border-sand-100">
+                        <td className="p-2 font-bold text-navy-700 whitespace-nowrap">{r.label}</td>
+                        {(def.cols ?? []).map((c) => {
+                          const n = q.gridCells.find((cell) => cell.rowKey === r.key && cell.colKey === c.key)?.count ?? 0;
+                          return (
+                            <td key={c.key} className={`p-2 text-center ${n > 0 ? 'font-bold text-navy-900 bg-brand-50/60' : 'text-slate-300'}`}>{n}</td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {q.otherTexts.length > 0 ? (
+                  <div className="pt-2 text-xs text-slate-600">その他の内容: {q.otherTexts.join('、')}</div>
+                ) : null}
+              </div>
+            ) : q.qtype === 'text' ? (
               <ul className="mt-3 space-y-1.5">
                 {q.texts.length === 0 ? <li className="text-xs text-slate-400">回答なし</li> : null}
                 {q.texts.map((t, j) => (
@@ -216,10 +248,13 @@ function CrossTab_({ questions, rows }: { questions: QuestionDef[]; rows: Answer
 
   const cellMap = new Map(cells.map((c) => [`${c.rowKey}|${c.colKey}`, c.count]));
   const selectCls = 'rounded-lg border border-sand-300 px-2 py-1.5 text-xs';
-  const optLabel = (q: QuestionDef | undefined, key: string) =>
-    key === OTHER_KEY ? 'その他' : q?.options.find((o) => o.key === key)?.label ?? key;
+  const optLabel = (q: QuestionDef | undefined, key: string) => (q ? resolveOptionLabel(q, key) : key);
   const axisKeys = (q: QuestionDef | undefined) =>
-    q ? [...q.options.map((o) => o.key), ...(q.allowOther ? [OTHER_KEY] : [])] : [];
+    q
+      ? q.qtype === 'grid'
+        ? gridCellKeys(q)
+        : [...q.options.map((o) => o.key), ...(q.allowOther ? [OTHER_KEY] : [])]
+      : [];
 
   return (
     <div className="rounded-xl border border-sand-200 bg-white p-4 space-y-4">
@@ -241,7 +276,7 @@ function CrossTab_({ questions, rows }: { questions: QuestionDef[]; rows: Answer
             className={`ml-1 ${selectCls}`}
           >
             <option value={0}>なし</option>
-            {choiceQs.map((q) => <option key={q.id} value={q.id}>{q.label}</option>)}
+            {choiceQs.filter((q) => q.qtype !== 'grid').map((q) => <option key={q.id} value={q.id}>{q.label}</option>)}
           </select>
         </label>
       </div>
@@ -313,7 +348,7 @@ function ResponsesTab({ survey, responses }: { survey: SurveyView; responses: Re
             a.optionKey === OTHER_KEY
               ? `その他: ${a.textValue ?? ''}`
               : a.optionKey
-                ? q.options.find((o) => o.key === a.optionKey)?.label ?? a.optionKey
+                ? resolveOptionLabel(q, a.optionKey)
                 : a.textValue ?? '';
           const list = byQuestion.get(a.questionId) ?? [];
           list.push(value);

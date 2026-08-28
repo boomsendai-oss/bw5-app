@@ -6,7 +6,7 @@
 
 import { useEffect, useState, use as usePromise } from 'react';
 import { getPublicSurvey, submitSurveyResponse, type PublicSurveyView } from './actions';
-import type { QuestionDef } from '@/lib/survey';
+import { gridCellKey, type QuestionDef } from '@/lib/survey';
 
 type AnswerState = Record<string, { optionKeys: string[]; otherText: string; text: string }>;
 
@@ -173,8 +173,49 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
                 Q{i + 1}. {q.label}
                 {q.required ? <span className="ml-1 text-xs text-rose-500">必須</span> : null}
                 {q.qtype === 'multi' ? <span className="ml-1 text-xs font-normal text-slate-400">(複数選択可)</span> : null}
+                {q.qtype === 'grid' ? <span className="ml-1 text-xs font-normal text-slate-400">(あてはまるマスを全てタップ)</span> : null}
               </div>
-              {q.qtype === 'text' ? (
+              {q.qtype === 'grid' ? (
+                <div className="mt-3 space-y-3">
+                  {(q.rows ?? []).map((row) => (
+                    <div key={row.key}>
+                      <div className="text-xs font-bold text-slate-600">{row.label}</div>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {(q.cols ?? []).map((col) => {
+                          const cellKey = gridCellKey(row.key, col.key);
+                          const selected = a.optionKeys.includes(cellKey);
+                          return (
+                            <button
+                              key={col.key}
+                              type="button"
+                              onClick={() => toggleOption(q, cellKey)}
+                              className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                                selected
+                                  ? 'border-teal-500 bg-teal-50 text-teal-800 font-bold'
+                                  : 'border-slate-300 bg-white text-slate-600'
+                              }`}
+                            >
+                              {selected ? '✓ ' : ''}
+                              {col.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  {q.allowOther ? (
+                    <div className="pt-1">
+                      <label className="block text-xs text-slate-500">その他(自由記入)</label>
+                      <input
+                        type="text"
+                        value={a.otherText}
+                        onChange={(e) => setAnswer(q.questionKey, { otherText: e.target.value })}
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : q.qtype === 'text' ? (
                 <textarea
                   value={a.text}
                   onChange={(e) => setAnswer(q.questionKey, { text: e.target.value })}

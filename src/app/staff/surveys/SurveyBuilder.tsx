@@ -11,9 +11,12 @@ type OptionRow = { key?: string; label: string };
 type QuestionRow = {
   key?: string;
   label: string;
-  qtype: 'single' | 'multi' | 'text';
+  qtype: 'single' | 'multi' | 'text' | 'grid';
   required: boolean;
   options: OptionRow[];
+  /** grid専用: 行(例=曜日)と列(例=時間帯) */
+  gridRows: OptionRow[];
+  gridCols: OptionRow[];
   allowOther: boolean;
 };
 
@@ -35,6 +38,8 @@ const emptyQuestion = (): QuestionRow => ({
   qtype: 'single',
   required: false,
   options: [{ label: '' }],
+  gridRows: [{ label: '' }],
+  gridCols: [{ label: '' }],
   allowOther: false,
 });
 
@@ -89,11 +94,19 @@ export default function SurveyBuilder({
           qtype: q.qtype,
           required: q.required,
           options:
-            q.qtype === 'text'
+            q.qtype === 'text' || q.qtype === 'grid'
               ? []
               : q.options
                   .filter((o) => o.label.trim())
                   .map((o, j) => ({ key: o.key || `o${j + 1}`, label: o.label })),
+          rows:
+            q.qtype === 'grid'
+              ? q.gridRows.filter((o) => o.label.trim()).map((o, j) => ({ key: o.key || `r${j + 1}`, label: o.label }))
+              : undefined,
+          cols:
+            q.qtype === 'grid'
+              ? q.gridCols.filter((o) => o.label.trim()).map((o, j) => ({ key: o.key || `c${j + 1}`, label: o.label }))
+              : undefined,
           allowOther: q.qtype === 'text' ? false : q.allowOther,
         })),
       };
@@ -174,6 +187,7 @@ export default function SurveyBuilder({
                   <option value="single">1つ選択</option>
                   <option value="multi">複数選択</option>
                   <option value="text">自由記入</option>
+                  <option value="grid">マス目(行×列)</option>
                 </select>
                 <label className="flex items-center gap-1.5 text-xs text-navy-700">
                   <input type="checkbox" checked={q.required} onChange={(e) => updateQuestion(i, { required: e.target.checked })} />
@@ -186,7 +200,41 @@ export default function SurveyBuilder({
                   </label>
                 ) : null}
               </div>
-              {q.qtype !== 'text' ? (
+              {q.qtype === 'grid' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {(['gridRows', 'gridCols'] as const).map((axis) => (
+                    <div key={axis} className="space-y-2">
+                      <div className="text-xs font-bold text-navy-700">{axis === 'gridRows' ? '行(例: 曜日)' : '列(例: 時間帯)'}</div>
+                      {q[axis].map((o, j) => (
+                        <div key={j} className="flex items-center gap-2">
+                          <input
+                            value={o.label}
+                            onChange={(e) =>
+                              updateQuestion(i, { [axis]: q[axis].map((oo, k) => (k === j ? { ...oo, label: e.target.value } : oo)) } as Partial<QuestionRow>)
+                            }
+                            className={inputCls}
+                            placeholder={`${axis === 'gridRows' ? '行' : '列'}${j + 1}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateQuestion(i, { [axis]: q[axis].filter((_, k) => k !== j) } as Partial<QuestionRow>)}
+                            className="shrink-0 rounded border border-sand-300 px-2 py-1.5 text-xs text-slate-500"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => updateQuestion(i, { [axis]: [...q[axis], { label: '' }] } as Partial<QuestionRow>)}
+                        className="rounded-lg border border-brand-200 px-3 py-1.5 text-xs font-bold text-brand-700 hover:bg-brand-50"
+                      >
+                        ＋ {axis === 'gridRows' ? '行' : '列'}を追加
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : q.qtype !== 'text' ? (
                 <div className="space-y-2">
                   {q.options.map((o, j) => (
                     <div key={j} className="flex items-center gap-2">

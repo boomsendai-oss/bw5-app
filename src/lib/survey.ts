@@ -7,7 +7,7 @@
 // ※ このモジュールは公開フォーム(クライアント)からも import されるため node: 依存を持たない。
 //   日時は 'YYYY-MM-DDTHH:mm'(JST・分精度) の文字列で保存し、辞書順比較で判定する。
 
-export const QTYPES = ['single', 'multi', 'text'] as const;
+export const QTYPES = ['single', 'multi', 'text', 'grid'] as const;
 export type Qtype = (typeof QTYPES)[number];
 
 export const AUDIENCES = ['member', 'public', 'both'] as const;
@@ -30,7 +30,40 @@ export interface QuestionDef {
   qtype: Qtype;
   required: boolean;
   options: QuestionOption[];
+  /** grid専用: 行(例=曜日)。検証済み定義では常に配列(grid以外は[])。 */
+  rows?: QuestionOption[];
+  /** grid専用: 列(例=時間帯)。 */
+  cols?: QuestionOption[];
   allowOther: boolean;
+}
+
+/** gridのセルを表すoption_key。行キーと列キーを'__'で合成する。 */
+export function gridCellKey(rowKey: string, colKey: string): string {
+  return `${rowKey}__${colKey}`;
+}
+
+/** gridの全セルキー(行×列の直積)。 */
+export function gridCellKeys(q: QuestionDef): string[] {
+  const out: string[] = [];
+  for (const r of q.rows ?? []) for (const c of q.cols ?? []) out.push(gridCellKey(r.key, c.key));
+  return out;
+}
+
+/**
+ * option_keyの表示名を引く。gridセルは「行×列」(例: 月曜×18時台)、
+ * OTHER_KEYは「その他」、通常設問は選択肢ラベル。CSV/回答一覧/会員履歴で共用する。
+ */
+export function optionLabel(q: QuestionDef, key: string): string {
+  if (key === OTHER_KEY) return 'その他';
+  if (q.qtype === 'grid') {
+    for (const r of q.rows ?? []) {
+      for (const c of q.cols ?? []) {
+        if (gridCellKey(r.key, c.key) === key) return `${r.label}×${c.label}`;
+      }
+    }
+    return key;
+  }
+  return q.options.find((o) => o.key === key)?.label ?? key;
 }
 
 export interface ValidatedSurvey {
@@ -126,32 +159,52 @@ export function validateSurveyDefinition(input: unknown): ValidatedSurvey | stri
     const required = raw.required === true || raw.required === 1;
     const allowOther = raw.allowOther === true || raw.allowOther === 1;
 
-    const options: QuestionOption[] = [];
-    const seenOptKeys = new Set<string>();
-    const rawOptions = Array.isArray(raw.options) ? raw.options : [];
-    for (let j = 0; j < rawOptions.length; j++) {
-      const o = rawOptions[j] as Record<string, unknown>;
-      const key = asTrimmed(o?.key);
-      const optLabel = asTrimmed(o?.label);
-      if (!KEY_RE.test(key)) return `設問${i + 1}の選択肢${j + 1}のキーが不正です`;
-      if (key === OTHER_KEY) return `選択肢キー「${OTHER_KEY}」は予約されています`;
-      if (seenOptKeys.has(key)) return `設問${i + 1}の選択肢キー「${key}」が重複しています`;
-      seenOptKeys.add(key);
-      if (!optLabel) return `設問${i + 1}の選択肢${j + 1}の表示名を入力してください`;
-      if (optLabel.length > MAX_OPTION_LABEL) return `設問${i + 1}の選択肢${j + 1}は${MAX_OPTION_LABEL}文字以内にしてください`;
-      options.push({ key, label: optLabel });
+    const parseOptionList = (rawList: unknown, listName: string): QuestionOption[] | string => {
+      const out: QuestionOption[] = [];
+      const seen = new Set<string>();
+      const arr = Array.isArray(rawList) ? rawList : [];
+      for (let j = 0; j < arr.length; j++) {
+        const o = arr[j] as Record<string, unknown>;
+        const key = asTrimmed(o?.key);
+        const optLabel = asTrimmed(o?.label);
+        if (!KEY_RE.test(key)) return `設問${i + 1}の${listName}${j + 1}のキーが不正です`;
+        if (key === OTHER_KEY) return `キー「${OTHER_KEY}」は予約されています`;
+        if (seen.has(key)) return `設問${i + 1}の${listName}キー「${key}」が重複しています`;
+        seen.add(key);
+        if (!optLabel) return `設問${i + 1}の${listName}${j + 1}の表示名を入力してください`;
+        if (optLabel.length > MAX_OPTION_LABEL) return `設問${i + 1}の${listName}${j + 1}は${MAX_OPTION_LABEL}文字以内にしてください`;
+        out.push({ key, label: optLabel });
+      }
+      if (out.length > MAX_OPTIONS) return `設問${i + 1}の${listName}は${MAX_OPTIONS}個以内にしてください`;
+      return out;
+    };
+
+    const options = parseOptionList(raw.options, '選択肢');
+    if (typeof options === 'string') return options;
+
+    let rows: QuestionOption[] = [];
+    let cols: QuestionOption[] = [];
+    if (qtype === 'grid') {
+      const parsedRows = parseOptionList(raw.rows, '行');
+      if (typeof parsedRows === 'string') return parsedRows;
+      const parsedCols = parseOptionList(raw.cols, '列');
+      if (typeof parsedCols === 'string') return parsedCols;
+      rows = parsedRows;
+      cols = parsedCols;
+      if (rows.length === 0) return `設問${i + 1}(マス目)に行を1つ以上設定してください`;
+      if (cols.length === 0) return `設問${i + 1}(マス目)に列を1つ以上設定してください`;
+      if (options.length > 0) return `設問${i + 1}(マス目)に選択肢は設定できません`;
     }
-    if (options.length > MAX_OPTIONS) return `設問${i + 1}の選択肢は${MAX_OPTIONS}個以内にしてください`;
 
     if (qtype === 'text') {
       if (options.length > 0) return `設問${i + 1}(自由記入)に選択肢は設定できません`;
       if (allowOther) return `設問${i + 1}(自由記入)に「その他」枠は不要です`;
-    } else if (options.length === 0) {
+    } else if (qtype !== 'grid' && options.length === 0) {
       return `設問${i + 1}に選択肢を1つ以上設定してください`;
     }
 
     const id = typeof raw.id === 'number' && Number.isInteger(raw.id) ? raw.id : undefined;
-    questions.push({ id, questionKey, label, qtype: qtype as Qtype, required, options, allowOther });
+    questions.push({ id, questionKey, label, qtype: qtype as Qtype, required, options, rows, cols, allowOther });
   }
 
   return { title, intro, audience: audience as Audience, nameNote, opensAt, closesAt, questions };
@@ -200,7 +253,7 @@ export function validateResponseInput(questions: QuestionDef[], payload: unknown
       continue;
     }
 
-    const validKeys = new Set(q.options.map((o) => o.key));
+    const validKeys = new Set(q.qtype === 'grid' ? gridCellKeys(q) : q.options.map((o) => o.key));
     for (const k of optionKeys) {
       if (!validKeys.has(k)) return `「${q.label}」に不正な選択肢が含まれています`;
     }
@@ -240,6 +293,8 @@ export interface QuestionAgg {
   /** この設問に(何かしら)回答した回答者数 */
   total: number;
   optionCounts: { key: string; label: string; count: number }[];
+  /** grid専用: セルごとの選択者数(0件セルも含む)。他のqtypeでは空配列。 */
+  gridCells: { rowKey: string; colKey: string; count: number }[];
   otherTexts: string[];
   texts: string[];
 }
@@ -272,6 +327,14 @@ export function aggregateAnswers(questions: QuestionDef[], rows: AnswerRow[]): Q
       }
       const optionCounts = q.options.map((o) => ({ key: o.key, label: o.label, count: counts.get(o.key) ?? 0 }));
       if (q.allowOther) optionCounts.push({ key: OTHER_KEY, label: 'その他', count: counts.get(OTHER_KEY) ?? 0 });
+      const gridCells: { rowKey: string; colKey: string; count: number }[] = [];
+      if (q.qtype === 'grid') {
+        for (const r of q.rows ?? []) {
+          for (const c of q.cols ?? []) {
+            gridCells.push({ rowKey: r.key, colKey: c.key, count: counts.get(gridCellKey(r.key, c.key)) ?? 0 });
+          }
+        }
+      }
       return {
         questionId: q.id!,
         questionKey: q.questionKey,
@@ -279,6 +342,7 @@ export function aggregateAnswers(questions: QuestionDef[], rows: AnswerRow[]): Q
         qtype: q.qtype,
         total: respondents.size,
         optionCounts,
+        gridCells,
         otherTexts,
         texts,
       };
