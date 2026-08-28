@@ -123,7 +123,9 @@ export async function POST(req: NextRequest) {
   const UPSERT = `INSERT INTO lesson_instances
       (master_id, date, start_time, end_time, studio_id, instructor_id, status, notes, auto_materialized)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-     ON CONFLICT(master_id, date) DO UPDATE SET
+     -- idx_li_master_date は部分索引(WHERE master_id IS NOT NULL)なので、
+     -- 競合ターゲットにも同じ WHERE を書かないとSQLiteが索引を認識せずエラーになる
+     ON CONFLICT(master_id, date) WHERE master_id IS NOT NULL DO UPDATE SET
        start_time=excluded.start_time, end_time=excluded.end_time,
        studio_id=excluded.studio_id, instructor_id=excluded.instructor_id,
        status=excluded.status, notes=excluded.notes, updated_at=CURRENT_TIMESTAMP`;
