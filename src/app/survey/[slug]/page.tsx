@@ -94,15 +94,22 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
     setAnswers((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   };
 
+  // 必ず関数型更新で組む。stateのクロージャから組むと、再レンダー前の連続タップ
+  // (素早いダブルタップ等)で前の選択が消える。
   const toggleOption = (q: QuestionDef, optKey: string) => {
-    const cur = answers[q.questionKey];
-    if (q.qtype === 'single') {
-      const selected = cur.optionKeys[0] === optKey;
-      setAnswer(q.questionKey, { optionKeys: selected ? [] : [optKey], otherText: selected ? cur.otherText : '' });
-    } else {
-      const has = cur.optionKeys.includes(optKey);
-      setAnswer(q.questionKey, { optionKeys: has ? cur.optionKeys.filter((k) => k !== optKey) : [...cur.optionKeys, optKey] });
-    }
+    setAnswers((prev) => {
+      const cur = prev[q.questionKey];
+      if (!cur) return prev;
+      let next: typeof cur;
+      if (q.qtype === 'single') {
+        const selected = cur.optionKeys[0] === optKey;
+        next = { ...cur, optionKeys: selected ? [] : [optKey], otherText: selected ? cur.otherText : '' };
+      } else {
+        const has = cur.optionKeys.includes(optKey);
+        next = { ...cur, optionKeys: has ? cur.optionKeys.filter((k) => k !== optKey) : [...cur.optionKeys, optKey] };
+      }
+      return { ...prev, [q.questionKey]: next };
+    });
   };
 
   const handleSubmit = async () => {
