@@ -9,6 +9,9 @@ import { Input } from '@/components/ui/input';
 import {
   getKioskStaffView,
   staffActivateSale,
+  staffImportBaseItem,
+  staffListBaseItems,
+  type StaffBaseItem,
   staffAddProduct,
   staffAddVariant,
   staffCreateSale,
@@ -226,6 +229,91 @@ function SaleRow({
   );
 }
 
+function BaseImportPanel({
+  saleId,
+  run,
+}: {
+  saleId: number;
+  run: (fn: () => Promise<unknown>, okMsg: string) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<StaffBaseItem[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      setItems(await staffListBaseItems(saleId));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'BASEの商品一覧を取得できませんでした');
+      setItems(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-sand-200 bg-white p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-bold text-navy-900">BASEのネットショップから取り込み</h3>
+          <p className="mt-1 text-xs text-navy-500">
+            写真・価格・サイズ展開・在庫をそのままコピーします。取り込み後の在庫は独立管理
+            (kioskで売れてもBASE側の在庫は減りません)。取り込み済みの商品はBASEの現在在庫で上書き更新できます。
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setOpen((o) => !o);
+            if (!open && items == null) load();
+          }}
+        >
+          {open ? '閉じる' : 'BASEの商品を見る'}
+        </Button>
+      </div>
+      {open && (
+        <div className="mt-3 space-y-2">
+          {loading && <p className="py-4 text-sm text-navy-500">BASEから読み込み中…</p>}
+          {!loading && items?.length === 0 && <p className="py-4 text-sm text-navy-500">公開中の商品がありません</p>}
+          {!loading &&
+            items?.map((it) => (
+              <div key={it.itemId} className="flex items-center gap-3 rounded-lg border border-sand-100 p-2">
+                {it.imageUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element -- BASEの商品写真 */
+                  <img src={it.imageUrl} alt={it.name} className="h-14 w-14 rounded object-cover" />
+                ) : (
+                  <div className="flex h-14 w-14 items-center justify-center rounded bg-sand-100">🛍️</div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold">{it.name}</p>
+                  <p className="text-xs text-navy-500">
+                    ¥{it.price.toLocaleString('ja-JP')}・在庫{it.stock}
+                    {it.variationSummary && <span className="ml-1">({it.variationSummary})</span>}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant={it.alreadyImported ? 'outline' : 'default'}
+                  disabled={it.stock <= 0 && !it.alreadyImported}
+                  onClick={() =>
+                    run(
+                      () => staffImportBaseItem(saleId, it.itemId),
+                      it.alreadyImported ? 'BASEの現在在庫で更新しました' : '取り込みました'
+                    ).then(load)
+                  }
+                >
+                  {it.alreadyImported ? 'BASE在庫で更新' : '取り込む'}
+                </Button>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProductsTab({
   view,
   saleId,
@@ -241,6 +329,7 @@ function ProductsTab({
 
   return (
     <div className="space-y-4">
+      <BaseImportPanel saleId={saleId} run={run} />
       <div className="rounded-xl border border-sand-200 bg-white p-4">
         <h3 className="font-bold text-navy-900">商品を追加</h3>
         <div className="mt-3 flex flex-wrap items-end gap-3">

@@ -127,3 +127,51 @@ describe('バリエーションのカラー/サイズ', () => {
     expect(vs[1].label).toBe('F');
   });
 });
+
+describe('BASE取り込み', () => {
+  const mapped = {
+    name: 'BASEシャツ',
+    price: 5800,
+    imageUrl: 'https://base-ec2.akamaized.net/x.png',
+    stock: 0,
+    variants: [
+      { color: 'ブラック', size: 'S', stock: 1 },
+      { color: 'ブラック', size: 'M', stock: 2 },
+    ],
+  };
+
+  it('新規取り込みで商品+バリエーションが作られ、base_item_idが記録される', async () => {
+    const saleId = await k.createKioskSale('BASE販売会', '2026-09-26');
+    const res = await k.importBaseProductToSale(saleId, 999111, mapped);
+    expect(res.created).toBe(true);
+    const catalog = await k.getKioskCatalog(saleId);
+    expect(catalog[0].name).toBe('BASEシャツ');
+    expect(catalog[0].variants).toHaveLength(2);
+    const row = await core.getOne('SELECT base_item_id FROM kiosk_products WHERE id = ?', [catalog[0].id]);
+    expect(Number(row?.base_item_id)).toBe(999111);
+  });
+
+  it('同じbase_item_idの再取り込みは複製せず価格と在庫を上書きし、新サイズは追加される', async () => {
+    const saleId = await k.createKioskSale('BASE販売会2', '2026-09-26');
+    await k.importBaseProductToSale(saleId, 999222, mapped);
+    const updated = {
+      ...mapped,
+      price: 6000,
+      variants: [
+        { color: 'ブラック', size: 'S', stock: 5 },
+        { color: 'ブラック', size: 'M', stock: 0 },
+        { color: 'ブルー', size: 'L', stock: 3 },
+      ],
+    };
+    const res = await k.importBaseProductToSale(saleId, 999222, updated);
+    expect(res.created).toBe(false);
+    const catalog = await k.getKioskCatalog(saleId);
+    expect(catalog).toHaveLength(1);
+    expect(catalog[0].price).toBe(6000);
+    const vs = catalog[0].variants;
+    expect(vs).toHaveLength(3);
+    expect(vs.find((v) => v.label === 'ブラック S')?.stock).toBe(5);
+    expect(vs.find((v) => v.label === 'ブラック M')?.stock).toBe(0);
+    expect(vs.find((v) => v.label === 'ブルー L')?.stock).toBe(3);
+  });
+});

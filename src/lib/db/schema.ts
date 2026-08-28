@@ -1208,7 +1208,8 @@ export function getSchemaStatements(): InStatement[] {
       description TEXT NOT NULL DEFAULT '',
       stock INTEGER NOT NULL DEFAULT 0,
       sort_order INTEGER NOT NULL DEFAULT 0,
-      active INTEGER NOT NULL DEFAULT 1
+      active INTEGER NOT NULL DEFAULT 1,
+      base_item_id INTEGER
     )`,
       args: [],
     },

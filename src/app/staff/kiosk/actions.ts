@@ -12,6 +12,7 @@ import {
   deleteKioskVariant,
   getKioskCatalog,
   getKioskSalesReport,
+  importBaseProductToSale,
   listKioskSales,
   setActiveKioskSale,
   setKioskProductStock,
@@ -24,6 +25,8 @@ import {
 } from '@/lib/kioskDb';
 import { buildKioskOrdersCsv, type KioskCsvRow } from '@/lib/kioskCsv';
 import { getAll } from '@/lib/db';
+import { fetchItem, fetchItems } from '@/lib/base';
+import { mapBaseItemToKioskProduct } from '@/lib/kioskBaseImport';
 
 async function requireStaff(): Promise<void> {
   if (!(await isAuthorizedServer())) throw new Error('Unauthorized');
@@ -122,6 +125,51 @@ export async function staffDeleteVariant(variantId: number): Promise<void> {
 export async function staffVoidOrder(orderId: number, reason: string): Promise<boolean> {
   await requireStaff();
   return voidKioskOrder(orderId, reason.trim() || 'スタッフ取消');
+}
+
+// ───────────────── BASEネットショップからの取り込み ─────────────────
+
+export interface StaffBaseItem {
+  itemId: number;
+  name: string;
+  price: number;
+  stock: number;
+  imageUrl: string;
+  variationSummary: string;
+  alreadyImported: boolean;
+}
+
+/** BASEの公開商品一覧(取り込み候補)。BASE未認可時はthrowし、UI側で案内する。 */
+export async function staffListBaseItems(saleId: number): Promise<StaffBaseItem[]> {
+  await requireStaff();
+  const items = await fetchItems({ limit: 50 });
+  const importedRows = await getAll('SELECT base_item_id FROM kiosk_products WHERE sale_id = ? AND base_item_id IS NOT NULL', [saleId]);
+  const imported = new Set(importedRows.map((r) => Number(r.base_item_id)));
+  return items
+    .filter((it) => it.visible !== 0)
+    .map((it) => {
+      const m = mapBaseItemToKioskProduct(it);
+      const totalStock = m.variants.length > 0 ? m.variants.reduce((s, v) => s + v.stock, 0) : m.stock;
+      return {
+        itemId: it.item_id,
+        name: m.name,
+        price: m.price,
+        stock: totalStock,
+        imageUrl: m.imageUrl,
+        variationSummary: m.variants.map((v) => `${[v.color, v.size].filter(Boolean).join(' ')}:${v.stock}`).join(' / '),
+        alreadyImported: imported.has(it.item_id),
+      };
+    });
+}
+
+/** BASE商品1件を販売会へ取り込む(既存なら在庫・価格を上書き)。 */
+export async function staffImportBaseItem(saleId: number, itemId: number): Promise<{ created: boolean }> {
+  await requireStaff();
+  const item = await fetchItem(itemId);
+  if (!item) throw new Error('BASEの商品が見つかりません');
+  const mapped = mapBaseItemToKioskProduct(item);
+  const res = await importBaseProductToSale(saleId, itemId, mapped);
+  return { created: res.created };
 }
 
 /** 注文明細CSV(クライアント側でBlobダウンロードする)。 */

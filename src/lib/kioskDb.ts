@@ -119,6 +119,68 @@ export async function updateKioskSale(id: number, name: string, eventDate: strin
   await execute('UPDATE kiosk_sales SET name = ?, event_date = ? WHERE id = ?', [name, eventDate, id]);
 }
 
+export interface ImportableKioskProduct {
+  name: string;
+  price: number;
+  imageUrl: string;
+  stock: number;
+  variants: Array<{ color: string; size: string; stock: number }>;
+}
+
+/**
+ * BASEの商品を販売会へ取り込む。同じ base_item_id が既にあれば複製せず、
+ * 名前・価格・写真・在庫を上書きする(BASE側が在庫の正)。kiosk側で手動追加した
+ * サイズは触らない。取り込み後の在庫は独立(kioskで売れてもBASEは減らない)。
+ */
+export async function importBaseProductToSale(
+  saleId: number,
+  baseItemId: number,
+  p: ImportableKioskProduct
+): Promise<{ created: boolean; productId: number }> {
+  await initDb();
+  const existing = await getOne('SELECT id FROM kiosk_products WHERE sale_id = ? AND base_item_id = ?', [saleId, baseItemId]);
+  let productId: number;
+  let created = false;
+  if (existing) {
+    productId = Number(existing.id);
+    await execute('UPDATE kiosk_products SET name = ?, price = ?, image_url = ?, stock = ?, active = 1 WHERE id = ?', [
+      p.name,
+      p.price,
+      p.imageUrl,
+      p.stock,
+      productId,
+    ]);
+  } else {
+    created = true;
+    const res = await execute(
+      'INSERT INTO kiosk_products (sale_id, name, price, image_url, description, stock, sort_order, active, base_item_id) VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?)',
+      [saleId, p.name, p.price, p.imageUrl, '', p.stock, baseItemId]
+    );
+    productId = Number(res.lastInsertRowid);
+  }
+  for (const v of p.variants) {
+    const label = [v.color, v.size].filter(Boolean).join(' ');
+    const existingVariant = await getOne('SELECT id FROM kiosk_product_variants WHERE product_id = ? AND label = ?', [
+      productId,
+      label,
+    ]);
+    if (existingVariant) {
+      await execute('UPDATE kiosk_product_variants SET stock = ?, color = ?, size = ? WHERE id = ?', [
+        v.stock,
+        v.color,
+        v.size,
+        Number(existingVariant.id),
+      ]);
+    } else {
+      await execute(
+        'INSERT INTO kiosk_product_variants (product_id, label, color, size, stock, sort_order) VALUES (?, ?, ?, ?, ?, 0)',
+        [productId, label, v.color, v.size, v.stock]
+      );
+    }
+  }
+  return { created, productId };
+}
+
 // ---------------------------------------------------------------------------
 // 仮押さえの集計
 // ---------------------------------------------------------------------------
