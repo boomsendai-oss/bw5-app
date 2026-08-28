@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cheapestCover } from '../studioBilling';
+import { cheapestCover, dedupeVenueSlots } from '../studioBilling';
 
 type Block = { label: string; start: string; end: string; price: number };
 const m = (h: number, mi = 0) => h * 60 + mi;
@@ -42,5 +42,33 @@ describe('cheapestCover (M6)', () => {
       { label: '高', start: '09:00', end: '17:00', price: 3000 },
     ];
     expect(cheapestCover(overlap, m(9), m(17))?.price).toBe(1500);
+  });
+});
+
+describe('dedupeVenueSlots — 連名レッスンで会場時間が二重計上されないこと', () => {
+  const row = (o: Partial<{ studio_id: number | null; date: string; start_time: string; end_time: string; instructor_id: number }>) => ({
+    studio_id: 9, date: '2026-08-06', start_time: '18:30', end_time: '19:30', instructor_id: 3, ...o,
+  });
+
+  it('同じ部屋・同じ時間の2件(講師違い)は1件に畳む', () => {
+    const r = dedupeVenueSlots([row({ instructor_id: 3 }), row({ instructor_id: 12 })]);
+    expect(r).toHaveLength(1);
+    expect(r[0].instructor_id).toBe(3); // 先頭を残す
+  });
+
+  it('連続する別クラスは畳まない (開始時刻が違う)', () => {
+    const r = dedupeVenueSlots([
+      row({ start_time: '18:30', end_time: '19:30' }),
+      row({ start_time: '19:30', end_time: '21:00' }),
+    ]);
+    expect(r).toHaveLength(2);
+  });
+
+  it('会場が違えば畳まない', () => {
+    expect(dedupeVenueSlots([row({ studio_id: 9 }), row({ studio_id: 12 })])).toHaveLength(2);
+  });
+
+  it('日付が違えば畳まない', () => {
+    expect(dedupeVenueSlots([row({ date: '2026-08-06' }), row({ date: '2026-08-20' })])).toHaveLength(2);
   });
 });

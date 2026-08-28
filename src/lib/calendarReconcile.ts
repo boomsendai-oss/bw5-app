@@ -68,11 +68,26 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]):
     return true;
   });
 
+  // 連名(2人体制)は講師ごとに1件へ展開してから突き合わせる。
+  // 給与は各人に各自の単価で付く(TARO¥0 + KOKEKO¥3,500 のように)。
+  // 会場時間が人数ぶん二重に乗らないよう、畳むのは集計側(studioBilling)の責務。
+  type Expanded = ResolvedLesson & { _instructorId: number | null; _substitute: boolean };
+  const expanded: Expanded[] = [];
+  for (const e of usable) {
+    if (e.instructors.length <= 1) {
+      expanded.push({ ...e, _instructorId: e.instructor_id, _substitute: e.substitute });
+      continue;
+    }
+    for (const p of e.instructors) {
+      expanded.push({ ...e, _instructorId: p.id, _substitute: p.substitute });
+    }
+  }
+
   // (slot, event) の候補を距離つきで作り、近い順に確定
   const pairs: { si: number; ei: number; dist: number }[] = [];
   slots.forEach((s, si) => {
-    usable.forEach((e, ei) => {
-      if (e.instructor_id !== s.instructor_id) return;
+    expanded.forEach((e, ei) => {
+      if (e._instructorId !== s.instructor_id) return;
       const d = Math.abs(toMin(e.start) - toMin(s.start_time));
       if (!Number.isFinite(d) || d > MATCH_WINDOW_MIN) return;
       pairs.push({ si, ei, dist: d });
@@ -112,7 +127,7 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]):
       });
       return;
     }
-    const e = usable[ei];
+    const e = expanded[ei];
     if (e.cancelled) {
       plan.removed.push({
         master_id: s.master_id, date: s.date, start_time: e.start, end_time: e.end,
@@ -124,8 +139,8 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]):
     // 開催: **会場と時刻はカレンダーの実績で上書き**(週替わり会場・時間変更の反映)
     plan.keep.push({
       master_id: s.master_id, date: s.date, start_time: e.start, end_time: e.end,
-      instructor_id: e.instructor_id, studio_id: e.studio_id, status: 'scheduled',
-      note: 'カレンダー実績',
+      instructor_id: e._instructorId, studio_id: e.studio_id, status: 'scheduled',
+      note: e.instructors.length > 1 ? `カレンダー実績(連名${e.instructors.length}名)` : 'カレンダー実績',
     });
   });
 
@@ -137,11 +152,11 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]):
     });
   }
 
-  usable.forEach((e, ei) => {
+  expanded.forEach((e, ei) => {
     if (eventTaken.has(ei) || e.cancelled) return;
     plan.extra.push({
       master_id: null, date: e.date, start_time: e.start, end_time: e.end,
-      instructor_id: e.instructor_id, studio_id: e.studio_id, status: 'scheduled',
+      instructor_id: e._instructorId, studio_id: e.studio_id, status: 'scheduled',
       note: `単発: ${e.class_name}`.slice(0, 120),
     });
   });

@@ -9,11 +9,33 @@ const slot = (o: Partial<MasterSlotLite>): MasterSlotLite => ({
 const res = (o: Partial<ResolvedLesson>): ResolvedLesson => ({
   event_id: 'e1', date: '2026-08-19', start: '18:30', end: '20:00', duration_minutes: 90,
   cancelled: false, substitute: false, payable: true, instructor_id: 3, instructor_name: 'TARO',
+  instructors: [{ id: 3, name: 'TARO', substitute: false }],
   studio_id: 90, studio_name: '戦災復興記念館　展示ホール', class_name: 'TARO hiphop 入門初級',
   issues: [], ...o,
 });
 
 describe('reconcileDay', () => {
+  it('連名(2人体制)は講師ごとに1件ずつ作る。給与は各自の単価で付く', () => {
+    // 生徒が「今日は誰が担当か」を見られるよう連名で書く運用(TARO要件)。
+    // 会場時間の二重計上は集計側(studioBilling)で畳むのでここでは2件出してよい。
+    const p = reconcileDay(
+      [slot({ master_id: 40, instructor_id: 3, start_time: '18:30', studio_id: 9 })],
+      [res({
+        class_name: '長町 HIPHOP クラス', studio_id: 9, start: '18:30', end: '19:30',
+        instructor_id: 3, instructors: [
+          { id: 3, name: 'TARO', substitute: false },
+          { id: 12, name: 'KOKEKO', substitute: false },
+        ],
+      })]
+    );
+    // マスタ担当(TARO)の枠は開催として埋まり、連名の相方(KOKEKO)は単発として残る
+    expect(p.keep).toHaveLength(1);
+    expect(p.keep[0]).toMatchObject({ master_id: 40, instructor_id: 3, studio_id: 9 });
+    expect(p.extra).toHaveLength(1);
+    expect(p.extra[0]).toMatchObject({ master_id: null, instructor_id: 12, studio_id: 9 });
+    expect(p.removed).toHaveLength(0);
+  });
+
   it('【回帰】給与対象外の予定は、時間が近くても他会場の枠を曖昧にしない', () => {
     // 2026-08-23の事故: GOATのバトル練習会(14:30)がAZUMAの日曜枠と時間が近いだけで
     // 曖昧扱いになり、枠が未書き込み→master展開で埋め戻され開催していない給与が付いた

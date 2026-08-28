@@ -30,8 +30,9 @@ export type ResolvedLesson = {
   duration_minutes: number;
   cancelled: boolean;
   substitute: boolean;
-  instructor_id: number | null;
+  instructor_id: number | null;    // 代表(先頭)。連名のときは1人目
   instructor_name: string | null;
+  instructors: ParsedInstructor[]; // 連名対応。給与は全員に各自の単価で付く
   studio_id: number | null;
   studio_name: string | null;
   class_name: string;
@@ -93,6 +94,51 @@ export type ParsedInstructor = { id: number; name: string; substitute: boolean }
  * 名簿に無い名前は推測せず null。`My` のような短い名前が本文中に紛れて誤爆しないよう、
  * 照合は「【】の中身」と「先頭一致」に限定し、任意位置の部分一致は使わない。
  */
+/**
+ * タイトルから **レッスンをやった講師を全員** 取る。連名(2人体制)に対応。
+ *
+ * 生徒もこのカレンダーを見て「今日はどの先生か」を確認するため、
+ * `【TARO/KOKEKO】` のように連名で書ける必要がある(TARO要件 2026-08-28)。
+ * 区切り文字をTAROに意識させないよう、よくある区切りは全部受ける。
+ * 順序は書かれたとおりに保つ(生徒への見え方と給与明細の並びを一致させる)。
+ *
+ * 給与は各人の単価で別々に付く(TAROは¥0、KOKEKOは¥3,500)。
+ * 会場時間が人数ぶん二重計上されないよう、集計側(studioBilling)で同一枠を1回に畳む。
+ */
+export function parseInstructors(summary: string, instructors: NamedRef[]): ParsedInstructor[] {
+  const s = stripDecorations(summary);
+  const byKey = new Map<string, NamedRef>();
+  for (const i of instructors) {
+    byKey.set(normKey(i.name), i);
+    for (const a of i.aliases ?? []) byKey.set(normKey(a), i);
+  }
+  const lookup = (raw: string): NamedRef | undefined => byKey.get(normKey(raw));
+  const uniq = (list: ParsedInstructor[]): ParsedInstructor[] => {
+    const seen = new Set<number>();
+    return list.filter((x) => (seen.has(x.id) ? false : (seen.add(x.id), true)));
+  };
+
+  // 代講が最優先。代講回は「代わりにやった人」だけに払う。
+  const sub = s.match(/代講\s*([^\s　【】]+)/);
+  if (sub) {
+    const hit = lookup(sub[1]);
+    if (hit) return [{ id: hit.id, name: hit.name, substitute: true }];
+  }
+
+  // 【】の中身を区切り文字で割って、読めた人を順番どおりに集める
+  for (const m of s.matchAll(/【\s*([^】]+?)\s*】/g)) {
+    const found: ParsedInstructor[] = [];
+    for (const part of m[1].split(/[/／・&＆、,･+＋]/)) {
+      const hit = lookup(part);
+      if (hit) found.push({ id: hit.id, name: hit.name, substitute: false });
+    }
+    if (found.length > 0) return uniq(found);
+  }
+
+  const single = parseInstructor(summary, instructors);
+  return single ? [single] : [];
+}
+
 export function parseInstructor(summary: string, instructors: NamedRef[]): ParsedInstructor | null {
   const s = stripDecorations(summary);
   const byKey = new Map<string, NamedRef>();
@@ -194,7 +240,8 @@ export function resolveCalendarEvent(
   studios: NamedRef[]
 ): ResolvedLesson {
   const cancelled = detectCancelled(event.summary);
-  const inst = parseInstructor(event.summary, instructors);
+  const found = parseInstructors(event.summary, instructors);
+  const inst = found[0] ?? null;
   const studio = resolveStudio(event.location, studios);
   const dur = toMinutes(event.end) - toMinutes(event.start);
 
@@ -217,6 +264,7 @@ export function resolveCalendarEvent(
     substitute: inst?.substitute ?? false,
     instructor_id: inst?.id ?? null,
     instructor_name: inst?.name ?? null,
+    instructors: found,
     studio_id: studio?.id ?? null,
     studio_name: studio?.name ?? null,
     class_name: extractClassName(event.summary),

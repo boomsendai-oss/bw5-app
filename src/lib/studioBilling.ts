@@ -89,6 +89,28 @@ function selectBlock(blocks: Block[], minStart: string, maxEnd: string): Block |
   return blocks.reduce((best, b) => (b.price > best.price ? b : best));
 }
 
+/**
+ * 会場の使用枠を重複なしに畳む。
+ *
+ * 連名(2人体制)のレッスンは講師ごとに lesson_instance が1件ずつ入る。
+ * そのまま時間を足すと **同じ部屋の同じ時間を人数ぶん二重計上** してしまうため、
+ * (スタジオ, 日付, 開始, 終了) が同じものは最初の1件だけ残す。
+ * 連続する別クラスは開始時刻が違うので畳まれない。
+ */
+export function dedupeVenueSlots<
+  T extends { studio_id: number | null; date: string; start_time: string; end_time: string },
+>(rows: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of rows) {
+    const k = `${r.studio_id}_${r.date}_${r.start_time}_${r.end_time}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+  }
+  return out;
+}
+
 function calcPaymentDate(yearMonth: string, paymentType: string): string {
   // prepaid: 当月分を前月末日 / postpaid: 当月分を翌月15日
   const [y, m] = yearMonth.split('-').map(Number);
@@ -183,9 +205,8 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
   // 時間貸しスタジオで「その日にレッスンがある (スタジオ,日付)」を記録。
   // 日次バッファ(daily_buffer_minutes)は後段でこのキーごとに1回だけ加算する。
   const hourlyDayKeys = new Set<string>();
-  for (const ins of instances) {
-    if (ins.status === 'cancelled' || ins.status === 'removed') continue;
-    if (!ins.studio_id) continue;
+  // 連名(2人体制)で同じ枠が人数ぶん増えるため dedupeVenueSlots で畳む。
+  for (const ins of dedupeVenueSlots(instances.filter((i) => !isInactiveStatus(i.status) && i.studio_id))) {
     const result = resultsMap.get(ins.studio_id);
     const studio = studioMap.get(ins.studio_id);
     if (!result || !studio) continue;

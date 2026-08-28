@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  parseInstructors,
   stripDecorations,
   detectCancelled,
   parseInstructor,
@@ -91,6 +92,42 @@ describe('parseInstructor — 実データの5パターン', () => {
   it('名簿に無い名前は null (推測しない)', () => {
     expect(parseInstructor('⚔️ダンスバトル練習会', INSTRUCTORS)).toBeNull();
     expect(parseInstructor('体験レッスン', INSTRUCTORS)).toBeNull();
+  });
+});
+
+describe('parseInstructors — 連名(2人体制)', () => {
+  // 生徒もこのカレンダーを見て「今日は誰が担当か」を確認するため、
+  // 連名で書ける必要がある(TARO要件 2026-08-28)。区切り文字は指定させず全部受ける。
+  it('区切り文字が何であれ2人とも取れる', () => {
+    for (const sep of ['/', '／', '・', '&', '＆', '、', ',']) {
+      const got = parseInstructors(`【TARO${sep}KOKEKO】長町 HIPHOP クラス`, INSTRUCTORS).map((x) => x.id);
+      expect(got, `区切り=${sep}`).toEqual([3, 12]);
+    }
+  });
+
+  it('順序は書いたとおりに保つ (生徒への見え方と一致させる)', () => {
+    expect(parseInstructors('【KOKEKO／TARO】長町 HIPHOP クラス', INSTRUCTORS).map((x) => x.id)).toEqual([12, 3]);
+  });
+
+  it('1人のときは1件だけ返す', () => {
+    expect(parseInstructors('【YURI】長町WAACK 初級', INSTRUCTORS).map((x) => x.id)).toEqual([10]);
+    expect(parseInstructors('SAYUKI free style', INSTRUCTORS).map((x) => x.id)).toEqual([7]);
+    expect(parseInstructors('多賀城HOUSE【AOI】', INSTRUCTORS).map((x) => x.id)).toEqual([2]);
+  });
+
+  it('代講は実施者だけを返す (マスタの担当には払わない)', () => {
+    const r = parseInstructors('【Ryuki】キッズ HIPHOP 代講 KOKEKO', INSTRUCTORS);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ id: 12, substitute: true });
+  });
+
+  it('名簿に無い名前が混ざっていても、読めた人だけ返す', () => {
+    expect(parseInstructors('【TARO/ダレカ】クラス', INSTRUCTORS).map((x) => x.id)).toEqual([3]);
+    expect(parseInstructors('⚔️ダンスバトル練習会', INSTRUCTORS)).toEqual([]);
+  });
+
+  it('同じ人を2回書いても重複しない', () => {
+    expect(parseInstructors('【TARO/TARO】クラス', INSTRUCTORS).map((x) => x.id)).toEqual([3]);
   });
 });
 
