@@ -210,7 +210,8 @@ export async function fetchItems(opts: {
 export async function fetchItem(itemId: number): Promise<BaseItem | null> {
   const token = await getValidAccessToken();
   if (!token) return null;
-  const res = await fetch(`${BASE_API}/items/detail?item_id=${itemId}`, {
+  // BASEの詳細APIはitem_idをパスで渡す仕様(?item_id=だと400 no_item_id)
+  const res = await fetch(`${BASE_API}/items/detail/${itemId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return null;
