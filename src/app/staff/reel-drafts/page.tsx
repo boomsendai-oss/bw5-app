@@ -134,6 +134,23 @@ export default function ReelDraftsPage() {
   const stageCount = drafts.filter(isStage).length;
   const classCount = drafts.length - stageCount;
 
+  // 発表会タブのMナンバー早見(TARO 2026-08-28)。ページの表示順(入力待ち→投稿待ち→…)で
+  // 最初に現れるそのナンバーのカードへ飛ぶ。ラベルは M番号+演目名。
+  const pageOrder = [...pending, ...review, ...scheduled, ...inFlight, ...settled];
+  const stageJump: Array<{ mid: string; name: string; draftId: number }> = [];
+  if (tab === 'stage') {
+    const seen = new Set<string>();
+    for (const d of pageOrder) {
+      const m = String(d.drive_name ?? '').match(/^M(\d+)/);
+      if (!m) continue;
+      const mid = 'M' + parseInt(m[1], 10);
+      if (seen.has(mid)) continue;
+      seen.add(mid);
+      stageJump.push({ mid, name: d.class_name || '', draftId: d.id });
+    }
+    stageJump.sort((a, b) => parseInt(a.mid.slice(1), 10) - parseInt(b.mid.slice(1), 10));
+  }
+
   return (
     <div className="min-h-screen bg-sand-50">
       <StaffPageHeader
@@ -182,15 +199,31 @@ export default function ReelDraftsPage() {
           <p className="text-xs text-brand-700">⏳ 生成の進み具合を15秒ごとに自動で確認しています（このまま待てば結果が出ます）</p>
         )}
 
-        <div className="flex gap-1 bg-sand-100 rounded-xl p-1">
-          <button onClick={() => setTab('class')}
-            className={`flex-1 rounded-lg px-2 py-2 text-sm font-semibold transition-colors ${tab === 'class' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'}`}>
-            🕺 クラスリール ({classCount})
-          </button>
-          <button onClick={() => setTab('stage')}
-            className={`flex-1 rounded-lg px-2 py-2 text-sm font-semibold transition-colors ${tab === 'stage' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'}`}>
-            🎭 発表会リール ({stageCount})
-          </button>
+        {/* タブは画面上部に固定(TARO 2026-08-28: 「切り替えのたびに一番上へ戻るのがめんどくさい」)。
+            発表会タブでは配下にMナンバーのジャンプバーも重ねて固定する(20ナンバー分のスクロール解消) */}
+        <div className="sticky top-0 z-20 -mx-4 px-4 py-2 bg-sand-50/95 backdrop-blur space-y-2">
+          <div className="flex gap-1 bg-sand-100 rounded-xl p-1">
+            <button onClick={() => setTab('class')}
+              className={`flex-1 rounded-lg px-2 py-2 text-sm font-semibold transition-colors ${tab === 'class' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'}`}>
+              🕺 クラスリール ({classCount})
+            </button>
+            <button onClick={() => setTab('stage')}
+              className={`flex-1 rounded-lg px-2 py-2 text-sm font-semibold transition-colors ${tab === 'stage' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500 hover:text-navy-700'}`}>
+              🎭 発表会リール ({stageCount})
+            </button>
+          </div>
+          {tab === 'stage' && stageJump.length > 0 && (
+            <div className="flex gap-1.5 overflow-x-auto pb-1 -mb-1">
+              {stageJump.map((j) => (
+                <button key={j.mid}
+                  onClick={() => document.getElementById(`draft-card-${j.draftId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  className="shrink-0 rounded-lg border border-sand-300 bg-white px-2 py-1 text-left hover:border-brand-400">
+                  <span className="block text-xs font-bold text-navy-800 leading-tight">{j.mid}</span>
+                  <span className="block text-[10px] text-navy-500 leading-tight max-w-[76px] truncate">{j.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {loading ? (
@@ -203,25 +236,37 @@ export default function ReelDraftsPage() {
               empty={tab === 'stage' ? '作成後、SSD接続中のMacが本編を確定するとここに出ます(カバー選定はスマホでOK)' : 'Driveに新しいクリップが上がると、ここに並びます'}>
               {/* key に updated_at を含める: 作り直しで素材が入れ替わったら入力状態(選択中のカバー等)を
                   作り直し前のまま持ち越さずリセットする */}
-              {pending.map((d) => <DraftEditor key={`${d.id}:${d.updated_at}`} draft={d} onSaved={load} onMsg={setMsg} lessons={lessons} />)}
+              {pending.map((d) => (
+                <div key={`${d.id}:${d.updated_at}`} id={`draft-card-${d.id}`} className="scroll-mt-28">
+                  <DraftEditor draft={d} onSaved={load} onMsg={setMsg} lessons={lessons} />
+                </div>
+              ))}
             </Section>
 
             {review.length > 0 && (
               <Section title={`投稿待ち・確認して投稿 (${review.length})`}>
-                {review.map((d) => <ReviewCard key={`${d.id}:${d.updated_at}`} draft={d} onChanged={load} onMsg={setMsg} />)}
+                {review.map((d) => (
+                  <div key={`${d.id}:${d.updated_at}`} id={`draft-card-${d.id}`} className="scroll-mt-28">
+                    <ReviewCard draft={d} onChanged={load} onMsg={setMsg} />
+                  </div>
+                ))}
               </Section>
             )}
 
             {scheduled.length > 0 && (
               <Section title={`投稿予約済み (${scheduled.length})`}>
-                {scheduled.map((d) => <CompactRow key={d.id} d={d} onReset={load} onMsg={setMsg} />)}
+                {scheduled.map((d) => (
+                  <div key={d.id} id={`draft-card-${d.id}`} className="scroll-mt-28">
+                    <CompactRow d={d} onReset={load} onMsg={setMsg} />
+                  </div>
+                ))}
               </Section>
             )}
 
             {inFlight.length > 0 && (
               <Section title={`生成待ち・生成中 (${inFlight.length})`}>
                 {inFlight.map((d) => (
-                  <div key={`${d.id}:${d.updated_at}`} className="space-y-2">
+                  <div key={`${d.id}:${d.updated_at}`} id={`draft-card-${d.id}`} className="space-y-2 scroll-mt-28">
                     <CompactRow d={d} onReset={load} onMsg={setMsg} />
                     {isStage(d) && d.status === 'ready' && (
                       <StageCutPanel draft={d} onDone={load} onMsg={setMsg} />
@@ -233,7 +278,11 @@ export default function ReelDraftsPage() {
 
             {settled.length > 0 && (
               <Section title="完了・その他">
-                {settled.map((d) => <CompactRow key={d.id} d={d} onReset={load} onMsg={setMsg} />)}
+                {settled.map((d) => (
+                  <div key={d.id} id={`draft-card-${d.id}`} className="scroll-mt-28">
+                    <CompactRow d={d} onReset={load} onMsg={setMsg} />
+                  </div>
+                ))}
               </Section>
             )}
           </>
