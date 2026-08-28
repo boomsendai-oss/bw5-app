@@ -27,6 +27,7 @@ import {
   Sparkles,
   TrendingUp,
   ShoppingBag,
+  ClipboardList,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -97,6 +98,7 @@ const opsNavItems: NavItem[] = [
   { title: 'SEO順位', href: '/staff/seo', icon: TrendingUp },
   { title: 'イベント', href: '/staff/events', icon: PartyPopper },
   { title: 'レジ(無人物販)', href: '/staff/kiosk', icon: ShoppingBag },
+  { title: 'アンケート', href: '/staff/surveys', icon: ClipboardList },
 ];
 
 function NavGroup({

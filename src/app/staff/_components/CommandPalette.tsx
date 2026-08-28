@@ -22,6 +22,7 @@ import {
   Hash,
   Sparkles,
   ShoppingBag,
+  ClipboardList,
 } from 'lucide-react';
 import {
   CommandDialog,
@@ -60,6 +61,7 @@ const pages: PageEntry[] = [
   { title: '休講申請', href: '/staff/cancel-requests', icon: XCircle },
   { title: 'イベント', href: '/staff/events', icon: PartyPopper },
   { title: 'レジ(無人物販)', href: '/staff/kiosk', icon: ShoppingBag },
+  { title: 'アンケート', href: '/staff/surveys', icon: ClipboardList },
 ];
 
 type ActionEntry = {
