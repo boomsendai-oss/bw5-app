@@ -1,6 +1,6 @@
 // kiosk のカート操作(iPad UIの中核ロジック)。純関数としてここでテストする。
 import { describe, it, expect } from 'vitest';
-import { addToCart, removeFromCart, changeQty, cartTotal, cartCount, type CartLine } from '../kioskCart';
+import { addToCart, removeFromCart, changeQty, cartTotal, cartCount, effectiveAvailable, type CartLine } from '../kioskCart';
 
 const tee = { productId: 1, variantId: 10, name: '黒×黒Tシャツ', variantLabel: 'M', price: 3500 };
 const sticker = { productId: 2, variantId: null, name: 'ステッカー', variantLabel: '', price: 500 };
@@ -62,5 +62,23 @@ describe('複数枚まとめて追加', () => {
     expect(cart[0].qty).toBe(3);
     cart = addToCart(cart, { ...sticker, max: 5 }, 4);
     expect(cart[0].qty).toBe(5);
+  });
+});
+
+describe('カゴを差し引いた実効残数', () => {
+  it('カゴに入っている数量ぶん残りが減る(variant単位/商品単位)', () => {
+    let cart: CartLine[] = [];
+    cart = addToCart(cart, tee); // variant 10 ×1
+    cart = addToCart(cart, sticker, 2); // 商品単位 ×2
+    expect(effectiveAvailable(cart, 1, 10, 1)).toBe(0);
+    expect(effectiveAvailable(cart, 1, 11, 2)).toBe(2);
+    expect(effectiveAvailable(cart, 2, null, 5)).toBe(3);
+    expect(effectiveAvailable([], 2, null, 5)).toBe(5);
+  });
+
+  it('マイナスにはならない', () => {
+    let cart: CartLine[] = [];
+    cart = addToCart(cart, { ...sticker, max: 9 }, 5);
+    expect(effectiveAvailable(cart, 2, null, 3)).toBe(0);
   });
 });

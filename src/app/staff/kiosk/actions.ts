@@ -96,6 +96,42 @@ export async function staffUpdateProduct(
   await updateKioskProduct(id, { ...p, name: p.name.trim() });
 }
 
+/**
+ * 商品カードの一括保存: 名前・価格・(サイズなし商品の)在庫・全サイズ在庫をまとめて保存する。
+ * 「保存」と「補正」が分かれていて紛らわしいというTAROフィードバック(2026-08-28)対応。
+ */
+export async function staffSaveProductCard(
+  productId: number,
+  data: {
+    name: string;
+    price: number;
+    imageUrl: string;
+    description: string;
+    sortOrder: number;
+    active: boolean;
+    stock: number | null;
+    variantStocks: Array<{ id: number; stock: number }>;
+  }
+): Promise<void> {
+  await requireStaff();
+  if (!data.name.trim()) throw new Error('商品名を入れてください');
+  if (!Number.isInteger(data.price) || data.price <= 0) throw new Error('価格が不正です');
+  await updateKioskProduct(productId, {
+    name: data.name.trim(),
+    price: data.price,
+    imageUrl: data.imageUrl,
+    description: data.description,
+    sortOrder: data.sortOrder,
+    active: data.active,
+  });
+  if (data.stock != null && Number.isInteger(data.stock) && data.stock >= 0) {
+    await setKioskProductStock(productId, data.stock);
+  }
+  for (const v of data.variantStocks) {
+    if (Number.isInteger(v.stock) && v.stock >= 0) await setKioskVariantStock(v.id, v.stock);
+  }
+}
+
 export async function staffSetProductStock(productId: number, stock: number): Promise<void> {
   await requireStaff();
   if (!Number.isInteger(stock) || stock < 0) throw new Error('在庫数が不正です');

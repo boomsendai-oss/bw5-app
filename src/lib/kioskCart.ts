@@ -65,3 +65,17 @@ export function cartTotal(cart: CartLine[]): number {
 export function cartCount(cart: CartLine[]): number {
   return cart.reduce((s, l) => s + l.qty, 0);
 }
+
+/**
+ * カゴに入っている数量を差し引いた「いま選べる残り」。
+ * サーバのavailableは決済確定前のカゴを知らないため、表示と選択制御はこちらを使う。
+ */
+export function effectiveAvailable(
+  cart: CartLine[],
+  productId: number,
+  variantId: number | null,
+  available: number
+): number {
+  const inCart = cart.find((l) => sameLine(l, productId, variantId))?.qty ?? 0;
+  return Math.max(0, available - inCart);
+}

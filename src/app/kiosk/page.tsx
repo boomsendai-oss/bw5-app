@@ -13,6 +13,7 @@ import {
   cartCount,
   cartTotal,
   changeQty,
+  effectiveAvailable,
   removeFromCart,
   type CartLine,
 } from '@/lib/kioskCart';
@@ -228,6 +229,7 @@ export default function KioskPage() {
     return (
       <ProductScreen
         product={screen.product}
+        cart={cart}
         onBack={() => setScreen({ kind: 'catalog' })}
         onAdd={(input, qty) => {
           setCart((c) => addToCart(c, input, qty));
@@ -303,7 +305,20 @@ export default function KioskPage() {
   if (screen.kind === 'cart') {
     return (
       <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-4 p-6">
-        <h2 className="text-3xl font-bold">カゴの中身</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold">カゴの中身</h2>
+          {cart.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm('カゴの中身をすべて空にしますか？')) resetToTop();
+              }}
+              className="rounded-xl border-2 border-navy-200 px-4 py-2 text-lg text-navy-500"
+            >
+              カゴを空にする
+            </button>
+          )}
+        </div>
         {notice && <Banner>{notice}</Banner>}
         <div className="flex-1 space-y-3">
           {cart.length === 0 && <p className="py-16 text-center text-2xl text-navy-500">カゴは空です</p>}
@@ -366,35 +381,49 @@ export default function KioskPage() {
   // catalog (トップ)
   return (
     <div className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-4 p-6 pb-32">
-      <div className="text-center">
+      <div className="relative text-center">
         <p className="text-lg font-bold tracking-widest text-brand-600">BOOM GOODS</p>
         <h1 className="text-3xl font-extrabold">{catalog.sale ? catalog.sale.name : '準備中です'}</h1>
+        {count > 0 && (
+          <button
+            type="button"
+            onClick={() => setScreen({ kind: 'cart' })}
+            className="absolute right-0 top-0 rounded-full border-2 border-navy-300 bg-white px-5 py-2 text-lg font-bold text-navy-800"
+          >
+            🛒 カゴを見る ({count})
+          </button>
+        )}
       </div>
       {notice && <Banner>{notice}</Banner>}
-      <div className="grid flex-1 grid-cols-2 content-start gap-5 md:grid-cols-3">
-        {catalog.products.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            disabled={p.available <= 0}
-            onClick={() => setScreen({ kind: 'product', product: p })}
-            className="rounded-2xl bg-white p-4 text-left shadow disabled:opacity-50"
-          >
-            {p.imageUrl ? (
-              /* eslint-disable-next-line @next/next/no-img-element -- 動的な商品写真 */
-              <img src={p.imageUrl} alt={p.name} className="aspect-square w-full rounded-xl object-cover" />
-            ) : (
-              <div className="flex aspect-square w-full items-center justify-center rounded-xl bg-sand-100 text-5xl">🛍️</div>
-            )}
-            <p className="mt-3 text-xl font-bold">{p.name}</p>
-            <p className="text-2xl font-extrabold text-brand-700">{yen(p.price)}</p>
-            {p.available <= 0 ? (
-              <p className="font-bold text-red-600">売り切れ</p>
-            ) : p.available <= 3 ? (
-              <p className="text-red-600">残りわずか</p>
-            ) : null}
-          </button>
-        ))}
+      <div className="grid flex-1 grid-cols-2 content-start gap-5 md:grid-cols-3 lg:grid-cols-4">
+        {catalog.products.map((p) => {
+          // カゴに入れた分を差し引いた「いま選べる残り」で表示・タップ可否を判定する
+          const inCartQty = cart.filter((l) => l.productId === p.id).reduce((s, l) => s + l.qty, 0);
+          const remaining = Math.max(0, p.available - inCartQty);
+          return (
+            <button
+              key={p.id}
+              type="button"
+              disabled={remaining <= 0}
+              onClick={() => setScreen({ kind: 'product', product: p })}
+              className="rounded-2xl bg-white p-4 text-left shadow disabled:opacity-50"
+            >
+              {p.imageUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element -- 動的な商品写真 */
+                <img src={p.imageUrl} alt={p.name} className="aspect-square w-full rounded-xl object-cover" />
+              ) : (
+                <div className="flex aspect-square w-full items-center justify-center rounded-xl bg-sand-100 text-5xl">🛍️</div>
+              )}
+              <p className="mt-3 text-xl font-bold">{p.name}</p>
+              <p className="text-2xl font-extrabold text-brand-700">{yen(p.price)}</p>
+              {remaining <= 0 ? (
+                <p className="font-bold text-red-600">{p.available <= 0 ? '売り切れ' : '残り全部カゴの中'}</p>
+              ) : remaining <= 3 ? (
+                <p className="text-red-600">残りわずか</p>
+              ) : null}
+            </button>
+          );
+        })}
         {catalog.sale && catalog.products.length === 0 && (
           <p className="col-span-full py-16 text-center text-2xl text-navy-500">商品を準備中です</p>
         )}
@@ -423,13 +452,15 @@ export default function KioskPage() {
   );
 }
 
-/** 商品詳細: カラー行 + サイズプルダウン + 枚数 → カゴに入れる。 */
+/** 商品詳細: カラー行 + サイズプルダウン + 枚数 → カゴに入れる。残数はカゴ分を差し引いて表示。 */
 function ProductScreen({
   product: p,
+  cart,
   onBack,
   onAdd,
 }: {
   product: CatalogProduct;
+  cart: CartLine[];
   onBack: () => void;
   onAdd: (input: { productId: number; variantId: number | null; name: string; variantLabel: string; price: number; max: number }, qty: number) => void;
 }) {
@@ -444,10 +475,12 @@ function ProductScreen({
   const [variantId, setVariantId] = useState<number | ''>('');
   const [qty, setQty] = useState(1);
 
+  const remainingOf = (v: CatalogVariant) => effectiveAvailable(cart, p.id, v.id, v.available);
   const sizesOfColor = p.variants.filter((v) => v.color === color);
   const selectedVariant = p.variants.find((v) => v.id === variantId) ?? null;
-  const maxQty = Math.min(p.variants.length > 0 ? (selectedVariant?.available ?? 0) : p.available, KIOSK_MAX_QTY_PER_ORDER);
-  const canAdd = p.variants.length === 0 ? p.available > 0 : selectedVariant != null && selectedVariant.available > 0;
+  const selectedRemaining = selectedVariant ? remainingOf(selectedVariant) : effectiveAvailable(cart, p.id, null, p.available);
+  const maxQty = Math.min(p.variants.length > 0 ? (selectedVariant ? selectedRemaining : 0) : selectedRemaining, KIOSK_MAX_QTY_PER_ORDER);
+  const canAdd = p.variants.length === 0 ? selectedRemaining > 0 : selectedVariant != null && selectedRemaining > 0;
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 p-8">
@@ -470,7 +503,7 @@ function ProductScreen({
           <p className="mb-2 text-xl font-bold">カラー</p>
           <div className="flex flex-wrap gap-3">
             {colors.map((c) => {
-              const colorAvailable = p.variants.filter((v) => v.color === c).reduce((s, v) => s + v.available, 0);
+              const colorAvailable = p.variants.filter((v) => v.color === c).reduce((s, v) => s + remainingOf(v), 0);
               return (
                 <button
                   key={c || '(単色)'}
@@ -506,12 +539,15 @@ function ProductScreen({
             className="w-full max-w-sm rounded-2xl border-4 border-navy-200 bg-white px-5 py-4 text-2xl font-bold"
           >
             <option value="">サイズを選んでください</option>
-            {sizesOfColor.map((v) => (
-              <option key={v.id} value={v.id} disabled={v.available <= 0}>
-                {v.size || v.label}
-                {v.available <= 0 ? '(売り切れ)' : v.available <= 3 ? ` (残り${v.available})` : ''}
-              </option>
-            ))}
+            {sizesOfColor.map((v) => {
+              const r = remainingOf(v);
+              return (
+                <option key={v.id} value={v.id} disabled={r <= 0}>
+                  {v.size || v.label}
+                  {r <= 0 ? (v.available <= 0 ? '(売り切れ)' : '(カゴに入っています)') : r <= 3 ? ` (残り${r})` : ''}
+                </option>
+              );
+            })}
           </select>
         </div>
       )}
@@ -530,7 +566,7 @@ function ProductScreen({
           >
             ＋
           </button>
-          {selectedVariant && selectedVariant.available <= 3 && <span className="text-lg text-red-600">残り{selectedVariant.available}</span>}
+          {selectedVariant && selectedRemaining <= 3 && <span className="text-lg text-red-600">残り{selectedRemaining}</span>}
         </div>
       </div>
 
@@ -549,7 +585,8 @@ function ProductScreen({
                 name: p.name,
                 variantLabel: selectedVariant?.label ?? '',
                 price: p.price,
-                max: Math.max(1, maxQty),
+                // maxは行の絶対上限(カゴ内も含む合計)なので、実効残数でなく元の在庫で渡す
+                max: Math.min(selectedVariant ? selectedVariant.available : p.available, KIOSK_MAX_QTY_PER_ORDER),
               },
               qty
             )

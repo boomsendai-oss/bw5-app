@@ -20,9 +20,7 @@ import {
   staffCreateSale,
   staffDeleteVariant,
   staffOrdersCsv,
-  staffSetProductStock,
-  staffSetVariantStock,
-  staffUpdateProduct,
+  staffSaveProductCard,
   staffUpdateSale,
   staffVoidOrder,
   type KioskStaffView,
@@ -107,7 +105,7 @@ export default function KioskStaffPage() {
         {/* 販売会セレクタ */}
         <div className="flex flex-wrap items-center gap-3">
           <select
-            className="rounded-md border border-sand-300 bg-white px-3 py-2 text-sm"
+            className="max-w-full truncate rounded-md border border-sand-300 bg-white px-3 py-2 text-sm sm:max-w-xs"
             value={view.selectedSaleId ?? ''}
             onChange={(e) => load(Number(e.target.value))}
           >
@@ -328,7 +326,9 @@ function ProductsTab({
 }) {
   const [newName, setNewName] = useState('');
   const [newPrice, setNewPrice] = useState('');
-  const [newStock, setNewStock] = useState('0');
+  const [newStock, setNewStock] = useState('');
+  const [newImageUrl, setNewImageUrl] = useState('');
+  const [uploadingNew, setUploadingNew] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -336,27 +336,55 @@ function ProductsTab({
       <div className="rounded-xl border border-sand-200 bg-white p-4">
         <h3 className="font-bold text-navy-900">商品を追加</h3>
         <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="cursor-pointer text-sm">
+            写真(任意)
+            <div className="mt-1 flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-dashed border-sand-300 bg-sand-50">
+              {uploadingNew ? (
+                <span className="text-xs text-navy-400">送信中</span>
+              ) : newImageUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element -- アップロード直後のプレビュー */
+                <img src={newImageUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className="text-2xl">＋</span>
+              )}
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                setUploadingNew(true);
+                const r = await uploadImageFile(f);
+                setUploadingNew(false);
+                if ('error' in r) return void toast.error(r.error);
+                setNewImageUrl(r.url);
+              }}
+            />
+          </label>
           <label className="text-sm">
             商品名
-            <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="例: 黒×黒Tシャツ" className="mt-1 w-56" />
+            <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="例: 黒×黒Tシャツ" className="mt-1 w-56 max-w-full" />
           </label>
           <label className="text-sm">
             価格(税込)
-            <Input type="number" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} className="mt-1 w-28" />
+            <Input type="number" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} placeholder="3500" {...selectOnFocus} className="mt-1 w-28" />
           </label>
           <label className="text-sm">
             在庫
-            <Input type="number" value={newStock} onChange={(e) => setNewStock(e.target.value)} className="mt-1 w-24" />
+            <Input type="number" value={newStock} onChange={(e) => setNewStock(e.target.value)} placeholder="0" {...selectOnFocus} className="mt-1 w-24" />
           </label>
           <Button
             onClick={() =>
               run(
-                () => staffAddProduct(saleId, { name: newName, price: Number(newPrice), stock: Number(newStock) || 0, imageUrl: '', description: '' }),
+                () => staffAddProduct(saleId, { name: newName, price: Number(newPrice), stock: Number(newStock) || 0, imageUrl: newImageUrl, description: '' }),
                 '商品を追加しました'
               ).then(() => {
                 setNewName('');
                 setNewPrice('');
-                setNewStock('0');
+                setNewStock('');
+                setNewImageUrl('');
               })
             }
             disabled={!newName.trim() || !newPrice}
@@ -374,6 +402,9 @@ function ProductsTab({
   );
 }
 
+/** 数値入力: タップで全選択(「0」が残って05になる問題の対策)。 */
+const selectOnFocus = { onFocus: (e: React.FocusEvent<HTMLInputElement>) => e.currentTarget.select() };
+
 function ProductCard({
   p,
   run,
@@ -384,15 +415,29 @@ function ProductCard({
   const [name, setName] = useState(p.name);
   const [price, setPrice] = useState(String(p.price));
   const [stock, setStock] = useState(String(p.stock));
+  const [vStocks, setVStocks] = useState<Record<number, string>>(() =>
+    Object.fromEntries(p.variants.map((v) => [v.id, String(v.stock)]))
+  );
   const [vColor, setVColor] = useState('');
   const [vSize, setVSize] = useState('');
-  const [vStock, setVStock] = useState('0');
+  const [vStock, setVStock] = useState('');
   const [uploading, setUploading] = useState(false);
 
-  const save = () =>
+  // 名前・価格・在庫・全サイズ在庫をこの1ボタンでまとめて保存する
+  const save = (imageUrl = p.imageUrl, active = p.active) =>
     run(
-      () => staffUpdateProduct(p.id, { name, price: Number(price), imageUrl: p.imageUrl, description: p.description, sortOrder: p.sortOrder, active: p.active }),
-      '保存しました'
+      () =>
+        staffSaveProductCard(p.id, {
+          name,
+          price: Number(price),
+          imageUrl,
+          description: p.description,
+          sortOrder: p.sortOrder,
+          active,
+          stock: p.variants.length === 0 ? Number(stock) : null,
+          variantStocks: p.variants.map((v) => ({ id: v.id, stock: Number(vStocks[v.id] ?? v.stock) })),
+        }),
+      '保存しました(iPadに反映されます)'
     );
 
   return (
@@ -418,62 +463,61 @@ function ProductCard({
                 const r = await uploadImageFile(f);
                 setUploading(false);
                 if ('error' in r) return void toast.error(r.error);
-                run(
-                  () => staffUpdateProduct(p.id, { name, price: Number(price), imageUrl: r.url, description: p.description, sortOrder: p.sortOrder, active: p.active }),
-                  '写真を更新しました'
-                );
+                save(r.url);
               }}
             />
           </label>
         </div>
-        <div className="flex flex-1 flex-wrap items-end gap-3">
+        <div className="min-w-0 flex flex-1 flex-wrap items-end gap-3">
           <label className="text-sm">
             商品名
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-52" />
+            <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-52 max-w-full" />
           </label>
           <label className="text-sm">
             価格
-            <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} className="mt-1 w-28" />
+            <Input type="number" value={price} onChange={(e) => setPrice(e.target.value)} {...selectOnFocus} className="mt-1 w-28" />
           </label>
           {p.variants.length === 0 && (
             <label className="text-sm">
-              在庫(補正)
-              <div className="mt-1 flex gap-2">
-                <Input type="number" value={stock} onChange={(e) => setStock(e.target.value)} className="w-24" />
-                <Button variant="outline" size="sm" onClick={() => run(() => staffSetProductStock(p.id, Number(stock)), '在庫を補正しました')}>
-                  補正
-                </Button>
-              </div>
+              在庫
+              <Input type="number" value={stock} onChange={(e) => setStock(e.target.value)} {...selectOnFocus} className="mt-1 w-24" />
             </label>
           )}
-          <Button size="sm" onClick={save}>
+          <Button size="sm" onClick={() => save()}>
             保存
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              run(
-                () => staffUpdateProduct(p.id, { name, price: Number(price), imageUrl: p.imageUrl, description: p.description, sortOrder: p.sortOrder, active: !p.active }),
-                p.active ? 'iPadから隠しました' : 'iPadに表示します'
-              )
-            }
-          >
+          <Button variant="outline" size="sm" onClick={() => save(p.imageUrl, !p.active)}>
             {p.active ? 'iPadから隠す' : '表示に戻す'}
           </Button>
         </div>
       </div>
 
-      {/* サイズ(バリエーション) */}
+      {/* サイズ(バリエーション)。在庫を書き換えたら上の「保存」でまとめて反映 */}
       <div className="mt-3 border-t border-sand-100 pt-3">
         <div className="flex flex-wrap items-center gap-2">
           {p.variants.map((v) => (
-            <VariantChip key={v.id} v={v} run={run} />
+            <span key={v.id} className="flex items-center gap-1 rounded-full bg-sand-50 py-1 pl-3 pr-1 text-sm">
+              <b>{v.label}</b>
+              <Input
+                type="number"
+                value={vStocks[v.id] ?? String(v.stock)}
+                onChange={(e) => setVStocks((m) => ({ ...m, [v.id]: e.target.value }))}
+                {...selectOnFocus}
+                className="h-7 w-16 text-sm"
+              />
+              <button
+                type="button"
+                className="px-1 text-navy-400"
+                onClick={() => confirm(`サイズ「${v.label}」を削除しますか？`) && run(() => staffDeleteVariant(v.id), '削除しました')}
+              >
+                ✕
+              </button>
+            </span>
           ))}
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             <Input value={vColor} onChange={(e) => setVColor(e.target.value)} placeholder="カラー(任意)" className="h-8 w-28 text-sm" />
             <Input value={vSize} onChange={(e) => setVSize(e.target.value)} placeholder="サイズ" className="h-8 w-20 text-sm" />
-            <Input type="number" value={vStock} onChange={(e) => setVStock(e.target.value)} placeholder="在庫" className="h-8 w-20 text-sm" />
+            <Input type="number" value={vStock} onChange={(e) => setVStock(e.target.value)} placeholder="在庫" {...selectOnFocus} className="h-8 w-20 text-sm" />
             <Button
               variant="outline"
               size="sm"
@@ -481,7 +525,7 @@ function ProductCard({
               onClick={() =>
                 run(() => staffAddVariant(p.id, vColor, vSize, Number(vStock) || 0), 'サイズを追加しました').then(() => {
                   setVSize('');
-                  setVStock('0');
+                  setVStock('');
                 })
               }
             >
@@ -491,32 +535,6 @@ function ProductCard({
         </div>
       </div>
     </div>
-  );
-}
-
-function VariantChip({
-  v,
-  run,
-}: {
-  v: { id: number; label: string; stock: number; available: number };
-  run: (fn: () => Promise<unknown>, okMsg: string) => Promise<void>;
-}) {
-  const [stock, setStock] = useState(String(v.stock));
-  return (
-    <span className="flex items-center gap-1 rounded-full bg-sand-50 py-1 pl-3 pr-1 text-sm">
-      <b>{v.label}</b>
-      <Input type="number" value={stock} onChange={(e) => setStock(e.target.value)} className="h-7 w-16 text-sm" />
-      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => run(() => staffSetVariantStock(v.id, Number(stock)), `${v.label}の在庫を補正しました`)}>
-        補正
-      </Button>
-      <button
-        type="button"
-        className="px-1 text-navy-400"
-        onClick={() => confirm(`サイズ「${v.label}」を削除しますか？`) && run(() => staffDeleteVariant(v.id), '削除しました')}
-      >
-        ✕
-      </button>
-    </span>
   );
 }
 
