@@ -93,9 +93,14 @@ export async function getCloseStatus(ym: string): Promise<CloseStatus> {
      FROM studio_billing_runs WHERE year_month = ?`,
     [ym]
   )) as unknown as { n: number; amt: number }[];
+  // 実費型で¥0のまま = 領収書の金額がまだ入っていない。
+  // ただし payment_type='platform' の会場(スペースマーケット/インスタベース等)は
+  // 銀行明細から expenses に自動計上されるため **常に¥0が正しい**。
+  // これを催促に含めると毎回鳴って本当の抜けを見落とすので除外する。
   const awaiting = (await getAll(
     `SELECT s.name FROM studio_billing_runs r JOIN studios s ON s.id = r.studio_id
-     WHERE r.year_month = ? AND s.pricing_model = 'actual' AND r.total_amount = 0`,
+     WHERE r.year_month = ? AND s.pricing_model = 'actual'
+       AND COALESCE(s.payment_type, '') <> 'platform' AND r.total_amount = 0`,
     [ym]
   )) as unknown as { name: string }[];
 
