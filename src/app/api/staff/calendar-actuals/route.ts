@@ -66,8 +66,26 @@ export async function GET(req: NextRequest) {
     return out;
   };
 
+  // 実費型(公共施設)は「借りた日」単位で金額を記録する。同じ日に連続で複数コマ
+  // やっていても予約は1本なので、日ごとにまとめて時間帯とクラスを出す。
+  // TAROはこれを見て実額を入れるだけでよい(時間から料金を逆算しない=設計の方針)。
+  const actualNames = new Set(UNREGISTERED_VENUES.map((v) => v.name));
+  const perDay = new Map<string, { 会場: string; 日付: string; 開始: string; 終了: string; コマ: { 時間: string; クラス: string; 講師: string | null }[] }>();
+  for (const r of held) {
+    if (!r.studio_name || !actualNames.has(r.studio_name)) continue;
+    const k = `${r.studio_name}|${r.date}`;
+    const cur = perDay.get(k) ?? { 会場: r.studio_name, 日付: r.date, 開始: r.start, 終了: r.end, コマ: [] };
+    if (r.start < cur.開始) cur.開始 = r.start;
+    if (r.end > cur.終了) cur.終了 = r.end;
+    cur.コマ.push({ 時間: `${r.start}-${r.end}`, クラス: r.class_name, 講師: r.instructor_name });
+    perDay.set(k, cur);
+  }
+
   return NextResponse.json({
     year_month: ym,
+    実費会場の利用日: [...perDay.values()].sort((a, b) =>
+      a.会場 === b.会場 ? a.日付.localeCompare(b.日付) : a.会場.localeCompare(b.会場)
+    ),
     総イベント数: rows.length,
     開催: held.length,
     休講: rows.length - held.length,
