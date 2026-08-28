@@ -34,6 +34,12 @@ export interface QuestionDef {
   rows?: QuestionOption[];
   /** grid専用: 列(例=時間帯)。 */
   cols?: QuestionOption[];
+  /**
+   * grid専用: trueなら公開フォームで行を先にタップ→その行の列が展開される2段階表示。
+   * 全マス見せると「興味がないのに手当たり次第タップ」の水増しが起きるため(TARO 2026-08-28)。
+   * 表示だけの違いで、保存形式(セルkey)は同じ。
+   */
+  gridExpand?: boolean;
   allowOther: boolean;
 }
 
@@ -203,8 +209,9 @@ export function validateSurveyDefinition(input: unknown): ValidatedSurvey | stri
       return `設問${i + 1}に選択肢を1つ以上設定してください`;
     }
 
+    const gridExpand = qtype === 'grid' && (raw.gridExpand === true || raw.gridExpand === 1);
     const id = typeof raw.id === 'number' && Number.isInteger(raw.id) ? raw.id : undefined;
-    questions.push({ id, questionKey, label, qtype: qtype as Qtype, required, options, rows, cols, allowOther });
+    questions.push({ id, questionKey, label, qtype: qtype as Qtype, required, options, rows, cols, gridExpand, allowOther });
   }
 
   return { title, intro, audience: audience as Audience, nameNote, opensAt, closesAt, questions };

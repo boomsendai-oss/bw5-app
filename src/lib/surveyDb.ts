@@ -57,6 +57,7 @@ function rowToQuestion(r: any): QuestionDef {
   let options: { key: string; label: string }[] = [];
   let rows: { key: string; label: string }[] = [];
   let cols: { key: string; label: string }[] = [];
+  let gridExpand = false;
   try {
     const parsed = JSON.parse(String(r.options_json || '[]'));
     if (Array.isArray(parsed)) {
@@ -64,6 +65,7 @@ function rowToQuestion(r: any): QuestionDef {
     } else if (parsed && typeof parsed === 'object') {
       if (Array.isArray(parsed.rows)) rows = parsed.rows;
       if (Array.isArray(parsed.cols)) cols = parsed.cols;
+      gridExpand = parsed.expand === true;
     }
   } catch {
     options = [];
@@ -77,6 +79,7 @@ function rowToQuestion(r: any): QuestionDef {
     options,
     rows,
     cols,
+    gridExpand,
     allowOther: Number(r.allow_other) === 1,
   };
 }
@@ -124,7 +127,9 @@ async function insertQuestions(tx: any, surveyId: number, questions: QuestionDef
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
     const optionsJson =
-      q.qtype === 'grid' ? JSON.stringify({ rows: q.rows ?? [], cols: q.cols ?? [] }) : JSON.stringify(q.options);
+      q.qtype === 'grid'
+        ? JSON.stringify({ rows: q.rows ?? [], cols: q.cols ?? [], expand: q.gridExpand === true })
+        : JSON.stringify(q.options);
     await tx.execute({
       sql: 'INSERT INTO survey_questions (survey_id, sort_order, question_key, label, qtype, required, options_json, allow_other) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       args: [surveyId, i, q.questionKey, q.label, q.qtype, q.required ? 1 : 0, optionsJson, q.allowOther ? 1 : 0],

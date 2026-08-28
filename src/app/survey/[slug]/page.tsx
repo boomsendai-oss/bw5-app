@@ -27,6 +27,8 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
   const { slug } = usePromise(params);
   const [view, setView] = useState<PublicSurveyView | null>(null);
   const [answers, setAnswers] = useState<AnswerState>({});
+  // gridExpand(2段階表示)のgridで、いま列を展開している行
+  const [openRows, setOpenRows] = useState<Record<string, string[]>>({});
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -112,6 +114,23 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
     });
   };
 
+  // gridExpand: 行(ジャンル等)のタップで列を開閉。閉じるときはその行の選択も消す
+  // (隠れた選択がそのまま送信される事故を防ぐ)。
+  const toggleRow = (q: QuestionDef, rowKey: string) => {
+    const isOpen = (openRows[q.questionKey] ?? []).includes(rowKey);
+    if (isOpen) {
+      setOpenRows((prev) => ({ ...prev, [q.questionKey]: (prev[q.questionKey] ?? []).filter((k) => k !== rowKey) }));
+      const rowCells = (q.cols ?? []).map((c) => gridCellKey(rowKey, c.key));
+      setAnswers((prev) => {
+        const cur = prev[q.questionKey];
+        if (!cur) return prev;
+        return { ...prev, [q.questionKey]: { ...cur, optionKeys: cur.optionKeys.filter((k) => !rowCells.includes(k)) } };
+      });
+    } else {
+      setOpenRows((prev) => ({ ...prev, [q.questionKey]: [...(prev[q.questionKey] ?? []), rowKey] }));
+    }
+  };
+
   const handleSubmit = async () => {
     setError('');
     setBusy(true);
@@ -184,32 +203,56 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
               </div>
               {q.qtype === 'grid' ? (
                 <div className="mt-3 space-y-3">
-                  {(q.rows ?? []).map((row) => (
-                    <div key={row.key}>
-                      <div className="text-xs font-bold text-slate-600">{row.label}</div>
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        {(q.cols ?? []).map((col) => {
-                          const cellKey = gridCellKey(row.key, col.key);
-                          const selected = a.optionKeys.includes(cellKey);
-                          return (
-                            <button
-                              key={col.key}
-                              type="button"
-                              onClick={() => toggleOption(q, cellKey)}
-                              className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                                selected
-                                  ? 'border-teal-500 bg-teal-50 text-teal-800 font-bold'
-                                  : 'border-slate-300 bg-white text-slate-600'
-                              }`}
-                            >
-                              {selected ? '✓ ' : ''}
-                              {col.label}
-                            </button>
-                          );
-                        })}
+                  {(q.rows ?? []).map((row) => {
+                    const isOpen = !q.gridExpand || (openRows[q.questionKey] ?? []).includes(row.key);
+                    const rowSelectedCount = (q.cols ?? []).filter((col) => a.optionKeys.includes(gridCellKey(row.key, col.key))).length;
+                    return (
+                      <div key={row.key}>
+                        {q.gridExpand ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleRow(q, row.key)}
+                            className={`w-full text-left rounded-lg border px-3 py-2.5 text-sm transition ${
+                              isOpen || rowSelectedCount > 0
+                                ? 'border-teal-500 bg-teal-50 text-teal-800 font-bold'
+                                : 'border-slate-300 bg-white text-slate-700'
+                            }`}
+                          >
+                            {isOpen ? '✓ ' : ''}
+                            {row.label}
+                          </button>
+                        ) : (
+                          <div className="text-xs font-bold text-slate-600">{row.label}</div>
+                        )}
+                        {isOpen ? (
+                          <div className={`mt-1.5 flex flex-wrap gap-1.5 ${q.gridExpand ? 'pl-3 pb-1' : ''}`}>
+                            {q.gridExpand ? (
+                              <span className="w-full text-[11px] text-slate-400">希望のレベル・区分をタップ</span>
+                            ) : null}
+                            {(q.cols ?? []).map((col) => {
+                              const cellKey = gridCellKey(row.key, col.key);
+                              const selected = a.optionKeys.includes(cellKey);
+                              return (
+                                <button
+                                  key={col.key}
+                                  type="button"
+                                  onClick={() => toggleOption(q, cellKey)}
+                                  className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                                    selected
+                                      ? 'border-teal-500 bg-teal-50 text-teal-800 font-bold'
+                                      : 'border-slate-300 bg-white text-slate-600'
+                                  }`}
+                                >
+                                  {selected ? '✓ ' : ''}
+                                  {col.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : null}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {q.allowOther ? (
                     <div className="pt-1">
                       <label className="block text-xs text-slate-500">その他(自由記入)</label>

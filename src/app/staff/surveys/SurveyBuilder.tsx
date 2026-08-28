@@ -17,6 +17,8 @@ type QuestionRow = {
   /** grid専用: 行(例=曜日)と列(例=時間帯) */
   gridRows: OptionRow[];
   gridCols: OptionRow[];
+  /** grid専用: 行をタップしてから列を出す2段階表示 */
+  gridExpand: boolean;
   allowOther: boolean;
 };
 
@@ -40,6 +42,7 @@ const emptyQuestion = (): QuestionRow => ({
   options: [{ label: '' }],
   gridRows: [{ label: '' }],
   gridCols: [{ label: '' }],
+  gridExpand: false,
   allowOther: false,
 });
 
@@ -107,6 +110,7 @@ export default function SurveyBuilder({
             q.qtype === 'grid'
               ? q.gridCols.filter((o) => o.label.trim()).map((o, j) => ({ key: o.key || `c${j + 1}`, label: o.label }))
               : undefined,
+          gridExpand: q.qtype === 'grid' ? q.gridExpand : undefined,
           allowOther: q.qtype === 'text' ? false : q.allowOther,
         })),
       };
@@ -197,6 +201,12 @@ export default function SurveyBuilder({
                   <label className="flex items-center gap-1.5 text-xs text-navy-700">
                     <input type="checkbox" checked={q.allowOther} onChange={(e) => updateQuestion(i, { allowOther: e.target.checked })} />
                     「その他(自由記入)」枠を付ける
+                  </label>
+                ) : null}
+                {q.qtype === 'grid' ? (
+                  <label className="flex items-center gap-1.5 text-xs text-navy-700">
+                    <input type="checkbox" checked={q.gridExpand} onChange={(e) => updateQuestion(i, { gridExpand: e.target.checked })} />
+                    行をタップしてから列を出す(2段階)
                   </label>
                 ) : null}
               </div>

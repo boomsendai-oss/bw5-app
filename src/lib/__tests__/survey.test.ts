@@ -294,6 +294,29 @@ describe('grid設問 (曜日×時間帯のマス目)', () => {
     expect(v.questions[0].rows).toHaveLength(1);
     expect(v.questions[0].cols).toHaveLength(1);
   });
+  it('定義: gridExpand(2段階表示)フラグを保持する・grid以外では立たない', () => {
+    const v = validateSurveyDefinition({
+      title: 'g',
+      questions: [
+        {
+          questionKey: 's',
+          label: 'x',
+          qtype: 'grid',
+          required: false,
+          options: [],
+          rows: [{ key: 'a', label: 'A' }],
+          cols: [{ key: 'b', label: 'B' }],
+          gridExpand: true,
+          allowOther: false,
+        },
+      ],
+    });
+    if (typeof v === 'string') throw new Error(v);
+    expect(v.questions[0].gridExpand).toBe(true);
+    const v2 = validateSurveyDefinition({ ...validDef, questions: [{ ...validDef.questions[0], gridExpand: true }] });
+    if (typeof v2 === 'string') throw new Error(v2);
+    expect(v2.questions[0].gridExpand).toBe(false);
+  });
   it('定義: gridで行または列が空は拒否', () => {
     const base = { questionKey: 's', label: 'x', qtype: 'grid', required: false, options: [], allowOther: false };
     expect(

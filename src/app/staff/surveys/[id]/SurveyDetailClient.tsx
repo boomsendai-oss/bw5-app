@@ -147,6 +147,7 @@ export default function SurveyDetailClient({
               options: q.options.map((o) => ({ key: o.key, label: o.label })),
               gridRows: (q.rows ?? []).map((o) => ({ key: o.key, label: o.label })),
               gridCols: (q.cols ?? []).map((o) => ({ key: o.key, label: o.label })),
+              gridExpand: q.gridExpand === true,
               allowOther: q.allowOther,
             })),
           }}
