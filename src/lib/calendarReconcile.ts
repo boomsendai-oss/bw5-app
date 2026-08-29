@@ -83,17 +83,23 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]):
     }
   }
 
-  // (slot, event) の候補を距離つきで作り、近い順に確定
-  const pairs: { si: number; ei: number; dist: number }[] = [];
+  // (slot, event) の候補を距離つきで作り、会場一致→時刻の近さの順で確定
+  const pairs: { si: number; ei: number; dist: number; venueMismatch: number }[] = [];
   slots.forEach((s, si) => {
     expanded.forEach((e, ei) => {
       if (e._instructorId !== s.instructor_id) return;
       const d = Math.abs(toMin(e.start) - toMin(s.start_time));
       if (!Number.isFinite(d) || d > MATCH_WINDOW_MIN) return;
-      pairs.push({ si, ei, dist: d });
+      // 会場が両方読めていて違う場合は劣後させる。同じ講師の枠が同時刻に2つある日
+      // (多賀城HOUSEとHOUSEエキスパート)に時刻だけで結ぶと誤った枠が勝ち、
+      // override単価が適用されなかった(2026-08-29・TAROの手照合で発覚)。
+      // 完全に弾かない理由: 週替わり会場では「枠の既定会場と実際の会場が違う」のが
+      // 正常なので、他に候補が無ければ不一致でも結ぶ。
+      const venueMismatch = e.studio_id != null && s.studio_id != null && e.studio_id !== s.studio_id ? 1 : 0;
+      pairs.push({ si, ei, dist: d, venueMismatch });
     });
   });
-  pairs.sort((a, b) => a.dist - b.dist || a.si - b.si || a.ei - b.ei);
+  pairs.sort((a, b) => a.venueMismatch - b.venueMismatch || a.dist - b.dist || a.si - b.si || a.ei - b.ei);
 
   const slotTaken = new Set<number>();
   const eventTaken = new Set<number>();

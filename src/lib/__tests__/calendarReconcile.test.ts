@@ -15,6 +15,23 @@ const res = (o: Partial<ResolvedLesson>): ResolvedLesson => ({
 });
 
 describe('reconcileDay', () => {
+  it('【回帰】同じ講師の枠が2つあるとき、会場が一致する方に結ぶ (2026-08-29の実例)', () => {
+    // K@TTSUの土曜: 多賀城HOUSE(マイダンス=10)とHOUSEエキスパート(GOAT=1)が同時刻。
+    // カレンダーは「ハウスエキスパートクラス【K@TTSU】@GOAT」1件のみ。
+    // 会場を見ずに時刻だけで結ぶと多賀城HOUSE枠が勝ち、override単価¥8,000が
+    // 適用されず¥6,000で計上された(TAROの手照合で発覚)。
+    const p = reconcileDay(
+      [
+        slot({ master_id: 40, instructor_id: 1, studio_id: 10, start_time: '11:00', class_name: '多賀城 HOUSE' }),
+        slot({ master_id: 41, instructor_id: 1, studio_id: 1, start_time: '11:00', class_name: 'HOUSE エキスパート' }),
+      ],
+      [res({ summary: '', class_name: 'ハウスエキスパートクラス', instructor_id: 1, studio_id: 1, start: '11:00', end: '12:30' })]
+    );
+    expect(p.keep).toHaveLength(1);
+    expect(p.keep[0].master_id).toBe(41);                      // GOATの枠に結ぶ
+    expect(p.removed.map((r) => r.master_id)).toEqual([40]);   // 多賀城HOUSEは未開催
+  });
+
   it('連名(2人体制)は講師ごとに1件ずつ作る。給与は各自の単価で付く', () => {
     // 生徒が「今日は誰が担当か」を見られるよう連名で書く運用(TARO要件)。
     // 会場時間の二重計上は集計側(studioBilling)で畳むのでここでは2件出してよい。
