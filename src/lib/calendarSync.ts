@@ -53,8 +53,16 @@ export async function syncCalendarActuals(
   const lastDay = new Date(y, m, 0).getDate();
   const todayJst = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   const monthEnd = `${ym}-${String(lastDay).padStart(2, '0')}`;
-  const limit = todayJst < monthEnd ? todayJst : monthEnd;
-  if (limit < `${ym}-01`) return { ...base, skippedReason: 'まだ対象日がない' };
+  // 月全体を同期する(未来日も含む)。TARO決定 2026-08-29:
+  //   「月初にはその月のスケジュールは固まっている=カレンダーが未来についても真実。
+  //    突発の休講・振替は毎日の同期が丸め込む」
+  // 当初は過去日限定だったが、HACOMONOへの反映は hacomono-tasks / export CSV の
+  // 人間ゲート方式(作業リスト)であり、未来日を書いても枠が勝手に消えないことを
+  // 実コードで確認して制約を外した。むしろ削除リストの精度が上がる。
+  // 読めない予定(会場未定・代講等)と重なる枠は従来どおり触らないので、
+  // 9月の「会場未定」のような日はマスタ予定のまま保留される。
+  const limit = monthEnd;
+  if (todayJst < `${ym}-01`) return { ...base, skippedReason: 'まだ対象月が始まっていない(翌月以降は同期しない)' };
 
   const instructors = (await getAll('SELECT id, name FROM instructors ORDER BY id')) as unknown as NamedRef[];
   const studioRows = (await getAll('SELECT id, name FROM studios ORDER BY id')) as unknown as { id: number; name: string }[];
