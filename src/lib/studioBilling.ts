@@ -155,7 +155,12 @@ export async function calculateStudioBillingForMonth(yearMonth: string): Promise
   // - 休講分は計上しないが、master+日付を expandedKeys に登録して
   //   master 週次展開での再計上(=休講なのに使用料に乗る)を防ぐ
   const instances = (await getAll(
-    `SELECT li.id, li.date, li.start_time, li.end_time, li.studio_id, li.master_id, lm.class_name, li.status
+    `SELECT li.id, li.date, li.start_time, li.end_time, li.studio_id, li.master_id,
+            COALESCE(lm.class_name,
+                     CASE WHEN li.notes LIKE '単発: %' THEN SUBSTR(li.notes, 5)
+                          WHEN li.notes LIKE '給与対象外: %' THEN SUBSTR(li.notes, 8)
+                          ELSE li.notes END) AS class_name,
+            li.status
      FROM lesson_instances li
      LEFT JOIN lesson_master lm ON lm.id = li.master_id
      WHERE li.date BETWEEN ? AND ?`,

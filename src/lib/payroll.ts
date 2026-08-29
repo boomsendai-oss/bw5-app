@@ -49,7 +49,14 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
   };
   // 休講(cancelled)も含めて全インスタンスを取得する。
   const instances = (await getAll(
-    `SELECT li.*, lm.class_name, s.name AS studio_name, lm.duration_minutes
+    `SELECT li.*,
+            -- 単発(master_id NULL)はマスタから名前が引けない。同期が notes に
+            -- 「単発: <クラス名>」を残しているのでそこから復元する(2026-08-29 TARO指摘)
+            COALESCE(lm.class_name,
+                     CASE WHEN li.notes LIKE '単発: %' THEN SUBSTR(li.notes, 5)
+                          WHEN li.notes LIKE '給与対象外: %' THEN SUBSTR(li.notes, 8)
+                          ELSE li.notes END) AS class_name,
+            s.name AS studio_name, lm.duration_minutes
      FROM lesson_instances li
      LEFT JOIN lesson_master lm ON lm.id = li.master_id
      LEFT JOIN studios s ON s.id = li.studio_id
