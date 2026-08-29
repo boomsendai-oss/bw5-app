@@ -127,7 +127,7 @@ export default function SurveyDetailClient({
       {tab === 'agg' ? <AggTab questions={survey.questions} rows={answerRows} /> : null}
       {tab === 'cross' ? <CrossTab_ questions={survey.questions} rows={answerRows} /> : null}
       {tab === 'responses' ? <ResponsesTab survey={survey} responses={responses} /> : null}
-      {tab === 'match' ? <MatchTab pending={pendingResponses} onDone={() => router.refresh()} /> : null}
+      {tab === 'match' ? <MatchTab pending={pendingResponses} questions={survey.questions} onDone={() => router.refresh()} /> : null}
       {tab === 'edit' ? (
         <SurveyBuilder
           surveyId={survey.id}
@@ -378,7 +378,37 @@ function ResponsesTab({ survey, responses }: { survey: SurveyView; responses: Re
   );
 }
 
-function MatchTab({ pending, onDone }: { pending: ResponseListItem[]; onDone: () => void }) {
+function MatchTab({
+  pending,
+  questions,
+  onDone,
+}: {
+  pending: ResponseListItem[];
+  questions: QuestionDef[];
+  onDone: () => void;
+}) {
+  const labelByQuestionId = new Map(questions.filter((q) => q.id).map((q) => [q.id!, q]));
+  // 「回答内容を確認しないまま紐付けを確定してしまう」事故防止(2026-08-29 TAROが実際に踏んだ):
+  // 確認待ちカードにその回答の中身も表示する
+  const answerLines = (r: ResponseListItem) => {
+    const byQuestion = new Map<number, string[]>();
+    for (const a of r.answers) {
+      const q = labelByQuestionId.get(a.questionId);
+      if (!q) continue;
+      const value =
+        a.optionKey === OTHER_KEY
+          ? `その他: ${a.textValue ?? ''}`
+          : a.optionKey
+            ? resolveOptionLabel(q, a.optionKey)
+            : a.textValue ?? '';
+      const list = byQuestion.get(a.questionId) ?? [];
+      list.push(value);
+      byQuestion.set(a.questionId, list);
+    }
+    return questions
+      .filter((q) => q.id && byQuestion.has(q.id))
+      .map((q) => ({ label: q.label, value: byQuestion.get(q.id!)!.join('、') }));
+  };
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [searchFor, setSearchFor] = useState<number | null>(null);
@@ -415,6 +445,14 @@ function MatchTab({ pending, onDone }: { pending: ResponseListItem[]; onDone: ()
           <div className="text-sm font-bold text-navy-800">
             記入名: {r.respondentName ?? '(無記名)'}
             <span className="ml-2 text-xs font-normal text-slate-400">{r.submittedAt.slice(0, 10)}</span>
+          </div>
+          <div className="mt-2 rounded-lg bg-sand-50 p-2.5 space-y-0.5">
+            {answerLines(r).map((line, j) => (
+              <div key={j} className="text-xs text-slate-700">
+                <span className="text-slate-400">{line.label}: </span>
+                {line.value}
+              </div>
+            ))}
           </div>
           <div className="mt-2 flex items-center gap-2 flex-wrap">
             {r.candidates.map((c) => (
