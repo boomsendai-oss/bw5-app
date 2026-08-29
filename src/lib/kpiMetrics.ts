@@ -281,6 +281,7 @@ export async function getMonthlyFinance(ym: string): Promise<MonthlyFinance> {
     videoCountRow,
     payrollTotalRow,
     studioTotalRow,
+    paymentFeeRow,
     expensesByCategory,
     billingCountRow,
     payrollCountRow,
@@ -310,6 +311,13 @@ export async function getMonthlyFinance(ym: string): Promise<MonthlyFinance> {
     // P3: 未確定(draft)のrunは仮値なので確定分と分けて取る。
     safeOne(RUN_TOTAL_SQL('payroll_runs'), [ym]),
     safeOne(RUN_TOTAL_SQL('studio_billing_runs'), [ym]),
+    // 決済手数料(hacomono売上に付随・fee_amountは税込)。売上はgross計上なので
+    // 手数料を経費に立てないと営業利益が過大になる(2026-08-29 TARO承認の総額主義)。
+    safeOne(
+      `SELECT COALESCE(SUM(fee_amount), 0) AS total, SUM(CASE WHEN fee_amount IS NULL AND payment_method = 'カード決済' THEN 1 ELSE 0 END) AS pending
+       FROM hacomono_billing_records WHERE billing_date BETWEEN ? AND ?`,
+      [monthStart, monthEnd]
+    ),
     // 給与・スタジオ料は別管理のため expenses 側の同カテゴリは除外(T-166 二重計上防止)
     safeAll(
       `SELECT category, COALESCE(SUM(amount), 0) AS t FROM expenses
@@ -337,8 +345,11 @@ export async function getMonthlyFinance(ym: string): Promise<MonthlyFinance> {
   const provisionalSources = [
     ...(payroll.provisional ? ['給与'] : []),
     ...(studio.provisional ? ['スタジオ料'] : []),
+    ...(n(paymentFeeRow?.pending) > 0 ? [`決済手数料(未確定${n(paymentFeeRow?.pending)}件)`] : []),
   ];
   const expBreakdown = bucketExpenses(expensesByCategory as Array<{ category?: unknown; t?: unknown }>);
+  const paymentFees = n(paymentFeeRow?.total);
+  if (paymentFees > 0) expBreakdown['決済手数料'] = (expBreakdown['決済手数料'] ?? 0) + paymentFees;
   const totalExpenses =
     payroll.total + studio.total + Object.values(expBreakdown).reduce((a, b) => a + b, 0);
   const operatingProfit = coreRevenue - totalExpenses;

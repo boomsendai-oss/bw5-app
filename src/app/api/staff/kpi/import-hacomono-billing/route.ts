@@ -117,6 +117,14 @@ export async function POST(req: NextRequest) {
       const kaiinNo = pick(rec, '会員番号', '会員No');
       const paymentMethod = pick(rec, '支払方法', '決済方法');
       const status = pick(rec, 'ステータス', '状態');
+      // 決済手数料(PL001)。「金額確定前」の期間は空で来る=NULLで保存し、
+      // 確定後の再取込(毎日の同期が前月+当月をさらう)でUPSERTにより埋まる。
+      // NULLと0を区別する: 空文字=未確定(NULL)、現金決済の0=手数料なし(0)。
+      const feeRaw = pick(rec, '手数料');
+      const feeAmount = feeRaw === '' ? null : parseAmt(feeRaw);
+      const feeTaxRaw = pick(rec, '手数料（消費税）', '手数料(消費税)');
+      const feeTax = feeTaxRaw === '' ? null : parseAmt(feeTaxRaw);
+      const depositDate = parseDate((pick(rec, '入金日') || '').split(' ')[0]) || null;
 
       // hacomono_products との完全一致 → 部分一致 → ヒューリスティック
       let category: string;
@@ -168,8 +176,8 @@ export async function POST(req: NextRequest) {
       if (saleId) {
         res = await execute(
           `INSERT INTO hacomono_billing_records
-           (sale_id, billing_date, member_id, kaiin_no, boom_member_id, product_name, product_category, amount, payment_method, status, imported_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+           (sale_id, billing_date, member_id, kaiin_no, boom_member_id, product_name, product_category, amount, payment_method, status, fee_amount, fee_tax, deposit_date, imported_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
            ON CONFLICT(sale_id) DO UPDATE SET
              billing_date=excluded.billing_date,
              member_id=excluded.member_id,
@@ -180,8 +188,11 @@ export async function POST(req: NextRequest) {
              amount=excluded.amount,
              payment_method=excluded.payment_method,
              status=excluded.status,
+             fee_amount=COALESCE(excluded.fee_amount, hacomono_billing_records.fee_amount),
+             fee_tax=COALESCE(excluded.fee_tax, hacomono_billing_records.fee_tax),
+             deposit_date=COALESCE(excluded.deposit_date, hacomono_billing_records.deposit_date),
              imported_at=CURRENT_TIMESTAMP`,
-          [saleId, billingDate, memberId || null, kaiinNo || null, boomMemberId, productName || null, category, amount, paymentMethod || null, status || null]
+          [saleId, billingDate, memberId || null, kaiinNo || null, boomMemberId, productName || null, category, amount, paymentMethod || null, status || null, feeAmount, feeTax, depositDate]
         );
       } else {
         res = await execute(
