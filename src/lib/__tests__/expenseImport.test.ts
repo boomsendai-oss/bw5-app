@@ -182,6 +182,11 @@ describe('classify: GMO', () => {
     expect(r).toMatchObject({ action: 'ignore', label: '経費外(スタジオ料=studio_billing側)' });
   });
 
+  it('PayPay*GOAT → ignore(スタジオ料) ※GOATへの支払いはstudio_billing側・全角表記', () => {
+    const r = classify(gmoRow('Visaデビット利用 ＰａｙＰａｙ＊ＧＯＡＴ　ＤＡＮＣＥ　ＳＴ 承認番号：408834', 10000), MASTERS, 'gmo');
+    expect(r).toMatchObject({ action: 'ignore', label: '経費外(スタジオ料=studio_billing側)' });
+  });
+
   it('ATM・ATM利用手数料 → ignore(現金・事業主貸) ※スペース有無両対応', () => {
     expect(classify(gmoRow('ATM セブン銀行', 20000), MASTERS, 'gmo')).toMatchObject({ action: 'ignore', label: '経費外(現金・事業主貸)' });
     expect(classify(gmoRow('ATM 利用手数料 セブン銀行', 110), MASTERS, 'gmo')).toMatchObject({ action: 'ignore', label: '経費外(現金・事業主貸)' });

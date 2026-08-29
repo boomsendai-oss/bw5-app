@@ -316,6 +316,7 @@ const GMO_IGNORE: ReadonlyArray<readonly [string, string]> = [
   ['コナミ', '経費外(スタジオ料=studio_billing側)'],
   ['カ.デクト', '経費外(スタジオ料=studio_billing側)'],
   ['マイダンスシヨツプ', '経費外(スタジオ料=studio_billing側)'],
+  ['paypay*goat', '経費外(スタジオ料=studio_billing側)'],
 ];
 
 /** 楽天カード privateスキップリスト (正規化して部分一致・DB非投入)。 */
