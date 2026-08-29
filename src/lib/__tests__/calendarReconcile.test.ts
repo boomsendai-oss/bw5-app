@@ -25,7 +25,7 @@ describe('reconcileDay', () => {
         slot({ master_id: 40, instructor_id: 1, studio_id: 10, start_time: '11:00', class_name: '多賀城 HOUSE' }),
         slot({ master_id: 41, instructor_id: 1, studio_id: 1, start_time: '11:00', class_name: 'HOUSE エキスパート' }),
       ],
-      [res({ summary: '', class_name: 'ハウスエキスパートクラス', instructor_id: 1, studio_id: 1, start: '11:00', end: '12:30' })]
+      [res({ class_name: 'ハウスエキスパートクラス', instructor_id: 1, studio_id: 1, start: '11:00', end: '12:30' })]
     );
     expect(p.keep).toHaveLength(1);
     expect(p.keep[0].master_id).toBe(41);                      // GOATの枠に結ぶ
