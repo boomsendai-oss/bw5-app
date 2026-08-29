@@ -454,7 +454,10 @@ function MatchTab({
               </div>
             ))}
           </div>
-          <div className="mt-2 flex items-center gap-2 flex-wrap">
+          <div className="mt-3 text-xs font-bold text-navy-700">
+            {r.candidates.length > 0 ? 'どの会員の回答ですか? 正しい方をタップして確定:' : '一致する会員が見つかりませんでした。検索して紐付けるか、なしで確定:'}
+          </div>
+          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
             {r.candidates.map((c) => (
               <button
                 key={c.id}
