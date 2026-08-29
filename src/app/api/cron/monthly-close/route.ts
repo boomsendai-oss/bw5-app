@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyTaro } from '@/lib/notify';
 import { syncCalendarActuals, type SyncResult } from '@/lib/calendarSync';
-import { recalcPayroll, recalcStudioBilling, getCloseStatus } from '@/lib/monthlyClose';
+import { recalcPayroll, recalcStudioBilling, getCloseStatus, detectRoomConflicts } from '@/lib/monthlyClose';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -54,6 +54,11 @@ export async function GET(req: NextRequest) {
   }
 
   const status = await getCloseStatus(prevYm);
+  // 同じ部屋・同じ時間の重複(物理的に不可能=部屋の記録がどこか間違っている)
+  const conflicts = [
+    ...(await detectRoomConflicts(prevYm)),
+    ...(await detectRoomConflicts(thisYm)),
+  ];
   const review = syncs.flatMap((s) => s.needsReview);
   const unregistered = [...new Set(syncs.flatMap((s) => s.unregisteredVenues))];
 
@@ -61,7 +66,7 @@ export async function GET(req: NextRequest) {
   const overdue = day >= 10 && status.payrollRuns > 0 && status.payrollDraft === status.payrollRuns;
 
   const yen = (n: number) => `¥${n.toLocaleString()}`;
-  const shouldNotify = doClose || errors.length > 0 || overdue || review.length > 0 || unregistered.length > 0;
+  const shouldNotify = doClose || errors.length > 0 || overdue || review.length > 0 || unregistered.length > 0 || conflicts.length > 0;
   let notified = false;
   if (shouldNotify) {
     const lines: string[] = [];
@@ -83,6 +88,13 @@ export async function GET(req: NextRequest) {
       lines.push('');
       lines.push(`■ studios に未登録の会場（スタジオ料が付きません）`);
       for (const n of unregistered) lines.push(`  - ${n}`);
+    }
+    if (conflicts.length > 0) {
+      lines.push('');
+      lines.push('■ 同じ部屋・同じ時間に2つのレッスンが入っています(物理的に不可能=どちらかの部屋が違うはず)');
+      for (const c of conflicts.slice(0, 10)) {
+        lines.push(`  - ${c.date} ${c.studio_name ?? c.studio_id}: 「${c.a.label}」(${c.a.time}) と 「${c.b.label}」(${c.b.time}) が ${c.overlap} で重複`);
+      }
     }
     if (payroll && payroll.warnings.length > 0) {
       lines.push('');
@@ -119,6 +131,7 @@ export async function GET(req: NextRequest) {
     payroll: payroll && { calculated: payroll.calculated, warnings: payroll.warnings.length },
     studio: studio && { calculated: studio.calculated },
     status,
+    roomConflicts: conflicts,
     errors,
   });
 }

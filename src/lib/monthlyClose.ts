@@ -2,6 +2,7 @@
 // route に処理を書くと片方だけ直って乖離するため、ここに集約する。
 
 import { getAll } from './db';
+import { findRoomConflicts, type RoomConflict } from './roomConflicts';
 import { calculatePayrollForMonth, persistPayrollRun, zeroStaleDraftPayrollRuns } from './payroll';
 import {
   calculateStudioBillingForMonth, persistStudioBillingRun, zeroStaleDraftStudioBillingRuns,
@@ -68,6 +69,23 @@ export async function recalcStudioBilling(ym: string): Promise<StudioCalcResult>
   }
   const zeroed = await zeroStaleDraftStudioBillingRuns(ym, runs.map((i) => i.studio_id));
   return { year_month: ym, calculated: runs.length, runs, zeroed_stale_drafts: zeroed };
+}
+
+/** 同じ部屋・同じ時間に2レッスンが入っている物理的に不可能な計上を探す */
+export async function detectRoomConflicts(ym: string): Promise<RoomConflict[]> {
+  const rows = (await getAll(
+    `SELECT li.id, li.date, li.start_time, li.end_time, li.studio_id, s.name AS studio_name,
+            COALESCE(lm.class_name,
+                     CASE WHEN li.notes LIKE '単発: %' THEN SUBSTR(li.notes, 5)
+                          WHEN li.notes LIKE '給与対象外: %' THEN SUBSTR(li.notes, 8)
+                          ELSE li.notes END, '?') AS label
+     FROM lesson_instances li
+     LEFT JOIN lesson_master lm ON lm.id = li.master_id
+     LEFT JOIN studios s ON s.id = li.studio_id
+     WHERE li.date LIKE ? AND li.status NOT IN ('cancelled', 'removed')`,
+    [`${ym}%`]
+  )) as unknown as Parameters<typeof findRoomConflicts>[0];
+  return findRoomConflicts(rows);
 }
 
 export type CloseStatus = {
