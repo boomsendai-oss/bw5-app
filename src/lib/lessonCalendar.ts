@@ -42,7 +42,7 @@ export async function fetchLessonsForDate(date: string): Promise<{ lessons: Cale
 export async function fetchEventsForRange(
   fromDate: string,
   toDate: string
-): Promise<{ id: string; date: string; start: string; end: string; summary: string; location: string | null }[]> {
+): Promise<{ id: string; date: string; start: string; end: string; summary: string; location: string | null; description: string | null }[]> {
   const clientId = process.env.GOOGLE_CAL_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CAL_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) throw new Error('GoogleカレンダーのクライアントIDが未設定');
@@ -54,7 +54,7 @@ export async function fetchEventsForRange(
   oauth2.setCredentials({ refresh_token: refreshToken });
   const cal = google.calendar({ version: 'v3', auth: oauth2 });
 
-  const out: { id: string; date: string; start: string; end: string; summary: string; location: string | null }[] = [];
+  const out: { id: string; date: string; start: string; end: string; summary: string; location: string | null; description: string | null }[] = [];
   let pageToken: string | undefined;
   do {
     const res = await cal.events.list({
@@ -85,6 +85,7 @@ export async function fetchEventsForRange(
         end: te,
         summary: ev.summary,
         location: ev.location ?? null,
+        description: ev.description ?? null,
       });
     }
     pageToken = res.data.nextPageToken ?? undefined;

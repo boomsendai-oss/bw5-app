@@ -18,6 +18,7 @@ export type CalendarEvent = {
   end: string;    // 'HH:MM'
   summary: string;
   location: string | null;
+  description?: string | null;
 };
 
 export type NamedRef = { id: number; name: string; aliases?: string[] };
@@ -35,6 +36,8 @@ export type ResolvedLesson = {
   instructors: ParsedInstructor[]; // 連名対応。給与は全員に各自の単価で付く
   studio_id: number | null;
   studio_name: string | null;
+  /** 部屋がカレンダーで明示されている(説明欄のヒント等)。同一敷地ルールよりも優先する */
+  room_explicit: boolean;
   class_name: string;
   payable: boolean;   // 講師への支払いが発生するレッスンか(練習会などは false)
   issues: string[];
@@ -242,7 +245,19 @@ export function resolveCalendarEvent(
   const cancelled = detectCancelled(event.summary);
   const found = parseInstructors(event.summary, instructors);
   const inst = found[0] ?? null;
-  const studio = resolveStudio(event.location, studios);
+  let studio = resolveStudio(event.location, studios);
+  // 説明欄の部屋ヒント(同一敷地のときだけ適用。別会場の週は誤爆させない)
+  let roomExplicit = false;
+  const hint = detectRoomHint(event.description);
+  if (hint && studio && sameSite(studio.id, ROOM_ID[hint])) {
+    const hinted = studios.find((s) => s.id === ROOM_ID[hint]);
+    if (hinted) { studio = hinted; roomExplicit = true; }
+  }
+  // locationが部屋名を直接指している(「GOAT 小スタジオ」等)場合も明示扱い
+  if (!roomExplicit && studio) {
+    const g = SITE_GROUPS.find((x) => x.members.includes(studio!.id));
+    if (g && studio.id !== g.generic) roomExplicit = true;
+  }
   const dur = toMinutes(event.end) - toMinutes(event.start);
 
   const payable = !isNonPayableEvent(event.summary);
@@ -267,6 +282,7 @@ export function resolveCalendarEvent(
     instructors: found,
     studio_id: studio?.id ?? null,
     studio_name: studio?.name ?? null,
+    room_explicit: roomExplicit,
     class_name: extractClassName(event.summary),
     payable,
     issues,
@@ -306,6 +322,24 @@ export const STUDIO_ALIAS_SEED: Record<string, string[]> = {
  * ルール: カレンダーが総称(generic)に解決されたら、同一敷地内ではマスタの部屋を信じる。
  *         カレンダーが部屋を明示(小スタジオ等)していればカレンダーが勝つ(イレギュラー入替の物理入力)。
  */
+/**
+ * イベントの説明欄から部屋の指定を読む(イレギュラー入替の物理入力)。
+ * locationは「GOAT DANCE STUDIO」のまま変えない(TARO決定 2026-08-29:
+ * locationに住所が付くことでGoogleマップ導線になっており、初めて来る生徒のために保つ)。
+ * 部屋だけ説明欄に「小スタジオ」「Bスタジオ」等と書けば、その日はその部屋で計上する。
+ * ⚠️説明欄には道案内の定型文(GOAT/Kスタジオ/AZUMAのリンク集)が入るため、
+ * 総称の「スタジオ」や会場名では判定しない。部屋を特定する語だけに反応する。
+ */
+export function detectRoomHint(description: string | null | undefined): 'A' | 'B' | null {
+  if (!description) return null;
+  const d = description.normalize('NFKC');
+  if (/小スタジオ|Bスタジオ|Bスタ\b|GOAT\s*B/i.test(d)) return 'B';
+  if (/大スタジオ|Aスタジオ|Aスタ\b|GOAT\s*A/i.test(d)) return 'A';
+  return null;
+}
+
+const ROOM_ID: Record<'A' | 'B', number> = { A: 1, B: 2 };
+
 export const SITE_GROUPS: { generic: number; members: number[] }[] = [
   { generic: 1, members: [1, 2] }, // GOATスタジオ(A) / GOAT 小スタジオ(B)
 ];
@@ -315,9 +349,10 @@ export function sameSite(a: number | null, b: number | null): boolean {
   return SITE_GROUPS.some((g) => g.members.includes(a) && g.members.includes(b));
 }
 
-/** 同一敷地内で使う部屋を決める。総称→マスタの部屋 / 明示→カレンダーの部屋 */
-export function resolveRoomWithinSite(eventStudio: number | null, slotStudio: number | null): number | null {
+/** 同一敷地内で使う部屋を決める。総称→マスタの部屋 / 明示(部屋名やヒント)→カレンダーの部屋 */
+export function resolveRoomWithinSite(eventStudio: number | null, slotStudio: number | null, explicit = false): number | null {
   if (eventStudio == null) return slotStudio;
+  if (explicit) return eventStudio;
   if (slotStudio == null || !sameSite(eventStudio, slotStudio)) return eventStudio;
   const g = SITE_GROUPS.find((x) => x.members.includes(eventStudio))!;
   return eventStudio === g.generic ? slotStudio : eventStudio;

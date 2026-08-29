@@ -149,7 +149,7 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]):
       master_id: s.master_id, date: s.date, start_time: e.start, end_time: e.end,
       instructor_id: e._instructorId,
       // 同一敷地(GOAT A/B): 総称locationならマスタの部屋、明示ならカレンダーの部屋
-      studio_id: resolveRoomWithinSite(e.studio_id, s.studio_id), status: 'scheduled',
+      studio_id: resolveRoomWithinSite(e.studio_id, s.studio_id, e.room_explicit), status: 'scheduled',
       note: e.instructors.length > 1 ? `カレンダー実績(連名${e.instructors.length}名)` : 'カレンダー実績',
     });
   });

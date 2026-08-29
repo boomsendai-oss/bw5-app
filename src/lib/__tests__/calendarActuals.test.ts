@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  detectRoomHint,
   parseInstructors,
   stripDecorations,
   detectCancelled,
@@ -166,6 +167,20 @@ describe('resolveStudio — 表記ゆれは起こる前提', () => {
     expect(resolveStudio('どこかの新しい会場', STUDIOS)).toBeNull();
     expect(resolveStudio('', STUDIOS)).toBeNull();
     expect(resolveStudio(null, STUDIOS)).toBeNull();
+  });
+});
+
+describe('detectRoomHint — 説明欄の部屋指定(GOAT A/B)', () => {
+  it('部屋を特定する語に反応する', () => {
+    expect(detectRoomHint('今日は小スタジオです')).toBe('B');
+    expect(detectRoomHint('Bスタジオに変更')).toBe('B');
+    expect(detectRoomHint('GOAT B')).toBe('B');
+    expect(detectRoomHint('大スタジオ')).toBe('A');
+  });
+  it('道案内の定型文(会場リンク集)では誤検知しない', () => {
+    const boilerplate = '＝＝＝＝\n🛣️スタジオへの道案内(動画)🛣️\nGOAT【〒980-0014 宮城県仙台市】\nhttps://example.com\nKスタジオ【花京院】\nAZUMA【二日町】';
+    expect(detectRoomHint(boilerplate)).toBeNull();
+    expect(detectRoomHint(null)).toBeNull();
   });
 });
 

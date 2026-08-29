@@ -8,7 +8,7 @@ const slot = (o: Partial<MasterSlotLite>): MasterSlotLite => ({
 });
 const res = (o: Partial<ResolvedLesson>): ResolvedLesson => ({
   event_id: 'e1', date: '2026-08-19', start: '18:30', end: '20:00', duration_minutes: 90,
-  cancelled: false, substitute: false, payable: true, instructor_id: 3, instructor_name: 'TARO',
+  cancelled: false, substitute: false, payable: true, room_explicit: false, instructor_id: 3, instructor_name: 'TARO',
   instructors: [{ id: 3, name: 'TARO', substitute: false }],
   studio_id: 90, studio_name: '戦災復興記念館　展示ホール', class_name: 'TARO hiphop 入門初級',
   issues: [], ...o,
