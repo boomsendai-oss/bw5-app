@@ -15,6 +15,44 @@ const res = (o: Partial<ResolvedLesson>): ResolvedLesson => ({
 });
 
 describe('reconcileDay', () => {
+  it('同一敷地(GOAT A/B): カレンダーが総称「GOAT」ならマスタの部屋を信じる', () => {
+    // はじめてのHIPHOP はB(小スタジオ=2)がマスタ既定。カレンダーのlocationは
+    // 「GOAT DANCE STUDIO」としか書かれずA(1)に解決されるが、同一敷地なので
+    // 部屋の情報が無いだけ。マスタの部屋(B)を保つ(TARO決定 2026-08-29)。
+    const p = reconcileDay(
+      [slot({ master_id: 26, instructor_id: 4, studio_id: 2, start_time: '11:00', class_name: 'はじめてのHIPHOP' })],
+      [res({ class_name: 'はじめてのHIPHOP', instructor_id: 4, studio_id: 1, start: '11:00', end: '12:00' })]
+    );
+    expect(p.keep).toHaveLength(1);
+    expect(p.keep[0].studio_id).toBe(2);
+  });
+
+  it('同一敷地: カレンダーが明示的に「小スタジオ」ならカレンダーが勝つ(イレギュラー入替)', () => {
+    // 逆パターン: マスタはA(1)のクラスを、その日だけBでやった。
+    // KEIKO/TAROがlocationに「GOAT 小スタジオ」と書けば resolver が2に解決し、
+    // 明示指定としてマスタより優先される。
+    const p = reconcileDay(
+      [slot({ master_id: 27, instructor_id: 5, studio_id: 1, start_time: '12:15', class_name: 'キッズHIPHOP入門' })],
+      [res({ class_name: 'キッズHIPHOP入門', instructor_id: 5, studio_id: 2, start: '12:15', end: '13:15' })]
+    );
+    expect(p.keep).toHaveLength(1);
+    expect(p.keep[0].studio_id).toBe(2);
+  });
+
+  it('同一敷地は会場不一致として劣後させない', () => {
+    // GOAT総称(1)のイベントとB(2)の枠が同時刻でも、venueMismatchにしない
+    // (劣後させると別会場の枠と誤マッチしうる)
+    const p = reconcileDay(
+      [
+        slot({ master_id: 26, instructor_id: 4, studio_id: 2, start_time: '11:00' }),
+        slot({ master_id: 99, instructor_id: 4, studio_id: 4, start_time: '11:30' }),
+      ],
+      [res({ instructor_id: 4, studio_id: 1, start: '11:00', end: '12:00' })]
+    );
+    expect(p.keep).toHaveLength(1);
+    expect(p.keep[0].master_id).toBe(26);
+  });
+
   it('【回帰】同じ講師の枠が2つあるとき、会場が一致する方に結ぶ (2026-08-29の実例)', () => {
     // K@TTSUの土曜: 多賀城HOUSE(マイダンス=10)とHOUSEエキスパート(GOAT=1)が同時刻。
     // カレンダーは「ハウスエキスパートクラス【K@TTSU】@GOAT」1件のみ。

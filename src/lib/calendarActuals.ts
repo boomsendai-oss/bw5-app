@@ -300,6 +300,30 @@ export const STUDIO_ALIAS_SEED: Record<string, string[]> = {
 };
 
 /**
+ * 同一敷地の部屋グループ。カレンダーのlocationは建物名(総称)しか持たないことが多く、
+ * どの部屋かはマスタ側が知っている(TARO決定 2026-08-29: はじめてのHIPHOP=GOAT小)。
+ * generic = 総称locationが解決される代表id。
+ * ルール: カレンダーが総称(generic)に解決されたら、同一敷地内ではマスタの部屋を信じる。
+ *         カレンダーが部屋を明示(小スタジオ等)していればカレンダーが勝つ(イレギュラー入替の物理入力)。
+ */
+export const SITE_GROUPS: { generic: number; members: number[] }[] = [
+  { generic: 1, members: [1, 2] }, // GOATスタジオ(A) / GOAT 小スタジオ(B)
+];
+
+export function sameSite(a: number | null, b: number | null): boolean {
+  if (a == null || b == null) return false;
+  return SITE_GROUPS.some((g) => g.members.includes(a) && g.members.includes(b));
+}
+
+/** 同一敷地内で使う部屋を決める。総称→マスタの部屋 / 明示→カレンダーの部屋 */
+export function resolveRoomWithinSite(eventStudio: number | null, slotStudio: number | null): number | null {
+  if (eventStudio == null) return slotStudio;
+  if (slotStudio == null || !sameSite(eventStudio, slotStudio)) return eventStudio;
+  const g = SITE_GROUPS.find((x) => x.members.includes(eventStudio))!;
+  return eventStudio === g.generic ? slotStudio : eventStudio;
+}
+
+/**
  * まだ `studios` に無い会場。2026-06〜08 に実際に使われたが未登録で、
  * このままだとスタジオ料が付かない or 別会場に化ける。
  * `kind` は設計の2分類: calc=料金体系をDBに持つ / actual=実額を都度記録する公共施設。

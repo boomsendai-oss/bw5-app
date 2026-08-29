@@ -8,6 +8,7 @@
 //   展開が復活させてしまい **休講に給与とスタジオ料が付く**。
 //   だから「開催されなかった」ことも明示的に記録する。
 
+import { sameSite, resolveRoomWithinSite } from './calendarActuals';
 import type { ResolvedLesson } from './calendarActuals';
 
 export type MasterSlotLite = {
@@ -95,7 +96,8 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]):
       // override単価が適用されなかった(2026-08-29・TAROの手照合で発覚)。
       // 完全に弾かない理由: 週替わり会場では「枠の既定会場と実際の会場が違う」のが
       // 正常なので、他に候補が無ければ不一致でも結ぶ。
-      const venueMismatch = e.studio_id != null && s.studio_id != null && e.studio_id !== s.studio_id ? 1 : 0;
+      const venueMismatch =
+        e.studio_id != null && s.studio_id != null && e.studio_id !== s.studio_id && !sameSite(e.studio_id, s.studio_id) ? 1 : 0;
       pairs.push({ si, ei, dist: d, venueMismatch });
     });
   });
@@ -145,7 +147,9 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]):
     // 開催: **会場と時刻はカレンダーの実績で上書き**(週替わり会場・時間変更の反映)
     plan.keep.push({
       master_id: s.master_id, date: s.date, start_time: e.start, end_time: e.end,
-      instructor_id: e._instructorId, studio_id: e.studio_id, status: 'scheduled',
+      instructor_id: e._instructorId,
+      // 同一敷地(GOAT A/B): 総称locationならマスタの部屋、明示ならカレンダーの部屋
+      studio_id: resolveRoomWithinSite(e.studio_id, s.studio_id), status: 'scheduled',
       note: e.instructors.length > 1 ? `カレンダー実績(連名${e.instructors.length}名)` : 'カレンダー実績',
     });
   });
