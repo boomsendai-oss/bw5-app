@@ -177,6 +177,20 @@ describe('detectRoomHint — 説明欄の部屋指定(GOAT A/B)', () => {
     expect(detectRoomHint('GOAT B')).toBe('B');
     expect(detectRoomHint('大スタジオ')).toBe('A');
   });
+  it('1文字表記(小/大/A/B)は行単独のときだけ拾う', () => {
+    // TAROの書き方の揺れ8パターン: 小スタジオ/Bスタジオ/小/B × 大スタジオ/Aスタジオ/大/A
+    expect(detectRoomHint('B')).toBe('B');
+    expect(detectRoomHint('小')).toBe('B');
+    expect(detectRoomHint('今日の連絡\n小\nよろしく')).toBe('B');
+    expect(detectRoomHint('Ｂ')).toBe('B');          // 全角もNFKCで吸収
+    expect(detectRoomHint('A')).toBe('A');
+    expect(detectRoomHint('大')).toBe('A');
+    // 文章やURLの中の1文字では反応しない(誤爆防止)
+    expect(detectRoomHint('小学生向けのクラスです')).toBeNull();
+    expect(detectRoomHint('大人も歓迎')).toBeNull();
+    expect(detectRoomHint('https://drive.google.com/file/d/1GJ6aHvB/view')).toBeNull();
+  });
+
   it('道案内の定型文(会場リンク集)では誤検知しない', () => {
     const boilerplate = '＝＝＝＝\n🛣️スタジオへの道案内(動画)🛣️\nGOAT【〒980-0014 宮城県仙台市】\nhttps://example.com\nKスタジオ【花京院】\nAZUMA【二日町】';
     expect(detectRoomHint(boilerplate)).toBeNull();

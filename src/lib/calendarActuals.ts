@@ -335,6 +335,14 @@ export function detectRoomHint(description: string | null | undefined): 'A' | 'B
   const d = description.normalize('NFKC');
   if (/小スタジオ|Bスタジオ|Bスタ\b|GOAT\s*B/i.test(d)) return 'B';
   if (/大スタジオ|Aスタジオ|Aスタ\b|GOAT\s*A/i.test(d)) return 'A';
+  // 1文字表記(小/大/A/B)は「行に1文字だけ」のときのみ。
+  // 説明欄には道案内URL(英字を含む)や「小学生」「大人」等の文章が入るため、
+  // 文中の1文字に反応すると誤爆する。行単独なら書き手の意図が部屋指定で確定する。
+  for (const line of d.split(/\r?\n/)) {
+    const w = line.trim();
+    if (w === '小' || /^b$/i.test(w)) return 'B';
+    if (w === '大' || /^a$/i.test(w)) return 'A';
+  }
   return null;
 }
 
