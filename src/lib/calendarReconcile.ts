@@ -58,7 +58,15 @@ const MATCH_WINDOW_MIN = 60;
  * 不確かなデータで上書きするのも、勝手に消すのも、どちらも金額事故になるため、
  * 判断を人に残す。
  */
-export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]): DayPlan {
+export type ReconcileOpts = {
+  /** 受託スコープ(KONAMI等)用: 講師の一致を要求せず時刻だけで枠に結ぶ。
+   *  スコープ内の枠とイベントは種類が少なく(1日2コマ)、講師は「その日やった人」が
+   *  タイトルに書かれる(書き忘れたら枠の既定講師)ため、時刻マッチで十分かつ
+   *  講師交代の日(8/17=TARO)も正しく枠に乗る。 */
+  matchByTimeOnly?: boolean;
+};
+
+export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[], opts: ReconcileOpts = {}): DayPlan {
   const plan: DayPlan = { keep: [], removed: [], extra: [], needsReview: [], skipped: [] };
 
   // 給与対象外(練習会など)は枠にマッチさせない。会場だけ使うので extra として残す。
@@ -88,7 +96,7 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]):
   const pairs: { si: number; ei: number; dist: number; venueMismatch: number }[] = [];
   slots.forEach((s, si) => {
     expanded.forEach((e, ei) => {
-      if (e._instructorId !== s.instructor_id) return;
+      if (!opts.matchByTimeOnly && e._instructorId !== s.instructor_id) return;
       const d = Math.abs(toMin(e.start) - toMin(s.start_time));
       if (!Number.isFinite(d) || d > MATCH_WINDOW_MIN) return;
       // 会場が両方読めていて違う場合は劣後させる。同じ講師の枠が同時刻に2つある日
@@ -147,7 +155,7 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[]):
     // 開催: **会場と時刻はカレンダーの実績で上書き**(週替わり会場・時間変更の反映)
     plan.keep.push({
       master_id: s.master_id, date: s.date, start_time: e.start, end_time: e.end,
-      instructor_id: e._instructorId,
+      instructor_id: e._instructorId ?? s.instructor_id,
       // 同一敷地(GOAT A/B): 総称locationならマスタの部屋、明示ならカレンダーの部屋
       studio_id: resolveRoomWithinSite(e.studio_id, s.studio_id, e.room_explicit), status: 'scheduled',
       note: e.instructors.length > 1 ? `カレンダー実績(連名${e.instructors.length}名)` : 'カレンダー実績',

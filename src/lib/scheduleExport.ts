@@ -102,6 +102,8 @@ export async function buildLessonsForMonths(months: number, startYm?: string): P
      LEFT JOIN studios s ON s.id = li.studio_id
      LEFT JOIN instructors i ON i.id = li.instructor_id
      WHERE li.date BETWEEN ? AND ?
+       AND COALESCE(lm.calendar_scope, 'boom') = 'boom'
+       AND (li.master_id IS NOT NULL OR COALESCE(li.notes, '') NOT LIKE '受託%')
      ORDER BY li.date, li.start_time`,
     [startStr, endStr]
   )) as InstanceRow[];
@@ -114,7 +116,7 @@ export async function buildLessonsForMonths(months: number, startYm?: string): P
      FROM lesson_master lm
      LEFT JOIN studios s ON s.id = lm.default_studio_id
      LEFT JOIN instructors i ON i.id = lm.default_instructor_id
-     WHERE lm.active = 1`
+     WHERE lm.active = 1 AND COALESCE(lm.calendar_scope, 'boom') = 'boom'`
   )) as MasterRow[];
 
   const lessons: ExportLesson[] = [];

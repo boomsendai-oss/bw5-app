@@ -281,6 +281,8 @@ export async function getMonthlyFinance(ym: string): Promise<MonthlyFinance> {
     videoCountRow,
     payrollTotalRow,
     studioTotalRow,
+    consignmentCountRow,
+    consignmentRateRow,
     paymentFeeRow,
     expensesByCategory,
     billingCountRow,
@@ -311,6 +313,19 @@ export async function getMonthlyFinance(ym: string): Promise<MonthlyFinance> {
     // P3: 未確定(draft)のrunは仮値なので確定分と分けて取る。
     safeOne(RUN_TOTAL_SQL('payroll_runs'), [ym]),
     safeOne(RUN_TOTAL_SQL('studio_billing_runs'), [ym]),
+    // 受託売上(KONAMI委託等・calendar_scopeがboom以外のレッスン)。
+    // 実施1本×単価(settings: consignment_rate_per_lesson)。入金はPayPay銀行だが
+    // 稼働費(給与)をBOOM側で払うため、売上も載せないとPLが費用だけ背負って歪む
+    // (2026-08-30 TARO合意=BOOM窓口一本化)。
+    safeOne(
+      `SELECT COUNT(*) AS n FROM lesson_instances li
+       LEFT JOIN lesson_master lm ON lm.id = li.master_id
+       WHERE li.date BETWEEN ? AND ? AND li.status = 'scheduled'
+         AND (COALESCE(lm.calendar_scope, 'boom') <> 'boom'
+              OR (li.master_id IS NULL AND COALESCE(li.notes, '') LIKE '受託%'))`,
+      [monthStart, monthEnd]
+    ),
+    safeOne(`SELECT value FROM settings WHERE key = 'consignment_rate_per_lesson'`),
     // 決済手数料(hacomono売上に付随・fee_amountは税込)。売上はgross計上なので
     // 手数料を経費に立てないと営業利益が過大になる(2026-08-29 TARO承認の総額主義)。
     safeOne(
@@ -338,7 +353,9 @@ export async function getMonthlyFinance(ym: string): Promise<MonthlyFinance> {
     const cat = (r.product_category as string | null) ?? 'other';
     revenueBreakdown[cat] = n(r.total);
   }
-  const coreRevenue = revenueBreakdown.plan + revenueBreakdown.ticket + revenueBreakdown.enrollment_fee;
+  const consignment = n(consignmentCountRow?.n) * n(consignmentRateRow?.value);
+  if (consignment > 0) revenueBreakdown.consignment = consignment;
+  const coreRevenue = revenueBreakdown.plan + revenueBreakdown.ticket + revenueBreakdown.enrollment_fee + consignment;
 
   const payroll = pickRunTotal(payrollTotalRow);
   const studio = pickRunTotal(studioTotalRow);

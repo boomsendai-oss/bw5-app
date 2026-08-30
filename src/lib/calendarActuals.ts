@@ -138,6 +138,13 @@ export function parseInstructors(summary: string, instructors: NamedRef[]): Pars
     if (found.length > 0) return uniq(found);
   }
 
+  // 丸括弧形式 (taro.bsbカレンダーのKONAMI予定の書式): 「KONAMIちびっこ(KOKEKO)」「( TARO)」
+  // 名簿と完全一致した場合のみ採用するので、クラス名の括弧(「月謝4回(60分)」等)には反応しない
+  for (const m of s.matchAll(/[（(]\s*([^)）]+?)\s*[)）]/g)) {
+    const hit = lookup(m[1]);
+    if (hit) return [{ id: hit.id, name: hit.name, substitute: false }];
+  }
+
   const single = parseInstructor(summary, instructors);
   return single ? [single] : [];
 }

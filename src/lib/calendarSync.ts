@@ -12,6 +12,14 @@ import {
 } from './calendarActuals';
 import { reconcileDay, type MasterSlotLite, type InstanceWrite } from './calendarReconcile';
 
+// 受託スコープ(taro.bsbカレンダー)の定義。
+// TAROの個人カレンダーを読むため、**キーワードに一致した予定以外は一切取り込まない**
+// (個人予定は解釈もログもしない=プライバシーの線引き 2026-08-30 TARO合意)。
+const SCOPES = [
+  { scope: 'boom', calendarId: 'primary', filter: null as RegExp | null, notePrefix: '' },
+  { scope: 'taro_bsb', calendarId: 'taro.bsb@gmail.com', filter: /KONAMI|コナミ/i, notePrefix: '受託(KONAMI): ' },
+] as const;
+
 export type ReviewItem = { date: string; start: string; class_name: string; issues: string[] };
 
 export type SyncResult = {
@@ -82,37 +90,58 @@ export async function syncCalendarActuals(
   };
   const masters = (await getAll(
     `SELECT id, class_name, default_day_of_week, default_start_time, default_end_time,
-            default_instructor_id, default_studio_id, start_date, end_date
+            default_instructor_id, default_studio_id, start_date, end_date,
+            COALESCE(calendar_scope, 'boom') AS calendar_scope
      FROM lesson_master WHERE active = 1`
-  )) as unknown as MasterRow[];
-
-  const events = (await fetchEventsForRange(`${ym}-01`, limit)).filter((ev) => ev.date <= limit);
-  const resolved = events.map((ev) => resolveCalendarEvent(ev, instructors, studios));
-  const byDate = new Map<string, ResolvedLesson[]>();
-  for (const r of resolved) (byDate.get(r.date) ?? byDate.set(r.date, []).get(r.date)!).push(r);
-
-  // 既存instanceを無視して**その月の全枠**を出す(既存が間違っている可能性があるため)
-  const slotsByDate = new Map<string, MasterSlotLite[]>();
-  for (const { master, dateStr } of expandMasterSlots(ym, masters, new Set<string>())) {
-    if (dateStr > limit) continue;
-    const list = slotsByDate.get(dateStr) ?? slotsByDate.set(dateStr, []).get(dateStr)!;
-    list.push({
-      master_id: master.id, date: dateStr,
-      start_time: master.default_start_time ?? '00:00',
-      end_time: master.default_end_time ?? '00:00',
-      instructor_id: master.default_instructor_id,
-      studio_id: master.default_studio_id,
-      class_name: master.class_name,
-    });
-  }
+  )) as unknown as (MasterRow & { calendar_scope: string })[];
 
   const keep: InstanceWrite[] = [], removed: InstanceWrite[] = [], extra: InstanceWrite[] = [];
   const needsReview: ResolvedLesson[] = [];
   let untouched = 0;
-  for (const date of new Set([...slotsByDate.keys(), ...byDate.keys()])) {
-    const p = reconcileDay(slotsByDate.get(date) ?? [], byDate.get(date) ?? []);
-    keep.push(...p.keep); removed.push(...p.removed); extra.push(...p.extra);
-    needsReview.push(...p.needsReview); untouched += p.skipped.length;
+
+  for (const sc of SCOPES) {
+    const scopeMasters = masters.filter((m) => (m as { calendar_scope: string }).calendar_scope === sc.scope);
+    if (sc.scope !== 'boom' && scopeMasters.length === 0) continue; // 受託マスタが無ければ読まない
+
+    let events = (await fetchEventsForRange(`${ym}-01`, limit, sc.calendarId)).filter((ev) => ev.date <= limit);
+    // 受託スコープはキーワード一致のみ。個人予定はここで捨てる(以降のコードに一切渡さない)
+    if (sc.filter) events = events.filter((ev) => sc.filter!.test(ev.summary));
+
+    const resolved = events.map((ev) => {
+      const r = resolveCalendarEvent(ev, instructors, studios);
+      if (sc.scope !== 'boom') {
+        // 受託は先方の施設で開催=BOOMのstudiosに無くて正しい。会場不明を要確認にしない。
+        // 講師名が書かれていない回は枠の既定講師(matchByTimeOnly)で拾う。
+        r.issues = r.issues.filter((i) => i !== '会場が特定できない' && i !== '講師が特定できない');
+      }
+      return r;
+    });
+    const byDate = new Map<string, ResolvedLesson[]>();
+    for (const r of resolved) (byDate.get(r.date) ?? byDate.set(r.date, []).get(r.date)!).push(r);
+
+    // 既存instanceを無視して**その月の全枠**を出す(既存が間違っている可能性があるため)
+    const slotsByDate = new Map<string, MasterSlotLite[]>();
+    for (const { master, dateStr } of expandMasterSlots(ym, scopeMasters, new Set<string>())) {
+      if (dateStr > limit) continue;
+      const list = slotsByDate.get(dateStr) ?? slotsByDate.set(dateStr, []).get(dateStr)!;
+      list.push({
+        master_id: master.id, date: dateStr,
+        start_time: master.default_start_time ?? '00:00',
+        end_time: master.default_end_time ?? '00:00',
+        instructor_id: master.default_instructor_id,
+        studio_id: master.default_studio_id,
+        class_name: master.class_name,
+      });
+    }
+
+    for (const date of new Set([...slotsByDate.keys(), ...byDate.keys()])) {
+      const p = reconcileDay(slotsByDate.get(date) ?? [], byDate.get(date) ?? [], {
+        matchByTimeOnly: sc.scope !== 'boom',
+      });
+      const tag = (w: InstanceWrite): InstanceWrite => ({ ...w, note: `${sc.notePrefix}${w.note}`.slice(0, 120) });
+      keep.push(...p.keep.map(tag)); removed.push(...p.removed.map(tag)); extra.push(...p.extra.map(tag));
+      needsReview.push(...p.needsReview); untouched += p.skipped.length;
+    }
   }
 
   // 未登録会場(負のid)は studio_id に入れない。金額が付かないので NULL で可視化する。

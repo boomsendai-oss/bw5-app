@@ -41,7 +41,8 @@ export async function fetchLessonsForDate(date: string): Promise<{ lessons: Cale
  */
 export async function fetchEventsForRange(
   fromDate: string,
-  toDate: string
+  toDate: string,
+  calendarId: string = 'primary'
 ): Promise<{ id: string; date: string; start: string; end: string; summary: string; location: string | null; description: string | null }[]> {
   const clientId = process.env.GOOGLE_CAL_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CAL_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
@@ -58,7 +59,7 @@ export async function fetchEventsForRange(
   let pageToken: string | undefined;
   do {
     const res = await cal.events.list({
-      calendarId: 'primary',
+      calendarId,
       timeMin: `${fromDate}T00:00:00+09:00`,
       timeMax: `${toDate}T23:59:59+09:00`,
       singleEvents: true,
