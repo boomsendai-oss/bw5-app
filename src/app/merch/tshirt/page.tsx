@@ -14,7 +14,7 @@ import {
   type PublicOrderView,
 } from './actions';
 import { TSHIRT_SIZES, type TshirtSize } from '@/lib/tshirtOrder';
-import TurntableShowcase from './TurntableShowcase';
+import PantherHero from './PantherHero';
 
 const TOKEN_KEY = 'boom_tshirt_order_token';
 
@@ -230,7 +230,8 @@ export default function TshirtOrderPage() {
   return (
     <main className="min-h-screen bg-[#0b0b0c] text-white">
       {/* ヒーロー: スクロールに合わせて商品が動く(Appleの製品ページのような見せ方) */}
-      <TurntableShowcase productName={settings.productName} />
+      {/* E案(黒豹動画)で確定 2026-08-30。D案(3D回転)は /merch/tshirt/preview に残してある */}
+      <PantherHero />
 
       {/* 商品情報 */}
       <section className="px-6">

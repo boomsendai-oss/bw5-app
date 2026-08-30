@@ -16,6 +16,11 @@ const STILL = '/merch/hero/panther_hero.jpg';
 const VIDEO = '/merch/hero/panther_hero.mp4';
 const LOGO = '/merch/hero/boom_logo_white.png';
 
+// 全体を少し右へ寄せる(TARO指定 2026-08-30「もうちょいだけ右」)。
+// 動画は16:9の枠にぴったり入っていて切り抜き余地が無いため、
+// わずかに拡大してから右へずらす(拡大が左端の隙間を隠す)。
+const SHIFT = { transform: 'scale(1.06) translateX(2.5%)' } as const;
+
 export default function PantherHero() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hasVideo, setHasVideo] = useState(false);
@@ -42,6 +47,7 @@ export default function PantherHero() {
           <video
             ref={videoRef}
             className="absolute inset-0 w-full h-full object-cover"
+            style={SHIFT}
             src={VIDEO}
             poster={STILL}
             autoPlay
@@ -52,7 +58,7 @@ export default function PantherHero() {
           />
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={STILL} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <img src={STILL} alt="" style={SHIFT} className="absolute inset-0 w-full h-full object-cover" />
         )}
 
         {/* 下端を黒へ落として、この下のページと地続きに見せる */}
