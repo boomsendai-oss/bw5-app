@@ -137,3 +137,20 @@ export function publicWaitlistRows(
       rep: r.rep,
     }));
 }
+
+/**
+ * タブに出す人数。キャンセル待ちを足して、定員を超えるくらい集まっていることを見せる
+ * (16/16 → 17/16。TARO 2026-08-30「人気なのが分かりやすい方がいい」)。
+ *
+ * ⚠️ この数字は表示専用。満枠判定・CTAの出し分け(entryListCta)には絶対に渡さないこと。
+ * 混ぜると、本体に空きがあるのにキャンセル待ち導線が出るなどの誤動作になる。
+ */
+export function displayedEntryCount({
+  entryCount,
+  waitingCount,
+}: {
+  entryCount: number;
+  waitingCount: number;
+}): number {
+  return entryCount + waitingCount;
+}

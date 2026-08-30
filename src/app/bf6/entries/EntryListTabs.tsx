@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { BF6_DIVISIONS, type Bf6Division } from '@/lib/bf6';
-import { entryListCta, type PublicWaitlistEntry } from '@/lib/bf6Waitlist';
+import { entryListCta, displayedEntryCount, type PublicWaitlistEntry } from '@/lib/bf6Waitlist';
 import type { PublicBf6Entry } from '@/lib/bf6Db';
 
 export default function EntryListTabs({
@@ -34,7 +34,10 @@ export default function EntryListTabs({
       <div className="grid grid-cols-3 gap-1.5">
         {BF6_DIVISIONS.map((d) => {
           const isActive = d.key === active;
-          const full = capacity[d.key] > 0 && (lists[d.key] ?? []).length >= capacity[d.key];
+          // 満枠判定はエントリー本体の人数で行う(表示用の合計を混ぜない)
+          const entryCount = (lists[d.key] ?? []).length;
+          const full = capacity[d.key] > 0 && entryCount >= capacity[d.key];
+          const shown = displayedEntryCount({ entryCount, waitingCount: waiting[d.key] ?? 0 });
           return (
             <button
               key={d.key}
@@ -45,7 +48,7 @@ export default function EntryListTabs({
             >
               <span className="block text-xs font-black sm:text-sm">{d.key === 'beginner' && '🔰 '}{d.label}</span>
               <span className={`block text-lg font-black ${isActive ? 'text-white' : 'text-neutral-200'}`}>
-                {(lists[d.key] ?? []).length}
+                {shown}
                 <span className={`text-xs font-bold ${isActive ? 'text-white/70' : 'text-neutral-400'}`}>
                   /{capacity[d.key]}
                 </span>
