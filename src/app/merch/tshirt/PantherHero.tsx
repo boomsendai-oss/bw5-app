@@ -25,6 +25,26 @@ export default function PantherHero() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hasVideo, setHasVideo] = useState(false);
 
+  // iOS Safariは他アプリ/タブから戻るとautoplay動画を止めたまま復帰することがある。
+  // 表示に戻ったタイミングとpageshow(BFCache復帰)で明示的に再生し直す。
+  useEffect(() => {
+    const resume = () => {
+      const v = videoRef.current;
+      if (v && v.paused) v.play().catch(() => {/* 自動再生が拒否されたら静止のまま */});
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') resume();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pageshow', resume);
+    window.addEventListener('focus', resume);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', resume);
+      window.removeEventListener('focus', resume);
+    };
+  }, []);
+
   // 動画ファイルが置かれていれば使う。無ければ静止画のまま(404でも見た目は崩れない)
   useEffect(() => {
     let alive = true;

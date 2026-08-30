@@ -33,12 +33,12 @@ export function defaultTshirtSettings(): TshirtSettings {
     closeAt: '2026-08-29',
     isOpen: true,
     introMd: [
-      '黒のボディに、黒でBOOMのロゴをのせました。',
-      '光の角度でロゴが浮かび上がる、トーンオントーンの一枚です。',
-      'レッスンでも、そのまま街でも着られます。',
+      '黒のボディに、黒でロゴをのせた一枚。',
+      '光の角度で、ロゴが浮かび上がります。',
+      'レッスンでも、そのまま街でも。',
     ].join('\n'),
     pickupNote: '9/10(木)以降のレッスン時に、直接お渡しします。',
-    thanksNote: 'お支払いは、お渡しのときに現金と引き換えでお願いします。',
+    thanksNote: '現金（お渡し時）または、事前のカード決済が選べます。',
     sizeChart: defaultSizeChart(),
   };
 }

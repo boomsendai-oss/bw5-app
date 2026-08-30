@@ -212,7 +212,7 @@ export default function TshirtOrderPage() {
             {!receipt.paid && receipt.paymentMethod === 'cash' && (
               <div>
                 <p className="text-white/40 text-[11px] tracking-[0.2em] mb-1.5">お支払い</p>
-                <p>{settings.thanksNote || 'お支払いは、お渡しのときに現金と引き換えでお願いします。'}</p>
+                <p>お渡しのときに、現金でお支払いください。</p>
               </div>
             )}
             {receipt.paid && (
@@ -291,17 +291,7 @@ export default function TshirtOrderPage() {
       {/* E案(黒豹動画)で確定 2026-08-30。D案(3D回転)は /merch/tshirt/preview に残してある */}
       <PantherHero />
 
-      {/* 動画だけだとデザインを確かめられないので、実物写真への導線を置く */}
-      <div className="px-6 -mt-2 relative z-10">
-        <div className="mx-auto max-w-lg">
-          <button
-            onClick={() => setShowPhoto(true)}
-            className="w-full border border-white/20 py-3.5 text-[11px] tracking-[0.3em] text-white/70 hover:bg-white/5 transition"
-          >
-            実物のデザインを写真で見る
-          </button>
-        </div>
-      </div>
+
 
       {/* 商品情報 */}
       <section className="px-6">
@@ -313,6 +303,21 @@ export default function TshirtOrderPage() {
             {yen(settings.unitPrice)}
             <span className="ml-2 text-[11px] text-white/35">税込</span>
           </p>
+
+          <div className="mt-5 flex gap-6">
+            <button
+              onClick={() => setShowPhoto(true)}
+              className="text-[12px] text-white/50 underline underline-offset-4 hover:text-white/85 transition"
+            >
+              実物の写真を見る
+            </button>
+            <button
+              onClick={() => setShowSizeChart(true)}
+              className="text-[12px] text-white/50 underline underline-offset-4 hover:text-white/85 transition"
+            >
+              サイズ表
+            </button>
+          </div>
 
           {settings.introMd && (
             <p className="mt-7 text-[13px] leading-[2] text-white/55 whitespace-pre-wrap">
@@ -548,7 +553,7 @@ export default function TshirtOrderPage() {
             <p className="text-[11px] text-white/30 leading-[1.9] text-center">
               {paymentMethod === 'stripe'
                 ? 'このあと決済ページ(Stripe)に移動します。カード情報は当店に保存されません。'
-                : `お支払いはこの画面では発生しません。${settings.thanksNote}`}
+                : 'お支払いは、お渡しのときに現金と引き換えです。'}
             </p>
           </div>
         </div>
