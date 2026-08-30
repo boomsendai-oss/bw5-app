@@ -133,7 +133,7 @@ export default function PayrollPage() {
   const calculate = async () => {
     showConfirm(
       '給与計算',
-      `${ym} の給与を計算します。draft状態のデータは上書きされます。よろしいですか?`,
+      `${ym} の給与を再計算します（通常は毎朝自動）。draft状態のみ上書きされ、確定済みは変わりません。よろしいですか?`,
       async () => {
         setBusy(true);
         setErr('');
@@ -512,7 +512,7 @@ ${m}月分の稼働費明細を各イントラの共有フォルダにアップ�
             : n === 4 ? (!allConfirmed ? 'locked' : allUploaded ? 'done' : 'current')
             : (!allConfirmed || !allUploaded ? 'locked' : 'avail');
           const STEPS = [
-            { n: 1, label: '計算', name: '計算実行', desc: 'レッスン実績から下書き作成' },
+            { n: 1, label: '自動計算', name: '自動計算(毎朝)', desc: '毎朝4時にカレンダー実績から自動作成。手動の再計算も可' },
             { n: 2, label: '確認', name: '中身確認', desc: '各講師の金額・明細をチェック' },
             { n: 3, label: '確定', name: '全員確定', desc: '金額を凍結（変更不可に）' },
             { n: 4, label: '配布', name: '明細配布', desc: '明細PDFを各講師Driveへ（講師が確認）' },
@@ -521,10 +521,10 @@ ${m}月分の稼働費明細を各イントラの共有フォルダにアップ�
           let heroNo = '', heroTitle = '', heroDesc = '', heroNote = '';
           let primary: { label: string; onClick: () => void; icon: ReactNode } | null = null;
           if (phase === 'calc') {
-            heroNo = 'STEP 1 / 5'; heroTitle = '給与を計算する';
+            heroNo = 'STEP 1 / 5'; heroTitle = '給与を計算する（通常は毎朝自動で済んでいます）';
             heroDesc = `${ym} のレッスン実績から、講師全員の給与下書きを作成します。`;
             heroNote = 'まだお金は動きません（下書きのみ）';
-            primary = { label: '計算実行', onClick: calculate, icon: <RefreshCw /> };
+            primary = { label: '今すぐ再計算', onClick: calculate, icon: <RefreshCw /> };
           } else if (phase === 'confirm') {
             heroNo = 'STEP 3 / 5'; heroTitle = '全員分を確定する';
             heroDesc = '金額を確認したら凍結します。確定後は変更できません。';

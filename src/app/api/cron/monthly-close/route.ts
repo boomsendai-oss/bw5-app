@@ -53,6 +53,14 @@ export async function GET(req: NextRequest) {
     try { studio = await recalcStudioBilling(prevYm); } catch (e) { errors.push(`${prevYm} のスタジオ料集計に失敗: ${e instanceof Error ? e.message : e}`); }
   }
 
+  // 当月のdraftも毎日作り直す(2026-08-30 TARO確認で「毎日自動」に格上げ)。
+  // 実績の同期だけ毎日でdraft再計算が月初だけだと、月中のPL暫定値と
+  // /staff/payroll の表示が実績とズレたまま古くなる。
+  // persistPayrollRun/persistStudioBillingRun は draft しか触らないので、
+  // 確定済み・支払済みの金額がこのcronで変わることは構造的にない。
+  try { await recalcPayroll(thisYm); } catch (e) { errors.push(`${thisYm} の給与計算に失敗: ${e instanceof Error ? e.message : e}`); }
+  try { await recalcStudioBilling(thisYm); } catch (e) { errors.push(`${thisYm} のスタジオ料集計に失敗: ${e instanceof Error ? e.message : e}`); }
+
   const status = await getCloseStatus(prevYm);
   // 同じ部屋・同じ時間の重複(物理的に不可能=部屋の記録がどこか間違っている)
   const conflicts = [
