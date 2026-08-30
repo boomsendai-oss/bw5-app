@@ -72,6 +72,12 @@ export interface ValidatedOrder {
 
 const MAX_QTY = 20;
 
+// メール形式の判定。入力欄の即時チェック(クライアント)と送信時の検証(サーバ)で共有する。
+export function isValidEmail(v: string): boolean {
+  const email = (v ?? '').trim().toLowerCase();
+  return email.length > 0 && email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 // 検証OKなら ValidatedOrder、NGなら日本語エラー文字列を返す。
 export function validateOrderInput(input: OrderInput): ValidatedOrder | string {
   const name = (input?.name ?? '').trim();
@@ -88,9 +94,7 @@ export function validateOrderInput(input: OrderInput): ValidatedOrder | string {
   // 連絡先。注文確定・支払い完了の通知に使う(必須)。
   const email = (input?.email ?? '').trim().toLowerCase();
   if (!email) return 'メールアドレスを入力してください';
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return 'メールアドレスの形式が正しくありません';
-  }
+  if (!isValidEmail(email)) return 'メールアドレスの形式が正しくありません';
 
   // 支払い方法。未指定は現金(従来どおり)。
   const paymentMethod = input?.paymentMethod ?? 'cash';

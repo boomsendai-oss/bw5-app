@@ -264,3 +264,15 @@ describe('メールアドレス', () => {
     }
   });
 });
+
+import { isValidEmail } from '../tshirtOrder';
+
+describe('isValidEmail(入力欄の即時判定用)', () => {
+  it('サーバ検証と同じ判定を返す', () => {
+    expect(isValidEmail('taro@example.com')).toBe(true);
+    expect(isValidEmail(' Taro@Example.com ')).toBe(true);
+    for (const bad of ['タ', 'aaa', 'a@b', 'a b@c.com', '@c.com', '']) {
+      expect(isValidEmail(bad)).toBe(false);
+    }
+  });
+});

@@ -14,7 +14,7 @@ import {
   type OrderReceipt,
   type PublicOrderView,
 } from './actions';
-import { TSHIRT_SIZES, type TshirtSize } from '@/lib/tshirtOrder';
+import { TSHIRT_SIZES, isValidEmail, type TshirtSize } from '@/lib/tshirtOrder';
 import PantherHero from './PantherHero';
 
 const TOKEN_KEY = 'boom_tshirt_order_token';
@@ -39,6 +39,9 @@ export default function TshirtOrderPage() {
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  // 入力欄を離れたら即時判定を始める(打っている途中からは怒らない)
+  const [emailTouched, setEmailTouched] = useState(false);
+  const emailInvalid = emailTouched && email.trim() !== '' && !isValidEmail(email);
   const [size, setSize] = useState<TshirtSize | ''>('');
   const [qty, setQty] = useState(1);
   const [wantsShipping, setWantsShipping] = useState(false);
@@ -384,14 +387,26 @@ export default function TshirtOrderPage() {
               <input
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => setEmailTouched(true)}
                 placeholder="you@example.com"
                 inputMode="email"
                 autoComplete="email"
-                className="w-full bg-transparent border-b border-white/20 py-3 text-[15px] outline-none focus:border-white/60 transition placeholder:text-white/20"
+                aria-invalid={emailInvalid}
+                className={`w-full bg-transparent border-b py-3 text-[15px] outline-none transition placeholder:text-white/20 ${
+                  emailInvalid
+                    ? 'border-red-400/70 focus:border-red-400'
+                    : 'border-white/20 focus:border-white/60'
+                }`}
               />
-              <p className="mt-2 text-[11px] text-white/30">
-                ご注文の確認と、お支払い完了のお知らせをお送りします。
-              </p>
+              {emailInvalid ? (
+                <p className="mt-2 text-[11px] text-red-300/90">
+                  メールアドレスの形式が正しくありません（例: you@example.com）
+                </p>
+              ) : (
+                <p className="mt-2 text-[11px] text-white/30">
+                  ご注文の確認と、お支払い完了のお知らせをお送りします。
+                </p>
+              )}
             </Field>
 
             <Field label="サイズ">
