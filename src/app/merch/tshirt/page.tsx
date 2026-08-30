@@ -237,7 +237,7 @@ export default function TshirtOrderPage() {
             )}
           </div>
 
-          {!receipt.paid && (
+          {!receipt.paid ? (
             <>
               <button
                 onClick={() => {
@@ -250,6 +250,32 @@ export default function TshirtOrderPage() {
               </button>
               <p className="mt-4 text-[11px] text-white/30 leading-relaxed">
                 このページをブックマークしておくと、締切までは内容を変更できます。
+              </p>
+            </>
+          ) : (
+            <>
+              {/* 支払い済みの注文は変更不可(金額確定)。追加で欲しい人は別注文として受ける。
+                  端末の鍵を新しい注文に付け替えるが、済んだ注文はメールのリンクから見られる */}
+              <button
+                onClick={() => {
+                  // 名前とメールは同じ人なので残す。サイズ・枚数・支払いは選び直し
+                  localStorage.removeItem(TOKEN_KEY);
+                  setToken(null);
+                  setReceipt(null);
+                  setEditing(false);
+                  setSize('');
+                  setQty(1);
+                  setWantsShipping(false);
+                  setAddress('');
+                  setPhone('');
+                  setPaymentMethod('cash');
+                }}
+                className="mt-12 w-full border border-white/20 py-4 text-xs tracking-[0.25em] text-white/70 hover:bg-white/5 transition"
+              >
+                追加でもう一枚注文する
+              </button>
+              <p className="mt-4 text-[11px] text-white/30 leading-relaxed">
+                お支払い済みのご注文はこのまま確定です。追加分は新しいご注文として受け付けます。
               </p>
             </>
           )}
