@@ -22,6 +22,7 @@ export interface StoredOrder {
   wantsShipping: boolean;
   address: string;
   phone: string;
+  email: string;
   unitPrice: number;
   shippingFee: number;
   totalAmount: number;
@@ -45,6 +46,7 @@ function toOrder(r: any): StoredOrder {
     wantsShipping: Number(r.wants_shipping) === 1,
     address: String(r.shipping_address ?? ''),
     phone: String(r.shipping_phone ?? ''),
+    email: String(r.email ?? ''),
     unitPrice: Number(r.unit_price),
     shippingFee: Number(r.shipping_fee),
     totalAmount: Number(r.total_amount),
@@ -114,12 +116,12 @@ export async function createOrder(data: ValidatedOrder): Promise<string> {
   const now = new Date().toISOString();
   await execute(
     `INSERT INTO tshirt_orders
-       (edit_token, customer_name, size, qty, wants_shipping, shipping_address, shipping_phone,
+       (edit_token, customer_name, size, qty, wants_shipping, shipping_address, shipping_phone, email,
         unit_price, shipping_fee, total_amount, payment_method, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       token, data.name, data.size, data.qty, data.wantsShipping ? 1 : 0,
-      data.address, data.phone,
+      data.address, data.phone, data.email ?? '',
       s.unitPrice, data.wantsShipping ? s.shippingFee : 0,
       calcOrderTotal(data.qty, data.wantsShipping, s),
       data.paymentMethod ?? 'cash',
@@ -147,12 +149,12 @@ export async function updateOrderByToken(token: string, data: ValidatedOrder): P
   await execute(
     `UPDATE tshirt_orders
         SET customer_name = ?, size = ?, qty = ?, wants_shipping = ?,
-            shipping_address = ?, shipping_phone = ?,
+            shipping_address = ?, shipping_phone = ?, email = ?,
             unit_price = ?, shipping_fee = ?, total_amount = ?, payment_method = ?, updated_at = ?
       WHERE edit_token = ?`,
     [
       data.name, data.size, data.qty, data.wantsShipping ? 1 : 0,
-      data.address, data.phone,
+      data.address, data.phone, data.email ?? '',
       s.unitPrice, data.wantsShipping ? s.shippingFee : 0,
       calcOrderTotal(data.qty, data.wantsShipping, s),
       data.paymentMethod ?? 'cash',
@@ -202,14 +204,14 @@ export interface TshirtPaidWebhookInput {
 }
 
 export type TshirtWebhookResult =
-  | { status: 'paid'; amountMismatch: boolean }
+  | { status: 'paid'; amountMismatch: boolean; order: StoredOrder; editToken: string }
   | { status: 'already_paid' }
   | { status: 'order_not_found' };
 
 // checkout.session.completed の適用。二度来ても安全(冪等)。
 // 金額ズレは黙って通さず amount_mismatch に印を付けてスタッフ画面で追えるようにする。
 export async function applyTshirtPaidWebhook(ev: TshirtPaidWebhookInput): Promise<TshirtWebhookResult> {
-  const row = await getOne('SELECT id, paid, total_amount FROM tshirt_orders WHERE id = ?', [ev.orderId]);
+  const row = await getOne('SELECT * FROM tshirt_orders WHERE id = ?', [ev.orderId]);
   if (!row) return { status: 'order_not_found' };
   if (Number(row.paid) === 1) return { status: 'already_paid' };
   const mismatch = ev.amountTotal != null && ev.amountTotal !== Number(row.total_amount);
@@ -220,5 +222,10 @@ export async function applyTshirtPaidWebhook(ev: TshirtPaidWebhookInput): Promis
       WHERE id = ?`,
     [ev.sessionId, ev.paymentIntentId, mismatch ? 1 : 0, new Date().toISOString(), ev.orderId]
   );
-  return { status: 'paid', amountMismatch: mismatch };
+  return {
+    status: 'paid',
+    amountMismatch: mismatch,
+    order: { ...toOrder(row), paid: true, paymentMethod: 'stripe' },
+    editToken: String(row.edit_token),
+  };
 }

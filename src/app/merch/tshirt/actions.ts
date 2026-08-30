@@ -26,6 +26,7 @@ import {
   updateOrderByToken,
 } from '@/lib/tshirtOrderDb';
 import { buildTshirtCheckoutParams, buildTshirtLineItems } from '@/lib/tshirtStripe';
+import { sendTshirtOrderEmail } from '@/lib/tshirtEmail';
 import { createBf6CheckoutSession } from '@/lib/bf6Stripe';
 
 async function clientIp(): Promise<string> {
@@ -74,6 +75,9 @@ export async function submitOrder(payload: OrderInput): Promise<SubmitOrderResul
   if (typeof validated === 'string') return { ok: false, error: validated };
 
   const token = await createOrder(validated);
+  // 受付メール(失敗しても注文は成立)。カード選択時は決済リンク付き
+  const created = await loadOrderByToken(token);
+  if (created) await sendTshirtOrderEmail(created, token, 'ordered');
   const receipt: OrderReceipt = {
     name: validated.name,
     size: validated.size,
@@ -121,6 +125,7 @@ async function startCheckoutForToken(token: string): Promise<TshirtCheckoutResul
       orderId: o.id,
       expiresAtEpochSec: Math.floor(Date.now() / 1000) + 30 * 60,
     });
+    if (o.email) params.set('customer_email', o.email);
     const session = await createBf6CheckoutSession(params);
     await attachStripeSession(o.id, session.id);
     return { ok: true, url: session.url };
@@ -130,7 +135,7 @@ async function startCheckoutForToken(token: string): Promise<TshirtCheckoutResul
 }
 
 export type LoadOwnOrderResult =
-  | { ok: true; order: OrderInput & { totalAmount: number; paid: boolean; paymentMethod: 'cash' | 'stripe' } }
+  | { ok: true; order: OrderInput & { totalAmount: number; paid: boolean; paymentMethod: 'cash' | 'stripe'; email: string } }
   | { ok: false; error: string };
 
 // トークン一致の自分の1件だけ返す。
@@ -150,6 +155,7 @@ export async function loadOwnOrder(token: string): Promise<LoadOwnOrderResult> {
       totalAmount: o.totalAmount,
       paid: o.paid,
       paymentMethod: o.paymentMethod,
+      email: o.email,
     },
   };
 }
@@ -170,6 +176,8 @@ export async function updateOwnOrder(token: string, payload: OrderInput): Promis
 
   const ok = await updateOrderByToken(token, validated);
   if (!ok) return { ok: false, error: 'お支払い済みのご注文は変更できません。変更が必要な場合はスタッフにお声がけください' };
+  const updated = await loadOrderByToken(token);
+  if (updated) await sendTshirtOrderEmail(updated, token, 'ordered');
   const receipt: OrderReceipt = {
     name: validated.name,
     size: validated.size,

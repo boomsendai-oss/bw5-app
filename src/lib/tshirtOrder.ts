@@ -56,6 +56,7 @@ export interface OrderInput {
   address?: string;
   phone?: string;
   paymentMethod?: string;
+  email?: string;
 }
 
 export interface ValidatedOrder {
@@ -66,6 +67,7 @@ export interface ValidatedOrder {
   address: string;
   phone: string;
   paymentMethod: PaymentMethod;
+  email: string;
 }
 
 const MAX_QTY = 20;
@@ -83,6 +85,13 @@ export function validateOrderInput(input: OrderInput): ValidatedOrder | string {
   if (!Number.isInteger(qty) || qty < 1) return '枚数は1枚以上で入力してください';
   if (qty > MAX_QTY) return `一度に注文できるのは${MAX_QTY}枚までです`;
 
+  // 連絡先。注文確定・支払い完了の通知に使う(必須)。
+  const email = (input?.email ?? '').trim().toLowerCase();
+  if (!email) return 'メールアドレスを入力してください';
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return 'メールアドレスの形式が正しくありません';
+  }
+
   // 支払い方法。未指定は現金(従来どおり)。
   const paymentMethod = input?.paymentMethod ?? 'cash';
   if (!isPaymentMethod(paymentMethod)) return 'お支払い方法を選んでください';
@@ -90,7 +99,7 @@ export function validateOrderInput(input: OrderInput): ValidatedOrder | string {
   const wantsShipping = input?.wantsShipping === true;
   // 郵送を希望しない注文では住所・電話を一切保持しない(PII最小化)。
   if (!wantsShipping) {
-    return { name, size, qty, wantsShipping: false, address: '', phone: '', paymentMethod };
+    return { name, size, qty, wantsShipping: false, address: '', phone: '', paymentMethod, email };
   }
 
   // 郵送は手渡しの機会がなく現金を集金できないため、事前決済(カード)のみ受け付ける
@@ -107,7 +116,7 @@ export function validateOrderInput(input: OrderInput): ValidatedOrder | string {
   const digits = phone.replace(/[-‐－ 　]/g, '');
   if (!/^\d{10,11}$/.test(digits)) return 'お電話番号の形式が正しくありません';
 
-  return { name, size, qty, wantsShipping: true, address, phone, paymentMethod };
+  return { name, size, qty, wantsShipping: true, address, phone, paymentMethod, email };
 }
 
 // 合計金額。送料は1注文につき1回だけ加算する(枚数分ではない)。

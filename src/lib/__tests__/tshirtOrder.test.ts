@@ -21,7 +21,7 @@ describe('isTshirtSize', () => {
 });
 
 describe('validateOrderInput', () => {
-  const base = { name: ' 木村 ', size: 'L', qty: 2, wantsShipping: false };
+  const base = { name: ' 木村 ', size: 'L', qty: 2, wantsShipping: false, email: 't@example.com' };
 
   it('正常系: 名前をtrimして返す', () => {
     const r = validateOrderInput(base);
@@ -172,7 +172,7 @@ describe('generateOrderToken', () => {
 });
 
 describe('paymentMethod', () => {
-  const base = { name: '木村', size: 'L', qty: 1, wantsShipping: false };
+  const base = { name: '木村', size: 'L', qty: 1, wantsShipping: false, email: 't@example.com' };
 
   it('未指定なら cash', () => {
     const r = validateOrderInput(base);
@@ -193,7 +193,7 @@ describe('paymentMethod', () => {
 });
 
 describe('郵送は事前決済のみ', () => {
-  const ship = { name: '木村', size: 'L', qty: 1, wantsShipping: true, address: '仙台市青葉区1-1', phone: '090-1234-5678' };
+  const ship = { name: '木村', size: 'L', qty: 1, wantsShipping: true, address: '仙台市青葉区1-1', phone: '090-1234-5678', email: 't@example.com' };
 
   it('郵送+現金はエラー(手渡しの機会がなく集金できないため)', () => {
     expect(validateOrderInput({ ...ship, paymentMethod: 'cash' }))
@@ -241,5 +241,26 @@ describe('サイズチャート', () => {
     const rows: SizeChartRow[] = defaultSizeChart();
     const dirty = JSON.stringify([...rows, { size: 'S', length: 'x', width: 1, shoulder: 1, sleeve: 1 }]);
     expect(parseSizeChart(dirty)).toEqual(rows);
+  });
+});
+
+describe('メールアドレス', () => {
+  const base = { name: '木村', size: 'L', qty: 1, wantsShipping: false, email: 'taro@example.com' };
+
+  it('正常系: trim+小文字化して通る', () => {
+    const r = validateOrderInput({ ...base, email: ' Taro@Example.com ' });
+    if (typeof r === 'string') throw new Error(r);
+    expect(r.email).toBe('taro@example.com');
+  });
+
+  it('未入力はエラー', () => {
+    expect(validateOrderInput({ ...base, email: '' })).toBe('メールアドレスを入力してください');
+    expect(validateOrderInput({ ...base, email: undefined })).toBe('メールアドレスを入力してください');
+  });
+
+  it('形式不正はエラー', () => {
+    for (const bad of ['aaa', 'a@b', 'a b@c.com', '@c.com']) {
+      expect(validateOrderInput({ ...base, email: bad })).toBe('メールアドレスの形式が正しくありません');
+    }
   });
 });

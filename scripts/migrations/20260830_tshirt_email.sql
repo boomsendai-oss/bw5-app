@@ -1,0 +1,1 @@
+ALTER TABLE tshirt_orders ADD COLUMN email TEXT NOT NULL DEFAULT ''

@@ -1216,6 +1216,7 @@ export function getSchemaStatements(): InStatement[] {
       wants_shipping INTEGER NOT NULL DEFAULT 0,
       shipping_address TEXT NOT NULL DEFAULT '',
       shipping_phone TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
       unit_price INTEGER NOT NULL DEFAULT 0,
       shipping_fee INTEGER NOT NULL DEFAULT 0,
       total_amount INTEGER NOT NULL DEFAULT 0,

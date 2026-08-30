@@ -38,6 +38,7 @@ export default function TshirtOrderPage() {
   const [showBar, setShowBar] = useState(false);
 
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [size, setSize] = useState<TshirtSize | ''>('');
   const [qty, setQty] = useState(1);
   const [wantsShipping, setWantsShipping] = useState(false);
@@ -65,6 +66,7 @@ export default function TshirtOrderPage() {
         if (own.ok) {
           setToken(t);
           setName(own.order.name);
+          setEmail(own.order.email ?? '');
           setSize(own.order.size as TshirtSize);
           setQty(own.order.qty);
           setWantsShipping(own.order.wantsShipping);
@@ -128,7 +130,7 @@ export default function TshirtOrderPage() {
   const onSubmit = useCallback(async () => {
     setError('');
     setSubmitting(true);
-    const payload = { name, size, qty, wantsShipping, address, phone, paymentMethod };
+    const payload = { name, size, qty, wantsShipping, address, phone, paymentMethod, email };
     // 新規と更新で戻り値の型が違う(新規だけ token を返す)ので、分岐してから受け取る
     if (token && editing) {
       const res = await updateOwnOrder(token, payload);
@@ -158,7 +160,7 @@ export default function TshirtOrderPage() {
       setReceipt(res.receipt);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [name, size, qty, wantsShipping, address, phone, paymentMethod, token, editing]);
+  }, [name, email, size, qty, wantsShipping, address, phone, paymentMethod, token, editing]);
 
   if (loading) {
     return (
@@ -175,6 +177,9 @@ export default function TshirtOrderPage() {
         <div className="mx-auto max-w-lg">
           <p className="text-[11px] tracking-[0.4em] text-white/40 uppercase">Thank you</p>
           <h1 className="mt-5 text-2xl font-light tracking-wide">ご注文を承りました</h1>
+          <p className="mt-3 text-[12px] text-white/40 leading-relaxed">
+            確認メールをお送りしました。届かない場合は迷惑メールフォルダをご確認ください。
+          </p>
 
           <div className="mt-10 border-y border-white/10 divide-y divide-white/10">
             <Row k="お名前" v={receipt.name} />
@@ -373,6 +378,20 @@ export default function TshirtOrderPage() {
                 autoComplete="name"
                 className="w-full bg-transparent border-b border-white/20 py-3 text-[15px] outline-none focus:border-white/60 transition placeholder:text-white/20"
               />
+            </Field>
+
+            <Field label="メールアドレス">
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                inputMode="email"
+                autoComplete="email"
+                className="w-full bg-transparent border-b border-white/20 py-3 text-[15px] outline-none focus:border-white/60 transition placeholder:text-white/20"
+              />
+              <p className="mt-2 text-[11px] text-white/30">
+                ご注文の確認と、お支払い完了のお知らせをお送りします。
+              </p>
             </Field>
 
             <Field label="サイズ">

@@ -6,6 +6,7 @@ import { parseBf6WebhookEvent, verifyStripeSignature } from '@/lib/bf6Stripe';
 import { parseKioskWebhookEvent } from '@/lib/kioskStripe';
 import { parseTshirtWebhookEvent } from '@/lib/tshirtStripe';
 import { applyTshirtPaidWebhook } from '@/lib/tshirtOrderDb';
+import { sendTshirtOrderEmail } from '@/lib/tshirtEmail';
 import { applyBf6WebhookEvent } from '@/lib/bf6Db';
 import { sendBf6OrderEmail } from '@/lib/bf6Email';
 import { handleBf6StreamPurchase } from '@/lib/bf6StreamDb';
@@ -40,6 +41,9 @@ export async function POST(req: NextRequest) {
     }
     try {
       const r = await applyTshirtPaidWebhook(tshirtEv);
+      if (r.status === 'paid') {
+        await sendTshirtOrderEmail(r.order, r.editToken, 'paid');
+      }
       if (r.status === 'paid' && r.amountMismatch) {
         console.error('[tshirt] amount mismatch on order', tshirtEv.orderId, 'stripe:', tshirtEv.amountTotal);
       }
