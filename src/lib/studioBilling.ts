@@ -113,9 +113,11 @@ export function dedupeVenueSlots<
 }
 
 function calcPaymentDate(yearMonth: string, paymentType: string): string {
-  // prepaid: 当月分を前月末日 / postpaid: 当月分を翌月15日
+  // prepaid_*: 当月分を前月末日まで(振込/デビット/現金封筒の別は notes 参照。
+  //            実運用は前月15日のhacomono大口入金後にまとめて支払う=TARO確認 2026-08-30)
+  // postpaid/cash: 従来どおり翌月15日(cashの都度払いは日付管理の対象外)
   const [y, m] = yearMonth.split('-').map(Number);
-  if (paymentType === 'prepaid_bank') {
+  if (paymentType.startsWith('prepaid')) {
     const d = new Date(y, m - 1, 0); // 前月末
     while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
     return formatDate(d);
