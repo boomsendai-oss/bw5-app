@@ -2,25 +2,36 @@
 
 // エントリーリストの部門タブ切り替え(TARO 2026-08-05: 縦積みだと埋まってきた時に見づらい)。
 import { useState } from 'react';
+import Link from 'next/link';
 import { BF6_DIVISIONS, type Bf6Division } from '@/lib/bf6';
+import { entryListCta } from '@/lib/bf6Waitlist';
 import type { PublicBf6Entry } from '@/lib/bf6Db';
 
 export default function EntryListTabs({
   lists,
   capacity,
+  waiting,
 }: {
   lists: Record<Bf6Division, PublicBf6Entry[]>;
   capacity: Record<Bf6Division, number>;
+  waiting: Record<Bf6Division, number>;
 }) {
   const [active, setActive] = useState<Bf6Division>('beginner');
   const activeDef = BF6_DIVISIONS.find((d) => d.key === active)!;
   const list = lists[active] ?? [];
+  const cta = entryListCta({
+    division: active,
+    count: list.length,
+    capacity: capacity[active],
+    waiting: waiting[active] ?? 0,
+  });
 
   return (
     <div>
       <div className="grid grid-cols-3 gap-1.5">
         {BF6_DIVISIONS.map((d) => {
           const isActive = d.key === active;
+          const full = capacity[d.key] > 0 && (lists[d.key] ?? []).length >= capacity[d.key];
           return (
             <button
               key={d.key}
@@ -36,6 +47,11 @@ export default function EntryListTabs({
                   /{capacity[d.key]}
                 </span>
               </span>
+              {full && (
+                <span className={`mt-0.5 block text-[10px] font-black ${isActive ? 'text-white/90' : 'text-red-400'}`}>
+                  満枠
+                </span>
+              )}
             </button>
           );
         })}
@@ -66,6 +82,35 @@ export default function EntryListTabs({
           </ol>
         )}
       </div>
+
+      {cta.kind === 'waitlist' && (
+        <div className="mt-4 rounded-2xl border border-orange-500/50 bg-orange-500/10 p-4">
+          <p className="text-sm font-black text-orange-300">
+            {activeDef.label}は満枠になりました
+          </p>
+          <p className="mt-1 text-xs text-neutral-300">
+            キャンセルが出た場合に、先着順でご案内します。
+            <span className="font-bold text-white">登録は無料で、参加が決まるまで代金はいただきません。</span>
+          </p>
+          <Link
+            href={cta.href!}
+            className="mt-3 block w-full rounded-xl bg-gradient-to-b from-orange-400 via-orange-500 to-orange-700 py-3 text-center text-base font-black text-white ring-1 ring-orange-900"
+          >
+            キャンセル待ちに登録する
+          </Link>
+        </div>
+      )}
+
+      {cta.kind === 'waitlist_full' && (
+        <div className="mt-4 rounded-2xl border border-neutral-700 bg-neutral-900 p-4">
+          <p className="text-sm font-black text-neutral-200">
+            {activeDef.label}は満枠・キャンセル待ちも受付を終了しました
+          </p>
+          <p className="mt-1 text-xs text-neutral-400">
+            他の部門はまだ受付中です。上のタブからご確認ください。
+          </p>
+        </div>
+      )}
     </div>
   );
 }

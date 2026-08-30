@@ -4,6 +4,7 @@
 import Link from 'next/link';
 import { type Bf6Division } from '@/lib/bf6';
 import { getBf6Settings, getPublicBf6Entries, type PublicBf6Entry } from '@/lib/bf6Db';
+import { countWaiting } from '@/lib/bf6WaitlistDb';
 import { Bf6Hero, Bf6Shell } from '../ui';
 import EntryListTabs from './EntryListTabs';
 
@@ -15,7 +16,18 @@ export const metadata = {
 };
 
 export default async function Bf6EntriesPage() {
-  const [settings, entries] = await Promise.all([getBf6Settings(), getPublicBf6Entries()]);
+  const [settings, entries, wBeginner, wKids, wGeneral] = await Promise.all([
+    getBf6Settings(),
+    getPublicBf6Entries(),
+    countWaiting('beginner'),
+    countWaiting('kids'),
+    countWaiting('general'),
+  ]);
+  const waiting: Record<Bf6Division, number> = {
+    beginner: wBeginner,
+    kids: wKids,
+    general: wGeneral,
+  };
 
   const lists: Record<Bf6Division, PublicBf6Entry[]> = { beginner: [], kids: [], general: [] };
   for (const e of entries) {
@@ -27,7 +39,7 @@ export default async function Bf6EntriesPage() {
       <div>
         <Bf6Hero title="ENTRY LIST" subtitle="2026.9.26 SAT — SSM 9階ホール / リアルタイム更新" />
         <div className="px-4 py-6">
-          <EntryListTabs lists={lists} capacity={settings.capacity} />
+          <EntryListTabs lists={lists} capacity={settings.capacity} waiting={waiting} />
 
           <Link
             href="/bf6/entry"

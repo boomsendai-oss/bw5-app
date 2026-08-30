@@ -74,3 +74,36 @@ export function formatOfferDeadline(iso: string): string {
   const w = ['日', '月', '火', '水', '木', '金', '土'][d.getUTCDay()];
   return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日(${w}) ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
+
+/**
+ * 公開エントリーリストに出すCTAの出し分け。
+ *
+ * リストはInstagramの固定リンク先で流入が多いのに、満枠でも「エントリーする」しか
+ * 出しておらず、押した先で初めて満枠を知る導線だった(TARO 2026-08-30)。
+ * 判定は canJoinWaitlist と同じものを使い、フォーム側と食い違わないようにする。
+ */
+export type EntryListCta = {
+  kind: 'entry' | 'waitlist' | 'waitlist_full';
+  href: string | null;
+  isFull: boolean;
+};
+
+export function entryListCta({
+  division,
+  count,
+  capacity,
+  waiting,
+}: {
+  division: string;
+  count: number;
+  capacity: number;
+  waiting: number;
+}): EntryListCta {
+  // 定員未設定(0)は満枠と区別がつかないので通常導線のままにする
+  if (capacity <= 0) return { kind: 'entry', href: '/bf6/entry', isFull: false };
+  const remaining = capacity - count;
+  const gate = canJoinWaitlist({ remaining, waiting });
+  if (gate === 'not_full') return { kind: 'entry', href: '/bf6/entry', isFull: false };
+  if (gate === 'waitlist_full') return { kind: 'waitlist_full', href: null, isFull: true };
+  return { kind: 'waitlist', href: `/bf6/waitlist?d=${division}`, isFull: true };
+}
