@@ -52,3 +52,4 @@ backup/
 scripts/fixed_qr/discover_out/
 .env.vercel-prod-snapshot
 scripts/_tmp_*
+*.tmp.mjs
