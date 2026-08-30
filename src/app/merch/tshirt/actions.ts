@@ -19,11 +19,14 @@ import {
   type TshirtSettings,
 } from '@/lib/tshirtOrder';
 import {
+  attachStripeSession,
   createOrder,
   loadOrderByToken,
   resolveTshirtSettings,
   updateOrderByToken,
 } from '@/lib/tshirtOrderDb';
+import { buildTshirtCheckoutParams, buildTshirtLineItems } from '@/lib/tshirtStripe';
+import { createBf6CheckoutSession } from '@/lib/bf6Stripe';
 
 async function clientIp(): Promise<string> {
   const h = await headers();
@@ -50,10 +53,12 @@ export interface OrderReceipt {
   qty: number;
   wantsShipping: boolean;
   totalAmount: number;
+  paymentMethod: 'cash' | 'stripe';
+  paid: boolean;
 }
 
 export type SubmitOrderResult =
-  | { ok: true; token: string; receipt: OrderReceipt }
+  | { ok: true; token: string; receipt: OrderReceipt; checkoutUrl?: string }
   | { ok: false; error: string };
 
 export async function submitOrder(payload: OrderInput): Promise<SubmitOrderResult> {
@@ -69,21 +74,63 @@ export async function submitOrder(payload: OrderInput): Promise<SubmitOrderResul
   if (typeof validated === 'string') return { ok: false, error: validated };
 
   const token = await createOrder(validated);
-  return {
-    ok: true,
-    token,
-    receipt: {
-      name: validated.name,
-      size: validated.size,
-      qty: validated.qty,
-      wantsShipping: validated.wantsShipping,
-      totalAmount: calcOrderTotal(validated.qty, validated.wantsShipping, settings),
-    },
+  const receipt: OrderReceipt = {
+    name: validated.name,
+    size: validated.size,
+    qty: validated.qty,
+    wantsShipping: validated.wantsShipping,
+    totalAmount: calcOrderTotal(validated.qty, validated.wantsShipping, settings),
+    paymentMethod: validated.paymentMethod,
+    paid: false,
   };
+  // カード決済: 注文を保存した上でStripe Checkoutへ誘導する。
+  // 決済確定はWebhookが正本(このURLに行かず離脱しても、注文は未払いのまま残り現金でも払える)。
+  if (validated.paymentMethod === 'stripe') {
+    const url = await startCheckoutForToken(token);
+    if (url.ok) return { ok: true, token, receipt, checkoutUrl: url.url };
+    // セッション作成に失敗しても注文自体は受かっている。現金扱いで案内する
+    return { ok: true, token, receipt: { ...receipt, paymentMethod: 'cash' } };
+  }
+  return { ok: true, token, receipt };
+}
+
+export type TshirtCheckoutResult = { ok: true; url: string } | { ok: false; error: string };
+
+// トークンの持ち主だけが自分の注文の決済を開始できる。金額はDB保存値から組む。
+export async function startTshirtCheckout(token: string): Promise<TshirtCheckoutResult> {
+  const ip = await clientIp();
+  if (!(await checkRateLimit(`tshirtpay:${ip}`, 30, 3600))) {
+    return { ok: false, error: '操作が多すぎます。しばらくしてからお試しください' };
+  }
+  return startCheckoutForToken(token);
+}
+
+async function startCheckoutForToken(token: string): Promise<TshirtCheckoutResult> {
+  const o = await loadOrderByToken(token);
+  if (!o) return { ok: false, error: 'ご注文が見つかりません' };
+  if (o.paid) return { ok: false, error: 'このご注文はお支払い済みです' };
+  const h = await headers();
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'bw5-app.vercel.app';
+  const proto = h.get('x-forwarded-proto') ?? 'https';
+  const backUrl = `${proto}://${host}/merch/tshirt?t=${token}`;
+  try {
+    const params = buildTshirtCheckoutParams({
+      lineItems: buildTshirtLineItems(o),
+      successUrl: backUrl,
+      cancelUrl: backUrl,
+      orderId: o.id,
+      expiresAtEpochSec: Math.floor(Date.now() / 1000) + 30 * 60,
+    });
+    const session = await createBf6CheckoutSession(params);
+    await attachStripeSession(o.id, session.id);
+    return { ok: true, url: session.url };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : '決済ページの作成に失敗しました' };
+  }
 }
 
 export type LoadOwnOrderResult =
-  | { ok: true; order: OrderInput & { totalAmount: number } }
+  | { ok: true; order: OrderInput & { totalAmount: number; paid: boolean; paymentMethod: 'cash' | 'stripe' } }
   | { ok: false; error: string };
 
 // トークン一致の自分の1件だけ返す。
@@ -101,11 +148,13 @@ export async function loadOwnOrder(token: string): Promise<LoadOwnOrderResult> {
       address: o.address,
       phone: o.phone,
       totalAmount: o.totalAmount,
+      paid: o.paid,
+      paymentMethod: o.paymentMethod,
     },
   };
 }
 
-export type UpdateOrderResult = { ok: true; receipt: OrderReceipt } | { ok: false; error: string };
+export type UpdateOrderResult = { ok: true; receipt: OrderReceipt; checkoutUrl?: string } | { ok: false; error: string };
 
 export async function updateOwnOrder(token: string, payload: OrderInput): Promise<UpdateOrderResult> {
   const ip = await clientIp();
@@ -120,15 +169,19 @@ export async function updateOwnOrder(token: string, payload: OrderInput): Promis
   if (typeof validated === 'string') return { ok: false, error: validated };
 
   const ok = await updateOrderByToken(token, validated);
-  if (!ok) return { ok: false, error: 'ご注文が見つかりません' };
-  return {
-    ok: true,
-    receipt: {
-      name: validated.name,
-      size: validated.size,
-      qty: validated.qty,
-      wantsShipping: validated.wantsShipping,
-      totalAmount: calcOrderTotal(validated.qty, validated.wantsShipping, settings),
-    },
+  if (!ok) return { ok: false, error: 'お支払い済みのご注文は変更できません。変更が必要な場合はスタッフにお声がけください' };
+  const receipt: OrderReceipt = {
+    name: validated.name,
+    size: validated.size,
+    qty: validated.qty,
+    wantsShipping: validated.wantsShipping,
+    totalAmount: calcOrderTotal(validated.qty, validated.wantsShipping, settings),
+    paymentMethod: validated.paymentMethod,
+    paid: false,
   };
+  if (validated.paymentMethod === 'stripe') {
+    const url = await startCheckoutForToken(token);
+    if (url.ok) return { ok: true, receipt, checkoutUrl: url.url };
+  }
+  return { ok: true, receipt };
 }

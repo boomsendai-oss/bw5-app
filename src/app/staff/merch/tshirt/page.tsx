@@ -177,6 +177,7 @@ export default function StaffTshirtPage() {
                     <th className="py-2 pr-3 font-medium">枚数</th>
                     <th className="py-2 pr-3 font-medium">受取</th>
                     <th className="py-2 pr-3 font-medium">金額</th>
+                    <th className="py-2 pr-3 font-medium">支払い</th>
                     <th className="py-2 pr-3 font-medium">お渡し</th>
                     <th className="py-2 pr-3 font-medium">入金</th>
                     <th className="py-2 pr-3 font-medium">注文日時</th>
@@ -197,6 +198,22 @@ export default function StaffTshirtPage() {
                         )}
                       </td>
                       <td className="py-2.5 pr-3 tabular-nums">{yen(o.totalAmount)}</td>
+                      <td className="py-2.5 pr-3">
+                        {o.paymentMethod === 'stripe' ? (
+                          <span className={`text-[11px] rounded-full border px-2 py-0.5 ${
+                            o.paid
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                              : 'border-amber-300 bg-amber-50 text-amber-700'
+                          }`}>
+                            {o.paid ? 'カード済' : 'カード未'}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-500">現金</span>
+                        )}
+                        {o.amountMismatch && (
+                          <span className="ml-1 text-[11px] rounded-full border border-rose-300 bg-rose-50 text-rose-700 px-2 py-0.5">金額差異</span>
+                        )}
+                      </td>
                       <td className="py-2.5 pr-3">
                         <input type="checkbox" checked={o.handedOver} className="size-4 accent-teal-600"
                           onChange={(e) => toggle(o.id, { handedOver: e.target.checked })} />

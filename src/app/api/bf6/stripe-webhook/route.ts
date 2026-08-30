@@ -4,6 +4,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseBf6WebhookEvent, verifyStripeSignature } from '@/lib/bf6Stripe';
 import { parseKioskWebhookEvent } from '@/lib/kioskStripe';
+import { parseTshirtWebhookEvent } from '@/lib/tshirtStripe';
+import { applyTshirtPaidWebhook } from '@/lib/tshirtOrderDb';
 import { applyBf6WebhookEvent } from '@/lib/bf6Db';
 import { sendBf6OrderEmail } from '@/lib/bf6Email';
 import { handleBf6StreamPurchase } from '@/lib/bf6StreamDb';
@@ -29,6 +31,29 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'invalid payload' }, { status: 400 });
   }
+  // Tシャツ物販(metadata.tshirt_order_id)のイベントは同一Stripeアカウントのためここに届く。
+  // kioskと同じ相乗り方式(専用エンドポイントの追加登録を不要にする)。
+  const tshirtEv = parseTshirtWebhookEvent(event);
+  if (tshirtEv) {
+    if (tshirtEv.type !== 'checkout.session.completed') {
+      return NextResponse.json({ received: true, result: 'tshirt_ignored' });
+    }
+    try {
+      const r = await applyTshirtPaidWebhook(tshirtEv);
+      if (r.status === 'paid' && r.amountMismatch) {
+        console.error('[tshirt] amount mismatch on order', tshirtEv.orderId, 'stripe:', tshirtEv.amountTotal);
+      }
+      if (r.status === 'order_not_found') {
+        console.error('[tshirt] webhook order not found. session:', tshirtEv.sessionId);
+      }
+      return NextResponse.json({ received: true, result: `tshirt_${r.status}` });
+    } catch (e) {
+      // 500でStripeが自動リトライ(冪等なので再適用は安全)
+      console.error('[tshirt] webhook apply failed', e instanceof Error ? e.message : e);
+      return NextResponse.json({ error: 'apply failed' }, { status: 500 });
+    }
+  }
+
   const ev = parseBf6WebhookEvent(event);
   if (!ev) return NextResponse.json({ error: 'invalid event' }, { status: 400 });
 

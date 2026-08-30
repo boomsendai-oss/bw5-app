@@ -7,6 +7,7 @@ import {
   defaultTshirtSettings,
   generateOrderToken,
   isTshirtSize,
+  type PaymentMethod,
   type TshirtSettings,
   type TshirtSize,
   type ValidatedOrder,
@@ -25,6 +26,9 @@ export interface StoredOrder {
   totalAmount: number;
   handedOver: boolean;
   paid: boolean;
+  paymentMethod: PaymentMethod;
+  stripeSessionId: string;
+  amountMismatch: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -45,6 +49,9 @@ function toOrder(r: any): StoredOrder {
     totalAmount: Number(r.total_amount),
     handedOver: Number(r.handed_over) === 1,
     paid: Number(r.paid) === 1,
+    paymentMethod: r.payment_method === 'stripe' ? 'stripe' : 'cash',
+    stripeSessionId: String(r.stripe_session_id ?? ''),
+    amountMismatch: Number(r.amount_mismatch ?? 0) === 1,
     createdAt: String(r.created_at),
     updatedAt: String(r.updated_at),
   };
@@ -105,13 +112,14 @@ export async function createOrder(data: ValidatedOrder): Promise<string> {
   await execute(
     `INSERT INTO tshirt_orders
        (edit_token, customer_name, size, qty, wants_shipping, shipping_address, shipping_phone,
-        unit_price, shipping_fee, total_amount, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        unit_price, shipping_fee, total_amount, payment_method, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       token, data.name, data.size, data.qty, data.wantsShipping ? 1 : 0,
       data.address, data.phone,
       s.unitPrice, data.wantsShipping ? s.shippingFee : 0,
       calcOrderTotal(data.qty, data.wantsShipping, s),
+      data.paymentMethod ?? 'cash',
       now, now,
     ]
   );
@@ -128,20 +136,23 @@ export async function loadOrderByToken(token: string): Promise<StoredOrder | nul
 // トークン一致の注文を差し替える。合計金額は現在の設定で再計算する。
 export async function updateOrderByToken(token: string, data: ValidatedOrder): Promise<boolean> {
   if (!token) return false;
-  const row = await getOne('SELECT id FROM tshirt_orders WHERE edit_token = ?', [token]);
+  const row = await getOne('SELECT id, paid, payment_method FROM tshirt_orders WHERE edit_token = ?', [token]);
   if (!row) return false;
+  // カード決済済みの注文は金額が確定しているため、内容変更を受け付けない
+  if (Number(row.paid) === 1 && row.payment_method === 'stripe') return false;
   const s = await resolveTshirtSettings();
   await execute(
     `UPDATE tshirt_orders
         SET customer_name = ?, size = ?, qty = ?, wants_shipping = ?,
             shipping_address = ?, shipping_phone = ?,
-            unit_price = ?, shipping_fee = ?, total_amount = ?, updated_at = ?
+            unit_price = ?, shipping_fee = ?, total_amount = ?, payment_method = ?, updated_at = ?
       WHERE edit_token = ?`,
     [
       data.name, data.size, data.qty, data.wantsShipping ? 1 : 0,
       data.address, data.phone,
       s.unitPrice, data.wantsShipping ? s.shippingFee : 0,
       calcOrderTotal(data.qty, data.wantsShipping, s),
+      data.paymentMethod ?? 'cash',
       new Date().toISOString(), token,
     ]
   );
@@ -167,4 +178,44 @@ export async function setOrderFlags(id: number, flags: { handedOver?: boolean; p
 
 export async function deleteOrder(id: number): Promise<void> {
   await execute('DELETE FROM tshirt_orders WHERE id = ?', [id]);
+}
+
+// ============================================================
+// Stripe決済(Webhookが正本)
+// ============================================================
+
+export async function attachStripeSession(orderId: number, sessionId: string): Promise<void> {
+  await execute(
+    'UPDATE tshirt_orders SET stripe_session_id = ?, updated_at = ? WHERE id = ?',
+    [sessionId, new Date().toISOString(), orderId]
+  );
+}
+
+export interface TshirtPaidWebhookInput {
+  orderId: number;
+  sessionId: string;
+  paymentIntentId: string;
+  amountTotal: number | null;
+}
+
+export type TshirtWebhookResult =
+  | { status: 'paid'; amountMismatch: boolean }
+  | { status: 'already_paid' }
+  | { status: 'order_not_found' };
+
+// checkout.session.completed の適用。二度来ても安全(冪等)。
+// 金額ズレは黙って通さず amount_mismatch に印を付けてスタッフ画面で追えるようにする。
+export async function applyTshirtPaidWebhook(ev: TshirtPaidWebhookInput): Promise<TshirtWebhookResult> {
+  const row = await getOne('SELECT id, paid, total_amount FROM tshirt_orders WHERE id = ?', [ev.orderId]);
+  if (!row) return { status: 'order_not_found' };
+  if (Number(row.paid) === 1) return { status: 'already_paid' };
+  const mismatch = ev.amountTotal != null && ev.amountTotal !== Number(row.total_amount);
+  await execute(
+    `UPDATE tshirt_orders
+        SET paid = 1, payment_method = 'stripe', stripe_session_id = ?,
+            stripe_payment_intent = ?, amount_mismatch = ?, updated_at = ?
+      WHERE id = ?`,
+    [ev.sessionId, ev.paymentIntentId, mismatch ? 1 : 0, new Date().toISOString(), ev.orderId]
+  );
+  return { status: 'paid', amountMismatch: mismatch };
 }

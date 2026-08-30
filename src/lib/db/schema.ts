@@ -1221,6 +1221,10 @@ export function getSchemaStatements(): InStatement[] {
       total_amount INTEGER NOT NULL DEFAULT 0,
       handed_over INTEGER NOT NULL DEFAULT 0,
       paid INTEGER NOT NULL DEFAULT 0,
+      payment_method TEXT NOT NULL DEFAULT 'cash',
+      stripe_session_id TEXT NOT NULL DEFAULT '',
+      stripe_payment_intent TEXT NOT NULL DEFAULT '',
+      amount_mismatch INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )`,

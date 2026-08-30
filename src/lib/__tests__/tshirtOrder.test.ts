@@ -170,3 +170,24 @@ describe('generateOrderToken', () => {
     expect(a).not.toBe(b);
   });
 });
+
+describe('paymentMethod', () => {
+  const base = { name: '木村', size: 'L', qty: 1, wantsShipping: false };
+
+  it('未指定なら cash', () => {
+    const r = validateOrderInput(base);
+    if (typeof r === 'string') throw new Error(r);
+    expect(r.paymentMethod).toBe('cash');
+  });
+
+  it('stripe を指定できる', () => {
+    const r = validateOrderInput({ ...base, paymentMethod: 'stripe' });
+    if (typeof r === 'string') throw new Error(r);
+    expect(r.paymentMethod).toBe('stripe');
+  });
+
+  it('不正な値はエラー', () => {
+    expect(validateOrderInput({ ...base, paymentMethod: 'paypal' }))
+      .toBe('お支払い方法を選んでください');
+  });
+});

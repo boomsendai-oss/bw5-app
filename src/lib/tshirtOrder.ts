@@ -41,6 +41,11 @@ export function defaultTshirtSettings(): TshirtSettings {
   };
 }
 
+export type PaymentMethod = 'cash' | 'stripe';
+export function isPaymentMethod(v: unknown): v is PaymentMethod {
+  return v === 'cash' || v === 'stripe';
+}
+
 export interface OrderInput {
   name: string;
   size: string;
@@ -48,6 +53,7 @@ export interface OrderInput {
   wantsShipping: boolean;
   address?: string;
   phone?: string;
+  paymentMethod?: string;
 }
 
 export interface ValidatedOrder {
@@ -57,6 +63,7 @@ export interface ValidatedOrder {
   wantsShipping: boolean;
   address: string;
   phone: string;
+  paymentMethod: PaymentMethod;
 }
 
 const MAX_QTY = 20;
@@ -74,10 +81,14 @@ export function validateOrderInput(input: OrderInput): ValidatedOrder | string {
   if (!Number.isInteger(qty) || qty < 1) return '枚数は1枚以上で入力してください';
   if (qty > MAX_QTY) return `一度に注文できるのは${MAX_QTY}枚までです`;
 
+  // 支払い方法。未指定は現金(従来どおり)。
+  const paymentMethod = input?.paymentMethod ?? 'cash';
+  if (!isPaymentMethod(paymentMethod)) return 'お支払い方法を選んでください';
+
   const wantsShipping = input?.wantsShipping === true;
   // 郵送を希望しない注文では住所・電話を一切保持しない(PII最小化)。
   if (!wantsShipping) {
-    return { name, size, qty, wantsShipping: false, address: '', phone: '' };
+    return { name, size, qty, wantsShipping: false, address: '', phone: '', paymentMethod };
   }
 
   const address = (input?.address ?? '').trim();
@@ -89,7 +100,7 @@ export function validateOrderInput(input: OrderInput): ValidatedOrder | string {
   const digits = phone.replace(/[-‐－ 　]/g, '');
   if (!/^\d{10,11}$/.test(digits)) return 'お電話番号の形式が正しくありません';
 
-  return { name, size, qty, wantsShipping: true, address, phone };
+  return { name, size, qty, wantsShipping: true, address, phone, paymentMethod };
 }
 
 // 合計金額。送料は1注文につき1回だけ加算する(枚数分ではない)。

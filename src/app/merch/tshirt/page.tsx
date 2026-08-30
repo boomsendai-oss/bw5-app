@@ -10,6 +10,7 @@ import {
   submitOrder,
   loadOwnOrder,
   updateOwnOrder,
+  startTshirtCheckout,
   type OrderReceipt,
   type PublicOrderView,
 } from './actions';
@@ -40,6 +41,7 @@ export default function TshirtOrderPage() {
   const [size, setSize] = useState<TshirtSize | ''>('');
   const [qty, setQty] = useState(1);
   const [wantsShipping, setWantsShipping] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'stripe'>('cash');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
 
@@ -66,7 +68,21 @@ export default function TshirtOrderPage() {
           setWantsShipping(own.order.wantsShipping);
           setAddress(own.order.address ?? '');
           setPhone(own.order.phone ?? '');
-          setEditing(true);
+          setPaymentMethod(own.order.paymentMethod ?? 'cash');
+          // Stripeから戻ってきた直後(支払い済み)は編集でなく完了画面を出す
+          if (own.order.paid) {
+            setReceipt({
+              name: own.order.name,
+              size: own.order.size,
+              qty: own.order.qty,
+              wantsShipping: own.order.wantsShipping,
+              totalAmount: own.order.totalAmount,
+              paymentMethod: own.order.paymentMethod ?? 'stripe',
+              paid: true,
+            });
+          } else {
+            setEditing(true);
+          }
         }
       }
     })();
@@ -110,13 +126,17 @@ export default function TshirtOrderPage() {
   const onSubmit = useCallback(async () => {
     setError('');
     setSubmitting(true);
-    const payload = { name, size, qty, wantsShipping, address, phone };
+    const payload = { name, size, qty, wantsShipping, address, phone, paymentMethod };
     // 新規と更新で戻り値の型が違う(新規だけ token を返す)ので、分岐してから受け取る
     if (token && editing) {
       const res = await updateOwnOrder(token, payload);
       setSubmitting(false);
       if (!res.ok) {
         setError(res.error);
+        return;
+      }
+      if (res.checkoutUrl) {
+        window.location.href = res.checkoutUrl;
         return;
       }
       setReceipt(res.receipt);
@@ -129,10 +149,14 @@ export default function TshirtOrderPage() {
       }
       localStorage.setItem(TOKEN_KEY, res.token);
       setToken(res.token);
+      if (res.checkoutUrl) {
+        window.location.href = res.checkoutUrl;
+        return;
+      }
       setReceipt(res.receipt);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [name, size, qty, wantsShipping, address, phone, token, editing]);
+  }, [name, size, qty, wantsShipping, address, phone, paymentMethod, token, editing]);
 
   if (loading) {
     return (
@@ -155,18 +179,46 @@ export default function TshirtOrderPage() {
             <Row k="サイズ" v={receipt.size} />
             <Row k="枚数" v={`${receipt.qty}枚`} />
             <Row k="受け取り" v={receipt.wantsShipping ? '郵送' : 'レッスンで受け取り'} />
+            <Row
+              k="お支払い"
+              v={receipt.paid ? 'カード決済済み' : receipt.paymentMethod === 'stripe' ? 'カード（未決済）' : '現金'}
+            />
             <Row k="お支払い金額" v={yen(receipt.totalAmount)} strong />
           </div>
+
+          {receipt.paymentMethod === 'stripe' && !receipt.paid && token && (
+            <button
+              onClick={async () => {
+                const r = await startTshirtCheckout(token);
+                if (r.ok) window.location.href = r.url;
+                else setError(r.error);
+              }}
+              className="mt-8 w-full bg-white text-black py-4 text-[12px] tracking-[0.25em] font-medium hover:bg-white/85 transition"
+            >
+              カードで支払う
+            </button>
+          )}
+          {error && (
+            <p className="mt-4 text-[13px] text-red-300/90 border border-red-400/25 bg-red-500/5 px-4 py-3">{error}</p>
+          )}
 
           <div className="mt-10 space-y-5 text-sm leading-relaxed text-white/70">
             <div>
               <p className="text-white/40 text-[11px] tracking-[0.2em] mb-1.5">お渡し</p>
               <p>{settings.pickupNote || '9/10(木)以降のレッスン時に、直接お渡しします。'}</p>
             </div>
-            <div>
-              <p className="text-white/40 text-[11px] tracking-[0.2em] mb-1.5">お支払い</p>
-              <p>{settings.thanksNote || 'お支払いは、お渡しのときに現金と引き換えでお願いします。'}</p>
-            </div>
+            {!receipt.paid && receipt.paymentMethod === 'cash' && (
+              <div>
+                <p className="text-white/40 text-[11px] tracking-[0.2em] mb-1.5">お支払い</p>
+                <p>{settings.thanksNote || 'お支払いは、お渡しのときに現金と引き換えでお願いします。'}</p>
+              </div>
+            )}
+            {receipt.paid && (
+              <div>
+                <p className="text-white/40 text-[11px] tracking-[0.2em] mb-1.5">お支払い</p>
+                <p>お支払いは完了しています。当日はそのまま受け取りにお越しください。</p>
+              </div>
+            )}
             {receipt.wantsShipping && (
               <div>
                 <p className="text-white/40 text-[11px] tracking-[0.2em] mb-1.5">郵送について</p>
@@ -175,18 +227,22 @@ export default function TshirtOrderPage() {
             )}
           </div>
 
-          <button
-            onClick={() => {
-              setReceipt(null);
-              setEditing(true);
-            }}
-            className="mt-12 w-full border border-white/20 py-4 text-xs tracking-[0.25em] text-white/70 hover:bg-white/5 transition"
-          >
-            注文内容を変更する
-          </button>
-          <p className="mt-4 text-[11px] text-white/30 leading-relaxed">
-            このページをブックマークしておくと、締切までは内容を変更できます。
-          </p>
+          {!receipt.paid && (
+            <>
+              <button
+                onClick={() => {
+                  setReceipt(null);
+                  setEditing(true);
+                }}
+                className="mt-12 w-full border border-white/20 py-4 text-xs tracking-[0.25em] text-white/70 hover:bg-white/5 transition"
+              >
+                注文内容を変更する
+              </button>
+              <p className="mt-4 text-[11px] text-white/30 leading-relaxed">
+                このページをブックマークしておくと、締切までは内容を変更できます。
+              </p>
+            </>
+          )}
         </div>
       </main>
     );
@@ -374,6 +430,34 @@ export default function TshirtOrderPage() {
               )}
             </div>
 
+            {/* 支払い方法 */}
+            <Field label="お支払い方法">
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { v: 'cash', title: '現金', sub: 'お渡し時に引き換え' },
+                    { v: 'stripe', title: 'カード決済', sub: 'このあとオンラインで支払う' },
+                  ] as const
+                ).map((m) => (
+                  <button
+                    key={m.v}
+                    type="button"
+                    onClick={() => setPaymentMethod(m.v)}
+                    className={`py-4 px-3 border text-left transition ${
+                      paymentMethod === m.v
+                        ? 'border-white bg-white text-black'
+                        : 'border-white/20 text-white/60 hover:border-white/50'
+                    }`}
+                  >
+                    <span className="block text-[13px] tracking-wider font-medium">{m.title}</span>
+                    <span className={`block mt-1 text-[10px] ${paymentMethod === m.v ? 'text-black/60' : 'text-white/35'}`}>
+                      {m.sub}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </Field>
+
             {/* 合計。郵送を選んだときは内訳を出す(送料が枚数分に見えないように) */}
             <div className="border-t border-white/10 pt-7">
               {wantsShipping && (
@@ -407,13 +491,17 @@ export default function TshirtOrderPage() {
               disabled={submitting}
               className="w-full bg-white text-black py-5 text-[12px] tracking-[0.3em] font-medium hover:bg-white/85 transition disabled:opacity-40"
             >
-              {submitting ? '送信中…' : editing ? '注文内容を更新する' : '注文する'}
+              {submitting
+                ? '送信中…'
+                : paymentMethod === 'stripe'
+                  ? editing ? '更新してカードで支払う' : '注文してカードで支払う'
+                  : editing ? '注文内容を更新する' : '注文する'}
             </button>
 
             <p className="text-[11px] text-white/30 leading-[1.9] text-center">
-              お支払いはこの画面では発生しません。
-              <br />
-              {settings.thanksNote}
+              {paymentMethod === 'stripe'
+                ? 'このあと決済ページ(Stripe)に移動します。カード情報は当店に保存されません。'
+                : `お支払いはこの画面では発生しません。${settings.thanksNote}`}
             </p>
           </div>
         </div>

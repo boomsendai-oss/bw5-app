@@ -105,3 +105,55 @@ describe('設定', () => {
     await db.saveTshirtSettings(s);
   });
 });
+
+describe('Stripe決済の適用(Webhook側の正本処理)', () => {
+  const stripeOrder = { ...pickup, paymentMethod: 'stripe' as const };
+
+  it('作成直後は未払い・支払い方法stripeで保存される', async () => {
+    const token = await db.createOrder(stripeOrder);
+    const got = await db.loadOrderByToken(token);
+    expect(got!.paymentMethod).toBe('stripe');
+    expect(got!.paid).toBe(false);
+  });
+
+  it('セッションを紐付けてWebhookで支払い済みにできる', async () => {
+    const token = await db.createOrder(stripeOrder);
+    const o = (await db.loadOrderByToken(token))!;
+    await db.attachStripeSession(o.id, 'cs_test_1');
+    const r = await db.applyTshirtPaidWebhook({ orderId: o.id, sessionId: 'cs_test_1', paymentIntentId: 'pi_1', amountTotal: o.totalAmount });
+    expect(r.status).toBe('paid');
+    const after = await db.loadOrderByToken(token);
+    expect(after!.paid).toBe(true);
+  });
+
+  it('同じWebhookが二度来ても二重適用しない(冪等)', async () => {
+    const token = await db.createOrder(stripeOrder);
+    const o = (await db.loadOrderByToken(token))!;
+    await db.attachStripeSession(o.id, 'cs_test_2');
+    const p = { orderId: o.id, sessionId: 'cs_test_2', paymentIntentId: 'pi_2', amountTotal: o.totalAmount };
+    expect((await db.applyTshirtPaidWebhook(p)).status).toBe('paid');
+    expect((await db.applyTshirtPaidWebhook(p)).status).toBe('already_paid');
+  });
+
+  it('金額が合わないときは印を付けて記録する(黙って通さない)', async () => {
+    const token = await db.createOrder(stripeOrder);
+    const o = (await db.loadOrderByToken(token))!;
+    await db.attachStripeSession(o.id, 'cs_test_3');
+    const r = await db.applyTshirtPaidWebhook({ orderId: o.id, sessionId: 'cs_test_3', paymentIntentId: 'pi_3', amountTotal: 1 });
+    expect(r.status).toBe('paid');
+    expect(r.amountMismatch).toBe(true);
+  });
+
+  it('存在しない注文は order_not_found', async () => {
+    const r = await db.applyTshirtPaidWebhook({ orderId: 999999, sessionId: 'cs_x', paymentIntentId: 'pi_x', amountTotal: 100 });
+    expect(r.status).toBe('order_not_found');
+  });
+
+  it('支払い済みのstripe注文はトークン編集を拒否する(金額が変わるため)', async () => {
+    const token = await db.createOrder(stripeOrder);
+    const o = (await db.loadOrderByToken(token))!;
+    await db.attachStripeSession(o.id, 'cs_test_4');
+    await db.applyTshirtPaidWebhook({ orderId: o.id, sessionId: 'cs_test_4', paymentIntentId: 'pi_4', amountTotal: o.totalAmount });
+    expect(await db.updateOrderByToken(token, { ...pickup, qty: 5, paymentMethod: 'stripe' })).toBe(false);
+  });
+});
