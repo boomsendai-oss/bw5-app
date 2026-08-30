@@ -119,6 +119,50 @@ export default function TshirtSettingsPage() {
           </div>
         </Section>
 
+        <Section title="サイズ表（平置き実寸・cm）">
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 leading-relaxed">
+            ⚠️ 初期値は同型ボディの一般的な寸法＝<strong>仮の数字</strong>です。
+            発注するボディの仕様書の実寸に直してから告知してください。
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="text-left text-slate-500 border-b border-sand-200">
+                  <th className="py-2 pr-3 font-medium">サイズ</th>
+                  <th className="py-2 pr-3 font-medium">身丈</th>
+                  <th className="py-2 pr-3 font-medium">身幅</th>
+                  <th className="py-2 pr-3 font-medium">肩幅</th>
+                  <th className="py-2 font-medium">袖丈</th>
+                </tr>
+              </thead>
+              <tbody>
+                {s.sizeChart.map((row, i) => (
+                  <tr key={row.size} className="border-b border-sand-100">
+                    <td className="py-2 pr-3 font-medium text-navy-900">{row.size}</td>
+                    {(['length', 'width', 'shoulder', 'sleeve'] as const).map((k) => (
+                      <td key={k} className="py-2 pr-3">
+                        <Input
+                          type="number"
+                          className="w-20"
+                          value={row[k]}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setS((prev) => {
+                              if (!prev) return prev;
+                              const chart = prev.sizeChart.map((r, j) => (j === i ? { ...r, [k]: v } : r));
+                              return { ...prev, sizeChart: chart };
+                            });
+                          }}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+
         <Section title="文言">
           <div>
             <Label className="text-xs">商品説明（公開ページの本文・改行可）</Label>

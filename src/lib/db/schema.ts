@@ -1247,6 +1247,7 @@ export function getSchemaStatements(): InStatement[] {
       intro_md TEXT NOT NULL DEFAULT '',
       pickup_note TEXT NOT NULL DEFAULT '',
       thanks_note TEXT NOT NULL DEFAULT '',
+      size_chart_json TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL DEFAULT ''
     )`,
       args: [],

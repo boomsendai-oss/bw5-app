@@ -7,6 +7,7 @@ import {
   defaultTshirtSettings,
   generateOrderToken,
   isTshirtSize,
+  parseSizeChart,
   type PaymentMethod,
   type TshirtSettings,
   type TshirtSize,
@@ -74,6 +75,7 @@ export async function resolveTshirtSettings(): Promise<TshirtSettings> {
     introMd: String(row.intro_md ?? ''),
     pickupNote: String(row.pickup_note ?? ''),
     thanksNote: String(row.thanks_note ?? ''),
+    sizeChart: parseSizeChart(String(row.size_chart_json ?? '')),
   };
 }
 
@@ -81,8 +83,8 @@ export async function saveTshirtSettings(s: TshirtSettings): Promise<void> {
   const now = new Date().toISOString();
   await execute(
     `INSERT INTO tshirt_order_settings
-       (id, product_name, unit_price, shipping_fee, image_url, open_at, close_at, is_open, intro_md, pickup_note, thanks_note, updated_at)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (id, product_name, unit_price, shipping_fee, image_url, open_at, close_at, is_open, intro_md, pickup_note, thanks_note, size_chart_json, updated_at)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        product_name = excluded.product_name,
        unit_price = excluded.unit_price,
@@ -94,11 +96,12 @@ export async function saveTshirtSettings(s: TshirtSettings): Promise<void> {
        intro_md = excluded.intro_md,
        pickup_note = excluded.pickup_note,
        thanks_note = excluded.thanks_note,
+       size_chart_json = excluded.size_chart_json,
        updated_at = excluded.updated_at`,
     [
       s.productName, s.unitPrice, s.shippingFee, s.imageUrl,
       s.openAt, s.closeAt, s.isOpen ? 1 : 0,
-      s.introMd, s.pickupNote, s.thanksNote, now,
+      s.introMd, s.pickupNote, s.thanksNote, JSON.stringify(s.sizeChart), now,
     ]
   );
 }

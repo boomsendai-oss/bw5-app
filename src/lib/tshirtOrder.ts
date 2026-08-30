@@ -20,6 +20,7 @@ export interface TshirtSettings {
   introMd: string;
   pickupNote: string;
   thanksNote: string;
+  sizeChart: SizeChartRow[];
 }
 
 export function defaultTshirtSettings(): TshirtSettings {
@@ -38,6 +39,7 @@ export function defaultTshirtSettings(): TshirtSettings {
     ].join('\n'),
     pickupNote: '9/10(木)以降のレッスン時に、直接お渡しします。',
     thanksNote: 'お支払いは、お渡しのときに現金と引き換えでお願いします。',
+    sizeChart: defaultSizeChart(),
   };
 }
 
@@ -174,4 +176,48 @@ export function generateOrderToken(): string {
   const bytes = new Uint8Array(24);
   globalThis.crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ============================================================
+// サイズチャート(平置き実寸・cm)
+// ============================================================
+
+export interface SizeChartRow {
+  size: TshirtSize;
+  length: number;   // 身丈
+  width: number;    // 身幅
+  shoulder: number; // 肩幅
+  sleeve: number;   // 袖丈
+}
+
+// ⚠️ 初期値は同型ボディ(ユナイテッドアスレ5001系)の一般的な寸法＝**仮の値**。
+// 実際の発注ボディの仕様書の数字に、スタッフ設定画面から差し替えてから告知すること。
+export function defaultSizeChart(): SizeChartRow[] {
+  return [
+    { size: 'S', length: 66, width: 49, shoulder: 44, sleeve: 19 },
+    { size: 'M', length: 70, width: 52, shoulder: 47, sleeve: 20 },
+    { size: 'L', length: 74, width: 55, shoulder: 50, sleeve: 22 },
+    { size: 'XL', length: 78, width: 58, shoulder: 53, sleeve: 24 },
+    { size: '2XL', length: 82, width: 61, shoulder: 56, sleeve: 25 },
+  ];
+}
+
+// 保存済みJSONを読む。壊れていたら初期値に落とす(公開ページを絶対に壊さない)。
+export function parseSizeChart(json: string): SizeChartRow[] {
+  try {
+    const parsed = JSON.parse(json);
+    if (!Array.isArray(parsed)) return defaultSizeChart();
+    const rows = parsed.filter(
+      (r): r is SizeChartRow =>
+        r != null &&
+        isTshirtSize(r.size) &&
+        [r.length, r.width, r.shoulder, r.sleeve].every((n) => typeof n === 'number' && n > 0)
+    );
+    // 5サイズ揃っていない(重複・欠け)場合も初期値に落とす
+    if (rows.length !== TSHIRT_SIZES.length) return defaultSizeChart();
+    if (new Set(rows.map((r) => r.size)).size !== TSHIRT_SIZES.length) return defaultSizeChart();
+    return rows;
+  } catch {
+    return defaultSizeChart();
+  }
 }

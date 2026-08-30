@@ -211,3 +211,35 @@ describe('郵送は事前決済のみ', () => {
     expect(typeof validateOrderInput(ship)).toBe('string');
   });
 });
+
+import { defaultSizeChart, parseSizeChart, type SizeChartRow } from '../tshirtOrder';
+
+describe('サイズチャート', () => {
+  it('初期値は5サイズ全部の行がある(身丈/身幅/肩幅/袖丈)', () => {
+    const rows = defaultSizeChart();
+    expect(rows.map((r) => r.size)).toEqual(['S', 'M', 'L', 'XL', '2XL']);
+    for (const r of rows) {
+      expect(r.length).toBeGreaterThan(0);
+      expect(r.width).toBeGreaterThan(0);
+      expect(r.shoulder).toBeGreaterThan(0);
+      expect(r.sleeve).toBeGreaterThan(0);
+    }
+  });
+
+  it('JSONの往復ができる', () => {
+    const rows = defaultSizeChart();
+    expect(parseSizeChart(JSON.stringify(rows))).toEqual(rows);
+  });
+
+  it('壊れたJSON・空文字は初期値に落ちる', () => {
+    expect(parseSizeChart('')).toEqual(defaultSizeChart());
+    expect(parseSizeChart('not json')).toEqual(defaultSizeChart());
+    expect(parseSizeChart('[]')).toEqual(defaultSizeChart());
+  });
+
+  it('数値でない値が混ざった行は捨てて残りを使う', () => {
+    const rows: SizeChartRow[] = defaultSizeChart();
+    const dirty = JSON.stringify([...rows, { size: 'S', length: 'x', width: 1, shoulder: 1, sleeve: 1 }]);
+    expect(parseSizeChart(dirty)).toEqual(rows);
+  });
+});

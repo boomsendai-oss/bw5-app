@@ -42,6 +42,8 @@ export default function TshirtOrderPage() {
   const [qty, setQty] = useState(1);
   const [wantsShipping, setWantsShipping] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'stripe'>('cash');
+  const [showPhoto, setShowPhoto] = useState(false);
+  const [showSizeChart, setShowSizeChart] = useState(false);
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
 
@@ -289,6 +291,18 @@ export default function TshirtOrderPage() {
       {/* E案(黒豹動画)で確定 2026-08-30。D案(3D回転)は /merch/tshirt/preview に残してある */}
       <PantherHero />
 
+      {/* 動画だけだとデザインを確かめられないので、実物写真への導線を置く */}
+      <div className="px-6 -mt-2 relative z-10">
+        <div className="mx-auto max-w-lg">
+          <button
+            onClick={() => setShowPhoto(true)}
+            className="w-full border border-white/20 py-3.5 text-[11px] tracking-[0.3em] text-white/70 hover:bg-white/5 transition"
+          >
+            実物のデザインを写真で見る
+          </button>
+        </div>
+      </div>
+
       {/* 商品情報 */}
       <section className="px-6">
         <div className="mx-auto max-w-lg">
@@ -307,7 +321,18 @@ export default function TshirtOrderPage() {
           )}
 
           <dl className="mt-9 border-t border-white/10 divide-y divide-white/10 text-[13px]">
-            <SpecRow k="サイズ" v={TSHIRT_SIZES.join(' / ')} />
+            <div className="flex gap-6 py-4">
+              <dt className="w-28 shrink-0 text-white/35 text-[11px] tracking-[0.15em] pt-0.5">サイズ</dt>
+              <dd className="text-white/70 leading-relaxed">
+                {TSHIRT_SIZES.join(' / ')}
+                <button
+                  onClick={() => setShowSizeChart(true)}
+                  className="block mt-1.5 text-[12px] text-white/45 underline underline-offset-4 hover:text-white/80 transition"
+                >
+                  サイズ表を見る
+                </button>
+              </dd>
+            </div>
             <SpecRow k="お渡し" v={settings.pickupNote} />
             <SpecRow k="お支払い" v={settings.thanksNote} />
             <SpecRow
@@ -362,6 +387,13 @@ export default function TshirtOrderPage() {
                   </button>
                 ))}
               </div>
+              <button
+                type="button"
+                onClick={() => setShowSizeChart(true)}
+                className="mt-3 text-[12px] text-white/40 underline underline-offset-4 hover:text-white/80 transition"
+              >
+                サイズ表を見る
+              </button>
             </Field>
 
             <Field label="枚数">
@@ -543,6 +575,84 @@ export default function TshirtOrderPage() {
           </div>
         </div>
       </div>
+
+      {/* 実物写真モーダル。タップで閉じる */}
+      {showPhoto && settings && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm flex items-center justify-center p-5"
+          onClick={() => setShowPhoto(false)}
+          role="dialog"
+          aria-label="実物のデザイン写真"
+        >
+          <div className="relative w-full max-w-lg">
+            <div
+              className="absolute inset-0"
+              style={{
+                background:
+                  'radial-gradient(circle at 50% 45%, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 45%, transparent 70%)',
+              }}
+            />
+            <Image
+              src={settings.imageUrl}
+              alt={settings.productName}
+              width={1100}
+              height={935}
+              className="relative w-full h-auto"
+            />
+            <p className="mt-4 text-center text-[11px] tracking-[0.2em] text-white/40">
+              タップで閉じる
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* サイズ表モーダル */}
+      {showSizeChart && settings && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm flex items-center justify-center p-5"
+          onClick={() => setShowSizeChart(false)}
+          role="dialog"
+          aria-label="サイズ表"
+        >
+          <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <p className="text-[10px] tracking-[0.4em] text-white/40 uppercase text-center">Size Chart</p>
+            <h2 className="mt-3 text-center text-lg font-light tracking-wide">サイズ表</h2>
+            <div className="mt-6 overflow-x-auto">
+              <table className="w-full text-[13px] text-center">
+                <thead>
+                  <tr className="text-white/40 border-b border-white/15">
+                    <th className="py-2.5 font-normal text-left pl-1">サイズ</th>
+                    <th className="py-2.5 font-normal">身丈</th>
+                    <th className="py-2.5 font-normal">身幅</th>
+                    <th className="py-2.5 font-normal">肩幅</th>
+                    <th className="py-2.5 font-normal">袖丈</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {settings.sizeChart.map((r) => (
+                    <tr key={r.size} className="border-b border-white/10">
+                      <td className="py-3 text-left pl-1 font-medium tracking-wider">{r.size}</td>
+                      <td className="py-3 text-white/70 tabular-nums">{r.length}</td>
+                      <td className="py-3 text-white/70 tabular-nums">{r.width}</td>
+                      <td className="py-3 text-white/70 tabular-nums">{r.shoulder}</td>
+                      <td className="py-3 text-white/70 tabular-nums">{r.sleeve}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-4 text-[11px] text-white/35 leading-relaxed text-center">
+              単位はcm・平置き実寸です。ゆったりめの箱型シルエットです。
+            </p>
+            <button
+              onClick={() => setShowSizeChart(false)}
+              className="mt-7 w-full border border-white/20 py-3.5 text-[11px] tracking-[0.3em] text-white/70 hover:bg-white/5 transition"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
