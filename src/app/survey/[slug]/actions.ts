@@ -11,7 +11,7 @@
 //   - 回答期限はサーバ側で毎回再判定する(画面表示だけで守らない)
 
 import { headers } from 'next/headers';
-import { checkRateLimit } from '@/lib/eventAuth';
+import { checkRateLimit, isAuthorizedServer } from '@/lib/eventAuth';
 import { effectiveState, validateResponseInput, type EffectiveState, type QuestionDef } from '@/lib/survey';
 import { getSurveyBySlug, submitResponse } from '@/lib/surveyDb';
 
@@ -47,11 +47,27 @@ const NOT_FOUND: PublicSurveyView = {
   questions: [],
 };
 
-/** 公開: アンケート定義と受付状態だけを返す。回答データは一切返さない。 */
+/** 公開: アンケート定義と受付状態だけを返す。回答データは一切返さない。
+ * 例外: draftはスタッフセッションがある場合のみ「プレビュー」として返す(state='draft'・送信は不可)。 */
 export async function getPublicSurvey(slug: string): Promise<PublicSurveyView> {
   if (!/^[0-9a-f]{16}$/.test(slug || '')) return NOT_FOUND;
   const survey = await getSurveyBySlug(slug);
-  if (!survey || survey.status === 'draft') return NOT_FOUND;
+  if (!survey) return NOT_FOUND;
+  if (survey.status === 'draft') {
+    if (!(await isAuthorizedServer())) return NOT_FOUND;
+    return {
+      found: true,
+      state: 'draft',
+      title: survey.title,
+      intro: survey.intro,
+      nameNote: survey.name_note,
+      nameRequired: survey.name_required,
+      audience: survey.audience,
+      opensAt: survey.opens_at,
+      closesAt: survey.closes_at,
+      questions: survey.questions,
+    };
+  }
   const state = effectiveState(survey);
   return {
     found: true,

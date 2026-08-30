@@ -165,9 +165,16 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
     }
   };
 
+  const isPreview = view.state === 'draft';
+
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8">
       <div className="max-w-md mx-auto space-y-4">
+        {isPreview ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-700">
+            プレビュー表示(未発行)。スタッフのみ見えています。送信はできません。
+          </div>
+        ) : null}
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
           <h1 className="text-lg font-bold text-slate-900 leading-snug">{view.title}</h1>
           {view.intro ? <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-wrap">{view.intro}</p> : null}
@@ -320,10 +327,10 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={busy}
+          disabled={busy || isPreview}
           className="w-full rounded-xl bg-teal-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition active:scale-[0.99] disabled:opacity-50"
         >
-          {busy ? '送信中…' : '回答を送信する'}
+          {isPreview ? 'プレビュー中(送信不可)' : busy ? '送信中…' : '回答を送信する'}
         </button>
         <p className="text-center text-xs text-slate-400 pb-8">BOOM Dance School</p>
       </div>
