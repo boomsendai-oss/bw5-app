@@ -25,23 +25,60 @@ export default function PantherHero() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hasVideo, setHasVideo] = useState(false);
 
-  // iOS Safariは他アプリ/タブから戻るとautoplay動画を止めたまま復帰することがある。
-  // 表示に戻ったタイミングとpageshow(BFCache復帰)で明示的に再生し直す。
+  // iOS Safariは他アプリ/タブから戻ると動画が凍ったまま復帰することがある。
+  // ⚠️ このとき paused が false のままのケースがある(2026-08-30 TARO実機で確認)。
+  //    「pausedなら再生」では検知できないので、次の3段構えにする:
+  //    1) 復帰イベントでは状態を見ずに必ず play() し直す(失敗したら load() からやり直す)
+  //    2) 見張り: currentTime が進んでいるかを定期確認し、凍結を実測で検知して蹴り直す
+  //    3) 最後の保険: 動画エリアのタップでも再生(低電力モード等で自動再生が拒否された場合)
+  const kick = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.play().catch(() => {
+      try {
+        v.load();
+        v.muted = true;
+        v.play().catch(() => {/* 低電力モード等。タップの保険に任せる */});
+      } catch {/* noop */}
+    });
+  };
+
   useEffect(() => {
-    const resume = () => {
-      const v = videoRef.current;
-      if (v && v.paused) v.play().catch(() => {/* 自動再生が拒否されたら静止のまま */});
-    };
     const onVisible = () => {
-      if (document.visibilityState === 'visible') resume();
+      if (document.visibilityState === 'visible') kick();
     };
     document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('pageshow', resume);
-    window.addEventListener('focus', resume);
+    window.addEventListener('pageshow', kick);
+    window.addEventListener('focus', kick);
+
+    // 凍結の見張り。画面表示中に1.6秒間 currentTime が進んでいなければ蹴り直す。
+    // 2回連続で直らなければ load() からやり直す。
+    let lastTime = -1;
+    let stuckCount = 0;
+    const watchdog = window.setInterval(() => {
+      const v = videoRef.current;
+      if (!v || document.visibilityState !== 'visible') return;
+      if (v.currentTime === lastTime) {
+        stuckCount += 1;
+        if (stuckCount >= 2) {
+          try {
+            v.load();
+            v.muted = true;
+          } catch {/* noop */}
+          stuckCount = 0;
+        }
+        v.play().catch(() => {/* タップの保険に任せる */});
+      } else {
+        stuckCount = 0;
+      }
+      lastTime = v.currentTime;
+    }, 1600);
+
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('pageshow', resume);
-      window.removeEventListener('focus', resume);
+      window.removeEventListener('pageshow', kick);
+      window.removeEventListener('focus', kick);
+      window.clearInterval(watchdog);
     };
   }, []);
 
@@ -61,7 +98,7 @@ export default function PantherHero() {
   }, []);
 
   return (
-    <section className="relative w-full overflow-hidden bg-black">
+    <section className="relative w-full overflow-hidden bg-black" onPointerDown={kick}>
       <div className="relative w-full aspect-video">
         {hasVideo ? (
           <video
