@@ -120,9 +120,10 @@ export default function TshirtSettingsPage() {
         </Section>
 
         <Section title="サイズ表（平置き実寸・cm）">
-          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 leading-relaxed">
-            ⚠️ 初期値は同型ボディの一般的な寸法＝<strong>仮の数字</strong>です。
-            発注するボディの仕様書の実寸に直してから告知してください。
+          <p className="text-[11px] text-slate-600 bg-sand-50 border border-sand-200 rounded px-3 py-2 leading-relaxed">
+            ボディ＝<strong>ユナイテッドアスレ 4230-01</strong>（6.2oz フェードウォッシュTシャツ）。
+            初期値は公式サイズ表の実寸（2026-08-30取得・メーカー表記のXXLを2XLとして表示）。
+            ボディを変えたときだけ、ここを直してください。
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]">

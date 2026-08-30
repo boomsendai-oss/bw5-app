@@ -190,15 +190,16 @@ export interface SizeChartRow {
   sleeve: number;   // 袖丈
 }
 
-// ⚠️ 初期値は同型ボディ(ユナイテッドアスレ5001系)の一般的な寸法＝**仮の値**。
-// 実際の発注ボディの仕様書の数字に、スタッフ設定画面から差し替えてから告知すること。
+// ボディ=ユナイテッドアスレ 4230-01(6.2oz オープンエンド フェードウォッシュTシャツ)。
+// 数値は公式サイズ表そのまま(united-athle.jp/ua/item/423001/ 2026-08-30取得)。
+// メーカー表記はXXLだが、注文フォームのサイズ名に合わせ 2XL と表示する(同一サイズ)。
 export function defaultSizeChart(): SizeChartRow[] {
   return [
-    { size: 'S', length: 66, width: 49, shoulder: 44, sleeve: 19 },
-    { size: 'M', length: 70, width: 52, shoulder: 47, sleeve: 20 },
-    { size: 'L', length: 74, width: 55, shoulder: 50, sleeve: 22 },
-    { size: 'XL', length: 78, width: 58, shoulder: 53, sleeve: 24 },
-    { size: '2XL', length: 82, width: 61, shoulder: 56, sleeve: 25 },
+    { size: 'S', length: 65, width: 49, shoulder: 46, sleeve: 22 },
+    { size: 'M', length: 68, width: 52, shoulder: 49, sleeve: 23 },
+    { size: 'L', length: 71, width: 55, shoulder: 52, sleeve: 24 },
+    { size: 'XL', length: 74, width: 58, shoulder: 55, sleeve: 25 },
+    { size: '2XL', length: 77, width: 61, shoulder: 58, sleeve: 26 },
   ];
 }
 
