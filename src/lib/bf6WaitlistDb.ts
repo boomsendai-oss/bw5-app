@@ -3,11 +3,13 @@ import { getAll, getOne, execute } from './db';
 import { nowUtcIso, todayJst } from './dateJst';
 import { generateEditToken } from './eventSignup';
 import { WAITLIST_CAPACITY, canJoinWaitlist, isOfferActionable, offerDeadlineHours,
-  type WaitlistInput, type WaitlistGate, type OfferAction } from './bf6Waitlist';
+  publicWaitlistRows,
+  type WaitlistInput, type WaitlistGate, type OfferAction,
+  type PublicWaitlistEntry } from './bf6Waitlist';
 
 export type WaitlistRow = {
   id: number; division: string; position: number; status: string;
-  dancerName: string; performerName: string; grade: string; rep: string;
+  dancerName: string; performerName: string; grade: string; rep: string; genre: string;
   email: string; phone: string; buyerName: string;
   offerExpiresAt: string | null; token: string | null; createdAt: string;
 };
@@ -17,6 +19,7 @@ function toRow(r: Record<string, unknown>): WaitlistRow {
     id: Number(r.id), division: String(r.division), position: Number(r.position),
     status: String(r.status), dancerName: String(r.dancer_name),
     performerName: String(r.performer_name), grade: String(r.grade), rep: String(r.rep),
+    genre: String(r.genre ?? ''),
     email: String(r.email), phone: String(r.phone), buyerName: String(r.buyer_name),
     offerExpiresAt: r.offer_expires_at ? String(r.offer_expires_at) : null,
     token: r.token ? String(r.token) : null,
@@ -38,6 +41,28 @@ export async function listWaitlist(division?: string): Promise<WaitlistRow[]> {
     ? await getAll('SELECT * FROM bf_waitlist WHERE division = ? ORDER BY position', [division])
     : await getAll('SELECT * FROM bf_waitlist ORDER BY division, position');
   return rows.map(toRow);
+}
+
+/**
+ * 公開エントリーリスト用。個人情報を含まない3項目だけを返す(M22と同じ方針)。
+ * ⚠️ 公開ページから呼ばれるので、返す項目を増やすときは必ず公開してよいか確認すること。
+ */
+export async function getPublicBf6Waitlist(
+  division: string
+): Promise<PublicWaitlistEntry[]> {
+  const rows = await getAll(
+    'SELECT position, status, dancer_name, genre, rep FROM bf_waitlist WHERE division = ? ORDER BY position',
+    [division]
+  ).catch(() => []);
+  return publicWaitlistRows(
+    rows.map((r) => ({
+      position: Number(r.position),
+      status: String(r.status),
+      dancerName: String(r.dancer_name ?? ''),
+      genre: String(r.genre ?? ''),
+      rep: String(r.rep ?? ''),
+    }))
+  );
 }
 
 export type JoinResult = { ok: true; position: number } | { ok: false; reason: WaitlistGate };

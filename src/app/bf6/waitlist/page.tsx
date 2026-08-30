@@ -73,6 +73,14 @@ function WaitlistForm() {
           </p>
         </div>
 
+        <div className="mt-3 rounded-xl border border-neutral-700 bg-neutral-900 p-3">
+          <p className="text-xs leading-relaxed text-neutral-300">
+            ご登録後、
+            <span className="font-bold text-white">エントリーリストの「キャンセル待ち」欄にお名前が掲載されます</span>
+            (ダンサーネーム・ジャンル・レペゼンのみ。本名・ご連絡先は公開しません)。
+          </p>
+        </div>
+
         {status && (
           <p className="text-center text-sm font-bold text-neutral-300">
             現在 <span className="text-white">{status.waiting}名</span> がお待ちです(上限{status.capacity}名)

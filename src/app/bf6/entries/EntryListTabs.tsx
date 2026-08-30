@@ -4,21 +4,24 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { BF6_DIVISIONS, type Bf6Division } from '@/lib/bf6';
-import { entryListCta } from '@/lib/bf6Waitlist';
+import { entryListCta, type PublicWaitlistEntry } from '@/lib/bf6Waitlist';
 import type { PublicBf6Entry } from '@/lib/bf6Db';
 
 export default function EntryListTabs({
   lists,
   capacity,
   waiting,
+  waitlists,
 }: {
   lists: Record<Bf6Division, PublicBf6Entry[]>;
   capacity: Record<Bf6Division, number>;
   waiting: Record<Bf6Division, number>;
+  waitlists: Record<Bf6Division, PublicWaitlistEntry[]>;
 }) {
   const [active, setActive] = useState<Bf6Division>('beginner');
   const activeDef = BF6_DIVISIONS.find((d) => d.key === active)!;
   const list = lists[active] ?? [];
+  const wl = waitlists[active] ?? [];
   const cta = entryListCta({
     division: active,
     count: list.length,
@@ -82,6 +85,34 @@ export default function EntryListTabs({
           </ol>
         )}
       </div>
+
+      {wl.length > 0 && (
+        <div className="mt-3 overflow-hidden rounded-2xl border border-orange-500/40 bg-neutral-900">
+          <div className="bg-orange-600/90 px-4 py-2">
+            <p className="text-sm font-black text-white">
+              キャンセル待ち
+              <span className="ml-2 text-xs font-bold text-white/80">
+                空きが出た場合に上から順にご案内します
+              </span>
+            </p>
+          </div>
+          <ol className="divide-y divide-neutral-800">
+            {wl.map((e) => (
+              <li key={e.order} className="flex items-center gap-3 px-4 py-3">
+                <span className="w-7 shrink-0 text-right text-sm font-black italic text-orange-400">
+                  {e.order}
+                </span>
+                <span className="flex-1">
+                  <span className="text-base font-black text-neutral-200">{e.dancerName}</span>
+                  <span className="block text-xs text-neutral-500">
+                    {[e.genre, e.rep && `REP: ${e.rep}`].filter(Boolean).join(' / ')}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       {cta.kind === 'waitlist' && (
         <div className="mt-4 rounded-2xl border border-orange-500/50 bg-orange-500/10 p-4">

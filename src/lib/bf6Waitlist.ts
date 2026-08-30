@@ -107,3 +107,33 @@ export function entryListCta({
   if (gate === 'waitlist_full') return { kind: 'waitlist_full', href: null, isFull: true };
   return { kind: 'waitlist', href: `/bf6/waitlist?d=${division}`, isFull: true };
 }
+
+/**
+ * 公開エントリーリストに載せるキャンセル待ち。
+ *
+ * 公開するのはエントリーリスト本体と同じ3項目(ダンサーネーム/ジャンル/レペゼン)だけ。
+ * 本名・連絡先・学年は絶対に外へ出さない。
+ * 'accepted' は出場が決まってエントリーリスト本体に載るので、ここには出さない。
+ */
+export type PublicWaitlistEntry = {
+  order: number;
+  dancerName: string;
+  genre: string;
+  rep: string;
+};
+
+const PUBLIC_WAITLIST_STATUSES = ['waiting', 'offered'];
+
+export function publicWaitlistRows(
+  rows: { position: number; status: string; dancerName: string; genre: string; rep: string }[]
+): PublicWaitlistEntry[] {
+  return rows
+    .filter((r) => PUBLIC_WAITLIST_STATUSES.includes(r.status))
+    .sort((a, b) => a.position - b.position)
+    .map((r, i) => ({
+      order: i + 1,
+      dancerName: r.dancerName,
+      genre: r.genre,
+      rep: r.rep,
+    }));
+}

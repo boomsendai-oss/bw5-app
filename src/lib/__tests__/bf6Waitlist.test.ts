@@ -83,7 +83,7 @@ describe('繰り上げリンクの受理判定', () => {
 describe('繰り上げ通知メール', () => {
   const row = {
     id: 1, division: 'beginner', position: 1, status: 'offered',
-    dancerName: 'HANA', performerName: '木村 花子', grade: 'es4', rep: '仙台',
+    dancerName: 'HANA', performerName: '木村 花子', grade: 'es4', rep: '仙台', genre: 'HIPHOP',
     email: 'a@example.com', phone: '090', buyerName: '木村 花子',
     offerExpiresAt: null, token: 'TOKEN123', createdAt: '',
   };

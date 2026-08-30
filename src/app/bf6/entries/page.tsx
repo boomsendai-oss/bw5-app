@@ -4,7 +4,8 @@
 import Link from 'next/link';
 import { type Bf6Division } from '@/lib/bf6';
 import { getBf6Settings, getPublicBf6Entries, type PublicBf6Entry } from '@/lib/bf6Db';
-import { countWaiting } from '@/lib/bf6WaitlistDb';
+import { getPublicBf6Waitlist } from '@/lib/bf6WaitlistDb';
+import type { PublicWaitlistEntry } from '@/lib/bf6Waitlist';
 import { Bf6Hero, Bf6Shell } from '../ui';
 import EntryListTabs from './EntryListTabs';
 
@@ -16,17 +17,23 @@ export const metadata = {
 };
 
 export default async function Bf6EntriesPage() {
-  const [settings, entries, wBeginner, wKids, wGeneral] = await Promise.all([
+  const [settings, entries, wlBeginner, wlKids, wlGeneral] = await Promise.all([
     getBf6Settings(),
     getPublicBf6Entries(),
-    countWaiting('beginner'),
-    countWaiting('kids'),
-    countWaiting('general'),
+    getPublicBf6Waitlist('beginner'),
+    getPublicBf6Waitlist('kids'),
+    getPublicBf6Waitlist('general'),
   ]);
+  const waitlists: Record<Bf6Division, PublicWaitlistEntry[]> = {
+    beginner: wlBeginner,
+    kids: wlKids,
+    general: wlGeneral,
+  };
+  // 待っている人数は公開リストの件数と同じ(waiting+offered)なので数え直さない
   const waiting: Record<Bf6Division, number> = {
-    beginner: wBeginner,
-    kids: wKids,
-    general: wGeneral,
+    beginner: wlBeginner.length,
+    kids: wlKids.length,
+    general: wlGeneral.length,
   };
 
   const lists: Record<Bf6Division, PublicBf6Entry[]> = { beginner: [], kids: [], general: [] };
@@ -39,7 +46,12 @@ export default async function Bf6EntriesPage() {
       <div>
         <Bf6Hero title="ENTRY LIST" subtitle="2026.9.26 SAT — SSM 9階ホール / リアルタイム更新" />
         <div className="px-4 py-6">
-          <EntryListTabs lists={lists} capacity={settings.capacity} waiting={waiting} />
+          <EntryListTabs
+            lists={lists}
+            capacity={settings.capacity}
+            waiting={waiting}
+            waitlists={waitlists}
+          />
 
           <Link
             href="/bf6/entry"
