@@ -21,6 +21,7 @@ export interface SurveyRow {
   intro: string | null;
   audience: string;
   name_note: string | null;
+  name_required: boolean;
   status: string;
   opens_at: string | null;
   closes_at: string | null;
@@ -43,6 +44,7 @@ function rowToSurvey(r: any): SurveyRow {
     intro: r.intro ? String(r.intro) : null,
     audience: String(r.audience),
     name_note: r.name_note ? String(r.name_note) : null,
+    name_required: Number(r.name_required) === 1,
     status: String(r.status),
     opens_at: r.opens_at ? String(r.opens_at) : null,
     closes_at: r.closes_at ? String(r.closes_at) : null,
@@ -141,8 +143,8 @@ export async function createSurvey(def: ValidatedSurvey): Promise<number> {
   const slug = generateSurveySlug();
   return withWriteTx(async (tx) => {
     const res = await tx.execute({
-      sql: 'INSERT INTO surveys (slug, title, intro, audience, name_note, status, opens_at, closes_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      args: [slug, def.title, def.intro, def.audience, def.nameNote, 'draft', def.opensAt, def.closesAt],
+      sql: 'INSERT INTO surveys (slug, title, intro, audience, name_note, name_required, status, opens_at, closes_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      args: [slug, def.title, def.intro, def.audience, def.nameNote, def.nameRequired ? 1 : 0, 'draft', def.opensAt, def.closesAt],
     });
     const surveyId = Number(res.lastInsertRowid);
     await insertQuestions(tx, surveyId, def.questions);
@@ -159,8 +161,8 @@ export async function updateSurvey(id: number, def: ValidatedSurvey): Promise<st
   if (!survey) return 'アンケートが見つかりません';
   return withWriteTx(async (tx) => {
     await tx.execute({
-      sql: 'UPDATE surveys SET title = ?, intro = ?, audience = ?, name_note = ?, opens_at = ?, closes_at = ? WHERE id = ?',
-      args: [def.title, def.intro, def.audience, def.nameNote, def.opensAt, def.closesAt, id],
+      sql: 'UPDATE surveys SET title = ?, intro = ?, audience = ?, name_note = ?, name_required = ?, opens_at = ?, closes_at = ? WHERE id = ?',
+      args: [def.title, def.intro, def.audience, def.nameNote, def.nameRequired ? 1 : 0, def.opensAt, def.closesAt, id],
     });
     if (survey.status === 'draft') {
       await tx.execute({ sql: 'DELETE FROM survey_questions WHERE survey_id = ?', args: [id] });

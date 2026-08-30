@@ -217,6 +217,23 @@ describe('validateResponseInput', () => {
   });
 });
 
+describe('nameRequired (回答者名の必須設定)', () => {
+  it('定義: nameRequiredを保持する(既定false)', () => {
+    const v1 = validateSurveyDefinition({ ...validDef, nameRequired: true });
+    if (typeof v1 === 'string') throw new Error(v1);
+    expect(v1.nameRequired).toBe(true);
+    const v2 = validateSurveyDefinition(validDef);
+    if (typeof v2 === 'string') throw new Error(v2);
+    expect(v2.nameRequired).toBe(false);
+  });
+  it('回答: nameRequired=trueで名前なしは拒否・ありは受理', () => {
+    const payload = { answers: { weekday: { optionKeys: ['mon'] }, temp: { optionKeys: ['must'] } } };
+    expect(typeof validateResponseInput(QS, payload, { nameRequired: true })).toBe('string');
+    const ok = validateResponseInput(QS, { ...payload, name: '山田太郎' }, { nameRequired: true });
+    expect(typeof ok).not.toBe('string');
+  });
+});
+
 describe('generateSurveySlug', () => {
   it('16文字hex・毎回異なる', () => {
     const a = generateSurveySlug();

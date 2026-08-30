@@ -178,7 +178,12 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
           <label className="block text-sm font-bold text-slate-800">
-            生徒さんのお名前 <span className="ml-1 text-xs font-normal text-slate-400">(任意)</span>
+            生徒さんのお名前{' '}
+            {view.nameRequired ? (
+              <span className="ml-1 text-xs text-rose-500">必須</span>
+            ) : (
+              <span className="ml-1 text-xs font-normal text-slate-400">(任意)</span>
+            )}
           </label>
           <input
             type="text"

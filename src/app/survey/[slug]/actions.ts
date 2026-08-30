@@ -27,6 +27,7 @@ export interface PublicSurveyView {
   title: string;
   intro: string | null;
   nameNote: string | null;
+  nameRequired: boolean;
   audience: string;
   opensAt: string | null;
   closesAt: string | null;
@@ -39,6 +40,7 @@ const NOT_FOUND: PublicSurveyView = {
   title: '',
   intro: null,
   nameNote: null,
+  nameRequired: false,
   audience: 'member',
   opensAt: null,
   closesAt: null,
@@ -57,6 +59,7 @@ export async function getPublicSurvey(slug: string): Promise<PublicSurveyView> {
     title: survey.title,
     intro: survey.intro,
     nameNote: survey.name_note,
+    nameRequired: survey.name_required,
     audience: survey.audience,
     opensAt: survey.opens_at,
     closesAt: survey.closes_at,
@@ -76,7 +79,7 @@ export async function submitSurveyResponse(slug: string, payload: unknown): Prom
   const survey = await getSurveyBySlug(slug);
   if (!survey || survey.status === 'draft') return { ok: false, error: 'アンケートが見つかりません' };
   if (effectiveState(survey) !== 'accepting') return { ok: false, error: '回答の受付期間外です' };
-  const validated = validateResponseInput(survey.questions, payload);
+  const validated = validateResponseInput(survey.questions, payload, { nameRequired: survey.name_required });
   if (typeof validated === 'string') return { ok: false, error: validated };
   await submitResponse(survey.id, validated);
   return { ok: true };

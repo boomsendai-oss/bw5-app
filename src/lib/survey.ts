@@ -77,6 +77,8 @@ export interface ValidatedSurvey {
   intro: string | null;
   audience: Audience;
   nameNote: string | null;
+  /** trueなら回答者名の記入が必須(既定=任意)。SHOKO定期化のようにその場回収で全員記名させたい時用。 */
+  nameRequired: boolean;
   opensAt: string | null;
   closesAt: string | null;
   questions: QuestionDef[];
@@ -131,6 +133,7 @@ export function validateSurveyDefinition(input: unknown): ValidatedSurvey | stri
 
   const intro = asTrimmed(obj.intro) || null;
   const nameNote = asTrimmed(obj.nameNote) || null;
+  const nameRequired = obj.nameRequired === true || obj.nameRequired === 1;
 
   const audience = asTrimmed(obj.audience) || 'member';
   if (!(AUDIENCES as readonly string[]).includes(audience)) return '対象の指定が不正です';
@@ -214,7 +217,7 @@ export function validateSurveyDefinition(input: unknown): ValidatedSurvey | stri
     questions.push({ id, questionKey, label, qtype: qtype as Qtype, required, options, rows, cols, gridExpand, allowOther });
   }
 
-  return { title, intro, audience: audience as Audience, nameNote, opensAt, closesAt, questions };
+  return { title, intro, audience: audience as Audience, nameNote, nameRequired, opensAt, closesAt, questions };
 }
 
 export interface AnswerItem {
@@ -230,11 +233,16 @@ export interface ValidatedResponse {
 }
 
 /** 公開フォームからの回答検証。設問定義に対して選択肢・必須・文字数を検査する。 */
-export function validateResponseInput(questions: QuestionDef[], payload: unknown): ValidatedResponse | string {
+export function validateResponseInput(
+  questions: QuestionDef[],
+  payload: unknown,
+  opts?: { nameRequired?: boolean }
+): ValidatedResponse | string {
   if (typeof payload !== 'object' || payload === null) return '入力形式が不正です';
   const obj = payload as Record<string, unknown>;
 
   const name = asTrimmed(obj.name) || null;
+  if (opts?.nameRequired && !name) return 'お名前を入力してください';
   if (name && name.length > MAX_NAME) return `お名前は${MAX_NAME}文字以内にしてください`;
 
   const rawAnswers =

@@ -16,6 +16,7 @@ type SurveyView = {
   title: string;
   intro: string;
   nameNote: string;
+  nameRequired: boolean;
   audience: string;
   status: string;
   state: string;
@@ -136,6 +137,7 @@ export default function SurveyDetailClient({
             title: survey.title,
             intro: survey.intro,
             nameNote: survey.nameNote,
+            nameRequired: survey.nameRequired,
             audience: survey.audience,
             opensAt: survey.opensAt,
             closesAt: survey.closesAt,

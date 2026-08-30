@@ -51,6 +51,7 @@ export default async function SurveyDetailPage({ params }: { params: Promise<{ i
             title: survey.title,
             intro: survey.intro ?? '',
             nameNote: survey.name_note ?? '',
+            nameRequired: survey.name_required,
             audience: survey.audience,
             status: survey.status,
             state: effectiveState(survey),

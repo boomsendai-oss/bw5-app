@@ -303,6 +303,7 @@ export function getSchemaStatements(): InStatement[] {
       intro TEXT,
       audience TEXT NOT NULL DEFAULT 'member',
       name_note TEXT,
+      name_required INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'draft',
       opens_at TEXT,
       closes_at TEXT,

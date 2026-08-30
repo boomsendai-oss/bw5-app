@@ -26,6 +26,7 @@ export type BuilderInitial = {
   title: string;
   intro: string;
   nameNote: string;
+  nameRequired: boolean;
   audience: string;
   opensAt: string;
   closesAt: string;
@@ -60,6 +61,7 @@ export default function SurveyBuilder({
   const [title, setTitle] = useState(initial?.title ?? '');
   const [intro, setIntro] = useState(initial?.intro ?? '');
   const [nameNote, setNameNote] = useState(initial?.nameNote ?? DEFAULT_NAME_NOTE);
+  const [nameRequired, setNameRequired] = useState(initial?.nameRequired ?? false);
   const [audience, setAudience] = useState(initial?.audience ?? 'member');
   const [opensAt, setOpensAt] = useState(initial?.opensAt ?? '');
   const [closesAt, setClosesAt] = useState(initial?.closesAt ?? '');
@@ -88,6 +90,7 @@ export default function SurveyBuilder({
         title,
         intro,
         nameNote,
+        nameRequired,
         audience,
         opensAt: opensAt || undefined,
         closesAt: closesAt || undefined,
@@ -143,6 +146,10 @@ export default function SurveyBuilder({
         <div>
           <label className="block text-xs font-bold text-navy-700">名前欄の案内文</label>
           <textarea value={nameNote} onChange={(e) => setNameNote(e.target.value)} rows={2} className={`mt-1 ${inputCls}`} />
+          <label className="mt-2 flex items-center gap-1.5 text-xs text-navy-700">
+            <input type="checkbox" checked={nameRequired} onChange={(e) => setNameRequired(e.target.checked)} />
+            お名前の記入を必須にする(その場回収など全員記名させたい時)
+          </label>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>

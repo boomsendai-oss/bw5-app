@@ -1,0 +1,1 @@
+ALTER TABLE surveys ADD COLUMN name_required INTEGER NOT NULL DEFAULT 0;
