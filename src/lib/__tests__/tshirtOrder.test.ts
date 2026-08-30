@@ -60,17 +60,17 @@ describe('validateOrderInput', () => {
   });
 
   it('郵送希望なら住所が必須', () => {
-    expect(validateOrderInput({ ...base, wantsShipping: true, phone: '09000000000' }))
+    expect(validateOrderInput({ ...base, wantsShipping: true, paymentMethod: 'stripe', phone: '09000000000' }))
       .toBe('郵送先のご住所を入力してください');
   });
 
   it('郵送希望なら電話番号が必須', () => {
-    expect(validateOrderInput({ ...base, wantsShipping: true, address: '仙台市青葉区1-1' }))
+    expect(validateOrderInput({ ...base, wantsShipping: true, paymentMethod: 'stripe', address: '仙台市青葉区1-1' }))
       .toBe('お電話番号を入力してください');
   });
 
   it('電話番号は数字10〜11桁（ハイフン可）', () => {
-    const withAddr = { ...base, wantsShipping: true, address: '仙台市青葉区1-1' };
+    const withAddr = { ...base, wantsShipping: true, paymentMethod: 'stripe' as const, address: '仙台市青葉区1-1' };
     expect(validateOrderInput({ ...withAddr, phone: '123' })).toBe('お電話番号の形式が正しくありません');
     const ok = validateOrderInput({ ...withAddr, phone: '090-1234-5678' });
     if (typeof ok === 'string') throw new Error(ok);
@@ -189,5 +189,25 @@ describe('paymentMethod', () => {
   it('不正な値はエラー', () => {
     expect(validateOrderInput({ ...base, paymentMethod: 'paypal' }))
       .toBe('お支払い方法を選んでください');
+  });
+});
+
+describe('郵送は事前決済のみ', () => {
+  const ship = { name: '木村', size: 'L', qty: 1, wantsShipping: true, address: '仙台市青葉区1-1', phone: '090-1234-5678' };
+
+  it('郵送+現金はエラー(手渡しの機会がなく集金できないため)', () => {
+    expect(validateOrderInput({ ...ship, paymentMethod: 'cash' }))
+      .toBe('郵送をご希望の場合は、カード決済（事前のお支払い）のみとなります');
+  });
+
+  it('郵送+カードは通る', () => {
+    const r = validateOrderInput({ ...ship, paymentMethod: 'stripe' });
+    if (typeof r === 'string') throw new Error(r);
+    expect(r.wantsShipping).toBe(true);
+    expect(r.paymentMethod).toBe('stripe');
+  });
+
+  it('郵送で支払い方法未指定もエラー(黙ってcashに落とさない)', () => {
+    expect(typeof validateOrderInput(ship)).toBe('string');
   });
 });

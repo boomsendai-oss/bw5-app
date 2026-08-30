@@ -91,6 +91,11 @@ export function validateOrderInput(input: OrderInput): ValidatedOrder | string {
     return { name, size, qty, wantsShipping: false, address: '', phone: '', paymentMethod };
   }
 
+  // 郵送は手渡しの機会がなく現金を集金できないため、事前決済(カード)のみ受け付ける
+  if (paymentMethod !== 'stripe') {
+    return '郵送をご希望の場合は、カード決済（事前のお支払い）のみとなります';
+  }
+
   const address = (input?.address ?? '').trim();
   if (!address) return '郵送先のご住所を入力してください';
   if (address.length > 200) return 'ご住所が長すぎます（200文字以内）';

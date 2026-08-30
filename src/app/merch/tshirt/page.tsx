@@ -392,7 +392,11 @@ export default function TshirtOrderPage() {
                 <input
                   type="checkbox"
                   checked={wantsShipping}
-                  onChange={(e) => setWantsShipping(e.target.checked)}
+                  onChange={(e) => {
+                    setWantsShipping(e.target.checked);
+                    // 郵送は手渡しの機会がなく現金を集金できないため、事前決済(カード)のみ
+                    if (e.target.checked) setPaymentMethod('stripe');
+                  }}
                   className="mt-1 w-4 h-4 accent-white"
                 />
                 <span>
@@ -438,15 +442,20 @@ export default function TshirtOrderPage() {
                     { v: 'cash', title: '現金', sub: 'お渡し時に引き換え' },
                     { v: 'stripe', title: 'カード決済', sub: 'このあとオンラインで支払う' },
                   ] as const
-                ).map((m) => (
+                ).map((m) => {
+                  const disabled = m.v === 'cash' && wantsShipping;
+                  return (
                   <button
                     key={m.v}
                     type="button"
+                    disabled={disabled}
                     onClick={() => setPaymentMethod(m.v)}
                     className={`py-4 px-3 border text-left transition ${
-                      paymentMethod === m.v
-                        ? 'border-white bg-white text-black'
-                        : 'border-white/20 text-white/60 hover:border-white/50'
+                      disabled
+                        ? 'border-white/10 text-white/20 cursor-not-allowed'
+                        : paymentMethod === m.v
+                          ? 'border-white bg-white text-black'
+                          : 'border-white/20 text-white/60 hover:border-white/50'
                     }`}
                   >
                     <span className="block text-[13px] tracking-wider font-medium">{m.title}</span>
@@ -454,8 +463,14 @@ export default function TshirtOrderPage() {
                       {m.sub}
                     </span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
+              {wantsShipping && (
+                <p className="mt-3 text-[11px] text-white/35 leading-relaxed">
+                  郵送をご希望の場合は、カード決済（事前のお支払い）のみとなります。
+                </p>
+              )}
             </Field>
 
             {/* 合計。郵送を選んだときは内訳を出す(送料が枚数分に見えないように) */}
