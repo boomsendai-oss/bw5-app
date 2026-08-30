@@ -24,35 +24,31 @@ const SHIFT = { transform: 'scale(1.06) translateX(2.5%)' } as const;
 export default function PantherHero() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hasVideo, setHasVideo] = useState(false);
+  // 復帰のたびに増やすと <video key> が変わり、要素ごと作り直される(最強のリセット)。
+  // 凍った要素をplay()やload()で蹴るより確実: 新品の要素は自動再生を最初からやり直す。
+  const [videoEpoch, setVideoEpoch] = useState(0);
 
   // iOS Safariは他アプリ/タブから戻ると動画が凍ったまま復帰することがある。
-  // ⚠️ このとき paused が false のままのケースがある(2026-08-30 TARO実機で確認)。
-  //    「pausedなら再生」では検知できないので、次の3段構えにする:
-  //    1) 復帰イベントでは状態を見ずに必ず play() し直す(失敗したら load() からやり直す)
-  //    2) 見張り: currentTime が進んでいるかを定期確認し、凍結を実測で検知して蹴り直す
-  //    3) 最後の保険: 動画エリアのタップでも再生(低電力モード等で自動再生が拒否された場合)
+  // ⚠️ 凍結時も paused=false のままのケースがある(2026-08-30 TARO実機)。さらに
+  //    play()/load()の蹴り直しでも復帰しない実機報告があったため、方式を格上げ:
+  //    復帰イベントでは videoEpoch を増やして **<video>要素ごと作り直す**。
+  //    見張り(currentTime非前進の実測検知)は残し、こちらも最終的に作り直しへ倒す。
+  //    最後の保険としてタップでも作り直す。
   const kick = () => {
     const v = videoRef.current;
     if (!v) return;
-    v.play().catch(() => {
-      try {
-        v.load();
-        v.muted = true;
-        v.play().catch(() => {/* 低電力モード等。タップの保険に任せる */});
-      } catch {/* noop */}
-    });
+    v.play().catch(() => setVideoEpoch((e) => e + 1));
   };
+  const rebuild = () => setVideoEpoch((e) => e + 1);
 
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') kick();
+      if (document.visibilityState === 'visible') rebuild();
     };
     document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('pageshow', kick);
-    window.addEventListener('focus', kick);
+    window.addEventListener('pageshow', rebuild);
 
-    // 凍結の見張り。画面表示中に1.6秒間 currentTime が進んでいなければ蹴り直す。
-    // 2回連続で直らなければ load() からやり直す。
+    // 見張り: 表示中に currentTime が2周期(約3秒)進んでいなければ要素ごと作り直す
     let lastTime = -1;
     let stuckCount = 0;
     const watchdog = window.setInterval(() => {
@@ -61,13 +57,11 @@ export default function PantherHero() {
       if (v.currentTime === lastTime) {
         stuckCount += 1;
         if (stuckCount >= 2) {
-          try {
-            v.load();
-            v.muted = true;
-          } catch {/* noop */}
           stuckCount = 0;
+          rebuild();
+          return;
         }
-        v.play().catch(() => {/* タップの保険に任せる */});
+        v.play().catch(() => {/* 次周期でrebuildに倒れる */});
       } else {
         stuckCount = 0;
       }
@@ -76,8 +70,7 @@ export default function PantherHero() {
 
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('pageshow', kick);
-      window.removeEventListener('focus', kick);
+      window.removeEventListener('pageshow', rebuild);
       window.clearInterval(watchdog);
     };
   }, []);
@@ -102,6 +95,7 @@ export default function PantherHero() {
       <div className="relative w-full aspect-video">
         {hasVideo ? (
           <video
+            key={videoEpoch}
             ref={videoRef}
             className="absolute inset-0 w-full h-full object-cover"
             style={SHIFT}
