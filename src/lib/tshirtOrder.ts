@@ -37,7 +37,7 @@ export function defaultTshirtSettings(): TshirtSettings {
       '光の角度で、ロゴが浮かび上がります。',
       'レッスンでも、そのまま街でも。',
     ].join('\n'),
-    pickupNote: '9/10(木)以降のレッスン時に、直接お渡しします。',
+    pickupNote: '9/15(火)以降、順次お渡しを開始します。',
     thanksNote: '現金（お渡し時）または、事前のカード決済が選べます。',
     sizeChart: defaultSizeChart(),
   };

@@ -207,7 +207,7 @@ export default function TshirtOrderPage() {
           <div className="mt-10 space-y-5 text-sm leading-relaxed text-white/70">
             <div>
               <p className="text-white/40 text-[11px] tracking-[0.2em] mb-1.5">お渡し</p>
-              <p>{settings.pickupNote || '9/10(木)以降のレッスン時に、直接お渡しします。'}</p>
+              <p>{settings.pickupNote || '9/15(火)以降、順次お渡しを開始します。'}</p>
             </div>
             {!receipt.paid && receipt.paymentMethod === 'cash' && (
               <div>
