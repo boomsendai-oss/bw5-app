@@ -161,14 +161,14 @@ export default function ReelDraftsPage() {
   // 両方が揃った(=✅投稿設定へ)ものだけが投稿予約に進める。
   // ②の「済」はTAROが写真/コマを明示的に選んだ場合のみ(自動生成のコマはカウントしない。
   // 発表会のカバーはカメラマンの本番写真から選ぶのが正のため、自動コマ入りは全リセット済み)。
-  const settled = (d: Draft) => d.status === 'scheduled' || d.status === 'done';
+  const isSettled = (d: Draft) => d.status === 'scheduled' || d.status === 'done';
   const stageFilters: Array<{ key: typeof stageFilter; label: string; test: (d: Draft) => boolean }> = [
     { key: 'all', label: 'すべて', test: () => true },
-    { key: 'kf', label: '①追従が未入力', test: (d) => !kfEntered(d) && !settled(d) },
-    { key: 'cover', label: '②カバーが未選択', test: (d) => !coverSet(d) && !settled(d) },
+    { key: 'kf', label: '①追従が未入力', test: (d) => !kfEntered(d) && !isSettled(d) },
+    { key: 'cover', label: '②カバーが未選択', test: (d) => !coverSet(d) && !isSettled(d) },
     { key: 'go', label: '✅投稿設定へ', test: (d) => d.status === 'review' && kfEntered(d) && coverSet(d) },
     { key: 'gen', label: '生成中', test: (d) => d.status === 'ready' || d.status === 'generating' },
-    { key: 'sched', label: '予約済み', test: (d) => settled(d) },
+    { key: 'sched', label: '予約済み', test: (d) => isSettled(d) },
   ];
   const stageShown = tab === 'stage'
     ? stageSorted.filter(stageFilters.find((f) => f.key === stageFilter)!.test)
@@ -1230,8 +1230,15 @@ function defaultSlotLocal(stage: boolean): string {
 function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () => void; onMsg: (s: string) => void }) {
   const stage = draft.kind === '発表会' || draft.kind === 'stage';
   const [caption, setCaption] = useState(draft.caption ?? '');
-  const [collab, setCollab] = useState(draft.collaborators ?? '');
-  const [cast, setCast] = useState(draft.mention_handles ?? '');
+  // 発表会はデフォルトで「講師を共同投稿者に」「判明している生徒をCASTに」入れる(TARO 2026-08-31:
+  // 基本みんなポジティブなのでON前提。紐付けたくない家庭はチェック/チップを外す運用)。
+  // 保存前のデフォルトは画面上の初期値として出し、予約時にまとめて保存される。
+  // クラスリールは講師の同意が未取得のため従来どおり手動(TARO 2026-08-19)。
+  const [collab, setCollab] = useState(
+    draft.collaborators ?? (stage && draft.instructor_handle ? String(draft.instructor_handle) : '')
+  );
+  const suggestedCast = (draft.cast_suggest?.known ?? []).map((k) => k.handle).join(' ');
+  const [cast, setCast] = useState(draft.mention_handles ?? (stage ? suggestedCast : ''));
   const [dateStr, setDateStr] = useState(''); // datetime-local
   const [busy, setBusy] = useState(false);
   const [pickCover, setPickCover] = useState(false);
