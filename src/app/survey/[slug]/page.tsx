@@ -43,7 +43,25 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
   }, [slug]);
 
   if (!view) {
-    return <div className="min-h-screen bg-slate-50 grid place-items-center text-sm text-slate-400">読み込み中…</div>;
+    // 古い端末(Safari 16.3以前)はNextのクライアントJSが動かず、この初期表示のまま止まる。
+    // その場合だけCSSアニメーション(JS不要)で3秒後に簡易版への導線を出す。
+    // 正常な端末は3秒以内にフォームへ切り替わるので、この案内はほぼ見えない。
+    return (
+      <div className="min-h-screen bg-slate-50 grid place-items-center px-4">
+        <style>{'@keyframes surveyFallbackIn{to{opacity:1}}'}</style>
+        <div className="text-center">
+          <div className="text-sm text-slate-400">読み込み中…</div>
+          <div style={{ opacity: 0, animation: 'surveyFallbackIn 0.4s ease 3s forwards' }} className="mt-6 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+            画面がこのまま変わらない場合は、
+            <br />
+            <a href={`/survey/${slug}/simple`} className="font-bold text-teal-700 underline">
+              こちらの簡易版フォーム
+            </a>
+            からご回答ください。
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!view.found || view.state === 'closed' || view.state === 'expired') {
