@@ -134,13 +134,45 @@ export default function ReelDraftsPage() {
   const stageCount = drafts.filter(isStage).length;
   const classCount = drafts.length - stageCount;
 
-  // 発表会タブのMナンバー早見(TARO 2026-08-28)。ページの表示順(入力待ち→投稿待ち→…)で
-  // 最初に現れるそのナンバーのカードへ飛ぶ。ラベルは M番号+演目名。
-  const pageOrder = [...pending, ...review, ...scheduled, ...inFlight, ...settled];
+  // --- 発表会の進み具合(TARO 2026-08-31設計) ---
+  // 段階は3つ: ①追従 ②カバー ③投稿。状態(生成中など)とは別軸で持つ。
+  // ①の判定: stage_kf が生成既定値 '0=0.5' のままなら「追従が未入力」とみなす。
+  //   実データで投稿待ち47件中29件がこの状態=「完成に見えるが追従が手つかず」が
+  //   投稿待ちの山に埋もれて見分けられなかった、が今回の見づらさの正体。
+  //   本当に中央固定でよい演目は StageCutPanel の「中央固定でOK」で確定する(=入力済み扱いになる)。
+  const kfEntered = (d: Draft) => {
+    const kf = (d.stage_kf ?? '').trim();
+    return kf !== '' && kf !== '0=0.5';
+  };
+  const coverSet = (d: Draft) => d.cover_choice != null || d.cover_at != null;
+  const [stageFilter, setStageFilter] = useState<'all' | 'kf' | 'gen' | 'review' | 'sched'>('all');
+
+  // 発表会タブはMナンバー順の固定リスト(作り直してもカードが飛ばない)。
+  // 状態でセクション移動させると「作り直しを押したらどこかへ行った」になるため、
+  // 並びは常にナンバー順・進み具合はカード上のバッジで示す。
+  const stageSorted = [...shown].sort((a, b) => {
+    const pa = String(a.drive_name ?? '').match(/^M(\d+)(?:-(\d+))?/);
+    const pb = String(b.drive_name ?? '').match(/^M(\d+)(?:-(\d+))?/);
+    const ka = pa ? [parseInt(pa[1], 10), parseInt(pa[2] ?? '1', 10)] : [999, a.id];
+    const kb = pb ? [parseInt(pb[1], 10), parseInt(pb[2] ?? '1', 10)] : [999, b.id];
+    return ka[0] - kb[0] || ka[1] - kb[1];
+  });
+  const stageFilters: Array<{ key: typeof stageFilter; label: string; test: (d: Draft) => boolean }> = [
+    { key: 'all', label: 'すべて', test: () => true },
+    { key: 'kf', label: '①追従が未入力', test: (d) => !kfEntered(d) && d.status !== 'done' },
+    { key: 'gen', label: '生成中', test: (d) => d.status === 'ready' || d.status === 'generating' },
+    { key: 'review', label: '投稿待ち', test: (d) => d.status === 'review' },
+    { key: 'sched', label: '予約済み', test: (d) => d.status === 'scheduled' || d.status === 'done' },
+  ];
+  const stageShown = tab === 'stage'
+    ? stageSorted.filter(stageFilters.find((f) => f.key === stageFilter)!.test)
+    : [];
+
+  // Mナンバー早見(TARO 2026-08-28)。ナンバー順リストの先頭カードへ飛ぶ。
   const stageJump: Array<{ mid: string; name: string; draftId: number }> = [];
   if (tab === 'stage') {
     const seen = new Set<string>();
-    for (const d of pageOrder) {
+    for (const d of stageShown) {
       const m = String(d.drive_name ?? '').match(/^M(\d+)/);
       if (!m) continue;
       const mid = 'M' + parseInt(m[1], 10);
@@ -148,7 +180,6 @@ export default function ReelDraftsPage() {
       seen.add(mid);
       stageJump.push({ mid, name: d.class_name || '', draftId: d.id });
     }
-    stageJump.sort((a, b) => parseInt(a.mid.slice(1), 10) - parseInt(b.mid.slice(1), 10));
   }
 
   return (
@@ -212,6 +243,23 @@ export default function ReelDraftsPage() {
               🎭 発表会リール ({stageCount})
             </button>
           </div>
+          {tab === 'stage' && (
+            <div className="flex gap-1 overflow-x-auto">
+              {stageFilters.map((f) => {
+                const n = stageSorted.filter(f.test).length;
+                return (
+                  <button key={f.key} onClick={() => setStageFilter(f.key)}
+                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold border transition-colors ${
+                      stageFilter === f.key
+                        ? f.key === 'kf' ? 'bg-amber-500 border-amber-500 text-white' : 'bg-navy-700 border-navy-700 text-white'
+                        : f.key === 'kf' && n > 0 ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-white border-sand-300 text-navy-600'
+                    }`}>
+                    {f.label} {n}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {tab === 'stage' && stageJump.length > 0 && (
             <div className="flex gap-1.5 overflow-x-auto pb-1 -mb-1">
               {stageJump.map((j) => (
@@ -228,12 +276,57 @@ export default function ReelDraftsPage() {
 
         {loading ? (
           <p className="text-navy-500">読み込み中…</p>
+        ) : tab === 'stage' ? (
+          <>
+            <StageCreateForm onCreated={load} onMsg={setMsg} lessons={lessons} />
+            {stageShown.length === 0 && (
+              <p className="text-xs text-navy-400">
+                {stageFilter === 'all' ? '作成するとここにナンバー順で並びます' : 'この段階のナンバーはありません'}
+              </p>
+            )}
+            {stageShown.map((d, i) => {
+              const m = String(d.drive_name ?? '').match(/^M(\d+)/);
+              const mid = m ? 'M' + parseInt(m[1], 10) : 'その他';
+              const prev = i > 0 ? String(stageShown[i - 1].drive_name ?? '').match(/^M(\d+)/) : null;
+              const prevMid = i > 0 ? (prev ? 'M' + parseInt(prev[1], 10) : 'その他') : null;
+              return (
+                <div key={`${d.id}:${d.updated_at}`} id={`draft-card-${d.id}`} className="scroll-mt-40">
+                  {mid !== prevMid && (
+                    <h2 className="text-sm font-bold text-navy-800 border-b-2 border-brand-400 pb-1 mb-2 mt-1">
+                      {mid} <span className="font-semibold text-navy-500">{d.class_name || ''}</span>
+                    </h2>
+                  )}
+                  <div className="mb-1.5 flex items-center gap-1.5 flex-wrap">
+                    <StepChip ok={kfEntered(d)} okText="①追従 ✓" ngText="①追従 未" />
+                    <StepChip ok={coverSet(d)} okText="②カバー ✓" ngText="②カバー 未" />
+                    {d.status === 'scheduled' || d.status === 'done' ? (
+                      <StepChip ok okText="③予約済み" ngText="" />
+                    ) : d.status === 'review' ? (
+                      <span className="rounded-full bg-brand-50 border border-brand-300 text-brand-700 px-2 py-0.5 text-[11px] font-semibold">③投稿待ち</span>
+                    ) : d.status === 'ready' || d.status === 'generating' ? (
+                      <span className="rounded-full bg-navy-50 border border-navy-200 text-navy-600 px-2 py-0.5 text-[11px] font-semibold">🔄 生成{d.status === 'generating' ? '中' : '待ち'}</span>
+                    ) : null}
+                  </div>
+                  {d.status === 'need_input' ? (
+                    <DraftEditor draft={d} onSaved={load} onMsg={setMsg} lessons={lessons} />
+                  ) : d.status === 'review' ? (
+                    <ReviewCard draft={d} onChanged={load} onMsg={setMsg} />
+                  ) : d.status === 'ready' || d.status === 'generating' ? (
+                    <div className="space-y-2">
+                      <CompactRow d={d} onReset={load} onMsg={setMsg} />
+                      {d.status === 'ready' && <StageCutPanel draft={d} onDone={load} onMsg={setMsg} />}
+                    </div>
+                  ) : (
+                    <CompactRow d={d} onReset={load} onMsg={setMsg} />
+                  )}
+                </div>
+              );
+            })}
+          </>
         ) : (
           <>
-            {tab === 'stage' && <StageCreateForm onCreated={load} onMsg={setMsg} lessons={lessons} />}
-
             <Section title={`入力待ち (${pending.length})`}
-              empty={tab === 'stage' ? '作成後、SSD接続中のMacが本編を確定するとここに出ます(カバー選定はスマホでOK)' : 'Driveに新しいクリップが上がると、ここに並びます'}>
+              empty="Driveに新しいクリップが上がると、ここに並びます">
               {/* key に updated_at を含める: 作り直しで素材が入れ替わったら入力状態(選択中のカバー等)を
                   作り直し前のまま持ち越さずリセットする */}
               {pending.map((d) => (
@@ -268,9 +361,6 @@ export default function ReelDraftsPage() {
                 {inFlight.map((d) => (
                   <div key={`${d.id}:${d.updated_at}`} id={`draft-card-${d.id}`} className="space-y-2 scroll-mt-28">
                     <CompactRow d={d} onReset={load} onMsg={setMsg} />
-                    {isStage(d) && d.status === 'ready' && (
-                      <StageCutPanel draft={d} onDone={load} onMsg={setMsg} />
-                    )}
                   </div>
                 ))}
               </Section>
@@ -289,6 +379,15 @@ export default function ReelDraftsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// 発表会カードの段階バッジ(①追従 ②カバー ③投稿)。済=ティール/未=琥珀で一目で分かるようにする
+function StepChip({ ok, okText, ngText }: { ok: boolean; okText: string; ngText: string }) {
+  return ok ? (
+    <span className="rounded-full bg-brand-600 text-white px-2 py-0.5 text-[11px] font-semibold">{okText}</span>
+  ) : (
+    <span className="rounded-full bg-amber-100 border border-amber-400 text-amber-800 px-2 py-0.5 text-[11px] font-semibold">{ngText}</span>
   );
 }
 
@@ -841,17 +940,25 @@ function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
     else setEnd((v) => round(v + by));
   };
 
-  const recut = async () => {
+  const recut = async (useKf?: string) => {
     setBusy(true);
     const r = await fetch('/api/staff/reel-drafts', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'recut', id: draft.id, dance_start: start, dance_end: end, stage_kf: kf }),
+      body: JSON.stringify({ action: 'recut', id: draft.id, dance_start: start, dance_end: end, stage_kf: useKf ?? kf }),
     });
     const j = await r.json();
     setBusy(false);
     if (!r.ok) { onMsg(j.error ?? '作り直しに失敗しました'); return; }
     onMsg(`${stageNoOf(draft)} を ${start.toFixed(1)}s〜${end.toFixed(1)}s で作り直します（Macが1分以内に開始・SSD未接続なら挿した時点で自動実行）`);
     onDone();
+  };
+
+  // 追従が要らない(ずっと中央でよい)演目の確定。値の意味は既定の '0=0.5' と同じだが、
+  // 表記を '0=0.50' にすることで「未入力」ではなく「中央固定と判断済み」として区別できる。
+  // これが無いと、追従不要の演目が①追従未入力のリストに永遠に残り続ける。
+  const confirmCenter = () => {
+    setKf('0=0.50');
+    recut('0=0.50');
   };
 
   return (
@@ -919,10 +1026,16 @@ function StageCutPanel({ draft, onDone, onMsg, defaultOpen = false }:
             </>
           )}
 
-          <button disabled={busy || lenNg || !dirty} onClick={recut}
+          <button disabled={busy || lenNg || !dirty} onClick={() => recut()}
             className="w-full min-h-[48px] text-sm font-semibold rounded-md bg-navy-700 text-white disabled:opacity-40">
             {busy ? '送信中…' : dirty ? '🔄 この設定で作り直す' : '変更なし'}
           </button>
+          {(draft.stage_kf ?? '').trim() === '0=0.5' && (
+            <button disabled={busy || lenNg} onClick={confirmCenter}
+              className="w-full min-h-[44px] text-sm font-semibold rounded-md border border-brand-400 text-brand-700 bg-white disabled:opacity-40">
+              ✅ 追従なし(ずっと中央)でOK
+            </button>
+          )}
           <p className="text-[10px] text-navy-400">
             作り直すと本編・カバー候補が新しくなります（カバーの選び直しが必要）。キャプションの手直しは残ります
           </p>
