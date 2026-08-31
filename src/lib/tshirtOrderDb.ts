@@ -61,6 +61,21 @@ function toOrder(r: any): StoredOrder {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+// 監査ログ。変更・削除で「変更前」を必ず残す(2026-08-31の上書き消失事故を受けて。
+// 復元を推測でなく記録から行えるようにする)。失敗しても本処理は止めない。
+/* eslint-disable @typescript-eslint/no-explicit-any -- スナップショットは行そのまま */
+async function logOrderAudit(orderId: number | null, action: string, before: any, after: any): Promise<void> {
+  try {
+    await execute(
+      'INSERT INTO tshirt_order_audit (order_id, action, snapshot_before, snapshot_after, created_at) VALUES (?, ?, ?, ?, ?)',
+      [orderId, action, before ? JSON.stringify(before) : '', after ? JSON.stringify(after) : '', new Date().toISOString()]
+    );
+  } catch (e) {
+    console.error('[tshirt] audit log failed', action, e instanceof Error ? e.message : e);
+  }
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 // 設定行が無ければデフォルトを返す(永続化はしない=公開/スタッフ双方から安全に読める)。
 export async function resolveTshirtSettings(): Promise<TshirtSettings> {
   const row = await getOne('SELECT * FROM tshirt_order_settings WHERE id = 1');
@@ -128,6 +143,8 @@ export async function createOrder(data: ValidatedOrder): Promise<string> {
       now, now,
     ]
   );
+  const createdRow = await getOne('SELECT * FROM tshirt_orders WHERE edit_token = ?', [token]);
+  if (createdRow) await logOrderAudit(Number(createdRow.id), 'create', null, createdRow);
   return token;
 }
 
@@ -141,7 +158,7 @@ export async function loadOrderByToken(token: string): Promise<StoredOrder | nul
 // トークン一致の注文を差し替える。合計金額は現在の設定で再計算する。
 export async function updateOrderByToken(token: string, data: ValidatedOrder): Promise<boolean> {
   if (!token) return false;
-  const row = await getOne('SELECT id, paid, payment_method FROM tshirt_orders WHERE edit_token = ?', [token]);
+  const row = await getOne('SELECT * FROM tshirt_orders WHERE edit_token = ?', [token]);
   if (!row) return false;
   // カード決済済みの注文は金額が確定しているため、内容変更を受け付けない
   if (Number(row.paid) === 1 && row.payment_method === 'stripe') return false;
@@ -161,6 +178,8 @@ export async function updateOrderByToken(token: string, data: ValidatedOrder): P
       new Date().toISOString(), token,
     ]
   );
+  const afterRow = await getOne('SELECT * FROM tshirt_orders WHERE edit_token = ?', [token]);
+  await logOrderAudit(Number(row.id), 'update', row, afterRow);
   return true;
 }
 
@@ -182,7 +201,9 @@ export async function setOrderFlags(id: number, flags: { handedOver?: boolean; p
 }
 
 export async function deleteOrder(id: number): Promise<void> {
+  const before = await getOne('SELECT * FROM tshirt_orders WHERE id = ?', [id]);
   await execute('DELETE FROM tshirt_orders WHERE id = ?', [id]);
+  if (before) await logOrderAudit(id, 'delete', before, null);
 }
 
 // ============================================================
@@ -222,6 +243,7 @@ export async function applyTshirtPaidWebhook(ev: TshirtPaidWebhookInput): Promis
       WHERE id = ?`,
     [ev.sessionId, ev.paymentIntentId, mismatch ? 1 : 0, new Date().toISOString(), ev.orderId]
   );
+  await logOrderAudit(ev.orderId, 'paid_webhook', row, { sessionId: ev.sessionId, paymentIntentId: ev.paymentIntentId, amountTotal: ev.amountTotal });
   return {
     status: 'paid',
     amountMismatch: mismatch,

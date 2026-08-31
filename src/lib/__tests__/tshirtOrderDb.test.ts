@@ -12,7 +12,9 @@ delete process.env.TURSO_AUTH_TOKEN;
 delete process.env.SKIP_DB_INIT;
 
 type DbMod = typeof import('../tshirtOrderDb');
+type Core = typeof import('../db');
 let db: DbMod;
+let core: Core;
 
 const pickup = { name: 'キムラ', size: 'L' as const, qty: 2, wantsShipping: false, address: '', phone: '' };
 const shipped = {
@@ -29,6 +31,7 @@ beforeAll(async () => {
     }
   }
   db = await import('../tshirtOrderDb');
+  core = await import('../db');
 });
 
 describe('createOrder / loadOrderByToken', () => {
@@ -155,5 +158,28 @@ describe('Stripe決済の適用(Webhook側の正本処理)', () => {
     await db.attachStripeSession(o.id, 'cs_test_4');
     await db.applyTshirtPaidWebhook({ orderId: o.id, sessionId: 'cs_test_4', paymentIntentId: 'pi_4', amountTotal: o.totalAmount });
     expect(await db.updateOrderByToken(token, { ...pickup, qty: 5, paymentMethod: 'stripe' })).toBe(false);
+  });
+});
+
+describe('監査ログ(変更前の内容を必ず残す)', () => {
+  it('編集すると変更前・変更後のスナップショットが記録される', async () => {
+    const token = await db.createOrder({ ...pickup, name: '記録 一郎' });
+    await db.updateOrderByToken(token, { ...pickup, name: '記録 二郎', qty: 3 });
+    const rows = await core.getAll(
+      "SELECT action, snapshot_before, snapshot_after FROM tshirt_order_audit ORDER BY id DESC LIMIT 1"
+    );
+    expect(rows[0].action).toBe('update');
+    expect(String(rows[0].snapshot_before)).toContain('記録 一郎');
+    expect(String(rows[0].snapshot_after)).toContain('記録 二郎');
+  });
+
+  it('スタッフ削除でも削除前の内容が残る', async () => {
+    const token = await db.createOrder({ ...pickup, name: '記録 三郎' });
+    const o = (await db.loadOrderByToken(token))!;
+    await db.deleteOrder(o.id);
+    const rows = await core.getAll(
+      "SELECT action, snapshot_before FROM tshirt_order_audit WHERE action='delete' ORDER BY id DESC LIMIT 1"
+    );
+    expect(String(rows[0].snapshot_before)).toContain('記録 三郎');
   });
 });

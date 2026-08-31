@@ -1266,6 +1266,21 @@ export function getSchemaStatements(): InStatement[] {
     )`,
       args: [],
     },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS tshirt_order_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER,
+      action TEXT NOT NULL,
+      snapshot_before TEXT NOT NULL DEFAULT '',
+      snapshot_after TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_tshirt_order_audit_order ON tshirt_order_audit (order_id)`,
+      args: [],
+    },
     // 無人物販kiosk (2026-08-25): 本番は台帳 20260825_kiosk_tables.sql。
     // 既存 merchandise/merch_orders はBW5(Square)用として凍結し、こちらは独立系統。
     {
