@@ -585,6 +585,24 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    // 発表会は「①追従 ②カバー」が両方揃ってから投稿設定に進む(TARO 2026-08-31設計)。
+    // カバー指定が空=写真をまだ選んでいない(自動生成のコマが残っているだけ)なので、
+    // そのまま予約すると方針(カバーは本番写真)に反する投稿が出てしまう。
+    if (d.kind === '発表会' || d.kind === 'stage') {
+      const kf = String(d.stage_kf ?? '').trim();
+      if (kf === '' || kf === '0=0.5') {
+        return NextResponse.json(
+          { error: '追従が未入力です。追従を入れる(または中央固定でOKを押す)と予約できます' },
+          { status: 400 }
+        );
+      }
+      if (d.cover_choice == null && d.cover_at == null) {
+        return NextResponse.json(
+          { error: 'カバーが未選択です。カバー(本番写真)を決めてから予約してください' },
+          { status: 400 }
+        );
+      }
+    }
     let scheduledAt = nextReelSlotIso(String(d.kind ?? 'class'));
     if (body.scheduled_at) {
       const t = new Date(body.scheduled_at);

@@ -145,7 +145,7 @@ export default function ReelDraftsPage() {
     return kf !== '' && kf !== '0=0.5';
   };
   const coverSet = (d: Draft) => d.cover_choice != null || d.cover_at != null;
-  const [stageFilter, setStageFilter] = useState<'all' | 'kf' | 'gen' | 'review' | 'sched'>('all');
+  const [stageFilter, setStageFilter] = useState<'all' | 'kf' | 'cover' | 'go' | 'gen' | 'sched'>('all');
 
   // 発表会タブはMナンバー順の固定リスト(作り直してもカードが飛ばない)。
   // 状態でセクション移動させると「作り直しを押したらどこかへ行った」になるため、
@@ -157,12 +157,18 @@ export default function ReelDraftsPage() {
     const kb = pb ? [parseInt(pb[1], 10), parseInt(pb[2] ?? '1', 10)] : [999, b.id];
     return ka[0] - kb[0] || ka[1] - kb[1];
   });
+  // 段階の設計(TARO 2026-08-31): ①追従 と ②カバー は独立したチェック。
+  // 両方が揃った(=✅投稿設定へ)ものだけが投稿予約に進める。
+  // ②の「済」はTAROが写真/コマを明示的に選んだ場合のみ(自動生成のコマはカウントしない。
+  // 発表会のカバーはカメラマンの本番写真から選ぶのが正のため、自動コマ入りは全リセット済み)。
+  const settled = (d: Draft) => d.status === 'scheduled' || d.status === 'done';
   const stageFilters: Array<{ key: typeof stageFilter; label: string; test: (d: Draft) => boolean }> = [
     { key: 'all', label: 'すべて', test: () => true },
-    { key: 'kf', label: '①追従が未入力', test: (d) => !kfEntered(d) && d.status !== 'done' },
+    { key: 'kf', label: '①追従が未入力', test: (d) => !kfEntered(d) && !settled(d) },
+    { key: 'cover', label: '②カバーが未選択', test: (d) => !coverSet(d) && !settled(d) },
+    { key: 'go', label: '✅投稿設定へ', test: (d) => d.status === 'review' && kfEntered(d) && coverSet(d) },
     { key: 'gen', label: '生成中', test: (d) => d.status === 'ready' || d.status === 'generating' },
-    { key: 'review', label: '投稿待ち', test: (d) => d.status === 'review' },
-    { key: 'sched', label: '予約済み', test: (d) => d.status === 'scheduled' || d.status === 'done' },
+    { key: 'sched', label: '予約済み', test: (d) => settled(d) },
   ];
   const stageShown = tab === 'stage'
     ? stageSorted.filter(stageFilters.find((f) => f.key === stageFilter)!.test)
@@ -251,8 +257,8 @@ export default function ReelDraftsPage() {
                   <button key={f.key} onClick={() => setStageFilter(f.key)}
                     className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold border transition-colors ${
                       stageFilter === f.key
-                        ? f.key === 'kf' ? 'bg-amber-500 border-amber-500 text-white' : 'bg-navy-700 border-navy-700 text-white'
-                        : f.key === 'kf' && n > 0 ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-white border-sand-300 text-navy-600'
+                        ? f.key === 'kf' || f.key === 'cover' ? 'bg-amber-500 border-amber-500 text-white' : 'bg-navy-700 border-navy-700 text-white'
+                        : (f.key === 'kf' || f.key === 'cover') && n > 0 ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-white border-sand-300 text-navy-600'
                     }`}>
                     {f.label} {n}
                   </button>
@@ -301,8 +307,10 @@ export default function ReelDraftsPage() {
                     <StepChip ok={coverSet(d)} okText="②カバー ✓" ngText="②カバー 未" />
                     {d.status === 'scheduled' || d.status === 'done' ? (
                       <StepChip ok okText="③予約済み" ngText="" />
+                    ) : d.status === 'review' && kfEntered(d) && coverSet(d) ? (
+                      <span className="rounded-full bg-brand-600 text-white px-2 py-0.5 text-[11px] font-semibold">③投稿設定へ ✅</span>
                     ) : d.status === 'review' ? (
-                      <span className="rounded-full bg-brand-50 border border-brand-300 text-brand-700 px-2 py-0.5 text-[11px] font-semibold">③投稿待ち</span>
+                      <span className="rounded-full bg-sand-200 text-navy-500 px-2 py-0.5 text-[11px] font-semibold">③投稿はまだ(①②を先に)</span>
                     ) : d.status === 'ready' || d.status === 'generating' ? (
                       <span className="rounded-full bg-navy-50 border border-navy-200 text-navy-600 px-2 py-0.5 text-[11px] font-semibold">🔄 生成{d.status === 'generating' ? '中' : '待ち'}</span>
                     ) : null}
