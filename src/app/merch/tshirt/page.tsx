@@ -246,10 +246,30 @@ export default function TshirtOrderPage() {
                 }}
                 className="mt-12 w-full border border-white/20 py-4 text-xs tracking-[0.25em] text-white/70 hover:bg-white/5 transition"
               >
-                注文内容を変更する
+                この注文の内容を変更する
+              </button>
+              {/* ⚠️ 未払いでも「追加」は必須。これが無いと、家族2人分などを頼む人が
+                  「変更」で1件目を上書きしてしまう(2026-08-31に実害: 兄弟2枚の注文が1枚になった) */}
+              <button
+                onClick={() => {
+                  localStorage.removeItem(TOKEN_KEY);
+                  setToken(null);
+                  setReceipt(null);
+                  setEditing(false);
+                  setSize('');
+                  setQty(1);
+                  setWantsShipping(false);
+                  setAddress('');
+                  setPhone('');
+                  setPaymentMethod('cash');
+                }}
+                className="mt-3 w-full border border-white/20 py-4 text-xs tracking-[0.25em] text-white/70 hover:bg-white/5 transition"
+              >
+                別の人の分を追加で注文する
               </button>
               <p className="mt-4 text-[11px] text-white/30 leading-relaxed">
-                このページをブックマークしておくと、締切までは内容を変更できます。
+                ごきょうだい等で複数枚のご注文は「別の人の分を追加で注文する」からお願いします。
+                「変更」は今の注文の書き換えです。
               </p>
             </>
           ) : (
