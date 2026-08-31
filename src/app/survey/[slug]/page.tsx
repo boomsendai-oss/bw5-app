@@ -227,7 +227,7 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="例: 山田 太郎(きょうだいは連名OK)"
-            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
           />
           {view.nameNote ? <p className="text-xs text-slate-500 mt-2 leading-relaxed">{view.nameNote}</p> : null}
         </div>
@@ -302,7 +302,7 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
                         type="text"
                         value={a.otherText}
                         onChange={(e) => setAnswer(q.questionKey, { otherText: e.target.value })}
-                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
                       />
                     </div>
                   ) : null}
@@ -312,7 +312,7 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
                   value={a.text}
                   onChange={(e) => setAnswer(q.questionKey, { text: e.target.value })}
                   rows={4}
-                  className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               ) : (
                 <div className="mt-3 space-y-2">
@@ -342,7 +342,7 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
                         value={a.otherText}
                         onChange={(e) => setAnswer(q.questionKey, { otherText: e.target.value })}
                         placeholder="例: POP・LOCK など"
-                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
                       />
                     </div>
                   ) : null}

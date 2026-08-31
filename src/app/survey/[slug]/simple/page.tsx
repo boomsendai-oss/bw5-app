@@ -56,7 +56,7 @@ function OptionInputs({ q }: { q: QuestionDef }) {
             type="text"
             name={fieldName('other', q.questionKey)}
             placeholder="自由記入"
-            className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm"
+            className="flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 placeholder:text-slate-400"
           />
         </div>
       ) : null}
@@ -102,7 +102,7 @@ function GridInputs({ q }: { q: QuestionDef }) {
             <input type="checkbox" name={fieldName('q', q.questionKey)} value={OTHER_KEY} className={boxCls} />
             その他:
           </label>
-          <input type="text" name={fieldName('other', q.questionKey)} placeholder="自由記入" className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm" />
+          <input type="text" name={fieldName('other', q.questionKey)} placeholder="自由記入" className="flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 placeholder:text-slate-400" />
         </div>
       ) : null}
     </div>
@@ -172,7 +172,7 @@ export default async function SimpleSurveyPage({
               name={fieldName('name')}
               required={survey.name_required}
               placeholder="例: 山田 太郎(きょうだいは連名OK)"
-              className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal"
+              className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 font-normal"
             />
           </label>
           {survey.name_note ? <p className="text-xs text-slate-500 mt-2 leading-relaxed">{survey.name_note}</p> : null}
@@ -188,7 +188,7 @@ export default async function SimpleSurveyPage({
               ) : null}
             </div>
             {q.qtype === 'text' ? (
-              <textarea name={fieldName('text', q.questionKey)} rows={4} className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              <textarea name={fieldName('text', q.questionKey)} rows={4} className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400" />
             ) : q.qtype === 'grid' ? (
               <GridInputs q={q} />
             ) : (
