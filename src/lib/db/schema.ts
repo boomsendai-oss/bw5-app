@@ -293,6 +293,18 @@ export function getSchemaStatements(): InStatement[] {
     )`,
       args: [],
     },
+    // アンケート回答画面のクライアントエラー収集(白画面バグ調査用・WS AO 2026-08-31)
+    {
+      sql: `CREATE TABLE IF NOT EXISTS survey_client_errors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message TEXT,
+      stack TEXT,
+      user_agent TEXT,
+      url TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+      args: [],
+    },
     // アンケート基盤 (WS AO 2026-08-28)。定義=surveys/survey_questions・回答=survey_responses/survey_answers。
     // 本番は台帳 scripts/migrations/20260828_surveys.sql が正。
     {

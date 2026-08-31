@@ -6,6 +6,7 @@
 
 import { useEffect, useState, use as usePromise } from 'react';
 import { getPublicSurvey, submitSurveyResponse, type PublicSurveyView } from './actions';
+import { installSurveyErrorHandlers, reportSurveyClientError } from './reportError';
 import { gridCellKey, type QuestionDef } from '@/lib/survey';
 
 type AnswerState = Record<string, { optionKeys: string[]; otherText: string; text: string }>;
@@ -34,12 +35,18 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
+  useEffect(() => installSurveyErrorHandlers(), []);
+
   useEffect(() => {
     (async () => {
       const v = await getPublicSurvey(slug);
       setView(v);
       setAnswers(emptyAnswers(v.questions));
-    })();
+    })().catch((e) => {
+      // 読み込み失敗(デプロイ直後の旧クライアント等)は白画面でなく簡易版へ誘導
+      reportSurveyClientError('load-failed: ' + (e?.message || String(e)), e?.stack);
+      window.location.href = `/survey/${slug}/simple`;
+    });
   }, [slug]);
 
   if (!view) {
@@ -178,6 +185,11 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
       } else {
         setError(r.error);
       }
+    } catch (e) {
+      // 通信断・デプロイ直後の旧クライアント等。無反応(実質白画面)にせず言葉で案内する
+      const err = e as Error;
+      reportSurveyClientError('submit-failed: ' + (err?.message || String(e)), err?.stack);
+      setError('送信に失敗しました。電波の良い場所でもう一度お試しいただくか、簡易版フォームからご回答ください。');
     } finally {
       setBusy(false);
     }
@@ -340,7 +352,16 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
           );
         })}
 
-        {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+        {error ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+            {error.includes('簡易版') ? (
+              <a href={`/survey/${slug}/simple`} className="mt-2 block font-bold text-teal-700 underline">
+                簡易版フォームを開く
+              </a>
+            ) : null}
+          </div>
+        ) : null}
 
         <button
           type="button"
