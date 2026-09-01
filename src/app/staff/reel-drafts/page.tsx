@@ -305,7 +305,9 @@ export default function ReelDraftsPage() {
                   <div className="mb-1.5 flex items-center gap-1.5 flex-wrap">
                     <StepChip ok={kfEntered(d)} okText="①追従 ✓" ngText="①追従 未" />
                     <StepChip ok={coverSet(d)} okText="②カバー ✓" ngText="②カバー 未" />
-                    {d.status === 'scheduled' || d.status === 'done' ? (
+                    {d.queue_status === 'posted' ? (
+                      <StepChip ok okText="③投稿済み ✅" ngText="" />
+                    ) : d.status === 'scheduled' || d.status === 'done' ? (
                       <StepChip ok okText="③予約済み" ngText="" />
                     ) : d.status === 'review' && kfEntered(d) && coverSet(d) ? (
                       <span className="rounded-full bg-brand-600 text-white px-2 py-0.5 text-[11px] font-semibold">③投稿設定へ ✅</span>
@@ -1174,9 +1176,19 @@ function CompactRow({ d, onReset, onMsg }: { d: Draft; onReset: () => void; onMs
         <div className="min-w-0">
           <p className="text-sm text-navy-700 truncate">{d.class_name || d.drive_name}{d.instructor ? `（${d.instructor}）` : ''}</p>
           {d.error && <p className="text-[11px] text-red-600 truncate">{d.error}</p>}
-          {d.status === 'scheduled' && d.queue_scheduled_at && (
+          {/* 投稿済みは reel_queue 側にしか記録されない(下書きは scheduled のまま)。
+              ここで書き戻さないと、過ぎた日時に「投稿予約」と出続けて「まだ出てないの?」と誤解する。
+              実データ確認: 投稿済み11本すべてが draft=scheduled / queue=posted だった(TARO 2026-09-01) */}
+          {d.queue_status === 'posted' ? (
+            <p className="text-[11px] text-brand-700">
+              ✅ 投稿済み{d.queue_scheduled_at ? ` ${fmtJst(d.queue_scheduled_at)}` : ''}
+              {d.queue_permalink && (
+                <> ・<a href={d.queue_permalink} target="_blank" rel="noreferrer" className="underline">投稿を見る</a></>
+              )}
+            </p>
+          ) : d.status === 'scheduled' && d.queue_scheduled_at ? (
             <p className="text-[11px] text-green-700">📅 {fmtJst(d.queue_scheduled_at)} に投稿予約</p>
-          )}
+          ) : null}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className={`text-[11px] px-2 py-0.5 rounded-full ${STATUS_STYLE[d.status] ?? ''}`}>{STATUS_LABEL[d.status] ?? d.status}</span>
