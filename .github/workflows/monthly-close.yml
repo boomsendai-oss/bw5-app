@@ -17,22 +17,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Call /api/cron/monthly-close
+      - name: Call /api/cron/monthly-close (3段階)
         run: |
           set -e
-          RESP=$(curl -s --max-time 120 -w '\n%{http_code}' \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            https://bw5-app.vercel.app/api/cron/monthly-close)
-          BODY=$(echo "$RESP" | sed '$d')
-          CODE=$(echo "$RESP" | tail -1)
-          echo "HTTP $CODE: $BODY"
-          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
-          # HTTPコードだけ見ると、同期が全部失敗しても緑のままになる(2026-08-12の教訓)。
-          # 本文の ok を見て、errors が入っていたら赤にする。
-          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
-            || { echo "::error::月次締めでエラーが発生しました: $BODY"; exit 1; }
-          # 締め遅延・要確認は「異常」ではないので赤にしない(メールで届く)。
-          # オオカミ少年化させると本当の失敗を見逃すため。
-          echo "$BODY" | jq -r 'if .overdue then "::warning::前月の給与が未確定のままです" else empty end'
-          echo "$BODY" | jq -r '(.syncs[] | select(.needsReview > 0))
-            | "::warning::\(.year_month): カレンダーが読めない予定が \(.needsReview) 件あります"'
+          # 月初に全処理を1回のAPI呼び出しでやるとVercelの60秒制限で504になる(2026-09-01実測)。
+          # phaseで分割して順に呼ぶ。月初以外はsync-prev/closeが即ok:trueで返るだけ。
+          for PHASE in sync-prev sync-this close; do
+            RESP=$(curl -s --max-time 120 -w '\n%{http_code}' \
+              -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+              "https://bw5-app.vercel.app/api/cron/monthly-close?phase=$PHASE")
+            BODY=$(echo "$RESP" | sed '$d')
+            CODE=$(echo "$RESP" | tail -1)
+            echo "[$PHASE] HTTP $CODE: $BODY"
+            [ "$CODE" = "200" ] || { echo "::error::[$PHASE] HTTP $CODE (期待:200)"; exit 1; }
+            # HTTPコードだけ見ると、同期が全部失敗しても緑のままになる(2026-08-12の教訓)。
+            echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+              || { echo "::error::[$PHASE] 月次締めでエラーが発生しました: $BODY"; exit 1; }
+            # 締め遅延・要確認は「異常」ではないので赤にしない(メールで届く)。
+            echo "$BODY" | jq -r 'if .overdue then "::warning::前月の給与が未確定のままです" else empty end'
+            echo "$BODY" | jq -r '(.syncs[]? | select(.needsReview > 0))
+              | "::warning::\(.year_month): カレンダーが読めない予定が \(.needsReview) 件あります"'
+          done

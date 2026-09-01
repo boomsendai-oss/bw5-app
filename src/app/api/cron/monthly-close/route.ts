@@ -26,6 +26,10 @@ export async function GET(req: NextRequest) {
   if (!ok) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const force = req.nextUrl.searchParams.get('force') === '1'; // 手動確認用
+  // 月初は 前月同期+当月同期+前月集計+当月再計算+メール を全部やると
+  // Vercelの maxDuration=60秒 を超えて504になる(2026-09-01の初回月初で実測)。
+  // phase を指定して分割実行する(GH Actionsが順に呼ぶ)。未指定なら従来どおり全部。
+  const phase = req.nextUrl.searchParams.get('phase'); // 'sync-prev' | 'sync-this' | 'close' | null
   const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   const day = Number(today.slice(8, 10));
   const thisYm = today.slice(0, 7);
@@ -34,10 +38,14 @@ export async function GET(req: NextRequest) {
   const prevYm = prev.toISOString().slice(0, 7);
 
   // 月初の数日は前月も同期する。月末ぎりぎりの予定変更を拾うため。
-  const targets = day <= 5 || force ? [prevYm, thisYm] : [thisYm];
+  const syncPrev = (day <= 5 || force) && (!phase || phase === 'sync-prev');
+  const syncThis = !phase || phase === 'sync-this';
+  // 月初(1〜3日)は前月ぶんを締めにいく
+  const doClose = (day <= 3 || force) && (!phase || phase === 'close');
+
   const syncs: SyncResult[] = [];
   const errors: string[] = [];
-  for (const ym of targets) {
+  for (const ym of [...(syncPrev ? [prevYm] : []), ...(syncThis ? [thisYm] : [])]) {
     try {
       syncs.push(await syncCalendarActuals(ym, { apply: true }));
     } catch (e) {
@@ -45,8 +53,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // 月初(1〜3日)は前月ぶんを締めにいく
-  const doClose = day <= 3 || force;
   let payroll = null, studio = null;
   if (doClose) {
     try { payroll = await recalcPayroll(prevYm); } catch (e) { errors.push(`${prevYm} の給与計算に失敗: ${e instanceof Error ? e.message : e}`); }
@@ -54,12 +60,12 @@ export async function GET(req: NextRequest) {
   }
 
   // 当月のdraftも毎日作り直す(2026-08-30 TARO確認で「毎日自動」に格上げ)。
-  // 実績の同期だけ毎日でdraft再計算が月初だけだと、月中のPL暫定値と
-  // /staff/payroll の表示が実績とズレたまま古くなる。
   // persistPayrollRun/persistStudioBillingRun は draft しか触らないので、
   // 確定済み・支払済みの金額がこのcronで変わることは構造的にない。
-  try { await recalcPayroll(thisYm); } catch (e) { errors.push(`${thisYm} の給与計算に失敗: ${e instanceof Error ? e.message : e}`); }
-  try { await recalcStudioBilling(thisYm); } catch (e) { errors.push(`${thisYm} のスタジオ料集計に失敗: ${e instanceof Error ? e.message : e}`); }
+  if (syncThis) {
+    try { await recalcPayroll(thisYm); } catch (e) { errors.push(`${thisYm} の給与計算に失敗: ${e instanceof Error ? e.message : e}`); }
+    try { await recalcStudioBilling(thisYm); } catch (e) { errors.push(`${thisYm} のスタジオ料集計に失敗: ${e instanceof Error ? e.message : e}`); }
+  }
 
   const status = await getCloseStatus(prevYm);
   // 同じ部屋・同じ時間の重複(物理的に不可能=部屋の記録がどこか間違っている)
@@ -74,7 +80,8 @@ export async function GET(req: NextRequest) {
   const overdue = day >= 10 && status.payrollRuns > 0 && status.payrollDraft === status.payrollRuns;
 
   const yen = (n: number) => `¥${n.toLocaleString()}`;
-  const shouldNotify = doClose || errors.length > 0 || overdue || review.length > 0 || unregistered.length > 0 || conflicts.length > 0;
+  const notifyAllowed = !phase || phase === 'close';
+  const shouldNotify = notifyAllowed && (doClose || errors.length > 0 || overdue || review.length > 0 || unregistered.length > 0 || conflicts.length > 0);
   let notified = false;
   if (shouldNotify) {
     const lines: string[] = [];
@@ -130,7 +137,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ok: errors.length === 0,
-    today, targets, closed: doClose, notified, overdue,
+    today, phase: phase ?? 'all', closed: doClose, notified, overdue,
     syncs: syncs.map((s) => ({
       year_month: s.year_month, range: s.range, skipped: s.skippedReason ?? null,
       held: s.held, notHeld: s.notHeld, extra: s.extra, written: s.written,
