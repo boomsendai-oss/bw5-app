@@ -89,6 +89,18 @@ export async function GET(req: NextRequest) {
       )
     : [];
 
+  // 決済手数料は hacomono が入金処理をして初めて確定する(当月後半ぶんは翌月15日頃)。
+  // 未確定のあいだPLは手数料ぶん過大に出る。放置すると、PL001の取込範囲が
+  // 当月+前月なので、確定が遅れた月はそのまま永久に欠ける(2026-09-01に気づいた)。
+  const pendingFees = doClose
+    ? ((await getAll(
+        `SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS amt
+           FROM hacomono_billing_records
+          WHERE billing_date LIKE ? AND payment_method LIKE '%カード%' AND fee_amount IS NULL`,
+        [`${prevYm}%`]
+      )) as { n: number; amt: number }[])[0]
+    : null;
+
   const review = syncs.flatMap((s) => s.needsReview);
   const unregistered = [...new Set(syncs.flatMap((s) => s.unregisteredVenues))];
 
@@ -114,6 +126,13 @@ export async function GET(req: NextRequest) {
       lines.push('');
       lines.push(`■ カレンダーが読めなかった予定（給与に入っていません）`);
       for (const r of review.slice(0, 20)) lines.push(`  - ${r.date} ${r.start} ${r.class_name} … ${r.issues.join(' / ')}`);
+    }
+    if (pendingFees && pendingFees.n > 0) {
+      const est = Math.round(pendingFees.amt * 0.0348); // 実効率3.47〜3.49%の実測から概算
+      lines.push('');
+      lines.push('■ 決済手数料がまだ確定していません（PLはその分だけ利益が多く出ています）');
+      lines.push(`  - ${prevYm}: ${pendingFees.n}件 / 対象売上 ${yen(pendingFees.amt)} → 手数料はおよそ ${yen(est)} 見込み`);
+      lines.push('  - hacomonoが入金処理をすると自動で入ります（当月後半ぶんは翌月15日頃）');
     }
     if (missingRecurring.length > 0) {
       lines.push('');
@@ -162,6 +181,7 @@ export async function GET(req: NextRequest) {
     ok: errors.length === 0,
     today, phase: phase ?? 'all', closed: doClose, notified, overdue,
     missingRecurring: missingRecurring.length,
+    pendingFeeCount: pendingFees?.n ?? 0,
     syncs: syncs.map((s) => ({
       year_month: s.year_month, range: s.range, skipped: s.skippedReason ?? null,
       held: s.held, notHeld: s.notHeld, extra: s.extra, written: s.written,
