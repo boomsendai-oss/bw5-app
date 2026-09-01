@@ -207,14 +207,38 @@ export async function gatherSeoSummary(): Promise<WeeklyReportInput['seo']> {
           [prev]
         )
       : [];
-    const prevMap = new Map(prevRows.map((r) => [String(r.query), r.position === null ? null : Number(r.position)]));
-    const keywords = curRows.map((r) => ({
-      query: String(r.query),
-      position: r.position === null ? null : Number(r.position),
-      prev_position: prevMap.has(String(r.query)) ? (prevMap.get(String(r.query)) ?? null) : null,
-      impressions: Number(r.impressions ?? 0),
-      clicks: Number(r.clicks ?? 0),
-    }));
+    // GSCのクエリは表記ゆれ(スペース有無)で同じ語が複数行になるため、空白無視で1行に集約する。
+    // 順位は最良値(検索者は同じ語を引いている)、表示/クリックは合算。
+    const norm = (q: string) => q.replace(/[\s\u3000]/g, '');
+    const prevBest = new Map<string, number | null>();
+    for (const r of prevRows) {
+      const k = norm(String(r.query));
+      const pos = r.position === null ? null : Number(r.position);
+      const cur0 = prevBest.get(k);
+      if (cur0 === undefined || (pos !== null && (cur0 === null || pos < cur0))) prevBest.set(k, pos);
+    }
+    const byNorm = new Map<string, { query: string; position: number | null; impressions: number; clicks: number }>();
+    for (const r of curRows) {
+      const k = norm(String(r.query));
+      const pos = r.position === null ? null : Number(r.position);
+      const e = byNorm.get(k);
+      if (!e) {
+        byNorm.set(k, { query: String(r.query), position: pos, impressions: Number(r.impressions ?? 0), clicks: Number(r.clicks ?? 0) });
+      } else {
+        e.impressions += Number(r.impressions ?? 0);
+        e.clicks += Number(r.clicks ?? 0);
+        if (pos !== null && (e.position === null || pos < e.position)) { e.position = pos; e.query = String(r.query); }
+      }
+    }
+    const keywords = [...byNorm.entries()]
+      .map(([k, e]) => ({
+        query: e.query,
+        position: e.position,
+        prev_position: prevBest.has(k) ? (prevBest.get(k) ?? null) : null,
+        impressions: e.impressions,
+        clicks: e.clicks,
+      }))
+      .sort((a, b) => (a.position === null ? 1 : 0) - (b.position === null ? 1 : 0) || (a.position ?? 999) - (b.position ?? 999));
 
     // 新規クエリ: 今回スナップショットにあって前回に無い語(表示2回以上・追跡済みの語は除く)
     let newQueries: { query: string; impressions: number; position: number }[] = [];
