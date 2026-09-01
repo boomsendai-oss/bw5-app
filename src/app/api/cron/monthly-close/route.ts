@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyTaro } from '@/lib/notify';
+import { findMissingRecurringExpenses } from '@/lib/recurringExpenseWatch';
+import { getAll } from '@/lib/db';
 import { syncCalendarActuals, type SyncResult } from '@/lib/calendarSync';
 import { recalcPayroll, recalcStudioBilling, getCloseStatus, detectRoomConflicts } from '@/lib/monthlyClose';
 
@@ -73,6 +75,20 @@ export async function GET(req: NextRequest) {
     ...(await detectRoomConflicts(prevYm)),
     ...(await detectRoomConflicts(thisYm)),
   ];
+  // 毎月出るはずの固定費が今月だけ消えていないか。
+  // リベシティ¥3,300が7-8月と2ヶ月抜けていた(2026-09-01発覚)。
+  // 業務の固定費でも支払いが個人カードだと業務口座のCSVに載らず、静かに落ちる。
+  const missingRecurring = doClose
+    ? findMissingRecurringExpenses(
+        (await getAll(
+          `SELECT expense_date, description, category, amount FROM expenses
+           WHERE expense_date >= date(? || '-01', '-4 months')`,
+          [prevYm]
+        )) as { expense_date: string; description: string | null; category: string | null; amount: number }[],
+        prevYm
+      )
+    : [];
+
   const review = syncs.flatMap((s) => s.needsReview);
   const unregistered = [...new Set(syncs.flatMap((s) => s.unregisteredVenues))];
 
@@ -81,7 +97,7 @@ export async function GET(req: NextRequest) {
 
   const yen = (n: number) => `¥${n.toLocaleString()}`;
   const notifyAllowed = !phase || phase === 'close';
-  const shouldNotify = notifyAllowed && (doClose || errors.length > 0 || overdue || review.length > 0 || unregistered.length > 0 || conflicts.length > 0);
+  const shouldNotify = notifyAllowed && (doClose || errors.length > 0 || overdue || review.length > 0 || unregistered.length > 0 || conflicts.length > 0 || missingRecurring.length > 0);
   let notified = false;
   if (shouldNotify) {
     const lines: string[] = [];
@@ -98,6 +114,13 @@ export async function GET(req: NextRequest) {
       lines.push('');
       lines.push(`■ カレンダーが読めなかった予定（給与に入っていません）`);
       for (const r of review.slice(0, 20)) lines.push(`  - ${r.date} ${r.start} ${r.class_name} … ${r.issues.join(' / ')}`);
+    }
+    if (missingRecurring.length > 0) {
+      lines.push('');
+      lines.push('■ 毎月出ているのに今月だけ無い固定費（払い忘れ or 取り込み漏れ）');
+      for (const m of missingRecurring.slice(0, 15)) {
+        lines.push(`  - ${m.key}（いつも約${yen(m.typicalAmount)}／最後は${m.lastSeen}）`);
+      }
     }
     if (unregistered.length > 0) {
       lines.push('');
@@ -138,6 +161,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     ok: errors.length === 0,
     today, phase: phase ?? 'all', closed: doClose, notified, overdue,
+    missingRecurring: missingRecurring.length,
     syncs: syncs.map((s) => ({
       year_month: s.year_month, range: s.range, skipped: s.skippedReason ?? null,
       held: s.held, notHeld: s.notHeld, extra: s.extra, written: s.written,
