@@ -42,8 +42,9 @@ function baseInput(over: Partial<WeeklyReportInput> = {}): WeeklyReportInput {
       deadlines: [{ date: '2026-08-16', title: 'バイブス多賀城 出演チーム選定', owner: 'KEIKO' }],
       available: true,
     },
-  traffic: { this_week: null, prev_week: null },
-  seo: null,
+    traffic: { this_week: null, prev_week: null },
+    seo: null,
+    trial_cvr: null,
     insights_url: 'https://bw5-app.vercel.app/staff/insights',
     ...over,
   };
@@ -280,5 +281,26 @@ describe('SEO欄(GSC)', () => {
     const { text } = formatWeeklyReport(baseInput({ seo: null }));
     expect(text).toContain('■ SEO（Google検索・直近28日平均）');
     expect(text).toContain('未計測（GSC取込のデータがまだありません）');
+  });
+});
+
+describe('体験→入会CVR欄', () => {
+  it('確定と暫定を区別して表示する', () => {
+    const { text } = formatWeeklyReport(
+      baseInput({
+        trial_cvr: {
+          months: [
+            { month: '2026-06', trials: 17, cancelled: 3, enrolled: 8, settled: true },
+            { month: '2026-07', trials: 12, cancelled: 3, enrolled: 3, settled: true },
+            { month: '2026-08', trials: 13, cancelled: 2, enrolled: 5, settled: false },
+          ],
+        },
+      })
+    );
+    expect(text).toContain('■ 体験→入会CVR（分母はキャンセル除外）');
+    expect(text).toContain('2026-06: 57%（8/14人・確定）');
+    expect(text).toContain('2026-07: 33%（3/9人・確定）');
+    expect(text).toContain('2026-08: 45%（5/11人・暫定・今後上がる）');
+    expect(text).toContain('「暫定」の月を確定値として判断しないこと');
   });
 });

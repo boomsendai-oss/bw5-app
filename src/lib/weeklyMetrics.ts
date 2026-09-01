@@ -103,7 +103,7 @@ export async function buildWeeklyReportInput(
   const prevLastDay = new Date(py, pmo, 0).getDate();
   const prevSameDay = `${pym}-${String(Math.min(dayOfMonth, prevLastDay)).padStart(2, '0')}`;
 
-  const [thisWeek, prevWeek, membersNow, finance, prevFinance, prevToDateRow, trialsMonth, adCost, chThis, chPrev, seo] =
+  const [thisWeek, prevWeek, membersNow, finance, prevFinance, prevToDateRow, trialsMonth, adCost, chThis, chPrev, seo, trialCvr] =
     await Promise.all([
       windowCounts(start, end),
       windowCounts(prevStart, prevEnd),
@@ -127,6 +127,7 @@ export async function buildWeeklyReportInput(
       getTrafficChannels(start, end).catch(() => null),
       getTrafficChannels(prevStart, prevEnd).catch(() => null),
       gatherSeoSummary(),
+      gatherTrialCvr(today),
     ]);
 
   const adSpend = finance.profitability.expense_breakdown.広告費 ?? 0;
@@ -176,6 +177,7 @@ export async function buildWeeklyReportInput(
       prev_week: chPrev && chPrev.available ? { channels: chPrev.channels, total: chPrev.total_sessions } : null,
     },
     seo,
+    trial_cvr: trialCvr,
     state,
     insights_url: `${BASE_URL}/staff/insights`,
     data_gaps: dataGaps,
@@ -276,5 +278,44 @@ export async function gatherSeoSummary(): Promise<WeeklyReportInput['seo']> {
     return { keywords, new_queries: newQueries, top_pages: topPages, totals, measured_on: cur, prev_measured_on: prev };
   } catch {
     return null; // テーブル未作成・DB障害でもレポート全体は落とさない
+  }
+}
+
+/**
+ * 体験→入会CVR(直近3コホート月)。
+ * settled = そのコホート月の月末から45日以上経過(enrolled_afterの熟成期間)。
+ * 45日の根拠: 紐付けラグ実測で30日以内成立は約2割のみ(2026-09-01調査)。
+ */
+export async function gatherTrialCvr(todayIso: string): Promise<WeeklyReportInput['trial_cvr']> {
+  try {
+    const rows = await getAll(
+      `SELECT substr(reserved_at,1,7) AS m,
+              COUNT(*) AS trials,
+              SUM(CASE WHEN status LIKE '%キャンセル%' THEN 1 ELSE 0 END) AS cancelled,
+              SUM(enrolled_after) AS enrolled
+         FROM trial_records
+        WHERE reserved_at >= date(?, '-4 months')
+        GROUP BY m ORDER BY m DESC LIMIT 3`,
+      [todayIso]
+    );
+    if (rows.length === 0) return null;
+    const nowMs = new Date(`${todayIso}T00:00:00+09:00`).getTime();
+    const months = rows
+      .map((r) => {
+        const m = String(r.m);
+        const [y, mo] = m.split('-').map(Number);
+        const monthEndMs = Date.UTC(y, mo, 1) - 9 * 3600_000; // JST翌月1日0時
+        return {
+          month: m,
+          trials: Number(r.trials ?? 0),
+          cancelled: Number(r.cancelled ?? 0),
+          enrolled: Number(r.enrolled ?? 0),
+          settled: nowMs - monthEndMs >= 45 * 24 * 3600_000,
+        };
+      })
+      .reverse();
+    return { months };
+  } catch {
+    return null;
   }
 }

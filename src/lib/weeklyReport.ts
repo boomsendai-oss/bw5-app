@@ -88,6 +88,17 @@ export type WeeklyReportInput = {
    * seo-snapshot(毎週日曜)が貯めたDBから月曜のレポート生成時に読む。
    * データが無い週(取込失敗・初回)は null → 「未計測」表示。
    */
+  /**
+   * 体験→入会CVR(2026-09-01追加)。
+   * 🔴読み方のルール(2026-09-01の誤読の再発防止):
+   *  - 分母はキャンセル除外(来なかった人に案内はできない)
+   *  - 入会の紐付け(enrolled_after)は体験から何週間も遅れて増える熟成指標。
+   *    月末から45日経つまでそのコホートは「暫定」であり、確定値のように扱わない
+   */
+  trial_cvr: {
+    months: { month: string; trials: number; cancelled: number; enrolled: number; settled: boolean }[];
+  } | null;
+
   seo: {
     /** 追跡キーワードの現在順位と前回差分(source=gsc の直近2回のmeasured_onを比較) */
     keywords: { query: string; position: number | null; prev_position: number | null; impressions: number; clicks: number }[];
@@ -334,6 +345,27 @@ export function formatWeeklyReport(i: WeeklyReportInput): WeeklyReport {
       );
     } else {
       L.push('  体験1件あたり: 未計測（当月の体験予約が0件）');
+    }
+  }
+
+  // ── 体験→入会CVR(2026-09-01追加) ──
+  // 暫定/確定を必ず区別する。09-01に「暫定値を確定と誤読→誤った経営判断寸前」の実害があった
+  {
+    const t = i.trial_cvr;
+    L.push('');
+    L.push('■ 体験→入会CVR（分母はキャンセル除外）');
+    if (!t || t.months.length === 0) {
+      L.push('  未計測');
+    } else {
+      for (const m of t.months) {
+        const denom = m.trials - m.cancelled;
+        const pct = denom > 0 ? Math.round((100 * m.enrolled) / denom) : null;
+        const tag = m.settled ? '確定' : '暫定・今後上がる';
+        L.push(
+          `  ${m.month}: ${pct === null ? '—' : pct + '%'}（${m.enrolled}/${denom}人・${tag}）`
+        );
+      }
+      L.push('    ※ 入会の紐付けは体験から数週間遅れて増えます。「暫定」の月を確定値として判断しないこと。');
     }
   }
 
