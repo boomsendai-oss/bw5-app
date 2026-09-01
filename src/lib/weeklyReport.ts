@@ -339,6 +339,10 @@ export function formatWeeklyReport(i: WeeklyReportInput): WeeklyReport {
           Email: 'メール',
           Unassigned: '不明',
           'Cross-network': '広告(クロス)',
+          Display: '広告(ディスプレイ)',
+          Video: '広告(動画)',
+          'Paid Video': '広告(動画)',
+          'Paid Other': '広告(その他)',
           'Organic Video': '動画',
         })[ch] ?? ch;
       const totalPrev = t.prev_week?.total ?? null;
