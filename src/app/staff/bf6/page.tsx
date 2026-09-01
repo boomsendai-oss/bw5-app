@@ -3,16 +3,18 @@ import Link from 'next/link';
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { BF6_DIVISIONS } from '@/lib/bf6';
 import { calcBf6Remaining, getBf6Settings, getBf6Usage, listBf6OrdersStaff } from '@/lib/bf6Db';
+import { getBf6Finance } from '@/lib/eventLedgerDb';
 
 export const dynamic = 'force-dynamic';
 
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 
 export default async function StaffBf6Page() {
-  const [settings, usage, orders] = await Promise.all([
+  const [settings, usage, orders, { finance }] = await Promise.all([
     getBf6Settings(),
     getBf6Usage(),
     listBf6OrdersStaff(),
+    getBf6Finance(),
   ]);
   const remaining = calcBf6Remaining(settings, usage);
 
@@ -49,6 +51,31 @@ export default async function StaffBf6Page() {
         </section>
 
         <section className="rounded-xl border border-sand-200 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-navy-800">収支(アプリ外の現金・固定費を含む)</h2>
+            <Link href="/staff/bf6/ledger" className="text-xs font-bold text-brand-700 underline">
+              台帳を編集
+            </Link>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            <div className="rounded-lg bg-sand-50 p-3 text-center">
+              <p className="text-xs font-bold text-neutral-500">売上</p>
+              <p className="mt-1 text-xl font-bold text-navy-800">{yen(finance.revenue.total)}</p>
+            </div>
+            <div className="rounded-lg bg-sand-50 p-3 text-center">
+              <p className="text-xs font-bold text-neutral-500">支出</p>
+              <p className="mt-1 text-xl font-bold text-navy-800">{yen(finance.cost.total)}</p>
+            </div>
+            <div className="rounded-lg bg-brand-50 p-3 text-center">
+              <p className="text-xs font-bold text-brand-700">損益</p>
+              <p className="mt-1 text-xl font-bold text-brand-700">
+                {finance.profit >= 0 ? '+' : ''}{yen(finance.profit)}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-sand-200 bg-white p-4">
           <h2 className="text-sm font-bold text-navy-800">部門別の埋まり状況</h2>
           <div className="mt-3 grid grid-cols-3 gap-3">
             {BF6_DIVISIONS.map((d) => {
@@ -78,6 +105,7 @@ export default async function StaffBf6Page() {
           <NavCard href="/staff/bf6/control" title="LED操作卓" note="会場スクリーンの切替" />
           <NavCard href="/staff/bf6/waitlist" title="キャンセル待ち" note="繰り上げ通知を手動で送る" />
           <NavCard href="/staff/bf6/broadcast" title="一斉メール" note="エントリー者へのお知らせ" />
+          <NavCard href="/staff/bf6/ledger" title="収支台帳" note="固定費・アプリ外の現金" />
           <NavCard href="/staff/bf6/settings" title="設定" note="定員・料金・受付ON/OFF" />
         </section>
       </div>
