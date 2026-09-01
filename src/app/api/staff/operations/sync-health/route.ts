@@ -78,7 +78,9 @@ export async function GET(req: NextRequest) {
     `SELECT MAX(lesson_date) AS last_date FROM lesson_utilization`
   );
   const reservations = await getOne(
-    `SELECT MAX(lesson_date) AS last_date FROM hacomono_reservations`
+    // 未来の予約(status=予約済み)も取り込むようになったので、
+    // 「データの鮮度」の指標としては今日までに絞る(2026-09-01)
+    `SELECT MAX(lesson_date) AS last_date FROM hacomono_reservations WHERE lesson_date <= date('now')`
   );
   return NextResponse.json({
     last_run: lastRun ?? null,
