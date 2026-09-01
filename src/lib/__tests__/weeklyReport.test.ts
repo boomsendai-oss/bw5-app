@@ -43,6 +43,7 @@ function baseInput(over: Partial<WeeklyReportInput> = {}): WeeklyReportInput {
       available: true,
     },
   traffic: { this_week: null, prev_week: null },
+  seo: null,
     insights_url: 'https://bw5-app.vercel.app/staff/insights',
     ...over,
   };
@@ -243,5 +244,41 @@ describe('サイト流入チャネル(GA4)', () => {
   it('取得できない週は未計測と明記する', () => {
     const { text } = formatWeeklyReport(baseInput({ traffic: { this_week: null, prev_week: null } }));
     expect(text).toContain('サイト流入（GA4）: 未計測');
+  });
+});
+
+describe('SEO欄(GSC)', () => {
+  it('順位差分・新規クエリ・上位ページを描画する', () => {
+    const { text } = formatWeeklyReport(
+      baseInput({
+        seo: {
+          keywords: [
+            { query: '長町 ダンス', position: 5.9, prev_position: 8.2, impressions: 90, clicks: 2 },
+            { query: '仙台 ダンススクール', position: 11.0, prev_position: 11.0, impressions: 17, clicks: 0 },
+            { query: '七ヶ浜 ダンス', position: null, prev_position: null, impressions: 0, clicks: 0 },
+            { query: 'ダンス 何歳から', position: 9.0, prev_position: null, impressions: 31, clicks: 1 },
+          ],
+          new_queries: [{ query: '仙台 ダンス 大人 初心者', impressions: 6, position: 12 }],
+          top_pages: [{ page: '/blog/dance-school-cost-guide/', clicks: 9, impressions: 300 }],
+          totals: { clicks: 45, impressions: 1200 },
+          measured_on: '2026-09-06',
+          prev_measured_on: '2026-08-30',
+        },
+      })
+    );
+    expect(text).toContain('■ SEO（Google検索・直近28日平均）');
+    expect(text).toContain('長町 ダンス: 5.9位（↑+2.3） クリック2');
+    expect(text).toContain('仙台 ダンススクール: 11.0位（→）');
+    expect(text).toContain('七ヶ浜 ダンス: 圏外');
+    expect(text).toContain('ダンス 何歳から: 9.0位（前回 圏外→NEW） クリック1');
+    expect(text).toContain('サイト全体: クリック45 / 表示1200');
+    expect(text).toContain('「仙台 ダンス 大人 初心者」(表示6・12位)');
+    expect(text).toContain('/blog/dance-school-cost-guide/: クリック9 / 表示300');
+  });
+
+  it('データが無ければ未計測と出す', () => {
+    const { text } = formatWeeklyReport(baseInput({ seo: null }));
+    expect(text).toContain('■ SEO（Google検索・直近28日平均）');
+    expect(text).toContain('未計測（GSC取込のデータがまだありません）');
   });
 });

@@ -9,7 +9,7 @@
 //   - LINE友だち追加は lstep_friends.created_at = 「日次同期で初めて現れた日」であり
 //     LINE上の友だち追加日そのものではない(近似)。文面側でその旨を明記している。
 
-import { getOne } from './db';
+import { getAll, getOne } from './db';
 import { todayJst } from './dateJst';
 import { getAdCost, getTrafficChannels } from './ga4';
 import { getActiveMemberCount, getMonthlyFinance, NON_CUSTOMER_TYPES_SQL } from './kpiMetrics';
@@ -103,7 +103,7 @@ export async function buildWeeklyReportInput(
   const prevLastDay = new Date(py, pmo, 0).getDate();
   const prevSameDay = `${pym}-${String(Math.min(dayOfMonth, prevLastDay)).padStart(2, '0')}`;
 
-  const [thisWeek, prevWeek, membersNow, finance, prevFinance, prevToDateRow, trialsMonth, adCost, chThis, chPrev] =
+  const [thisWeek, prevWeek, membersNow, finance, prevFinance, prevToDateRow, trialsMonth, adCost, chThis, chPrev, seo] =
     await Promise.all([
       windowCounts(start, end),
       windowCounts(prevStart, prevEnd),
@@ -126,6 +126,7 @@ export async function buildWeeklyReportInput(
       // 流入チャネル(GA4)。週次窓そのまま。終端が未来日でもGA4は実在日だけ返す
       getTrafficChannels(start, end).catch(() => null),
       getTrafficChannels(prevStart, prevEnd).catch(() => null),
+      gatherSeoSummary(),
     ]);
 
   const adSpend = finance.profitability.expense_breakdown.広告費 ?? 0;
@@ -174,8 +175,82 @@ export async function buildWeeklyReportInput(
       this_week: chThis && chThis.available ? { channels: chThis.channels, total: chThis.total_sessions } : null,
       prev_week: chPrev && chPrev.available ? { channels: chPrev.channels, total: chPrev.total_sessions } : null,
     },
+    seo,
     state,
     insights_url: `${BASE_URL}/staff/insights`,
     data_gaps: dataGaps,
   };
+}
+
+/**
+ * SEO週次サマリーをDBから組み立てる(GSC自動取込の成果物を読むだけ・API呼び出しなし)。
+ * seo_rank_snapshots(source=gsc)の直近2回で順位差分、gsc_query_snapshotsで新規クエリ、
+ * gsc_page_snapshotsでページ別上位を出す。テーブル未作成・データ無しなら null。
+ */
+export async function gatherSeoSummary(): Promise<WeeklyReportInput['seo']> {
+  try {
+    const dates = await getAll(
+      `SELECT DISTINCT measured_on FROM seo_rank_snapshots WHERE source='gsc' ORDER BY measured_on DESC LIMIT 2`
+    );
+    if (dates.length === 0) return null;
+    const cur = String(dates[0].measured_on);
+    const prev = dates.length > 1 ? String(dates[1].measured_on) : null;
+
+    const curRows = await getAll(
+      `SELECT query, position, impressions, clicks, out_of_range FROM seo_rank_snapshots
+        WHERE source='gsc' AND measured_on = ? ORDER BY (position IS NULL), position`,
+      [cur]
+    );
+    const prevRows = prev
+      ? await getAll(
+          `SELECT query, position FROM seo_rank_snapshots WHERE source='gsc' AND measured_on = ?`,
+          [prev]
+        )
+      : [];
+    const prevMap = new Map(prevRows.map((r) => [String(r.query), r.position === null ? null : Number(r.position)]));
+    const keywords = curRows.map((r) => ({
+      query: String(r.query),
+      position: r.position === null ? null : Number(r.position),
+      prev_position: prevMap.has(String(r.query)) ? (prevMap.get(String(r.query)) ?? null) : null,
+      impressions: Number(r.impressions ?? 0),
+      clicks: Number(r.clicks ?? 0),
+    }));
+
+    // 新規クエリ: 今回スナップショットにあって前回に無い語(表示2回以上・追跡済みの語は除く)
+    let newQueries: { query: string; impressions: number; position: number }[] = [];
+    if (prev) {
+      const rows = await getAll(
+        `SELECT c.query, c.impressions, c.position FROM gsc_query_snapshots c
+          WHERE c.measured_on = ? AND c.impressions >= 2
+            AND NOT EXISTS (SELECT 1 FROM gsc_query_snapshots p WHERE p.measured_on = ? AND p.query = c.query)
+          ORDER BY c.impressions DESC LIMIT 5`,
+        [cur, prev]
+      );
+      const trackedNorm = new Set(keywords.map((k) => k.query.replace(/[\s\u3000]/g, '')));
+      newQueries = rows
+        .map((r) => ({ query: String(r.query), impressions: Number(r.impressions ?? 0), position: Number(r.position ?? 0) }))
+        .filter((r) => !trackedNorm.has(r.query.replace(/[\s\u3000]/g, '')));
+    }
+
+    const pageRows = await getAll(
+      `SELECT page, clicks, impressions FROM gsc_page_snapshots
+        WHERE measured_on = ? AND clicks > 0 ORDER BY clicks DESC, impressions DESC LIMIT 3`,
+      [cur]
+    );
+    const topPages = pageRows.map((r) => ({
+      page: String(r.page).replace(/^https?:\/\/[^/]+/, '') || '/',
+      clicks: Number(r.clicks ?? 0),
+      impressions: Number(r.impressions ?? 0),
+    }));
+
+    const totalRow = await getOne(
+      `SELECT SUM(clicks) AS c, SUM(impressions) AS i FROM gsc_query_snapshots WHERE measured_on = ?`,
+      [cur]
+    );
+    const totals = totalRow && totalRow.i !== null ? { clicks: Number(totalRow.c ?? 0), impressions: Number(totalRow.i ?? 0) } : null;
+
+    return { keywords, new_queries: newQueries, top_pages: topPages, totals, measured_on: cur, prev_measured_on: prev };
+  } catch {
+    return null; // テーブル未作成・DB障害でもレポート全体は落とさない
+  }
 }

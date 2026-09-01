@@ -83,6 +83,24 @@ export type WeeklyReportInput = {
     prev_week: { channels: { channel: string; sessions: number; users: number }[]; total: number } | null;
   };
 
+  /**
+   * SEO週次サマリー(GSC自動取込・2026-09-01追加)。
+   * seo-snapshot(毎週日曜)が貯めたDBから月曜のレポート生成時に読む。
+   * データが無い週(取込失敗・初回)は null → 「未計測」表示。
+   */
+  seo: {
+    /** 追跡キーワードの現在順位と前回差分(source=gsc の直近2回のmeasured_onを比較) */
+    keywords: { query: string; position: number | null; prev_position: number | null; impressions: number; clicks: number }[];
+    /** 今回初めて表示が付いたクエリ(前回スナップショットに無かった語・表示回数順) */
+    new_queries: { query: string; impressions: number; position: number }[];
+    /** クリックの多いページ上位(パスのみ) */
+    top_pages: { page: string; clicks: number; impressions: number }[];
+    /** 直近スナップショットの合計 */
+    totals: { clicks: number; impressions: number } | null;
+    measured_on: string | null;
+    prev_measured_on: string | null;
+  } | null;
+
   /** STATE.md 由来。GitHub Actions が抽出して渡す(取れなければ空配列) */
   state: {
     /** TARO判断待ちのボトルネック(先頭数件) */
@@ -316,6 +334,42 @@ export function formatWeeklyReport(i: WeeklyReportInput): WeeklyReport {
       );
     } else {
       L.push('  体験1件あたり: 未計測（当月の体験予約が0件）');
+    }
+  }
+
+  // ── SEO(GSC・2026-09-01追加) ──
+  // 毎週日曜のseo-snapshotが貯めたGSC実測。PMセッションの月曜手動観測をこの欄で置き換える。
+  {
+    const g = i.seo;
+    L.push('');
+    L.push('■ SEO（Google検索・直近28日平均）');
+    if (!g || g.keywords.length === 0) {
+      L.push('  未計測（GSC取込のデータがまだありません）');
+    } else {
+      const arrow = (cur: number | null, prev: number | null) => {
+        if (cur === null) return '圏外';
+        if (prev === null) return `${cur.toFixed(1)}位（前回 圏外→NEW）`;
+        const d = prev - cur; // 順位は小さいほど良い
+        const sign = d > 0.05 ? `↑+${d.toFixed(1)}` : d < -0.05 ? `↓${d.toFixed(1)}` : '→';
+        return `${cur.toFixed(1)}位（${sign}）`;
+      };
+      for (const k of g.keywords) {
+        L.push(`  ${k.query}: ${arrow(k.position, k.prev_position)}${k.clicks > 0 ? ` クリック${k.clicks}` : ''}`);
+      }
+      if (g.totals) {
+        L.push(`  サイト全体: クリック${g.totals.clicks} / 表示${g.totals.impressions}`);
+      }
+      if (g.new_queries.length > 0) {
+        L.push(`  新しく表示され始めた語(記事キュー候補): ${g.new_queries
+          .map((q) => `「${q.query}」(表示${q.impressions}・${q.position.toFixed(0)}位)`)
+          .join(' / ')}`);
+      }
+      if (g.top_pages.length > 0) {
+        L.push('  クリックの多いページ:');
+        for (const p of g.top_pages) {
+          L.push(`    ${p.page}: クリック${p.clicks} / 表示${p.impressions}`);
+        }
+      }
     }
   }
 

@@ -113,3 +113,32 @@ export function filterTracked(rows: GscRow[], tracked: readonly { query: string 
     return keys.some((k) => q === k);
   });
 }
+
+/** 期間内のページ別成績を取る。dimensions=['page']。 */
+export async function fetchPageStats(start: string, end: string, rowLimit = 200): Promise<GscRow[]> {
+  if (!configured()) throw new Error('Search Console連携env未設定');
+  const token = await getAccessToken();
+  const site = encodeURIComponent(process.env.GSC_SITE_URL ?? '');
+  const res = await fetch(`${ENDPOINT}/sites/${site}/searchAnalytics/query`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      startDate: start,
+      endDate: end,
+      dimensions: ['page'],
+      rowLimit,
+      dimensionFilterGroups: [
+        { filters: [{ dimension: 'country', operator: 'equals', expression: 'jpn' }] },
+      ],
+    }),
+  });
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`GSC searchAnalytics(page) ${res.status}: ${raw.slice(0, 300)}`);
+  return parsePageStats(JSON.parse(raw));
+}
+
+/** page次元レスポンスを行に潰す(純関数)。GscRowのquery欄にページURLが入る */
+export function parsePageStats(json: unknown): GscRow[] {
+  const rows = parseQueryStats(json);
+  return rows.map((r) => ({ ...r, page: r.query }));
+}

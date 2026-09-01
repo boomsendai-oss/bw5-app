@@ -11,6 +11,7 @@ import {
   fetchQueryStats,
   filterTracked,
   configured as gscConfigured,
+  fetchPageStats,
 } from '@/lib/searchConsole';
 
 export const dynamic = 'force-dynamic';
@@ -102,7 +103,38 @@ export async function POST(req: NextRequest) {
           [today, t.query, 'GSCに表示実績なし(=圏外)']
         );
       }
-      result.gsc = { ok: true, total: all.length, tracked: tracked.length, upserted: n };
+      // 全クエリスナップショット(新規クエリ検出・週次レポート用。追跡8語以外を捨てない)
+      let qSaved = 0;
+      for (const r of all) {
+        const res = await execute(
+          `INSERT INTO gsc_query_snapshots (measured_on, query, position, impressions, clicks, ctr)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(measured_on, query) DO UPDATE SET
+             position = excluded.position, impressions = excluded.impressions,
+             clicks = excluded.clicks, ctr = excluded.ctr`,
+          [today, r.query, r.position, r.impressions, r.clicks, r.ctr]
+        );
+        qSaved += res.rowsAffected ?? 0;
+      }
+      // ページ別スナップショット(どの記事が稼いでいるか)
+      let pSaved = 0;
+      try {
+        const pages = await fetchPageStats(daysAgoJst(30), daysAgoJst(3));
+        for (const r of pages) {
+          const res = await execute(
+            `INSERT INTO gsc_page_snapshots (measured_on, page, position, impressions, clicks, ctr)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(measured_on, page) DO UPDATE SET
+               position = excluded.position, impressions = excluded.impressions,
+               clicks = excluded.clicks, ctr = excluded.ctr`,
+            [today, r.page ?? r.query, r.position, r.impressions, r.clicks, r.ctr]
+          );
+          pSaved += res.rowsAffected ?? 0;
+        }
+      } catch {
+        // ページ別が失敗してもクエリ側の成果は守る(次回リトライで埋まる)
+      }
+      result.gsc = { ok: true, total: all.length, tracked: tracked.length, upserted: n, queries_saved: qSaved, pages_saved: pSaved };
     } catch (e) {
       result.gsc = { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
