@@ -11,7 +11,10 @@
  * 数字の出どころ:
  *   - 申込(本命) = `hacomono_reservations`(RL001予約一覧。2026-09-01から未来90日ぶんも取込)
  *   - 入金       = `hacomono_billing_records`(PL001売上一覧)
+ *   - キャンセル = `hacomono_cancellations`(RL005予約キャンセル処理一覧)
  *
+ * ⚠️ 予約一覧にキャンセル済みは載らない。「予約が無い」は(未申込 / キャンセル済み)の
+ *    2通りあるので、必ずキャンセルも一緒に見る(2026-09-01の読み違いの原因)。
  * ⚠️ 「申込数」と「入金数」は一致しない。当日現金払いを選ぶと予約だけ先に立つ。
  *    逆に「チケットは買ったが枠を予約していない」人も出る(2026-09-01に実在1名)。
  *    どちらもこのスクリプトが差分として表示する。
@@ -69,6 +72,13 @@ async function main() {
       ORDER BY booked_at`,
     [`%${keyword}%`]
   );
+  const cancels = await q(
+    `SELECT cancelled_at, lesson_date, hacomono_member_id, full_name
+       FROM hacomono_cancellations
+      WHERE program_name LIKE ?
+      ORDER BY cancelled_at`,
+    [`%${keyword}%`]
+  );
   const resFresh = (
     await q(`SELECT MAX(imported_at) AS imported FROM hacomono_reservations`)
   )[0];
@@ -83,7 +93,10 @@ async function main() {
 
   const paidMembers = new Set(rows.map((r) => String(r.member_id)));
   const bookedMembers = new Set(reservations.map((r) => String(r.hacomono_member_id)));
-  const paidNotBooked = [...paidMembers].filter((m) => !bookedMembers.has(m));
+  const cancelledMembers = new Set(cancels.map((r) => String(r.hacomono_member_id)));
+  // 支払ったのに予約が無い人は、キャンセル済みかどうかで打ち手が変わる
+  const paidNotBooked = [...paidMembers].filter((m) => !bookedMembers.has(m) && !cancelledMembers.has(m));
+  const paidThenCancelled = [...paidMembers].filter((m) => !bookedMembers.has(m) && cancelledMembers.has(m));
   const bookedNotPaid = [...bookedMembers].filter((m) => !paidMembers.has(m));
 
   const out = {
@@ -91,7 +104,9 @@ async function main() {
     reserved: reservations.length,
     reservationsAsOf: resFresh?.imported ?? null,
     paidNotBooked,
+    paidThenCancelled,
     bookedNotPaid,
+    cancelled: cancels.length,
     signups: rows.length,
     uniqueMembers: members.size,
     revenue,
@@ -116,6 +131,11 @@ async function main() {
   console.log(`  ■ 申込(予約) ${out.reserved}名   ← 人数はこれが正`);
   console.log(`     取込 ${out.reservationsAsOf ?? '未取込'}`);
   console.log(`  ■ 入金済み   ${out.signups}件 / ${out.uniqueMembers}名 / ${yen(revenue)}`);
+  console.log(`  ■ キャンセル   ${cancels.length}名`);
+  if (paidThenCancelled.length > 0) {
+    console.log(`  🔴 支払ったがキャンセル済み(チケットが宙に浮いている): 会員 ${paidThenCancelled.join(', ')}`);
+    console.log(`     → 再予約 / 他チケットへ振替 / 返金 のいずれかを本人と決める`);
+  }
   if (paidNotBooked.length > 0) {
     console.log(`  🔴 支払い済みだが予約が無い: 会員 ${paidNotBooked.join(', ')} … 枠を取れているか要確認`);
   }
