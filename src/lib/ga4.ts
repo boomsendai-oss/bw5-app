@@ -291,3 +291,47 @@ export async function getAdCost(startDate: string, endDate: string): Promise<AdC
     return { available: false, error: e instanceof Error ? e.message : String(e), cost: 0, clicks: 0, currency: '' };
   }
 }
+
+// ── 流入チャネル (2026-09-01 月初レビューで自動化) ─────────────────────
+// sessionDefaultChannelGroup = GA4標準のチャネル分類
+// (Organic Search / Paid Search / Organic Social / Direct / Referral 等)。
+// 「サイトに人がどこから来ているか」の週次観測用。
+// ⚠️ GA4の集計は数時間〜1日遅れる。終端は「昨日」で呼ぶこと(当日分は固まらない)。
+
+export type TrafficChannels = {
+  available: boolean;
+  error?: string;
+  /** セッション数の多い順 */
+  channels: { channel: string; sessions: number; users: number }[];
+  total_sessions: number;
+};
+
+export async function getTrafficChannels(startDate: string, endDate: string): Promise<TrafficChannels> {
+  const cfg = getClient();
+  if (!cfg) {
+    return { available: false, error: 'GA4_PROPERTY_ID / GA4_SA_KEY_JSON が未設定です', channels: [], total_sessions: 0 };
+  }
+  try {
+    const [res] = await cfg.client.runReport({
+      property: cfg.property,
+      dateRanges: [{ startDate, endDate }],
+      dimensions: [{ name: 'sessionDefaultChannelGroup' }],
+      metrics: [{ name: 'sessions' }, { name: 'totalUsers' }],
+      limit: 50, // チャネル分類は十数種しか無い
+    });
+    const channels = (res.rows ?? [])
+      .map((r) => ({
+        channel: r.dimensionValues?.[0]?.value || '(不明)',
+        sessions: Number(r.metricValues?.[0]?.value ?? 0),
+        users: Number(r.metricValues?.[1]?.value ?? 0),
+      }))
+      .sort((a, b) => b.sessions - a.sessions);
+    return {
+      available: true,
+      channels,
+      total_sessions: channels.reduce((a, c) => a + c.sessions, 0),
+    };
+  } catch (e) {
+    return { available: false, error: e instanceof Error ? e.message : String(e), channels: [], total_sessions: 0 };
+  }
+}

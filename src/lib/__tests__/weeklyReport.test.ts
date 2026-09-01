@@ -42,6 +42,7 @@ function baseInput(over: Partial<WeeklyReportInput> = {}): WeeklyReportInput {
       deadlines: [{ date: '2026-08-16', title: 'バイブス多賀城 出演チーム選定', owner: 'KEIKO' }],
       available: true,
     },
+  traffic: { this_week: null, prev_week: null },
     insights_url: 'https://bw5-app.vercel.app/staff/insights',
     ...over,
   };
@@ -206,5 +207,41 @@ describe('formatWeeklyReport', () => {
   it('LINE追加の数え方の但し書きを必ず入れる(誤読防止)', () => {
     const { text } = formatWeeklyReport(baseInput());
     expect(text).toContain('日次同期で新しく現れた友だちの数');
+  });
+});
+
+describe('サイト流入チャネル(GA4)', () => {
+  it('今週と先週のセッション数を併記して上位チャネルを出す', () => {
+    const i = baseInput({
+      traffic: {
+        this_week: {
+          total: 120,
+          channels: [
+            { channel: 'Organic Search', sessions: 60, users: 50 },
+            { channel: 'Direct', sessions: 30, users: 28 },
+            { channel: 'Organic Social', sessions: 20, users: 18 },
+            { channel: 'Paid Search', sessions: 10, users: 9 },
+          ],
+        },
+        prev_week: {
+          total: 90,
+          channels: [
+            { channel: 'Organic Search', sessions: 40, users: 30 },
+            { channel: 'Direct', sessions: 35, users: 30 },
+          ],
+        },
+      },
+    });
+    const { text } = formatWeeklyReport(i);
+    expect(text).toContain('サイト流入（GA4セッション数）: 計120（先週 90）');
+    expect(text).toContain('検索(自然): 60（先週 40）');
+    expect(text).toContain('直接: 30（先週 35）');
+    expect(text).toContain('SNS: 20');
+    expect(text).toContain('検索(広告): 10');
+  });
+
+  it('取得できない週は未計測と明記する', () => {
+    const { text } = formatWeeklyReport(baseInput({ traffic: { this_week: null, prev_week: null } }));
+    expect(text).toContain('サイト流入（GA4）: 未計測');
   });
 });

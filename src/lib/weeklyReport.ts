@@ -74,6 +74,15 @@ export type WeeklyReportInput = {
     ad_cost_ga4: { amount: number; currency: string; clicks: number } | null;
   };
 
+  /**
+   * GA4の流入チャネル(sessionDefaultChannelGroup別セッション数・2026-09-01追加)。
+   * 取得できない週は null(「未計測」と明記して表示)。
+   */
+  traffic: {
+    this_week: { channels: { channel: string; sessions: number; users: number }[]; total: number } | null;
+    prev_week: { channels: { channel: string; sessions: number; users: number }[]; total: number } | null;
+  };
+
   /** STATE.md 由来。GitHub Actions が抽出して渡す(取れなければ空配列) */
   state: {
     /** TARO判断待ちのボトルネック(先頭数件) */
@@ -307,6 +316,39 @@ export function formatWeeklyReport(i: WeeklyReportInput): WeeklyReport {
       );
     } else {
       L.push('  体験1件あたり: 未計測（当月の体験予約が0件）');
+    }
+  }
+
+  // ── サイト流入チャネル(GA4・2026-09-01追加) ──
+  // 「HPに人がどこから来ているか」。日本語ラベルはGA4標準チャネル分類の意訳。
+  // 前週値は「同チャネルのセッション数」を括弧で併記(順位でなく実数で比較する)。
+  {
+    const t = i.traffic ?? { this_week: null, prev_week: null };
+    if (!t.this_week) {
+      L.push('  サイト流入（GA4）: 未計測（GA4から取得できず）');
+    } else {
+      const prevMap = new Map((t.prev_week?.channels ?? []).map((c) => [c.channel, c.sessions]));
+      const label = (ch: string) =>
+        ({
+          'Organic Search': '検索(自然)',
+          'Paid Search': '検索(広告)',
+          'Organic Social': 'SNS',
+          'Paid Social': 'SNS広告',
+          Direct: '直接',
+          Referral: '他サイト',
+          Email: 'メール',
+          Unassigned: '不明',
+          'Cross-network': '広告(クロス)',
+          'Organic Video': '動画',
+        })[ch] ?? ch;
+      const totalPrev = t.prev_week?.total ?? null;
+      L.push(
+        `  サイト流入（GA4セッション数）: 計${t.this_week.total}${totalPrev !== null ? `（先週 ${totalPrev}）` : ''}`
+      );
+      for (const c of t.this_week.channels.slice(0, 5)) {
+        const pv = prevMap.get(c.channel);
+        L.push(`    ${label(c.channel)}: ${c.sessions}${pv !== undefined ? `（先週 ${pv}）` : ''}`);
+      }
     }
   }
   L.push('');

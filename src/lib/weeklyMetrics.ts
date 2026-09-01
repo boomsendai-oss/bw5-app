@@ -11,7 +11,7 @@
 
 import { getOne } from './db';
 import { todayJst } from './dateJst';
-import { getAdCost } from './ga4';
+import { getAdCost, getTrafficChannels } from './ga4';
 import { getActiveMemberCount, getMonthlyFinance, NON_CUSTOMER_TYPES_SQL } from './kpiMetrics';
 import { lastFullWeek, type WeeklyReportInput, type WindowCounts } from './weeklyReport';
 
@@ -103,7 +103,7 @@ export async function buildWeeklyReportInput(
   const prevLastDay = new Date(py, pmo, 0).getDate();
   const prevSameDay = `${pym}-${String(Math.min(dayOfMonth, prevLastDay)).padStart(2, '0')}`;
 
-  const [thisWeek, prevWeek, membersNow, finance, prevFinance, prevToDateRow, trialsMonth, adCost] =
+  const [thisWeek, prevWeek, membersNow, finance, prevFinance, prevToDateRow, trialsMonth, adCost, chThis, chPrev] =
     await Promise.all([
       windowCounts(start, end),
       windowCounts(prevStart, prevEnd),
@@ -123,6 +123,9 @@ export async function buildWeeklyReportInput(
       // GA4の実広告費(当月1日〜昨日)。GA4は当日分が固まらないので終端は昨日。
       // 未設定/権限エラーでもレポート全体を落とさない(available=false で「未計測」表示)。
       getAdCost(`${ym}-01`, shift(today, -1)).catch(() => null),
+      // 流入チャネル(GA4)。週次窓そのまま。終端が未来日でもGA4は実在日だけ返す
+      getTrafficChannels(start, end).catch(() => null),
+      getTrafficChannels(prevStart, prevEnd).catch(() => null),
     ]);
 
   const adSpend = finance.profitability.expense_breakdown.広告費 ?? 0;
@@ -166,6 +169,10 @@ export async function buildWeeklyReportInput(
         adCost && adCost.available
           ? { amount: adCost.cost, currency: adCost.currency, clicks: adCost.clicks }
           : null,
+    },
+    traffic: {
+      this_week: chThis && chThis.available ? { channels: chThis.channels, total: chThis.total_sessions } : null,
+      prev_week: chPrev && chPrev.available ? { channels: chPrev.channels, total: chPrev.total_sessions } : null,
     },
     state,
     insights_url: `${BASE_URL}/staff/insights`,
