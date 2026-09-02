@@ -235,3 +235,37 @@ export function parseSizeChart(json: string): SizeChartRow[] {
     return defaultSizeChart();
   }
 }
+
+// ============================================================
+// 概算利益
+// ============================================================
+
+// 1枚あたりの原価(概算)。実際は発注枚数で変動するので、確定したら呼び出し側で差し替える。
+export const DEFAULT_UNIT_COST = 1500;
+
+export interface ProfitRow {
+  qty: number;
+  totalAmount: number;
+  shippingFee: number;
+}
+
+export interface ProfitSummary {
+  qty: number;        // 総枚数
+  revenue: number;    // 商品の売上(送料を除く)
+  shipping: number;   // 預かった送料(実費なので利益に含めない)
+  cost: number;       // 原価(枚数 × 単価)
+  profit: number;     // 概算利益 = revenue - cost
+}
+
+// 送料は郵送業者へ払う実費の預かりなので、売上からも利益からも除外する。
+// 無料配布は売上0・原価だけかかるので、そのぶん利益が減る(実態どおり)。
+export function calcProfitSummary(rows: ProfitRow[], unitCost = DEFAULT_UNIT_COST): ProfitSummary {
+  let qty = 0, revenue = 0, shipping = 0;
+  for (const r of rows) {
+    qty += r.qty;
+    shipping += r.shippingFee;
+    revenue += r.totalAmount - r.shippingFee;
+  }
+  const cost = qty * unitCost;
+  return { qty, revenue, shipping, cost, profit: revenue - cost };
+}

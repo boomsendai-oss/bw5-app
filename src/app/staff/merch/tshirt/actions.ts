@@ -9,8 +9,11 @@ import { todayJst } from '@/lib/dateJst';
 import {
   acceptanceState,
   buildOrderCsv,
+  calcProfitSummary,
+  DEFAULT_UNIT_COST,
   summarizeBySize,
   TSHIRT_SIZES,
+  type ProfitSummary,
   type AcceptState,
   type TshirtSettings,
   type TshirtSize,
@@ -37,6 +40,8 @@ export interface StaffOrdersView {
   totalAmount: number;
   shippingCount: number;
   sizes: readonly TshirtSize[];
+  profit: ProfitSummary;
+  unitCost: number;
 }
 
 export async function getStaffOrders(): Promise<StaffOrdersView> {
@@ -52,6 +57,12 @@ export async function getStaffOrders(): Promise<StaffOrdersView> {
     totalAmount: orders.reduce((n, o) => n + o.totalAmount, 0),
     shippingCount: orders.filter((o) => o.wantsShipping).length,
     sizes: TSHIRT_SIZES,
+    // 概算利益。原価は1枚あたりの概算(発注枚数で変動するため確定後に見直す)
+    profit: calcProfitSummary(
+      orders.map((o) => ({ qty: o.qty, totalAmount: o.totalAmount, shippingFee: o.shippingFee })),
+      DEFAULT_UNIT_COST
+    ),
+    unitCost: DEFAULT_UNIT_COST,
   };
 }
 

@@ -123,6 +123,27 @@ export default function StaffTshirtPage() {
           </div>
         </section>
 
+        {/* 概算利益 */}
+        <section className="bg-white border border-sand-200 rounded-lg p-5">
+          <div className="flex items-baseline justify-between mb-1 flex-wrap gap-2">
+            <h2 className="text-sm font-bold text-navy-900">概算利益</h2>
+            <span className="text-[11px] text-slate-500">
+              原価 1枚 {yen(v.unitCost)} で計算（発注枚数で変動するため概算）
+            </span>
+          </div>
+          <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <Stat label="売上（送料除く）" value={yen(v.profit.revenue)} />
+            <Stat label={`原価 ${v.profit.qty}枚分`} value={'\u2212' + yen(v.profit.cost)} />
+            <Stat label="預かり送料" value={yen(v.profit.shipping)} />
+            <Stat label="概算利益" value={yen(v.profit.profit)} accent />
+          </div>
+          <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
+            送料は業者へ払う実費の預かりなので、売上からも利益からも除いています。
+            一般価格(¥3,500)は1枚あたり{yen(3500 - v.unitCost)}の利益、
+            インストラクター価格(¥1,500)は原価と同額で利益0、無料配布は原価分だけ差し引かれます。
+          </p>
+        </section>
+
         {/* 郵送希望者 */}
         {shipped.length > 0 && (
           <section className="bg-white border border-sand-200 rounded-lg p-5">
