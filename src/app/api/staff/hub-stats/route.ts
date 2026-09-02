@@ -38,6 +38,8 @@ export async function GET(req: NextRequest) {
     unlinkedMembers,
     monthlyReports,
     xPostsDraft,
+    blogDrafts,
+    blogAutoDrafts,
   ] = await Promise.all([
     getActiveMemberCount(currentYm).catch(() => 0),
     count(`SELECT COUNT(*) as n FROM boom_members WHERE status = 'withdrew'`),
@@ -51,6 +53,9 @@ export async function GET(req: NextRequest) {
     count(`SELECT COUNT(*) as n FROM boom_members WHERE status = 'active' AND id NOT IN (SELECT member_id FROM member_lstep_links)`),
     count(`SELECT COUNT(*) as n FROM monthly_reports`),
     count(`SELECT COUNT(*) as n FROM x_posts WHERE status = 'draft'`),
+    count(`SELECT COUNT(*) as n FROM blog_posts WHERE is_published = 0`),
+    // auto-blog v2 の未レビュー下書き(TAROが読んで公開判断するもの)
+    count(`SELECT COUNT(*) as n FROM blog_posts WHERE is_published = 0 AND auto_generated = 1`),
   ]);
 
   return NextResponse.json({
@@ -62,6 +67,7 @@ export async function GET(req: NextRequest) {
     trials: { total: trialRecords },
     monthly: { reports: monthlyReports },
     xPosts: { draft: xPostsDraft },
+    blog: { drafts: blogDrafts, autoDrafts: blogAutoDrafts },
     generated_at: new Date().toISOString(),
   });
 }

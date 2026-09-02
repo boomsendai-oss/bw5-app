@@ -35,6 +35,7 @@ type Stats = {
   trials: { total: number };
   monthly: { reports: number };
   xPosts?: { draft: number };
+  blog?: { drafts: number; autoDrafts: number };
   generated_at: string;
 };
 
@@ -61,6 +62,18 @@ const CARDS: CardDef[] = [
     stat: s => s.lineClicks ? [
       { label: 'LINEクリック7日', value: s.lineClicks.total7 },
       { label: 'うち広告', value: s.lineClicks.ads7 },
+    ] : [],
+  },
+  {
+    // 2026-09-02: auto-blog v2で下書きが自動で入るようになり、TAROが毎週見る場所になったので上位に移動
+    // (末尾だとスマホで見つからなかった)。未レビューの自動下書きがあれば件数を強調表示
+    href: '/staff/blog',
+    icon: FileText,
+    title: 'ブログ',
+    description: 'BOOM公式HPのブログ記事。自動下書きの確認・編集・公開',
+    stat: s => s.blog ? [
+      { label: '下書き', value: s.blog.drafts },
+      { label: '自動下書き(要確認)', value: s.blog.autoDrafts, alert: s.blog.autoDrafts > 0 },
     ] : [],
   },
   {
@@ -170,12 +183,6 @@ const CARDS: CardDef[] = [
     icon: Palette,
     title: 'バックステージ',
     description: '出演者情報・写真公開フェーズ',
-  },
-  {
-    href: '/staff/blog',
-    icon: FileText,
-    title: 'ブログ',
-    description: 'BOOM公式HPのブログ記事を作成・編集・公開',
   },
 ];
 
