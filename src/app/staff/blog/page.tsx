@@ -32,7 +32,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { Plus, Rocket, Pencil, Trash2, Lock, Bot } from 'lucide-react';
+import { Plus, Rocket, Pencil, Trash2, Lock, Bot, Eye } from 'lucide-react';
 import StaffPageHeader from '@/components/StaffPageHeader';
 
 type BlogPost = {
@@ -290,6 +290,12 @@ export default function StaffBlogPage() {
                       {p.published_at ? new Date(p.published_at.replace(' ', 'T')).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '-'}
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
+                      {/* 読む用プレビュー(下書きも見られる)。編集モーダルは生Markdownなので確認には向かない */}
+                      <Button variant="outline" size="xs" asChild className="mr-1">
+                        <a href={`/staff/blog/preview/${p.id}`} target="_blank" rel="noreferrer">
+                          <Eye className="size-3 mr-0.5" />プレビュー
+                        </a>
+                      </Button>
                       <Button variant="outline" size="xs" onClick={() => openEdit(p.id)} className="mr-1">
                         <Pencil className="size-3 mr-0.5" />編集
                       </Button>
