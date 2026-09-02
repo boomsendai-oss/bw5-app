@@ -126,9 +126,20 @@ async function run(req: NextRequest): Promise<NextResponse> {
     });
   }
 
-  const facts = await loadFacts();
-  const p = await submitDraftBatch(clusters[0], structure, facts, ymd);
-  return NextResponse.json({ ok: true, phase: 'submit', status: 'submitted', batch_id: p.batch_id, topic: p.topic_key, seed_queries: p.seed_queries, structure, model: MODEL });
+  try {
+    const facts = await loadFacts();
+    const p = await submitDraftBatch(clusters[0], structure, facts, ymd);
+    return NextResponse.json({ ok: true, phase: 'submit', status: 'submitted', batch_id: p.batch_id, topic: p.topic_key, seed_queries: p.seed_queries, structure, model: MODEL });
+  } catch (e) {
+    // 500で本文が空だと原因が追えない。理由をJSONで返し、TAROにも知らせる
+    const reason = e instanceof Error ? e.message : String(e);
+    await sendEmail({
+      to: TARO_EMAIL,
+      subject: '⚠️ ブログ自動下書きの投入に失敗しました',
+      text: `題材: ${clusters[0].key}\nseed: ${clusters[0].queries.map((q) => q.query).join(' / ')}\n理由: ${reason.slice(0, 500)}`,
+    }).catch(() => {});
+    return NextResponse.json({ ok: false, phase: 'submit', status: 'failed', topic: clusters[0].key, reason: reason.slice(0, 500) });
+  }
 }
 
 export async function GET(req: NextRequest) {

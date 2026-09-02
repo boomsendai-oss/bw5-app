@@ -6,6 +6,7 @@ import {
   isExcludedQuery,
   isGenerationDay,
   isTokenCovered,
+  makeCustomId,
   makeSlug,
   normalizeQuery,
   parseModelJson,
@@ -162,6 +163,13 @@ describe('parseModelJson / makeSlug', () => {
   });
   it('必須欠落は例外', () => {
     expect(() => parseModelJson('{"title":"T"}')).toThrow();
+  });
+  it('custom_idは日本語の題材キーでも英数字・ハイフンだけになる(Batch APIの制約)', () => {
+    const id = makeCustomId('2026-09-02', '仙台市青葉区');
+    expect(id).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
+    expect(id.startsWith('blog-20260902-')).toBe(true);
+    expect(makeCustomId('2026-09-02', '仙台市青葉区')).toBe(id); // 同じ題材なら同じID
+    expect(makeCustomId('2026-09-02', 'シニア')).not.toBe(id);
   });
   it('slugは英小文字ハイフンに整え、衝突したら日付を足す', () => {
     expect(makeSlug('Senior Dance Sendai', new Set(), '2026-09-02')).toBe('senior-dance-sendai');

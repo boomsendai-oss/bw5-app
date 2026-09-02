@@ -299,6 +299,18 @@ export function makeSlug(slugEn: string, existing: Set<string>, today: string): 
   return `${alt}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/**
+ * Batch APIの custom_id は英数字・ハイフン・アンダースコアのみ(64字以内)。
+ * 題材キーは日本語なので、そのまま入れると 400 → 500 になる(2026-09-02 本番初回で発生)。
+ * 日本語は捨てて日付+短いハッシュにする。
+ */
+export function makeCustomId(ymd: string, topicKey: string): string {
+  let h = 0;
+  for (const ch of topicKey) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
+  const ascii = topicKey.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 12);
+  return `blog-${ymd.replace(/-/g, '')}-${ascii || 'topic'}-${h.toString(36)}`.slice(0, 64);
+}
+
 /** 構成型のローテーション(同じ骨格を続けない・エピソード開始型はTAROの実話が要るので使わない) */
 export function pickStructure(autoDraftCount: number): '標準型' | 'Q&A主導型' {
   return autoDraftCount % 2 === 0 ? '標準型' : 'Q&A主導型';
@@ -598,7 +610,7 @@ export async function loadFacts(): Promise<DraftFacts> {
 /** バッチを投入する(数秒で返る)。戻り値は pending 状態 */
 export async function submitDraftBatch(cluster: TopicCluster, structure: string, facts: DraftFacts, todayYmd: string): Promise<PendingBatch> {
   const client = new Anthropic();
-  const customId = `blog-${todayYmd}-${cluster.key.replace(/[^a-z0-9ぁ-んァ-ン一-龥]/gi, '').slice(0, 20)}`;
+  const customId = makeCustomId(todayYmd, cluster.key);
   const batch = await client.messages.batches.create({
     requests: [
       {
