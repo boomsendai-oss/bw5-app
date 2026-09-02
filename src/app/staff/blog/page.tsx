@@ -268,8 +268,19 @@ export default function StaffBlogPage() {
                 {posts.map(p => (
                   <TableRow key={p.id}>
                     <TableCell>
-                      <div className="font-medium">{p.title}</div>
+                      {/* タイトルをタップでプレビュー。スマホでは右端の操作列が画面外に隠れて
+                          「プレビュー」ボタンが見つからなかった(TARO 2026-09-02)ため、左端の
+                          タイトル自体をリンクにする */}
+                      <a
+                        href={`/staff/blog/preview/${p.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-brand-700 underline decoration-brand-300 underline-offset-2 hover:text-brand-800"
+                      >
+                        {p.title}
+                      </a>
                       <div className="text-xs text-muted-foreground font-mono">/{p.slug}</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">タイトルをタップ → 読む用プレビュー</div>
                     </TableCell>
                     <TableCell>{p.category || '-'}</TableCell>
                     <TableCell>
