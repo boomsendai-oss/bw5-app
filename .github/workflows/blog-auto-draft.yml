@@ -1,0 +1,49 @@
+# ブログ自動下書き v2 の起動 (2026-09-02)
+# 2時間おきに /api/cron/blog-auto-draft を叩く。ルート側が状態を見て
+#   投入済みバッチの回収 / 生成日(月水金)なら新規投入 / 何もしない
+# のどれか1つを数秒でやる。Vercel Hobbyのcron枠を消費しないためGH Actions側に置く。
+# GH Actionsのcronは時刻がずれる(実測20〜80分)が、二段構えなので遅れても困らない。
+# 分は 23 にオフセット(毎時00分はGitHub側の混雑でスキップされやすい)。
+#
+# 手動: Actions → Run workflow → mode=dry で「今なら何を書くか」だけ確認できる(投入しない)
+name: blog-auto-draft
+
+on:
+  schedule:
+    - cron: '23 */2 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'run(通常) / dry(題材だけ表示) / force(曜日・重複ガードを無視して投入)'
+        required: false
+        default: 'run'
+        type: choice
+        options: [run, dry, force]
+
+concurrency:
+  group: blog-auto-draft
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/blog-auto-draft
+        run: |
+          set -e
+          MODE="${{ github.event.inputs.mode || 'run' }}"
+          Q=""
+          [ "$MODE" = "dry" ] && Q="?dry=1"
+          [ "$MODE" = "force" ] && Q="?force=1"
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "https://bw5-app.vercel.app/api/cron/blog-auto-draft${Q}")
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # 生成失敗(ok:false・failed)はメールで知らせているのでここでは落とさない。
+          # 落とすのは「鍵未設定」「スナップショット無し」のような設定不備だけ。
+          echo "$BODY" | jq -e '(.ok == true) or (.status == "failed")' >/dev/null 2>&1 \
+            || { echo "::error::ブログ自動下書きが動いていません: $BODY"; exit 1; }

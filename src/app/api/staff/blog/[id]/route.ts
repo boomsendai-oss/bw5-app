@@ -48,6 +48,19 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
   }
   if (sets.length === 0) return NextResponse.json({ error: 'no fields' }, { status: 400 });
+  // 「公開する」にチェックを入れたのに公開日時が空のままだと、HP側の公開判定
+  // (published_at <= now) を永遠に通らず、承認したつもりで出ない事故になる。
+  // 公開ONで日時未指定なら今の時刻を入れる(既に入っていればそれを尊重)。
+  const publishing = Number((body as Record<string, unknown>).is_published) === 1;
+  const noDate = !('published_at' in body) || !(body as Record<string, unknown>).published_at;
+  if (publishing && noDate) {
+    const idx = sets.indexOf('published_at = ?');
+    if (idx >= 0) {
+      sets.splice(idx, 1);
+      vals.splice(idx, 1);
+    }
+    sets.push(`published_at = COALESCE(published_at, CURRENT_TIMESTAMP)`);
+  }
   sets.push(`updated_at = CURRENT_TIMESTAMP`);
   vals.push(numId);
   try {
