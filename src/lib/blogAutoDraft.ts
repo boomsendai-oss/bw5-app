@@ -213,6 +213,34 @@ const NG_PHRASES = ['勧誘はしません', '講師全員現役プロ', '講師
 export type ValidationResult = { ok: boolean; issues: string[]; content_markdown: string };
 
 /**
+ * 講師名が地の文で呼び捨てになっている行を返す(TARO指摘2026-09-02「ちゃんなつ先生にした方がいい」)。
+ * 表の行(| で始まる)・HTMLコメント・「BOOM代表のTARO」の自己紹介は対象外。
+ */
+export function findBareInstructorNames(md: string, instructorNames: string[]): string[] {
+  const issues: string[] = [];
+  const lines = md.split('\n');
+  lines.forEach((line, i) => {
+    if (line.startsWith('|') || line.startsWith('<!--')) return;
+    for (const raw of instructorNames) {
+      const name = raw.trim();
+      if (!name) continue;
+      const esc = name.replace(/[.*+?^${}()|[\]\\@]/g, '\\$&');
+      // 直後が「先生」「(」「（」ならOK。それ以外の文字が続く=呼び捨て
+      const re = new RegExp(`${esc}(?!先生|\\(|（)`, 'g');
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(line))) {
+        const after = line.slice(m.index + name.length, m.index + name.length + 1);
+        if (after === '' ) continue; // 行末
+        if (/BOOM代表のTARO/.test(line) && name === 'TARO') continue;
+        issues.push(`L${i + 1}: 講師名が呼び捨て「${name}」→「${name}先生」`);
+        break;
+      }
+    }
+  });
+  return issues;
+}
+
+/**
  * 下書きを機械検査する。直せるもの(不正リンク)は直し、直せないものは issues に積む。
  * 直せない問題があっても捨てない(下書きは残し、メモでTAROに知らせる)。
  */
@@ -380,6 +408,7 @@ export function buildSystemPrompt(facts: DraftFacts): string {
 - 読者の呼称: キッズ記事=「親御さん」「お子さん」、大人記事=「あなた」または省略
 - ダンスはスポーツではなく音楽表現。フィジカルの強さや体の大きさで有利不利を語らない。結果よりプロセス
 - 文末は「〜言うんです」より「〜言っています/言っていました」
+- **講師の名前は地の文では必ず「〇〇先生」と書く**(「ちゃんなつのHIPHOP」ではなく「ちゃんなつ先生のHIPHOP」)。呼び捨てにしない。表の「講師」列だけは名前のみでよい。自分(TARO)は「私」
 
 # BOOMくん(マスコット)の使い方
 1記事に2〜3回。連続配置しない。リード直後には置かない。書式は次の2つだけ(これ以外は表示が壊れる):
@@ -676,6 +705,8 @@ export async function collectDraftBatch(pending: PendingBatch, todayYmd: string)
   const existing = await loadExistingPosts();
   const published = await loadPublishedPosts();
   const v = validateDraft(draft.content_markdown, { blogSlugs: published.map((p) => p.slug) });
+  const instructorRows = await getAll('SELECT name FROM instructors WHERE active = 1');
+  v.issues.push(...findBareInstructorNames(v.content_markdown, instructorRows.map((r) => String(r.name))));
   const slug = makeSlug(draft.slug_en, new Set(existing.map((p) => p.slug)), todayYmd);
 
   // TARO向けメモは本文先頭のHTMLコメントに入れる(HP側は生HTMLを描画しないので公開されても表示されない。

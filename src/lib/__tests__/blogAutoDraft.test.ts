@@ -3,6 +3,7 @@ import {
   buildCoverageCorpus,
   buildSystemPrompt,
   buildUserPrompt,
+  findBareInstructorNames,
   isExcludedQuery,
   isGenerationDay,
   isTokenCovered,
@@ -154,6 +155,26 @@ describe('validateDraft', () => {
   });
 });
 
+describe('findBareInstructorNames', () => {
+  const names = ['TARO', 'ちゃんなつ', 'K@TTSU', 'おっちゃん'];
+  it('地の文の呼び捨てを指摘し、先生付き・表・自己紹介は許す', () => {
+    const md = [
+      'こんにちは。仙台のダンススクールBOOM代表のTAROです。',
+      'ちゃんなつのHIPHOP、おっちゃん先生のNEW JACK SWINGが動いています。',
+      '| クラス | 講師 |',
+      '| HOUSE | K@TTSU |',
+      'K@TTSU(HOUSE)のクラスもあります。',
+    ].join('\n');
+    const issues = findBareInstructorNames(md, names);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toContain('ちゃんなつ');
+    expect(issues[0]).toContain('L2');
+  });
+  it('問題がなければ空', () => {
+    expect(findBareInstructorNames('ちゃんなつ先生のクラスです。', names)).toEqual([]);
+  });
+});
+
 describe('parseModelJson / makeSlug', () => {
   it('コードフェンス付きでもJSONを取り出す', () => {
     const d = parseModelJson('```json\n{"title":"T","slug_en":"Senior Dance Sendai","content_markdown":"## a","keywords":["x"]}\n```');
@@ -201,6 +222,7 @@ describe('プロンプト', () => {
     expect(s).toContain('/blog/dance-school-cost-guide/');
     expect(s).toContain('K-POPはやっていない');
     expect(s).toContain('勧誘はしません');
+    expect(s).toContain('〇〇先生');
     expect(s).not.toContain('長町コナスポスタジオ');
   });
   it('ユーザープロンプトにseed queriesと構成型が入る', () => {
