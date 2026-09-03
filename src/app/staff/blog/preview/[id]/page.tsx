@@ -6,6 +6,7 @@ import { getOne } from '@/lib/db';
 import { isAuthorizedServer } from '@/lib/eventAuth';
 import { splitDraftMemo } from '@/lib/blogPreview';
 import remarkBoomkun from '@/lib/remarkBoomkun';
+import PublishButton from './PublishButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,7 +87,7 @@ export default async function BlogPreviewPage({ params }: { params: Promise<{ id
           publicUrl ? (
             <a href={publicUrl} target="_blank" rel="noreferrer" className="text-xs text-brand-700 underline">公開ページを開く</a>
           ) : (
-            <span className="text-xs text-slate-500">公開すると boom-sendai.com/blog/{post.slug}/ に出ます</span>
+            <PublishButton id={post.id} slug={post.slug} title={post.title} />
           )
         }
       />
@@ -110,6 +111,16 @@ export default async function BlogPreviewPage({ params }: { params: Promise<{ id
             />
           )}
 
+          {!post.is_published && (
+            <section className="mb-5 rounded-xl border border-sand-300 bg-sand-50 px-4 py-3 text-slate-900">
+              <p className="text-sm font-bold text-navy-900 mb-1">この記事はまだ下書きです（HPには出ていません）</p>
+              <p className="text-[13px] leading-6 text-slate-700">
+                読んでOKなら上の「この内容で公開する」を押してください。直したい箇所があれば
+                <a href="/staff/blog" className="text-brand-700 underline mx-1">記事一覧</a>の「編集」から直してから公開できます。
+                何もしなければ下書きのままで、勝手に公開されることはありません。
+              </p>
+            </section>
+          )}
           <p className="text-xs text-slate-500 mb-2">/blog/{post.slug}/</p>
           <h1 className="text-2xl font-black text-navy-900 leading-snug mb-3">{post.title}</h1>
           {post.excerpt && (
@@ -153,6 +164,13 @@ export default async function BlogPreviewPage({ params }: { params: Promise<{ id
               {body}
             </ReactMarkdown>
           </article>
+
+          {!post.is_published && (
+            <div className="mt-10 rounded-xl border border-brand-300 bg-brand-50 px-4 py-4 text-slate-900 flex flex-col sm:flex-row sm:items-center gap-3">
+              <p className="text-sm flex-1">ここまで読んで問題なければ、そのまま公開できます。</p>
+              <PublishButton id={post.id} slug={post.slug} title={post.title} />
+            </div>
+          )}
 
           <p className="mt-10 text-xs text-slate-500">
             表示は公開画面(boom-sendai.com)と同じMarkdown変換です。細かな装飾は本番と多少違います。
