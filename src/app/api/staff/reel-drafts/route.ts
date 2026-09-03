@@ -20,7 +20,7 @@ export const maxDuration = 30;
  * need_input を作り、ready を生成して reel_queue に投入する。ここは"入力"だけを担う。
  */
 
-const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice', 'caption', 'stage_kf', 'lesson_master_id', 'mention_handles', 'collaborators'] as const;
+const EDITABLE = ['class_name', 'instructor', 'daytime', 'caption_style', 'dance_start', 'dance_end', 'cover_at', 'cover_choice', 'caption', 'stage_kf', 'lesson_master_id', 'mention_handles', 'collaborators', 'cover_photo_idx'] as const;
 
 const isStage = (kind: unknown) => kind === '発表会' || kind === 'stage';
 
@@ -165,7 +165,7 @@ export async function GET(req: NextRequest) {
     `SELECT d.id, d.drive_file_id, d.drive_name, d.kind, d.shot_at, d.class_name, d.instructor, d.daytime,
             d.caption_style, d.duration_sec, d.preview_path, d.cover_candidates, d.stage_kf,
             d.dance_start, d.dance_end, d.cover_at, d.cover_choice, d.status, d.reel_queue_id, d.error,
-            d.reel_path, d.cover_path, d.caption, d.created_at, d.updated_at, d.lesson_master_id, d.mention_handles,
+            d.reel_path, d.cover_path, d.caption, d.created_at, d.updated_at, d.lesson_master_id, d.mention_handles, d.cover_photo_idx,
             d.collaborators,
             -- 共同投稿は「担当講師にするか/しないか」だけの選択にする(TARO 2026-08-10)。
             -- 手入力させると誤字で招待が飛ばないので、登録簿のハンドルをここで解決して返す。

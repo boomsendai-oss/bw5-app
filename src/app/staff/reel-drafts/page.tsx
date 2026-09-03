@@ -40,6 +40,8 @@ type Draft = {
   queue_permalink: string | null;
   lesson_master_id: number | null;
   mention_handles: string | null;
+  /** TARO選定のカバー写真プール(cover-pool/manifest.json)の添字。KEIKOがカードで選ぶ */
+  cover_photo_idx: number | null;
   collaborators: string | null;
   instructor_handle: string | null;
   cast_suggest: {
@@ -89,6 +91,15 @@ export default function ReelDraftsPage() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [signal, setSignal] = useState<Signal | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
+  // TARO選定のカバー写真プール(public/cover-pool/manifest.json)。
+  // 発表会リールのカバーは「TAROが選んだ2〜3枚の中からKEIKOが選ぶ」運用(TARO 2026-09-03)。
+  const [pool, setPool] = useState<Record<string, { title: string; items: Array<{ idx: number; num: string; gene: boolean; thumb: string }> }>>({});
+  useEffect(() => {
+    fetch('/cover-pool/manifest.json', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then(setPool)
+      .catch(() => setPool({}));
+  }, []);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string>('');
 
@@ -320,7 +331,7 @@ export default function ReelDraftsPage() {
                   {d.status === 'need_input' ? (
                     <DraftEditor draft={d} onSaved={load} onMsg={setMsg} lessons={lessons} />
                   ) : d.status === 'review' ? (
-                    <ReviewCard draft={d} onChanged={load} onMsg={setMsg} />
+                    <ReviewCard draft={d} onChanged={load} onMsg={setMsg} pool={pool} />
                   ) : d.status === 'ready' || d.status === 'generating' ? (
                     <div className="space-y-2">
                       <CompactRow d={d} onReset={load} onMsg={setMsg} />
@@ -350,7 +361,7 @@ export default function ReelDraftsPage() {
               <Section title={`投稿待ち・確認して投稿 (${review.length})`}>
                 {review.map((d) => (
                   <div key={`${d.id}:${d.updated_at}`} id={`draft-card-${d.id}`} className="scroll-mt-28">
-                    <ReviewCard draft={d} onChanged={load} onMsg={setMsg} />
+                    <ReviewCard draft={d} onChanged={load} onMsg={setMsg} pool={pool} />
                   </div>
                 ))}
               </Section>
@@ -1239,7 +1250,10 @@ function defaultSlotLocal(stage: boolean): string {
 }
 
 // 投稿待ち: 完成リールを確認→キャプション微調整→投稿予約(手動GO)
-function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () => void; onMsg: (s: string) => void }) {
+function ReviewCard({ draft, onChanged, onMsg, pool = {} }: {
+  draft: Draft; onChanged: () => void; onMsg: (s: string) => void;
+  pool?: Record<string, { title: string; items: Array<{ idx: number; num: string; gene: boolean; thumb: string }> }>;
+}) {
   const stage = draft.kind === '発表会' || draft.kind === 'stage';
   const [caption, setCaption] = useState(draft.caption ?? '');
   // 発表会はデフォルトで「講師を共同投稿者に」「判明している生徒をCASTに」入れる(TARO 2026-08-31:
@@ -1364,6 +1378,45 @@ function ReviewCard({ draft, onChanged, onMsg }: { draft: Draft; onChanged: () =
           </div>
         </div>
       )}
+
+      {/* TARO選定のカバー写真プールから選ぶ(発表会のみ・TARO 2026-09-03)。
+          動画コマではなくカメラマンの本番/ゲネ写真。どのクリップにどれを使うかは現場が決める。 */}
+      {stage && (() => {
+        const m = String(draft.drive_name ?? '').match(/^M(\d+)/);
+        const key = m ? 'M' + parseInt(m[1], 10) : '';
+        const p = pool[key];
+        if (!p || p.items.length === 0) return null;
+        return (
+          <div className="mb-3 rounded-lg border border-brand-200 bg-brand-50/50 p-2.5">
+            <p className="text-[11px] font-semibold text-navy-700">🖼 このリールのカバー写真を選ぶ</p>
+            <p className="text-[10px] text-navy-500 mb-2">{key} 用にTAROが選んだ{p.items.length}枚。タップすると数分でカバーが作り直されます</p>
+            <div className="grid grid-cols-3 gap-2">
+              {p.items.map((it) => {
+                const on = draft.cover_photo_idx === it.idx;
+                return (
+                  <button key={it.idx} disabled={busy}
+                    onClick={async () => {
+                      setBusy(true);
+                      const r = await fetch('/api/staff/reel-drafts', {
+                        method: 'PATCH', headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({ id: draft.id, cover_photo_idx: it.idx }),
+                      });
+                      setBusy(false);
+                      if (r.ok) { onMsg(`カバーを写真#${it.num}に変更します（Macが数分で作り直します）`); onChanged(); }
+                      else onMsg('カバーの変更に失敗しました');
+                    }}
+                    className={`relative rounded-md overflow-hidden border-2 ${on ? 'border-brand-600' : 'border-transparent'}`}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={it.thumb} alt={`候補${it.num}`} className="w-full aspect-[9/16] object-cover bg-black" />
+                    {on && <span className="absolute top-1 left-1 rounded bg-brand-600 text-white text-[10px] px-1.5 py-0.5">使用中</span>}
+                    <span className="absolute bottom-1 right-1 rounded bg-black/60 text-white text-[9px] px-1">#{it.num}{it.gene ? ' ゲネ' : ''}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 選び直し: 切り出しはやり直さずカバーだけ作り直す(SSD不要・数十秒) */}
       {pickCover && candidates.length > 0 && (

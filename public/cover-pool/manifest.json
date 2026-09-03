@@ -1,0 +1,420 @@
+{
+ "M3": {
+  "title": "TARO HIPHOP初級",
+  "items": [
+   {
+    "idx": 0,
+    "num": "4249",
+    "gene": false,
+    "thumb": "/cover-pool/M3/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "7161",
+    "gene": false,
+    "thumb": "/cover-pool/M3/1.jpg"
+   }
+  ]
+ },
+ "M4": {
+  "title": "はじめてのヒップホップ",
+  "items": [
+   {
+    "idx": 0,
+    "num": "7202",
+    "gene": false,
+    "thumb": "/cover-pool/M4/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "7218",
+    "gene": false,
+    "thumb": "/cover-pool/M4/1.jpg"
+   }
+  ]
+ },
+ "M6": {
+  "title": "多賀城 HOUSE",
+  "items": [
+   {
+    "idx": 0,
+    "num": "7370",
+    "gene": false,
+    "thumb": "/cover-pool/M6/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "7440",
+    "gene": false,
+    "thumb": "/cover-pool/M6/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "7345",
+    "gene": false,
+    "thumb": "/cover-pool/M6/2.jpg"
+   }
+  ]
+ },
+ "M9": {
+  "title": "多賀城 HIPHOP初級",
+  "items": [
+   {
+    "idx": 0,
+    "num": "7711",
+    "gene": false,
+    "thumb": "/cover-pool/M9/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "7705",
+    "gene": false,
+    "thumb": "/cover-pool/M9/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "5047-2",
+    "gene": true,
+    "thumb": "/cover-pool/M9/2.jpg"
+   }
+  ]
+ },
+ "M15": {
+  "title": "ベーシック ダンスクラス",
+  "items": [
+   {
+    "idx": 0,
+    "num": "8270",
+    "gene": false,
+    "thumb": "/cover-pool/M15/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "8353",
+    "gene": false,
+    "thumb": "/cover-pool/M15/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "8362",
+    "gene": false,
+    "thumb": "/cover-pool/M15/2.jpg"
+   }
+  ]
+ },
+ "M19": {
+  "title": "多賀城 HIPHOP基礎",
+  "items": [
+   {
+    "idx": 0,
+    "num": "8628",
+    "gene": false,
+    "thumb": "/cover-pool/M19/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "8682",
+    "gene": false,
+    "thumb": "/cover-pool/M19/1.jpg"
+   }
+  ]
+ },
+ "M20": {
+  "title": "K@TTSU HOUSE",
+  "items": [
+   {
+    "idx": 0,
+    "num": "8785",
+    "gene": false,
+    "thumb": "/cover-pool/M20/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "5633",
+    "gene": true,
+    "thumb": "/cover-pool/M20/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "3124",
+    "gene": true,
+    "thumb": "/cover-pool/M20/2.jpg"
+   }
+  ]
+ },
+ "M5": {
+  "title": "長町 WAACK",
+  "items": [
+   {
+    "idx": 0,
+    "num": "2714",
+    "gene": true,
+    "thumb": "/cover-pool/M5/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "2702",
+    "gene": true,
+    "thumb": "/cover-pool/M5/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "7245",
+    "gene": false,
+    "thumb": "/cover-pool/M5/2.jpg"
+   }
+  ]
+ },
+ "M14": {
+  "title": "おっちゃん NEW JACK SWING",
+  "items": [
+   {
+    "idx": 0,
+    "num": "8123",
+    "gene": false,
+    "thumb": "/cover-pool/M14/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "8145",
+    "gene": false,
+    "thumb": "/cover-pool/M14/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "8250",
+    "gene": false,
+    "thumb": "/cover-pool/M14/2.jpg"
+   }
+  ]
+ },
+ "M16": {
+  "title": "多賀城 JAZZ",
+  "items": [
+   {
+    "idx": 0,
+    "num": "8470",
+    "gene": false,
+    "thumb": "/cover-pool/M16/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "8503",
+    "gene": false,
+    "thumb": "/cover-pool/M16/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "5367-2",
+    "gene": true,
+    "thumb": "/cover-pool/M16/2.jpg"
+   }
+  ]
+ },
+ "M22": {
+  "title": "七ヶ浜 HIPHOP入門",
+  "items": [
+   {
+    "idx": 0,
+    "num": "3252",
+    "gene": true,
+    "thumb": "/cover-pool/M22/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "3188",
+    "gene": true,
+    "thumb": "/cover-pool/M22/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "5740",
+    "gene": true,
+    "thumb": "/cover-pool/M22/2.jpg"
+   }
+  ]
+ },
+ "M24": {
+  "title": "ちゃんなつ HIPHOP",
+  "items": [
+   {
+    "idx": 0,
+    "num": "4683",
+    "gene": false,
+    "thumb": "/cover-pool/M24/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "3290",
+    "gene": true,
+    "thumb": "/cover-pool/M24/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "3308",
+    "gene": true,
+    "thumb": "/cover-pool/M24/2.jpg"
+   }
+  ]
+ },
+ "M27": {
+  "title": "長町 ガールズ",
+  "items": [
+   {
+    "idx": 0,
+    "num": "4776",
+    "gene": false,
+    "thumb": "/cover-pool/M27/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "9384",
+    "gene": false,
+    "thumb": "/cover-pool/M27/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "9523",
+    "gene": false,
+    "thumb": "/cover-pool/M27/2.jpg"
+   }
+  ]
+ },
+ "M28": {
+  "title": "七ヶ浜 HIPHOP初級",
+  "items": [
+   {
+    "idx": 0,
+    "num": "4821",
+    "gene": false,
+    "thumb": "/cover-pool/M28/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "9729",
+    "gene": false,
+    "thumb": "/cover-pool/M28/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "9761",
+    "gene": false,
+    "thumb": "/cover-pool/M28/2.jpg"
+   }
+  ]
+ },
+ "M29": {
+  "title": "日曜 キッズHIPHOP",
+  "items": [
+   {
+    "idx": 0,
+    "num": "9831",
+    "gene": false,
+    "thumb": "/cover-pool/M29/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "9942",
+    "gene": false,
+    "thumb": "/cover-pool/M29/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "9962",
+    "gene": false,
+    "thumb": "/cover-pool/M29/2.jpg"
+   }
+  ]
+ },
+ "M30": {
+  "title": "SAYUKI FREESTYLE",
+  "items": [
+   {
+    "idx": 0,
+    "num": "0008",
+    "gene": false,
+    "thumb": "/cover-pool/M30/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "0013",
+    "gene": false,
+    "thumb": "/cover-pool/M30/1.jpg"
+   }
+  ]
+ },
+ "M33": {
+  "title": "キッズ 強化",
+  "items": [
+   {
+    "idx": 0,
+    "num": "0300",
+    "gene": false,
+    "thumb": "/cover-pool/M33/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "0453",
+    "gene": false,
+    "thumb": "/cover-pool/M33/1.jpg"
+   }
+  ]
+ },
+ "M35": {
+  "title": "HOUSE エキスパート",
+  "items": [
+   {
+    "idx": 0,
+    "num": "0664",
+    "gene": false,
+    "thumb": "/cover-pool/M35/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "0705",
+    "gene": false,
+    "thumb": "/cover-pool/M35/1.jpg"
+   }
+  ]
+ },
+ "M37": {
+  "title": "TARO HIPHOP中級",
+  "items": [
+   {
+    "idx": 0,
+    "num": "0984",
+    "gene": false,
+    "thumb": "/cover-pool/M37/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "1002",
+    "gene": false,
+    "thumb": "/cover-pool/M37/1.jpg"
+   },
+   {
+    "idx": 2,
+    "num": "1037",
+    "gene": false,
+    "thumb": "/cover-pool/M37/2.jpg"
+   }
+  ]
+ },
+ "M31": {
+  "title": "GRAFFITI",
+  "items": [
+   {
+    "idx": 0,
+    "num": "4934",
+    "gene": false,
+    "thumb": "/cover-pool/M31/0.jpg"
+   },
+   {
+    "idx": 1,
+    "num": "4924",
+    "gene": false,
+    "thumb": "/cover-pool/M31/1.jpg"
+   }
+  ]
+ }
+}
