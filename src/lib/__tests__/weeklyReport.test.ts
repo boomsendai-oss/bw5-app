@@ -319,7 +319,7 @@ describe('プランの動き欄', () => {
       })
     );
     expect(text).toContain('■ プランの動き（値上げの離脱はここに出る）');
-    expect(text).toContain('月謝プラン実請求額（2026-12）: ¥930,000（前月 ¥839,600）');
+    expect(text).toContain('月謝プラン実請求額（2026-12 当月累計）: ¥930,000（前月の同日まで ¥839,600）');
     expect(text).toContain('受け放題 22人 / 60分4回 40人');
     expect(text).toContain('プラン変更・休会の手続き: 今週 5件（先週 1件）／当月 9件');
     expect(text).toContain('休会中: 4人');

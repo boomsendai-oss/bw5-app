@@ -399,7 +399,10 @@ export function formatWeeklyReport(i: WeeklyReportInput): WeeklyReport {
     if (!pm) {
       L.push('  未計測');
     } else {
-      L.push(`  月謝プラン実請求額（${pm.month}）: ${yen(pm.plan_revenue)}（前月 ${yen(pm.prev_plan_revenue)}）`);
+      L.push(
+        `  月謝プラン実請求額（${pm.month} 当月累計）: ${yen(pm.plan_revenue)}（前月の同日まで ${yen(pm.prev_plan_revenue)}）`
+      );
+      L.push('    ※ 月謝は20日前後に請求されるため、月半ばまでは小さい値が出ます。月末の値で判断してください。');
       if (pm.plans.length > 0) {
         L.push('  ' + pm.plans.map((p) => `${p.name} ${p.count}人`).join(' / '));
       }

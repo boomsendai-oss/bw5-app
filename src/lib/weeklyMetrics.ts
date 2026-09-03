@@ -346,11 +346,17 @@ export async function gatherPlanMovement(
   prevEnd: string
 ): Promise<WeeklyReportInput['plan_movement']> {
   try {
+    // 前月は「同日まで」で切る(月謝は20日前後に請求されるため、月初に前月の満額と比べると誤読する)
+    const dayOfMonth = Number(weekEnd.slice(8, 10));
+    const [py, pmo] = pym.split('-').map(Number);
+    const prevLast = new Date(py, pmo, 0).getDate();
+    const prevCut = `${pym}-${String(Math.min(dayOfMonth, prevLast)).padStart(2, '0')}T23:59:59`;
     const rows = await getAll(
       `SELECT substr(billing_date,1,7) AS m, product_name, amount
          FROM hacomono_billing_records
-        WHERE product_category = 'plan' AND billing_date >= ? AND billing_date < date(?, '+1 month')`,
-      [`${pym}-01`, `${ym}-01`]
+        WHERE product_category = 'plan'
+          AND ((billing_date >= ? AND billing_date <= ?) OR (billing_date >= ? AND billing_date < date(?, '+1 month')))`,
+      [`${pym}-01`, prevCut, `${ym}-01`, `${ym}-01`]
     );
     const agg: Record<string, Record<string, { count: number; amount: number }>> = {};
     let onLeave = 0;
