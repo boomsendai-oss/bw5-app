@@ -103,7 +103,7 @@ export async function buildWeeklyReportInput(
   const prevLastDay = new Date(py, pmo, 0).getDate();
   const prevSameDay = `${pym}-${String(Math.min(dayOfMonth, prevLastDay)).padStart(2, '0')}`;
 
-  const [thisWeek, prevWeek, membersNow, finance, prevFinance, prevToDateRow, trialsMonth, adCost, chThis, chPrev, seo, trialCvr] =
+  const [thisWeek, prevWeek, membersNow, finance, prevFinance, prevToDateRow, trialsMonth, adCost, chThis, chPrev, seo, trialCvr, planMovement] =
     await Promise.all([
       windowCounts(start, end),
       windowCounts(prevStart, prevEnd),
@@ -128,6 +128,7 @@ export async function buildWeeklyReportInput(
       getTrafficChannels(prevStart, prevEnd).catch(() => null),
       gatherSeoSummary(),
       gatherTrialCvr(today),
+      gatherPlanMovement(ym, pym, start, end, prevStart, prevEnd),
     ]);
 
   const adSpend = finance.profitability.expense_breakdown.広告費 ?? 0;
@@ -178,6 +179,7 @@ export async function buildWeeklyReportInput(
     },
     seo,
     trial_cvr: trialCvr,
+    plan_movement: planMovement,
     state,
     insights_url: `${BASE_URL}/staff/insights`,
     data_gaps: dataGaps,
@@ -315,6 +317,86 @@ export async function gatherTrialCvr(todayIso: string): Promise<WeeklyReportInpu
       })
       .reverse();
     return { months };
+  } catch {
+    return null;
+  }
+}
+
+/** 商品名から月謝プラン名を正規化する(純関数)。プラン以外は null */
+export function normalizePlanName(productName: string): string | null {
+  const n = productName ?? '';
+  if (n.includes('休会')) return null;
+  if (n.includes('チケット会員')) return null;
+  if (n.includes('管理者') || n.includes('インストラクター')) return null;
+  if (n.includes('受け放題')) return '受け放題';
+  if (n.includes('カレッジ')) return 'カレッジ';
+  if (n.includes('月謝4回(60分)')) return '60分4回';
+  if (n.includes('月謝4回(90分)')) return '90分4回';
+  if (n.includes('月謝8回(60分)')) return '60分8回';
+  if (n.includes('月謝8回(90分)')) return '90分8回';
+  return null;
+}
+
+export async function gatherPlanMovement(
+  ym: string,
+  pym: string,
+  weekStart: string,
+  weekEnd: string,
+  prevStart: string,
+  prevEnd: string
+): Promise<WeeklyReportInput['plan_movement']> {
+  try {
+    const rows = await getAll(
+      `SELECT substr(billing_date,1,7) AS m, product_name, amount
+         FROM hacomono_billing_records
+        WHERE product_category = 'plan' AND billing_date >= ? AND billing_date < date(?, '+1 month')`,
+      [`${pym}-01`, `${ym}-01`]
+    );
+    const agg: Record<string, Record<string, { count: number; amount: number }>> = {};
+    let onLeave = 0;
+    for (const r of rows) {
+      const m = String(r.m);
+      const name = String(r.product_name ?? '');
+      if (m === ym && name.includes('休会')) onLeave += 1;
+      const plan = normalizePlanName(name);
+      if (!plan) continue;
+      agg[m] ??= {};
+      agg[m][plan] ??= { count: 0, amount: 0 };
+      agg[m][plan].count += 1;
+      agg[m][plan].amount += Number(r.amount ?? 0);
+    }
+    const sumOf = (m: string) => Object.values(agg[m] ?? {}).reduce((a, p) => a + p.amount, 0);
+    const order = ['受け放題', '60分4回', '90分4回', '90分8回', '60分8回', 'カレッジ'];
+    const plans = order
+      .filter((k) => agg[ym]?.[k])
+      .map((k) => ({ name: k, count: agg[ym][k].count, amount: agg[ym][k].amount }));
+
+    const fee = async (a: string, b: string) =>
+      Number(
+        (
+          await getOne(
+            `SELECT COUNT(*) AS n FROM hacomono_billing_records
+              WHERE product_name LIKE '%システム変更手数料%' AND billing_date BETWEEN ? AND ?`,
+            [a, `${b}T23:59:59`]
+          )
+        )?.n ?? 0
+      );
+    const [thisW, prevW, monthN] = await Promise.all([
+      fee(weekStart, weekEnd),
+      fee(prevStart, prevEnd),
+      fee(`${ym}-01`, `${ym}-31`),
+    ]);
+    return {
+      month: ym,
+      prev_month: pym,
+      plan_revenue: sumOf(ym),
+      prev_plan_revenue: sumOf(pym),
+      plans,
+      change_fees_this_week: thisW,
+      change_fees_prev_week: prevW,
+      change_fees_month: monthN,
+      on_leave: onLeave,
+    };
   } catch {
     return null;
   }

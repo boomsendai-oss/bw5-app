@@ -45,6 +45,7 @@ function baseInput(over: Partial<WeeklyReportInput> = {}): WeeklyReportInput {
     traffic: { this_week: null, prev_week: null },
     seo: null,
     trial_cvr: null,
+    plan_movement: null,
     insights_url: 'https://bw5-app.vercel.app/staff/insights',
     ...over,
   };
@@ -302,5 +303,25 @@ describe('体験→入会CVR欄', () => {
     expect(text).toContain('2026-07: 33%（3/9人・確定）');
     expect(text).toContain('2026-08: 45%（5/11人・暫定・今後上がる）');
     expect(text).toContain('「暫定」の月を確定値として判断しないこと');
+  });
+});
+
+describe('プランの動き欄', () => {
+  it('実請求額の前月比・プラン別人数・変更手続き件数・休会人数を出す', () => {
+    const { text } = formatWeeklyReport(
+      baseInput({
+        plan_movement: {
+          month: '2026-12', prev_month: '2026-11',
+          plan_revenue: 930000, prev_plan_revenue: 839600,
+          plans: [{ name: '受け放題', count: 22, amount: 345400 }, { name: '60分4回', count: 40, amount: 268000 }],
+          change_fees_this_week: 5, change_fees_prev_week: 1, change_fees_month: 9, on_leave: 4,
+        },
+      })
+    );
+    expect(text).toContain('■ プランの動き（値上げの離脱はここに出る）');
+    expect(text).toContain('月謝プラン実請求額（2026-12）: ¥930,000（前月 ¥839,600）');
+    expect(text).toContain('受け放題 22人 / 60分4回 40人');
+    expect(text).toContain('プラン変更・休会の手続き: 今週 5件（先週 1件）／当月 9件');
+    expect(text).toContain('休会中: 4人');
   });
 });

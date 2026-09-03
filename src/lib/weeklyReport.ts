@@ -99,6 +99,28 @@ export type WeeklyReportInput = {
     months: { month: string; trials: number; cancelled: number; enrolled: number; settled: boolean }[];
   } | null;
 
+  /**
+   * プランの動き(値上げの離脱検知・2026-09-03追加)。
+   * 値上げによる離脱は「退会」ではなく「休会」「下位プランへの変更」の形で現れる(2026-09-02クリティック指摘)。
+   * 退会数だけ見ていると12月改定の反応が数字に出ないまま3月まで気づかないため、
+   * プラン別の実請求額と、プラン変更/休会の手続き件数(システム変更手数料)を毎週出す。
+   */
+  plan_movement: {
+    month: string;
+    prev_month: string;
+    /** 当月の月謝プラン実請求額(チケット会員の¥0は含まない) */
+    plan_revenue: number;
+    prev_plan_revenue: number;
+    /** プラン別の請求人数(当月) */
+    plans: { name: string; count: number; amount: number }[];
+    /** プラン変更・休会の手続き件数(システム変更手数料の請求件数) */
+    change_fees_this_week: number;
+    change_fees_prev_week: number;
+    change_fees_month: number;
+    /** 休会中(当月に休会月会費が請求された人数) */
+    on_leave: number;
+  } | null;
+
   seo: {
     /** 追跡キーワードの現在順位と前回差分(source=gsc の直近2回のmeasured_onを比較) */
     keywords: { query: string; position: number | null; prev_position: number | null; impressions: number; clicks: number }[];
@@ -366,6 +388,26 @@ export function formatWeeklyReport(i: WeeklyReportInput): WeeklyReport {
         );
       }
       L.push('    ※ 入会の紐付けは体験から数週間遅れて増えます。「暫定」の月を確定値として判断しないこと。');
+    }
+  }
+
+  // ── プランの動き(値上げの離脱検知・2026-09-03追加) ──
+  {
+    const pm = i.plan_movement;
+    L.push('');
+    L.push('■ プランの動き（値上げの離脱はここに出る）');
+    if (!pm) {
+      L.push('  未計測');
+    } else {
+      L.push(`  月謝プラン実請求額（${pm.month}）: ${yen(pm.plan_revenue)}（前月 ${yen(pm.prev_plan_revenue)}）`);
+      if (pm.plans.length > 0) {
+        L.push('  ' + pm.plans.map((p) => `${p.name} ${p.count}人`).join(' / '));
+      }
+      L.push(
+        `  プラン変更・休会の手続き: 今週 ${pm.change_fees_this_week}件（先週 ${pm.change_fees_prev_week}件）／当月 ${pm.change_fees_month}件`
+      );
+      L.push(`  休会中: ${pm.on_leave}人`);
+      L.push('    ※ 12月の値上げ後は「退会」より先に、この手続き件数と受け放題の人数が動きます。');
     }
   }
 
