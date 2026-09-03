@@ -335,3 +335,100 @@ export async function getTrafficChannels(startDate: string, endDate: string): Pr
     return { available: false, error: e instanceof Error ? e.message : String(e), channels: [], total_sessions: 0 };
   }
 }
+
+// ── 流入チャネル別ファネル (2026-09-03・ディスプレイ広告の有効性判定用) ──
+// 「チャネルごとに、来た人がどれだけ行動したか」。
+// ディスプレイ広告を止めるかの判断は「セッション数」ではなく
+// 「そのチャネルから来た人がLINEボタンを押したか(line_click)」で行う。
+// エンゲージ率(engagedSessions/sessions)と平均滞在も並べ、無効クリック(即離脱)の疑いを見る。
+
+export type ChannelFunnelRow = {
+  channel: string;
+  sessions: number;
+  users: number;
+  engaged_sessions: number;
+  engagement_rate: number; // 0-1
+  avg_session_sec: number;
+  line_clicks: number;
+  /** line_clicks / sessions (0-1)。分母0なら0 */
+  line_click_rate: number;
+};
+
+export type ChannelFunnel = {
+  available: boolean;
+  error?: string;
+  start: string;
+  end: string;
+  rows: ChannelFunnelRow[];
+};
+
+/** 純関数: 2本のレポート結果をチャネルで突合する(テスト対象) */
+export function mergeChannelFunnel(
+  base: { channel: string; sessions: number; users: number; engaged: number; avgSec: number }[],
+  clicks: { channel: string; count: number }[]
+): ChannelFunnelRow[] {
+  const clickMap = new Map(clicks.map((c) => [c.channel, c.count]));
+  return base
+    .map((b) => {
+      const lc = clickMap.get(b.channel) ?? 0;
+      return {
+        channel: b.channel,
+        sessions: b.sessions,
+        users: b.users,
+        engaged_sessions: b.engaged,
+        engagement_rate: b.sessions > 0 ? b.engaged / b.sessions : 0,
+        avg_session_sec: b.avgSec,
+        line_clicks: lc,
+        line_click_rate: b.sessions > 0 ? lc / b.sessions : 0,
+      };
+    })
+    .sort((a, b) => b.sessions - a.sessions);
+}
+
+export async function getChannelFunnel(startDate: string, endDate: string): Promise<ChannelFunnel> {
+  const cfg = getClient();
+  if (!cfg) {
+    return { available: false, error: 'GA4_PROPERTY_ID / GA4_SA_KEY_JSON が未設定です', start: startDate, end: endDate, rows: [] };
+  }
+  try {
+    const [batch] = await cfg.client.batchRunReports({
+      property: cfg.property,
+      requests: [
+        {
+          dateRanges: [{ startDate, endDate }],
+          dimensions: [{ name: 'sessionDefaultChannelGroup' }],
+          metrics: [
+            { name: 'sessions' },
+            { name: 'totalUsers' },
+            { name: 'engagedSessions' },
+            { name: 'averageSessionDuration' },
+          ],
+          limit: 50,
+        },
+        {
+          dateRanges: [{ startDate, endDate }],
+          dimensions: [{ name: 'sessionDefaultChannelGroup' }],
+          metrics: [{ name: 'eventCount' }],
+          dimensionFilter: { filter: { fieldName: 'eventName', stringFilter: { value: LINE_EVENT() } } },
+          limit: 50,
+        },
+      ],
+    });
+    const r0 = batch.reports?.[0];
+    const r1 = batch.reports?.[1];
+    const base = (r0?.rows ?? []).map((r) => ({
+      channel: r.dimensionValues?.[0]?.value || '(不明)',
+      sessions: Number(r.metricValues?.[0]?.value ?? 0),
+      users: Number(r.metricValues?.[1]?.value ?? 0),
+      engaged: Number(r.metricValues?.[2]?.value ?? 0),
+      avgSec: Number(r.metricValues?.[3]?.value ?? 0),
+    }));
+    const clicks = (r1?.rows ?? []).map((r) => ({
+      channel: r.dimensionValues?.[0]?.value || '(不明)',
+      count: Number(r.metricValues?.[0]?.value ?? 0),
+    }));
+    return { available: true, start: startDate, end: endDate, rows: mergeChannelFunnel(base, clicks) };
+  } catch (e) {
+    return { available: false, error: e instanceof Error ? e.message : String(e), start: startDate, end: endDate, rows: [] };
+  }
+}
