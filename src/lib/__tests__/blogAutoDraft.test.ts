@@ -223,6 +223,8 @@ describe('プロンプト', () => {
     expect(s).toContain('K-POPはやっていない');
     expect(s).toContain('勧誘はしません');
     expect(s).toContain('〇〇先生');
+    expect(s).toContain('線引きしていない対比');
+    expect(s).toContain('安心材料として約束しない');
     expect(s).not.toContain('長町コナスポスタジオ');
   });
   it('ユーザープロンプトにseed queriesと構成型が入る', () => {
