@@ -73,6 +73,14 @@ type SlugChangeConfirm = { editing: EditState; payload: Record<string, unknown> 
 export default function StaffBlogPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
+  // 一覧タブ (TARO 2026-09-04「確認待ちと公開済みをタブで切り替えたい」)。
+  // 下書きがあるときは「要確認」を最初に開く=毎回まず見るべきものが目に入る
+  type Tab = 'review' | 'published' | 'all';
+  const [tab, setTab] = useState<Tab | null>(null);
+  const drafts = posts.filter(p => !p.is_published);
+  const publishedPosts = posts.filter(p => !!p.is_published);
+  const activeTab: Tab = tab ?? (drafts.length > 0 ? 'review' : 'all');
+  const visible = activeTab === 'review' ? drafts : activeTab === 'published' ? publishedPosts : posts;
   const [editing, setEditing] = useState<EditState | null>(null);
   const [slugLocked, setSlugLocked] = useState(true);
   const [originalSlug, setOriginalSlug] = useState<string | null>(null);
@@ -247,10 +255,46 @@ export default function StaffBlogPage() {
       />
 
       <div className="max-w-6xl mx-auto p-4 sm:p-6">
+        {!loading && posts.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {([
+              { key: 'review' as Tab, label: '要確認（下書き）', n: drafts.length, alert: drafts.length > 0 },
+              { key: 'published' as Tab, label: '公開済み', n: publishedPosts.length, alert: false },
+              { key: 'all' as Tab, label: 'すべて', n: posts.length, alert: false },
+            ]).map(t => {
+              const on = activeTab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setTab(t.key)}
+                  className={
+                    'rounded-full px-4 py-1.5 text-sm font-bold border transition ' +
+                    (on
+                      ? 'bg-navy-900 text-white border-navy-900'
+                      : 'bg-white text-navy-900 border-sand-300 hover:bg-sand-50')
+                  }
+                >
+                  {t.label}
+                  <span className={'ml-1.5 rounded-full px-1.5 text-xs ' + (on ? 'bg-white/20 text-white' : t.alert ? 'bg-amber-100 text-amber-800' : 'bg-sand-100 text-slate-600')}>
+                    {t.n}
+                  </span>
+                </button>
+              );
+            })}
+            {activeTab === 'review' && drafts.length > 0 && (
+              <p className="basis-full text-xs text-slate-600">
+                タイトルをタップして読み、OKならプレビュー画面の「この内容で公開する」を押してください。何もしなければ下書きのままです。
+              </p>
+            )}
+          </div>
+        )}
         {loading ? (
           <p className="text-sm text-muted-foreground">読込中...</p>
         ) : posts.length === 0 ? (
           <p className="text-sm text-muted-foreground">記事がありません。</p>
+        ) : visible.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{activeTab === 'review' ? '確認待ちの下書きはありません。' : '該当する記事がありません。'}</p>
         ) : (
           <div className="rounded-xl border overflow-hidden">
             <Table>
@@ -265,7 +309,7 @@ export default function StaffBlogPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {posts.map(p => (
+                {visible.map(p => (
                   <TableRow key={p.id}>
                     <TableCell>
                       {/* タイトルをタップでプレビュー。スマホでは右端の操作列が画面外に隠れて
