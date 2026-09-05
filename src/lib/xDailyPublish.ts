@@ -23,6 +23,16 @@ export function decideImmediatePublish(hourJst: number, minuteJst: number): Publ
   return 'post-now';
 }
 
+/**
+ * 「今週のレッスン」用: 月曜の 06:30〜12:00 JST に生成されたらその場で投稿、それ以外は月曜8:00に予約(純関数)。
+ * 生成cronは月曜07:00 JST(+予備08:30)。数時間遅れても午前中なら「今週の」として意味がある。
+ */
+export function decideWeeklyImmediatePublish(isMondayJst: boolean, hourJst: number, minuteJst: number): 'schedule' | 'post-now' {
+  if (!isMondayJst) return 'schedule';
+  const t = hourJst * 60 + minuteJst;
+  return t >= 6 * 60 + 30 && t <= 12 * 60 ? 'post-now' : 'schedule';
+}
+
 export type PublishResult = { ok: true; tweetIds: string[] } | { ok: false; reason: string };
 
 /** approved の x_posts を今すぐ投稿する(x-autopost と同じ claim → post → posted の手順) */

@@ -1,12 +1,14 @@
-# 「今週のレッスン」X下書き生成cron (2026-07-17)
-# 毎週日曜 21:00 JST (12:00 UTC) に /api/cron/x-weekly-schedule-draft を叩く。
-# 公開Googleカレンダー(BOOMレッスンスケジュール=予定の正)から翌週分を読み、
-# x_posts に draft を1件積むだけ。投稿にはTAROの承認(/staff/x-posts)が必要。
+# 「今週のレッスン」X投稿生成cron (2026-07-17 / 2026-09-05改)
+# 毎週月曜 07:00 JST (日曜 22:00 UTC) に /api/cron/x-weekly-schedule-draft を叩く(予備: 08:30 JST)。
+# 公開Googleカレンダー(BOOMレッスンスケジュール=予定の正)から当週分を読み、
+# 月曜午前中の生成ならその場でXへ投稿する(層0=承認不要)。GH Actionsのcron遅延で
+# 「8:00予約→投稿cron待ち→猶予切れ」になるのを避けるため、日曜夜の事前生成はやめた。
 name: x-weekly-schedule
 
 on:
   schedule:
-    - cron: '0 12 * * 0'
+    - cron: '0 22 * * 0'
+    - cron: '30 23 * * 0'
   workflow_dispatch: {}
 
 jobs:

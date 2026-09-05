@@ -47,7 +47,9 @@ export function classNameFromSummary(summary: string): string {
  */
 export function classLabelWithInstructor(summary: string): string {
   const m = summary.match(/^【([^】]*)】\s*(.*)$/);
-  const instructor = m ? m[1].trim() : '';
+  // 講師が未定/不明のときは【】ごと出さない(「【未定】ダンスバトル練習会」のような表記を避ける)
+  const rawInstructor = m ? m[1].trim() : '';
+  const instructor = /^(未定|不明|TBD|-)?$/i.test(rawInstructor) ? '' : rawInstructor;
   let name = (m ? m[2] : summary).trim();
   if (instructor && name.toLowerCase().startsWith(instructor.toLowerCase())) {
     name = name.slice(instructor.length).trim() || name;
@@ -169,6 +171,18 @@ export function nextMondayJst(now: Date = new Date()): string {
   const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const wd = jst.getUTCDay(); // 0=日
   const add = wd === 0 ? 1 : 8 - wd; // 日曜→+1、月曜→+7、火曜→+6…
+  jst.setUTCDate(jst.getUTCDate() + add);
+  return jst.toISOString().slice(0, 10);
+}
+
+/**
+ * 「今週のレッスン」投稿の対象週の月曜(JST)。月曜当日に走ったら**今日**(=当週)。
+ * nextMondayJst は月曜に走ると翌週を返すので、月曜朝に生成→即投稿する運用(2026-09-05〜)ではこちらを使う。
+ */
+export function postMondayJst(now: Date = new Date()): string {
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const wd = jst.getUTCDay();
+  const add = wd === 1 ? 0 : wd === 0 ? 1 : 8 - wd;
   jst.setUTCDate(jst.getUTCDate() + add);
   return jst.toISOString().slice(0, 10);
 }

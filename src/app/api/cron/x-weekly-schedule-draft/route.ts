@@ -5,8 +5,9 @@ import {
   addDaysYmd,
   buildWeeklyPostParts,
   jstMidnightUtcIso,
-  nextMondayJst,
+  postMondayJst,
 } from '@/lib/xWeeklySchedule';
+import { decideWeeklyImmediatePublish, publishXPostNow } from '@/lib/xDailyPublish';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,7 +35,7 @@ async function run(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false, skipped: 'google-not-connected' });
   }
 
-  const monday = nextMondayJst(); // YYYY-MM-DD (JST)
+  const monday = postMondayJst(); // YYYY-MM-DD (JST)。月曜当日なら今日(当週)
   const sunday = addDaysYmd(monday, 6);
   const weekMarker = `【今週のレッスン】${Number(monday.slice(5, 7))}/${Number(monday.slice(8, 10))}(月)`;
 
@@ -59,22 +60,42 @@ async function run(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: true, skipped: 'no-lessons', week: monday, events: events.length });
   }
 
-  // 予約 = 月曜 8:00 JST (= 前日 23:00 UTC)
   // 層0(事実がDB/カレンダー由来・型固定)なので承認不要で直接 approved にする
   // (SNSテキスト配信 設計v0.6の承認3層・2026-08-06 TARO再確認「この辺は承認しなくてもいい」)
-  const scheduledAt = new Date(`${monday}T08:00:00+09:00`).toISOString();
+  //
+  // 2026-09-05〜: 生成cronは月曜07:00 JST(+予備08:30)。GH Actionsのcronがこのリポで数時間遅れ、
+  // 投稿cron(x-autopost)も3〜5時間毎にしか回らず「月曜8:00予約→2時間猶予切れ」で落ちるリスクがあるため、
+  // 月曜の06:30〜12:00に生成されたら**その場で投稿**する(日次「本日のレッスン」と同じ方式)。
+  const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const decision = decideWeeklyImmediatePublish(jst.getUTCDay() === 1, jst.getUTCHours(), jst.getUTCMinutes());
+  const scheduledAt = decision === 'post-now' ? new Date().toISOString() : new Date(`${monday}T08:00:00+09:00`).toISOString();
   const r = await execute(
     "INSERT INTO x_posts (account, parts, scheduled_at, status) VALUES ('boom', ?, ?, 'approved')",
     [JSON.stringify(parts), scheduledAt]
   );
+  const createdId = Number(r.lastInsertRowid);
+
+  if (decision === 'post-now') {
+    const x = await publishXPostNow(createdId);
+    return NextResponse.json({
+      ok: x.ok,
+      created: createdId,
+      week: monday,
+      events: events.length,
+      parts: parts.length,
+      published_now: true,
+      x: x.ok ? { tweets: x.tweetIds.length } : { error: x.reason },
+    });
+  }
 
   return NextResponse.json({
     ok: true,
-    created: Number(r.lastInsertRowid),
+    created: createdId,
     week: monday,
     events: events.length,
     parts: parts.length,
     scheduledAt,
+    published_now: false,
   });
 }
 

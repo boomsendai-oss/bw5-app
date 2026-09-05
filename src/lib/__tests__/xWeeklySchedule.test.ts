@@ -3,9 +3,11 @@ import {
   addDaysYmd,
   buildDayLines,
   buildWeeklyPostParts,
+  classLabelWithInstructor,
   classNameFromSummary,
   jstMidnightUtcIso,
   nextMondayJst,
+  postMondayJst,
   shortVenue,
   type WeeklyCalEvent,
 } from '../xWeeklySchedule';
@@ -136,5 +138,24 @@ describe('date helpers', () => {
   it('addDaysYmd', () => {
     expect(addDaysYmd('2026-07-20', 6)).toBe('2026-07-26');
     expect(addDaysYmd('2026-07-31', 1)).toBe('2026-08-01');
+  });
+});
+
+describe('classLabelWithInstructor: 講師未定の扱い(2026-09-05)', () => {
+  it('【未定】【不明】は【】ごと落としてクラス名だけにする', () => {
+    expect(classLabelWithInstructor('【未定】ダンスバトル練習会')).toBe('ダンスバトル練習会');
+    expect(classLabelWithInstructor('【不明】キッズ強化クラス')).toBe('キッズ強化クラス');
+  });
+});
+
+describe('postMondayJst: 投稿対象週の月曜(2026-09-05)', () => {
+  it('月曜の朝に走ったら「今日」を返す(nextMondayJstだと来週になってしまう)', () => {
+    expect(postMondayJst(new Date('2026-09-06T22:10:00Z'))).toBe('2026-09-07'); // 月曜 07:10 JST
+  });
+  it('日曜なら翌日の月曜', () => {
+    expect(postMondayJst(new Date('2026-09-06T12:00:00Z'))).toBe('2026-09-07'); // 日曜 21:00 JST
+  });
+  it('火曜以降は次の月曜', () => {
+    expect(postMondayJst(new Date('2026-09-08T03:00:00Z'))).toBe('2026-09-14');
   });
 });
