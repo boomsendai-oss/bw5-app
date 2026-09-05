@@ -161,7 +161,7 @@ export default async function SimpleSurveyPage({
 
         <Card>
           <label className="block text-sm font-bold text-slate-800">
-            生徒さんのお名前{' '}
+            {survey.name_label || '生徒さんのお名前'}{' '}
             {survey.name_required ? (
               <span className="ml-1 text-xs text-rose-500">必須</span>
             ) : (
@@ -171,7 +171,7 @@ export default async function SimpleSurveyPage({
               type="text"
               name={fieldName('name')}
               required={survey.name_required}
-              placeholder="例: 山田 太郎(きょうだいは連名OK)"
+              placeholder={survey.name_label ? '例: 山田 太郎' : '例: 山田 太郎(きょうだいは連名OK)'}
               className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 font-normal"
             />
           </label>

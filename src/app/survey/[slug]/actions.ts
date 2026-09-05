@@ -27,6 +27,7 @@ export interface PublicSurveyView {
   title: string;
   intro: string | null;
   nameNote: string | null;
+  nameLabel: string | null;
   nameRequired: boolean;
   audience: string;
   opensAt: string | null;
@@ -40,6 +41,7 @@ const NOT_FOUND: PublicSurveyView = {
   title: '',
   intro: null,
   nameNote: null,
+  nameLabel: null,
   nameRequired: false,
   audience: 'member',
   opensAt: null,
@@ -61,6 +63,7 @@ export async function getPublicSurvey(slug: string): Promise<PublicSurveyView> {
       title: survey.title,
       intro: survey.intro,
       nameNote: survey.name_note,
+      nameLabel: survey.name_label,
       nameRequired: survey.name_required,
       audience: survey.audience,
       opensAt: survey.opens_at,
@@ -75,6 +78,7 @@ export async function getPublicSurvey(slug: string): Promise<PublicSurveyView> {
     title: survey.title,
     intro: survey.intro,
     nameNote: survey.name_note,
+    nameLabel: survey.name_label,
     nameRequired: survey.name_required,
     audience: survey.audience,
     opensAt: survey.opens_at,

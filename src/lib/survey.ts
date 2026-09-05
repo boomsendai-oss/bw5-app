@@ -77,6 +77,8 @@ export interface ValidatedSurvey {
   intro: string | null;
   audience: Audience;
   nameNote: string | null;
+  /** 名前欄のラベル(未設定なら「生徒さんのお名前」)。講師向けアンケート等で変える。 */
+  nameLabel: string | null;
   /** trueなら回答者名の記入が必須(既定=任意)。SHOKO定期化のようにその場回収で全員記名させたい時用。 */
   nameRequired: boolean;
   opensAt: string | null;
@@ -133,6 +135,7 @@ export function validateSurveyDefinition(input: unknown): ValidatedSurvey | stri
 
   const intro = asTrimmed(obj.intro) || null;
   const nameNote = asTrimmed(obj.nameNote) || null;
+  const nameLabel = asTrimmed(obj.nameLabel) || null;
   const nameRequired = obj.nameRequired === true || obj.nameRequired === 1;
 
   const audience = asTrimmed(obj.audience) || 'member';
@@ -217,7 +220,7 @@ export function validateSurveyDefinition(input: unknown): ValidatedSurvey | stri
     questions.push({ id, questionKey, label, qtype: qtype as Qtype, required, options, rows, cols, gridExpand, allowOther });
   }
 
-  return { title, intro, audience: audience as Audience, nameNote, nameRequired, opensAt, closesAt, questions };
+  return { title, intro, audience: audience as Audience, nameNote, nameLabel, nameRequired, opensAt, closesAt, questions };
 }
 
 export interface AnswerItem {

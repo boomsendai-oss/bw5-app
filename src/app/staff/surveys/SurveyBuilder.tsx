@@ -26,6 +26,7 @@ export type BuilderInitial = {
   title: string;
   intro: string;
   nameNote: string;
+  nameLabel: string;
   nameRequired: boolean;
   audience: string;
   opensAt: string;
@@ -61,6 +62,7 @@ export default function SurveyBuilder({
   const [title, setTitle] = useState(initial?.title ?? '');
   const [intro, setIntro] = useState(initial?.intro ?? '');
   const [nameNote, setNameNote] = useState(initial?.nameNote ?? DEFAULT_NAME_NOTE);
+  const [nameLabel, setNameLabel] = useState(initial?.nameLabel ?? '');
   const [nameRequired, setNameRequired] = useState(initial?.nameRequired ?? false);
   const [audience, setAudience] = useState(initial?.audience ?? 'member');
   const [opensAt, setOpensAt] = useState(initial?.opensAt ?? '');
@@ -90,6 +92,7 @@ export default function SurveyBuilder({
         title,
         intro,
         nameNote,
+        nameLabel: nameLabel || undefined,
         nameRequired,
         audience,
         opensAt: opensAt || undefined,
@@ -142,6 +145,10 @@ export default function SurveyBuilder({
         <div>
           <label className="block text-xs font-bold text-navy-700">説明文(フォーム冒頭)</label>
           <textarea value={intro} onChange={(e) => setIntro(e.target.value)} rows={3} className={`mt-1 ${inputCls}`} />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-navy-700">名前欄のラベル(空なら「生徒さんのお名前」)</label>
+          <input value={nameLabel} onChange={(e) => setNameLabel(e.target.value)} className={`mt-1 ${inputCls}`} placeholder="例: お名前" />
         </div>
         <div>
           <label className="block text-xs font-bold text-navy-700">名前欄の案内文</label>

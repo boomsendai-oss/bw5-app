@@ -215,7 +215,7 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
           <label className="block text-sm font-bold text-slate-800">
-            生徒さんのお名前{' '}
+            {view.nameLabel || '生徒さんのお名前'}{' '}
             {view.nameRequired ? (
               <span className="ml-1 text-xs text-rose-500">必須</span>
             ) : (
@@ -226,7 +226,7 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="例: 山田 太郎(きょうだいは連名OK)"
+            placeholder={view.nameLabel ? '例: 山田 太郎' : '例: 山田 太郎(きょうだいは連名OK)'}
             className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
           />
           {view.nameNote ? <p className="text-xs text-slate-500 mt-2 leading-relaxed">{view.nameNote}</p> : null}
