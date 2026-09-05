@@ -40,7 +40,10 @@ const GRAPH = 'https://graph.threads.net';
 
 // threads_basic は全エンドポイントで必須、threads_content_publish が投稿用。
 // 自分のアカウントへ投稿するだけなら Advanced Access の審査は不要。
-const SCOPES = ['threads_basic', 'threads_content_publish'];
+// threads_delete: 誤投稿の撤回(deletePost)用。2026-09-05に「Application does not have permission」で
+// 削除が失敗した=現在のトークンにこのスコープが無い。次に再連携する時に付く(Meta側のアプリ設定で
+// threads_delete が有効になっている必要あり)。それまでは誤投稿はThreadsアプリから手動削除。
+const SCOPES = ['threads_basic', 'threads_content_publish', 'threads_delete'];
 
 /** コンテナが処理されるのを待つ上限。公式の目安は約30秒 */
 const PUBLISH_WAIT_MS = 90_000;
