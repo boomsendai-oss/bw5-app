@@ -23,6 +23,8 @@ const PART_CHAR_BUDGET = 130;
  *  潜在バグがあった・2026-08-21修正)
  */
 const PART_HARD_LIMIT = 140;
+/** 公式LINE(友だち追加)URL。CTAの末尾に付ける(2026-09-05 TARO決定)。Xでは23字換算・料金には影響しない */
+export const LINE_URL = 'https://lin.ee/4EYB9zZ';
 
 /** ISO日時をJSTの {month, day, weekday} に変換 */
 function jstParts(iso: string): { month: number; day: number; weekday: number; ymd: string } {
@@ -131,7 +133,7 @@ export function buildWeeklyPostParts(
   if (dayLines.length === 0) return null;
 
   const header = `【今週のレッスン】${weekStart.month}/${weekStart.day}(月)〜${weekEnd.month}/${weekEnd.day}(日)`;
-  const cta = '体験レッスンのお申し込みは公式LINEからどうぞ。最新の予定・変更はレッスンカレンダーをご確認ください🗓';
+  const cta = `体験レッスンのお申し込みは公式LINEからどうぞ。最新の予定・変更はレッスンカレンダーをご確認ください🗓\n${LINE_URL}`;
 
   const parts: string[] = [];
   let current = header;
@@ -231,7 +233,7 @@ export function buildDailyPostParts(
   if (lines.length === 0) return null;
 
   const header = `【本日のレッスン】${today.month}/${today.day}(${WEEKDAY_JA[today.weekday]})`;
-  const cta = '体験・お問い合わせは公式LINEからどうぞ🗓';
+  const cta = `体験・お問い合わせは公式LINEからどうぞ🗓\n${LINE_URL}`;
 
   const parts: string[] = [];
   let current = header;

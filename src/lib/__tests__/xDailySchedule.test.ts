@@ -87,3 +87,24 @@ describe('buildDailyPostParts (本日のレッスン・毎朝の層0投稿)', ()
     for (const p of parts) expect(p.length).toBeLessThanOrEqual(150);
   });
 });
+
+// 2026-09-05 TARO決定: CTAの末尾に公式LINEのURLを付ける
+import { LINE_URL } from '../xWeeklySchedule';
+describe('公式LINE URL付きCTA', () => {
+  it('最後のpartに公式LINEのURLが入る', () => {
+    const parts = buildDailyPostParts(
+      [ev('2026-09-05T02:00:00Z', '【AOI】多賀城HOUSE'), ev('2026-09-05T06:30:00Z', '【YURI】長町 WAACK 初級')],
+      { month: 9, day: 5, weekday: 6 }
+    )!;
+    expect(parts[parts.length - 1]).toContain(LINE_URL);
+    expect(parts[parts.length - 1]).toContain('公式LINEからどうぞ🗓\n' + LINE_URL);
+  });
+  it('レッスンが多い日(9本)でも各partは140字以内に収まり、URLは1回だけ', () => {
+    const many = Array.from({ length: 9 }, (_, i) =>
+      ev(`2026-09-06T0${i}:00:00Z`.replace('T09', 'T09'), `【KEIKO】はじめてのHIPHOP${i}`)
+    );
+    const parts = buildDailyPostParts(many, { month: 9, day: 6, weekday: 0 })!;
+    for (const p of parts) expect(p.length).toBeLessThanOrEqual(140);
+    expect(parts.join('\n').split(LINE_URL).length - 1).toBe(1);
+  });
+});
