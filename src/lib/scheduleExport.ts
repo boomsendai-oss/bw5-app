@@ -16,6 +16,21 @@ import {
 // 拡張したもの。lesson_master(週次パターン) + lesson_instances(実開催/休講) を合成。
 // ============================================
 
+
+/**
+ * インスタンスのクラス名を決める。
+ * マスター紐付けがある通常回はマスター名。単発(master_id=null)はカレンダー取込時に
+ * notes へ「単発: <クラス名>」と書かれるので、そこから名前を取る。
+ * 以前は '不明' を出していたため、公開カレンダーとX投稿に「【TARO】不明」が出ていた(2026-09-05修正)。
+ */
+export function instanceClassLabel(masterClassName: string | null | undefined, notes: string | null | undefined): string {
+  if (masterClassName && masterClassName.trim()) return masterClassName.trim();
+  const n = (notes ?? '').trim();
+  const m = n.match(/^単発\s*[:：]\s*(.+)$/u);
+  if (m && m[1].trim()) return m[1].trim();
+  return '特別レッスン';
+}
+
 export type ExportLesson = {
   date: string; // YYYY-MM-DD
   day_of_week: number; // 0=日 ... 6=土
@@ -151,7 +166,7 @@ export async function buildLessonsForMonths(months: number, startYm?: string): P
       day_of_week: dow,
       start_time: ins.start_time,
       end_time: ins.end_time,
-      class_name: ins.master_class_name ?? '不明',
+      class_name: instanceClassLabel(ins.master_class_name, ins.notes),
       instructor_name: ins.instructor_name,
       studio_name: ins.studio_name,
       status: ins.status === 'cancelled' ? 'cancelled' : 'scheduled',

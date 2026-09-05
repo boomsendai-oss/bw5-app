@@ -7,6 +7,7 @@ import {
   jstMidnightUtcIso,
 } from '@/lib/xWeeklySchedule';
 import { validateThreadsText } from '@/lib/threadsPosts';
+import { decideImmediatePublish, publishThreadsPostNow, publishXPostNow } from '@/lib/xDailyPublish';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,13 +62,16 @@ async function run(req: NextRequest): Promise<NextResponse> {
   }
 
   // 予約 = 当日 12:30 JST。層0なので approved 直接投入。
-  // ⚠️ GH Actionsのcronは実測で12:40前後まで遅れて発火する(2026-08-21調査)。
-  // 12:30固定だと「生まれた時点で予約時刻を過ぎている」状態になり、投稿cronの2時間猶予を
-  // 最初から食いつぶす(8/12-14の3日分が期限切れ自動見送りで未投稿になった原因)。
-  // そのため過去にならないよう max(12:30, いま+2分) にする。
+  // ⚠️ GH Actionsのcronはこのリポで大きく遅れる(2026-09-05実測: 生成=16〜18時、投稿cron=3〜5時間毎)。
+  // 別cronの投稿を待つと2時間の猶予に間に合わず未投稿になる(9/2〜9/4の3日連続)ので、
+  // 生成時刻が10:30〜20:30なら**この場で投稿**する。20:30を過ぎていたら見送り(夜に流しても遅い)。
+  const decision = decideImmediatePublish(j.getUTCHours(), j.getUTCMinutes());
+  if (decision === 'too-late') {
+    return NextResponse.json({ ok: true, skipped: 'too-late', day: ymd, note: '生成が20:30 JSTより後だったため本日分は見送り', events: events.length });
+  }
   const preferred = new Date(`${ymd}T12:30:00+09:00`).getTime();
   const floor = Date.now() + 2 * 60 * 1000;
-  const scheduledAt = new Date(Math.max(preferred, floor)).toISOString();
+  const scheduledAt = decision === 'post-now' ? new Date().toISOString() : new Date(Math.max(preferred, floor)).toISOString();
   const rx = await execute(
     "INSERT INTO x_posts (account, parts, scheduled_at, status) VALUES ('boom', ?, ?, 'approved')",
     [JSON.stringify(parts), scheduledAt]
@@ -85,6 +89,22 @@ async function run(req: NextRequest): Promise<NextResponse> {
     threadsId = Number(rt.lastInsertRowid);
   }
 
+  if (decision === 'post-now') {
+    const x = await publishXPostNow(xId);
+    const t = threadsId !== null ? await publishThreadsPostNow(threadsId) : null;
+    return NextResponse.json({
+      ok: x.ok,
+      created: xId,
+      threadsId,
+      day: ymd,
+      events: events.length,
+      parts: parts.length,
+      published_now: true,
+      x: x.ok ? { tweets: x.tweetIds.length } : { error: x.reason },
+      threads: t ? (t.ok ? { posted: true } : { error: t.reason, skipped: 'skipped' in t }) : null,
+    });
+  }
+
   return NextResponse.json({
     ok: true,
     created: xId,
@@ -93,6 +113,7 @@ async function run(req: NextRequest): Promise<NextResponse> {
     events: events.length,
     parts: parts.length,
     scheduledAt,
+    published_now: false,
   });
 }
 

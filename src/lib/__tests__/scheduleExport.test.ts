@@ -111,3 +111,19 @@ describe('durationFromTimes', () => {
     expect(durationFromTimes(null, '18:00')).toBeNull();
   });
 });
+
+// 2026-09-05: 単発クラスが「不明」で出ていた問題
+import { instanceClassLabel } from '../scheduleExport';
+describe('instanceClassLabel', () => {
+  it('マスター紐付けがあればマスター名', () => {
+    expect(instanceClassLabel('キッズHIPHOP入門', '単発: 別名')).toBe('キッズHIPHOP入門');
+  });
+  it('単発はnotesの「単発: 〜」からクラス名を取る(全角コロン・空白ゆれ可)', () => {
+    expect(instanceClassLabel(null, '単発: キッズ強化クラス')).toBe('キッズ強化クラス');
+    expect(instanceClassLabel(null, '単発：ちゃんなつ HIPHOP')).toBe('ちゃんなつ HIPHOP');
+  });
+  it('どちらも無ければ「不明」ではなく「特別レッスン」', () => {
+    expect(instanceClassLabel(null, null)).toBe('特別レッスン');
+    expect(instanceClassLabel('', 'カレンダー実績')).toBe('特別レッスン');
+  });
+});

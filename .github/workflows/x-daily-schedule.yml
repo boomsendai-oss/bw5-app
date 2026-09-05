@@ -5,7 +5,10 @@ name: x-daily-schedule
 
 on:
   schedule:
+    # 12:00 JST が本命。GitHubのcronはこのリポで数時間遅れるため 13:30 JST にも予備発火する
+    # (同日分は already-exists で二重生成されない)。生成時刻が10:30〜20:30ならルート側がその場で投稿する
     - cron: '0 3 * * *'
+    - cron: '30 4 * * *'
   workflow_dispatch: {}
 
 jobs:
