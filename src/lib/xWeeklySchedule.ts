@@ -127,12 +127,14 @@ export function buildDayLines(events: WeeklyCalEvent[]): WeeklyDayLine[] {
 export function buildWeeklyPostParts(
   events: WeeklyCalEvent[],
   weekStart: { month: number; day: number },
-  weekEnd: { month: number; day: number }
+  weekEnd: { month: number; day: number },
+  opts: { greeting?: string } = {}
 ): string[] | null {
   const dayLines = buildDayLines(events);
   if (dayLines.length === 0) return null;
 
-  const header = `【今週のレッスン】${weekStart.month}/${weekStart.day}(月)〜${weekEnd.month}/${weekEnd.day}(日)`;
+  // 一言(greetingPool)があれば1行目に置く(2026-09-05 TARO「ロボット感を消す」)
+  const header = `${opts.greeting ? `${opts.greeting}\n` : ''}【今週のレッスン】${weekStart.month}/${weekStart.day}(月)〜${weekEnd.month}/${weekEnd.day}(日)`;
   const cta = `体験レッスンのお申し込みは公式LINEからどうぞ。最新の予定・変更はレッスンカレンダーをご確認ください🗓\n${LINE_URL}`;
 
   const parts: string[] = [];
@@ -214,7 +216,8 @@ function jstHhmm(iso: string): string {
  */
 export function buildDailyPostParts(
   events: WeeklyCalEvent[],
-  today: { month: number; day: number; weekday: number }
+  today: { month: number; day: number; weekday: number },
+  opts: { greeting?: string } = {}
 ): string[] | null {
   const sorted = [...events]
     .filter((ev) => !ev.summary.includes('【休講】'))
@@ -232,7 +235,8 @@ export function buildDailyPostParts(
   }
   if (lines.length === 0) return null;
 
-  const header = `【本日のレッスン】${today.month}/${today.day}(${WEEKDAY_JA[today.weekday]})`;
+  // 一言(greetingPool)があれば1行目に置く(2026-09-05 TARO「ロボット感を消す」)
+  const header = `${opts.greeting ? `${opts.greeting}\n` : ''}【本日のレッスン】${today.month}/${today.day}(${WEEKDAY_JA[today.weekday]})`;
   const cta = `体験・お問い合わせは公式LINEからどうぞ🗓\n${LINE_URL}`;
 
   const parts: string[] = [];

@@ -8,6 +8,7 @@ import {
   postMondayJst,
 } from '@/lib/xWeeklySchedule';
 import { decideWeeklyImmediatePublish, publishXPostNow } from '@/lib/xDailyPublish';
+import { chooseGreeting, recordGreetingUse } from '@/lib/greetingUse';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -55,7 +56,8 @@ async function run(req: NextRequest): Promise<NextResponse> {
 
   const weekStart = { month: Number(monday.slice(5, 7)), day: Number(monday.slice(8, 10)) };
   const weekEnd = { month: Number(sunday.slice(5, 7)), day: Number(sunday.slice(8, 10)) };
-  const parts = buildWeeklyPostParts(events, weekStart, weekEnd);
+  const greeting = await chooseGreeting({ ymd: monday, weekly: true, count: events.length });
+  const parts = buildWeeklyPostParts(events, weekStart, weekEnd, { greeting: greeting?.text });
   if (!parts) {
     return NextResponse.json({ ok: true, skipped: 'no-lessons', week: monday, events: events.length });
   }
@@ -74,6 +76,7 @@ async function run(req: NextRequest): Promise<NextResponse> {
     [JSON.stringify(parts), scheduledAt]
   );
   const createdId = Number(r.lastInsertRowid);
+  if (greeting) await recordGreetingUse(greeting.id, monday);
 
   if (decision === 'post-now') {
     const x = await publishXPostNow(createdId);

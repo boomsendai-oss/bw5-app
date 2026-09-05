@@ -8,6 +8,7 @@ import {
 } from '@/lib/xWeeklySchedule';
 import { validateThreadsText } from '@/lib/threadsPosts';
 import { decideImmediatePublish, publishThreadsPostNow, publishXPostNow, retractDailyPost } from '@/lib/xDailyPublish';
+import { chooseGreeting, recordGreetingUse } from '@/lib/greetingUse';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,10 +62,14 @@ async function run(req: NextRequest): Promise<NextResponse> {
   if (events === null) {
     return NextResponse.json({ ok: false, skipped: 'lesson-calendar-not-found' });
   }
-  const parts = buildDailyPostParts(events, today);
+  // 一言プール(TARO採用47本)から直近14日に使っていない1本を選び1行目に置く
+  const lessonCount = events.filter((e) => !e.summary.includes('【休講】')).length;
+  const greeting = await chooseGreeting({ ymd, weekly: false, count: lessonCount });
+  const parts = buildDailyPostParts(events, today, { greeting: greeting?.text });
   if (!parts) {
     return NextResponse.json({ ok: true, skipped: 'no-lessons', day: ymd, events: events.length });
   }
+  if (greeting) await recordGreetingUse(greeting.id, ymd);
 
   // 予約 = 当日 12:30 JST。層0なので approved 直接投入。
   // ⚠️ GH Actionsのcronはこのリポで大きく遅れる(2026-09-05実測: 生成=16〜18時、投稿cron=3〜5時間毎)。

@@ -108,3 +108,20 @@ describe('公式LINE URL付きCTA', () => {
     expect(parts.join('\n').split(LINE_URL).length - 1).toBe(1);
   });
 });
+
+describe('一言(greeting)付き', () => {
+  it('greetingを渡すと1行目に置かれ、ヘッダーは2行目', () => {
+    const parts = buildDailyPostParts(
+      [ev('2026-09-05T02:00:00Z', '【AOI】多賀城HOUSE')],
+      { month: 9, day: 5, weekday: 6 },
+      { greeting: '今日の予定はこちらです🗓' }
+    )!;
+    expect(parts[0].split('\n')[0]).toBe('今日の予定はこちらです🗓');
+    expect(parts[0].split('\n')[1]).toBe('【本日のレッスン】9/5(土)');
+  });
+  it('greeting付きでレッスンが多くても各partは140字以内', () => {
+    const many = Array.from({ length: 9 }, (_, i) => ev(`2026-09-06T0${i}:00:00Z`, `【KEIKO】はじめてのHIPHOP${i}`));
+    const parts = buildDailyPostParts(many, { month: 9, day: 6, weekday: 0 }, { greeting: '今日もスタッフ一同、お待ちしています🙌' })!;
+    for (const p of parts) expect(p.length).toBeLessThanOrEqual(140);
+  });
+});
