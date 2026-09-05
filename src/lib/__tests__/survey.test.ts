@@ -7,6 +7,7 @@ import {
   aggregateAnswers,
   crossTab,
   gridCellKey,
+  gridCellKeys,
   optionLabel,
   OTHER_KEY,
   type QuestionDef,
@@ -381,6 +382,66 @@ describe('grid設問 (曜日×時間帯のマス目)', () => {
     expect(optionLabel(GRID_Q, gridCellKey('mon', 't18'))).toBe('月曜×18時台');
     expect(optionLabel(QS[0], 'mon')).toBe('月');
     expect(optionLabel(QS[1], OTHER_KEY)).toBe('その他');
+  });
+});
+
+describe('grid rowCols (行ごとの選択肢制限)', () => {
+  const RESTRICTED: QuestionDef = {
+    ...GRID_Q,
+    id: 31,
+    questionKey: 'mtg',
+    rows: [
+      { key: 'sep12', label: '9/12(土)' },
+      { key: 'sep19', label: '9/19(土)' },
+    ],
+    cols: [
+      { key: 's18', label: '18時' },
+      { key: 's19', label: '19時' },
+      { key: 's20', label: '20時' },
+    ],
+    rowCols: { sep19: ['s20'] },
+  };
+  it('gridCellKeys: rowColsで制限された行はそのセルだけ', () => {
+    expect(gridCellKeys(RESTRICTED)).toEqual(['sep12__s18', 'sep12__s19', 'sep12__s20', 'sep19__s20']);
+  });
+  it('回答: 制限外セル(9/19の18時)は拒否・許可セルは受理', () => {
+    expect(
+      typeof validateResponseInput([RESTRICTED], { answers: { mtg: { optionKeys: [gridCellKey('sep19', 's18')] } } })
+    ).toBe('string');
+    const ok = validateResponseInput([RESTRICTED], { answers: { mtg: { optionKeys: [gridCellKey('sep19', 's20')] } } });
+    expect(typeof ok).not.toBe('string');
+  });
+  it('定義: rowColsを保持する(不正な行キー・列キーは拒否)', () => {
+    const base = {
+      title: 'g',
+      questions: [
+        {
+          questionKey: 'mtg',
+          label: 'x',
+          qtype: 'grid',
+          required: true,
+          options: [],
+          rows: [{ key: 'a', label: 'A' }, { key: 'b', label: 'B' }],
+          cols: [{ key: 'c1', label: 'C1' }, { key: 'c2', label: 'C2' }],
+          rowCols: { b: ['c2'] },
+          allowOther: false,
+        },
+      ],
+    };
+    const v = validateSurveyDefinition(base);
+    if (typeof v === 'string') throw new Error(v);
+    expect(v.questions[0].rowCols).toEqual({ b: ['c2'] });
+    const bad = JSON.parse(JSON.stringify(base));
+    bad.questions[0].rowCols = { zzz: ['c1'] };
+    expect(typeof validateSurveyDefinition(bad)).toBe('string');
+  });
+  it('集計: gridCellsは許可セルのみ', () => {
+    const rows: AnswerRow[] = [{ response_id: 1, question_id: 31, option_key: 'sep19__s20', text_value: null }];
+    const agg = aggregateAnswers([RESTRICTED], rows);
+    expect(agg[0].gridCells.map((c) => `${c.rowKey}__${c.colKey}`)).toEqual([
+      'sep12__s18', 'sep12__s19', 'sep12__s20', 'sep19__s20',
+    ]);
+    expect(agg[0].gridCells.find((c) => c.rowKey === 'sep19' && c.colKey === 's20')?.count).toBe(1);
   });
 });
 

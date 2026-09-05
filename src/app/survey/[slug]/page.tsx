@@ -7,7 +7,7 @@
 import { useEffect, useState, use as usePromise } from 'react';
 import { getPublicSurvey, submitSurveyResponse, type PublicSurveyView } from './actions';
 import { installSurveyErrorHandlers, reportSurveyClientError } from './reportError';
-import { gridCellKey, type QuestionDef } from '@/lib/survey';
+import { gridCellKey, gridColsForRow, type QuestionDef } from '@/lib/survey';
 
 type AnswerState = Record<string, { optionKeys: string[]; otherText: string; text: string }>;
 
@@ -145,7 +145,7 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
     const isOpen = (openRows[q.questionKey] ?? []).includes(rowKey);
     if (isOpen) {
       setOpenRows((prev) => ({ ...prev, [q.questionKey]: (prev[q.questionKey] ?? []).filter((k) => k !== rowKey) }));
-      const rowCells = (q.cols ?? []).map((c) => gridCellKey(rowKey, c.key));
+      const rowCells = gridColsForRow(q, rowKey).map((c) => gridCellKey(rowKey, c.key));
       setAnswers((prev) => {
         const cur = prev[q.questionKey];
         if (!cur) return prev;
@@ -247,7 +247,8 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
                 <div className="mt-3 space-y-3">
                   {(q.rows ?? []).map((row) => {
                     const isOpen = !q.gridExpand || (openRows[q.questionKey] ?? []).includes(row.key);
-                    const rowSelectedCount = (q.cols ?? []).filter((col) => a.optionKeys.includes(gridCellKey(row.key, col.key))).length;
+                    const rowCols = gridColsForRow(q, row.key);
+                    const rowSelectedCount = rowCols.filter((col) => a.optionKeys.includes(gridCellKey(row.key, col.key))).length;
                     return (
                       <div key={row.key}>
                         {q.gridExpand ? (
@@ -271,7 +272,7 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
                             {q.gridExpand ? (
                               <span className="w-full text-[11px] text-slate-400">希望のレベル・区分をタップ</span>
                             ) : null}
-                            {(q.cols ?? []).map((col) => {
+                            {rowCols.map((col) => {
                               const cellKey = gridCellKey(row.key, col.key);
                               const selected = a.optionKeys.includes(cellKey);
                               return (

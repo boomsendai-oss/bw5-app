@@ -19,6 +19,8 @@ type QuestionRow = {
   gridCols: OptionRow[];
   /** grid専用: 行をタップしてから列を出す2段階表示 */
   gridExpand: boolean;
+  /** grid専用: 行別の列制限(ビルダーUIでは編集不可・保存時に素通しで保持) */
+  rowCols?: Record<string, string[]>;
   allowOther: boolean;
 };
 
@@ -117,6 +119,7 @@ export default function SurveyBuilder({
               ? q.gridCols.filter((o) => o.label.trim()).map((o, j) => ({ key: o.key || `c${j + 1}`, label: o.label }))
               : undefined,
           gridExpand: q.qtype === 'grid' ? q.gridExpand : undefined,
+          rowCols: q.qtype === 'grid' ? q.rowCols : undefined,
           allowOther: q.qtype === 'text' ? false : q.allowOther,
         })),
       };

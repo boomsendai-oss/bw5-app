@@ -152,6 +152,7 @@ export default function SurveyDetailClient({
               gridRows: (q.rows ?? []).map((o) => ({ key: o.key, label: o.label })),
               gridCols: (q.cols ?? []).map((o) => ({ key: o.key, label: o.label })),
               gridExpand: q.gridExpand === true,
+              rowCols: q.rowCols,
               allowOther: q.allowOther,
             })),
           }}
@@ -192,7 +193,9 @@ function AggTab({ questions, rows }: { questions: QuestionDef[]; rows: AnswerRow
                       <tr key={r.key} className="border-t border-sand-100">
                         <td className="p-2 font-bold text-navy-700 whitespace-nowrap">{r.label}</td>
                         {(def.cols ?? []).map((c) => {
-                          const n = q.gridCells.find((cell) => cell.rowKey === r.key && cell.colKey === c.key)?.count ?? 0;
+                          const cell = q.gridCells.find((cc) => cc.rowKey === r.key && cc.colKey === c.key);
+                          if (!cell) return <td key={c.key} className="p-2 text-center text-slate-200">—</td>;
+                          const n = cell.count;
                           return (
                             <td key={c.key} className={`p-2 text-center ${n > 0 ? 'font-bold text-navy-900 bg-brand-50/60' : 'text-slate-300'}`}>{n}</td>
                           );

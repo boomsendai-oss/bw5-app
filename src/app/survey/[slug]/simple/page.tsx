@@ -3,7 +3,7 @@
 // 古い端末(iOS 16.3以前等)では白い画面のまま止まる。このページはサーバレンダリング
 // された素のHTMLフォーム+Server Actionだけで完結し、どんなブラウザでも送信できる。
 // 見た目より確実性を優先(ネイティブのチェックボックス/ラジオを使う)。
-import { effectiveState, gridCellKey, OTHER_KEY, type QuestionDef } from '@/lib/survey';
+import { effectiveState, gridCellKey, gridColsForRow, OTHER_KEY, type QuestionDef } from '@/lib/survey';
 import { fieldName } from '@/lib/surveySimpleForm';
 import { getSurveyBySlug } from '@/lib/surveyDb';
 import { submitSimpleSurvey } from './actions';
@@ -66,7 +66,6 @@ function OptionInputs({ q }: { q: QuestionDef }) {
 
 function GridInputs({ q }: { q: QuestionDef }) {
   const rows = q.rows ?? [];
-  const cols = q.cols ?? [];
   return (
     <div className="mt-3 space-y-3">
       {rows.map((row) =>
@@ -74,7 +73,7 @@ function GridInputs({ q }: { q: QuestionDef }) {
           <details key={row.key} className="rounded-lg border border-slate-200">
             <summary className="cursor-pointer px-3 py-2.5 text-sm font-bold text-slate-800">{row.label}</summary>
             <div className="px-3 pb-3 space-y-2">
-              {cols.map((col) => (
+              {gridColsForRow(q, row.key).map((col) => (
                 <label key={col.key} className={checkRowCls}>
                   <input type="checkbox" name={fieldName('q', q.questionKey)} value={gridCellKey(row.key, col.key)} className={boxCls} />
                   {col.label}
@@ -86,7 +85,7 @@ function GridInputs({ q }: { q: QuestionDef }) {
           <div key={row.key}>
             <div className="text-xs font-bold text-slate-600">{row.label}</div>
             <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
-              {cols.map((col) => (
+              {gridColsForRow(q, row.key).map((col) => (
                 <label key={col.key} className="flex items-center gap-1.5 text-sm text-slate-800">
                   <input type="checkbox" name={fieldName('q', q.questionKey)} value={gridCellKey(row.key, col.key)} className={boxCls} />
                   {col.label}

@@ -35,6 +35,11 @@ export interface QuestionDef {
   /** grid専用: 列(例=時間帯)。 */
   cols?: QuestionOption[];
   /**
+   * grid専用: 行キー→選べる列キーの制限。未指定の行は全列選択可。
+   * 「この日は20時スタートのみ」のような行ごとの絞り込みに使う(TARO 2026-09-05)。
+   */
+  rowCols?: Record<string, string[]>;
+  /**
    * grid専用: trueなら公開フォームで行を先にタップ→その行の列が展開される2段階表示。
    * 全マス見せると「興味がないのに手当たり次第タップ」の水増しが起きるため(TARO 2026-08-28)。
    * 表示だけの違いで、保存形式(セルkey)は同じ。
@@ -48,10 +53,17 @@ export function gridCellKey(rowKey: string, colKey: string): string {
   return `${rowKey}__${colKey}`;
 }
 
-/** gridの全セルキー(行×列の直積)。 */
+/** gridで行に対して実際に選べる列(rowCols制限を適用)。 */
+export function gridColsForRow(q: QuestionDef, rowKey: string): { key: string; label: string }[] {
+  const allowed = q.rowCols?.[rowKey];
+  const cols = q.cols ?? [];
+  return allowed ? cols.filter((c) => allowed.includes(c.key)) : cols;
+}
+
+/** gridの全セルキー(行×列の直積・rowCols制限を適用)。 */
 export function gridCellKeys(q: QuestionDef): string[] {
   const out: string[] = [];
-  for (const r of q.rows ?? []) for (const c of q.cols ?? []) out.push(gridCellKey(r.key, c.key));
+  for (const r of q.rows ?? []) for (const c of gridColsForRow(q, r.key)) out.push(gridCellKey(r.key, c.key));
   return out;
 }
 
@@ -206,6 +218,20 @@ export function validateSurveyDefinition(input: unknown): ValidatedSurvey | stri
       if (rows.length === 0) return `設問${i + 1}(マス目)に行を1つ以上設定してください`;
       if (cols.length === 0) return `設問${i + 1}(マス目)に列を1つ以上設定してください`;
       if (options.length > 0) return `設問${i + 1}(マス目)に選択肢は設定できません`;
+      if (raw.rowCols !== undefined) {
+        if (typeof raw.rowCols !== 'object' || raw.rowCols === null || Array.isArray(raw.rowCols)) {
+          return `設問${i + 1}の行別制限(rowCols)の形式が不正です`;
+        }
+        const rowKeys = new Set(rows.map((r) => r.key));
+        const colKeys = new Set(cols.map((c2) => c2.key));
+        for (const [rk, cks] of Object.entries(raw.rowCols as Record<string, unknown>)) {
+          if (!rowKeys.has(rk)) return `設問${i + 1}の行別制限に不明な行キー「${rk}」があります`;
+          if (!Array.isArray(cks) || cks.length === 0) return `設問${i + 1}の行別制限「${rk}」に列を1つ以上指定してください`;
+          for (const ck of cks) {
+            if (typeof ck !== 'string' || !colKeys.has(ck)) return `設問${i + 1}の行別制限「${rk}」に不明な列キーがあります`;
+          }
+        }
+      }
     }
 
     if (qtype === 'text') {
@@ -216,8 +242,9 @@ export function validateSurveyDefinition(input: unknown): ValidatedSurvey | stri
     }
 
     const gridExpand = qtype === 'grid' && (raw.gridExpand === true || raw.gridExpand === 1);
+    const rowCols = qtype === 'grid' && raw.rowCols ? (raw.rowCols as Record<string, string[]>) : undefined;
     const id = typeof raw.id === 'number' && Number.isInteger(raw.id) ? raw.id : undefined;
-    questions.push({ id, questionKey, label, qtype: qtype as Qtype, required, options, rows, cols, gridExpand, allowOther });
+    questions.push({ id, questionKey, label, qtype: qtype as Qtype, required, options, rows, cols, rowCols, gridExpand, allowOther });
   }
 
   return { title, intro, audience: audience as Audience, nameNote, nameLabel, nameRequired, opensAt, closesAt, questions };
@@ -348,7 +375,7 @@ export function aggregateAnswers(questions: QuestionDef[], rows: AnswerRow[]): Q
       const gridCells: { rowKey: string; colKey: string; count: number }[] = [];
       if (q.qtype === 'grid') {
         for (const r of q.rows ?? []) {
-          for (const c of q.cols ?? []) {
+          for (const c of gridColsForRow(q, r.key)) {
             gridCells.push({ rowKey: r.key, colKey: c.key, count: counts.get(gridCellKey(r.key, c.key)) ?? 0 });
           }
         }
