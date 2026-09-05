@@ -9,7 +9,14 @@ on:
     # (同日分は already-exists で二重生成されない)。生成時刻が10:30〜20:30ならルート側がその場で投稿する
     - cron: '0 3 * * *'
     - cron: '30 4 * * *'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'run(通常) / redo(当日分を撤回して出し直す)'
+        required: false
+        default: 'run'
+        type: choice
+        options: [run, redo]
 
 jobs:
   trigger:
@@ -19,9 +26,11 @@ jobs:
       - name: Call /api/cron/x-daily-schedule
         run: |
           set -e
+          Q=""
+          [ "${{ github.event.inputs.mode || 'run' }}" = "redo" ] && Q="?redo=1"
           RESP=$(curl -s -w '\n%{http_code}' -X POST \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            https://bw5-app.vercel.app/api/cron/x-daily-schedule)
+            "https://bw5-app.vercel.app/api/cron/x-daily-schedule${Q}")
           BODY=$(echo "$RESP" | sed '$d')
           CODE=$(echo "$RESP" | tail -1)
           echo "HTTP $CODE: $BODY"

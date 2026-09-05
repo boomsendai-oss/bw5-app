@@ -167,6 +167,20 @@ export async function uploadMedia(
  * mediaIds を渡すと画像添付 (uploadMedia で取得した media id、最大4つ)。
  * 失敗は throw (呼び出し側で status='failed' + error 保存)。
  */
+/**
+ * ツイートを削除する (X API v2: DELETE /2/tweets/:id・OAuth 1.0a user context)。
+ * 自動投稿の誤り(例: クラス名「不明」)を撤回して出し直すために使う(2026-09-05)。
+ * 既に消えているツイートは成功扱い(冪等)。
+ */
+export async function deleteTweet(tweetId: string, creds: XCredentials = getXCredentials()): Promise<void> {
+  const url = `${TWEETS_URL}/${encodeURIComponent(tweetId)}`;
+  const res = await fetch(url, { method: 'DELETE', headers: { Authorization: buildOAuthHeader('DELETE', url, creds) } });
+  if (res.ok) return;
+  const body = await res.text();
+  if (res.status === 404) return; // もう無い
+  throw new Error(`X削除失敗 HTTP ${res.status}: ${body.slice(0, 300)}`);
+}
+
 export async function postTweet(
   text: string,
   inReplyTo?: string,

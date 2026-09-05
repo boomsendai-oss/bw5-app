@@ -323,6 +323,19 @@ export async function postVideo(videoUrl: string, text: string): Promise<{ id: s
  * TEXTコンテナは動画と違い通常すぐ公開できるので、長いポーリングはせず
  * publish失敗時のみ短く待って再試行する(固定投稿をAPIで作った実績のある方式)。
  */
+/**
+ * 投稿を削除する (Threads API: DELETE /v1.0/{threads-media-id})。
+ * 自動投稿の誤りを撤回して出し直すために使う(2026-09-05)。消えていれば成功扱い。
+ */
+export async function deletePost(mediaId: string): Promise<void> {
+  const { token } = await requireConnection();
+  const res = await fetch(`${GRAPH}/v1.0/${encodeURIComponent(mediaId)}?access_token=${token}`, { method: 'DELETE' });
+  if (res.ok) return;
+  const body = await res.text();
+  if (res.status === 404) return;
+  throw new Error(`Threads削除失敗 HTTP ${res.status}: ${body.slice(0, 300)}`);
+}
+
 export async function postText(text: string): Promise<{ id: string; permalink: string }> {
   const { token, userId } = await requireConnection();
 

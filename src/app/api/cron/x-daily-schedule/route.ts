@@ -7,7 +7,7 @@ import {
   jstMidnightUtcIso,
 } from '@/lib/xWeeklySchedule';
 import { validateThreadsText } from '@/lib/threadsPosts';
-import { decideImmediatePublish, publishThreadsPostNow, publishXPostNow } from '@/lib/xDailyPublish';
+import { decideImmediatePublish, publishThreadsPostNow, publishXPostNow, retractDailyPost } from '@/lib/xDailyPublish';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -48,7 +48,12 @@ async function run(req: NextRequest): Promise<NextResponse> {
     "SELECT id FROM x_posts WHERE parts LIKE ? AND status IN ('draft','approved','posting','posted')",
     [`%${marker}%`]
   );
-  if (dup) {
+  // ?redo=1: 当日分を撤回(投稿済みなら削除)して作り直す。誤った内容(例: クラス名「不明」)の出し直し用
+  const redo = new URL(req.url).searchParams.get('redo') === '1';
+  let retracted: Awaited<ReturnType<typeof retractDailyPost>> | null = null;
+  if (dup && redo) {
+    retracted = await retractDailyPost(Number(dup.id));
+  } else if (dup) {
     return NextResponse.json({ ok: true, skipped: 'already-exists', day: ymd, existingId: dup.id });
   }
 
@@ -100,6 +105,7 @@ async function run(req: NextRequest): Promise<NextResponse> {
       events: events.length,
       parts: parts.length,
       published_now: true,
+      retracted,
       x: x.ok ? { tweets: x.tweetIds.length } : { error: x.reason },
       threads: t ? (t.ok ? { posted: true } : { error: t.reason, skipped: 'skipped' in t }) : null,
     });
@@ -114,6 +120,7 @@ async function run(req: NextRequest): Promise<NextResponse> {
     parts: parts.length,
     scheduledAt,
     published_now: false,
+    retracted,
   });
 }
 

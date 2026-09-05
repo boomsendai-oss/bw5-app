@@ -122,6 +122,10 @@ describe('instanceClassLabel', () => {
     expect(instanceClassLabel(null, '単発: キッズ強化クラス')).toBe('キッズ強化クラス');
     expect(instanceClassLabel(null, '単発：ちゃんなつ HIPHOP')).toBe('ちゃんなつ HIPHOP');
   });
+  it('「給与対象外: 〜」のような別ラベルも剥がす', () => {
+    expect(instanceClassLabel(null, '給与対象外: ダンスバトル練習会')).toBe('ダンスバトル練習会');
+    expect(instanceClassLabel(null, '単発: ちゃんなつ HIPHOP (毎月1,3週日曜日)')).toBe('ちゃんなつ HIPHOP (毎月1,3週日曜日)');
+  });
   it('どちらも無ければ「不明」ではなく「特別レッスン」', () => {
     expect(instanceClassLabel(null, null)).toBe('特別レッスン');
     expect(instanceClassLabel('', 'カレンダー実績')).toBe('特別レッスン');

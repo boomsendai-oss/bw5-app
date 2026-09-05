@@ -26,7 +26,8 @@ import {
 export function instanceClassLabel(masterClassName: string | null | undefined, notes: string | null | undefined): string {
   if (masterClassName && masterClassName.trim()) return masterClassName.trim();
   const n = (notes ?? '').trim();
-  const m = n.match(/^単発\s*[:：]\s*(.+)$/u);
+  // 「単発: 〜」「給与対象外: 〜」のような先頭ラベルを剥がして残りをクラス名にする
+  const m = n.match(/^[^:：\n]{1,12}[:：]\s*(.+)$/u);
   if (m && m[1].trim()) return m[1].trim();
   return '特別レッスン';
 }

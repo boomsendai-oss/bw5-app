@@ -3,10 +3,10 @@
 // 背景: GitHub Actionsの定期実行がこのリポで大きく遅れる(生成cron=12:00 JST予定が16〜18時、
 // 投稿cron=15分毎の予定が3〜5時間毎)。生成→別cronで投稿、の二段構えだと2時間の猶予に間に合わず
 // 9/2〜9/4の3日連続で未投稿になった。生成した時点で投稿してしまえば投稿cronに依存しない。
-import { execute, getOne } from './db';
-import { postTweet, xConfigured } from './xApi';
-import { buildTweetPayloads, parsePartsJson } from './xPosts';
-import { configured as threadsConfigured, connectionStatus, postText } from './threads';
+import { execute, getAll, getOne } from './db';
+import { deleteTweet, postTweet, xConfigured } from './xApi';
+import { buildTweetPayloads, parsePartsJson, parseTweetIdsJson } from './xPosts';
+import { configured as threadsConfigured, connectionStatus, deletePost, postText } from './threads';
 
 export type PublishDecision = 'schedule' | 'post-now' | 'too-late';
 
@@ -84,4 +84,34 @@ export async function publishThreadsPostNow(threadsId: number): Promise<PublishR
     );
     return { ok: false, reason: msg };
   }
+}
+
+export type RetractResult = { xDeleted: number; threadsDeleted: number; errors: string[] };
+
+/**
+ * 当日分の投稿を撤回する: 投稿済みツイート/Threads投稿を削除し、行を rejected にする。
+ * その後に x-daily-schedule を再実行すると同日ガードに引っかからず作り直せる(=出し直し)。
+ * 削除に失敗しても行は rejected にする(手で消せるように error に残す)。
+ */
+export async function retractDailyPost(xPostId: number): Promise<RetractResult> {
+  const out: RetractResult = { xDeleted: 0, threadsDeleted: 0, errors: [] };
+  const row = await getOne('SELECT status, posted_tweet_ids FROM x_posts WHERE id = ?', [xPostId]);
+  if (!row) { out.errors.push(`x_posts id=${xPostId} が無い`); return out; }
+  if (row.status === 'posted' && xConfigured()) {
+    for (const id of parseTweetIdsJson((row.posted_tweet_ids as string | null) ?? null)) {
+      try { await deleteTweet(id); out.xDeleted++; } catch (e) { out.errors.push(e instanceof Error ? e.message : String(e)); }
+    }
+  }
+  await execute(
+    "UPDATE x_posts SET status = 'rejected', error = ?, updated_at = datetime('now') WHERE id = ?",
+    [`出し直しのため撤回(${new Date().toISOString()})${out.errors.length ? ' / 削除エラー: ' + out.errors.join('; ').slice(0, 300) : ''}`, xPostId]
+  );
+  const links = await getAll('SELECT id, status, posted_thread_id FROM threads_posts WHERE x_post_id = ?', [xPostId]);
+  for (const t of links) {
+    if (t.status === 'posted' && t.posted_thread_id && threadsConfigured()) {
+      try { await deletePost(String(t.posted_thread_id)); out.threadsDeleted++; } catch (e) { out.errors.push(e instanceof Error ? e.message : String(e)); }
+    }
+    await execute("UPDATE threads_posts SET status = 'rejected', updated_at = datetime('now') WHERE id = ?", [t.id]);
+  }
+  return out;
 }
