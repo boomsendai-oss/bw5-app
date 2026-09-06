@@ -40,18 +40,13 @@ export function parseSimpleFormData(
     const picked = form
       .getAll(fieldName('q', q.questionKey))
       .filter((v): v is string => typeof v === 'string' && v !== '');
-    const optionKeys = picked.filter((k) => k !== OTHER_KEY);
     let otherText: string | undefined;
     if (q.allowOther && picked.includes(OTHER_KEY)) {
       const raw = form.get(fieldName('other', q.questionKey));
       otherText = typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
     }
-    if (optionKeys.length > 0 || otherText) {
-      answers[q.questionKey] = {
-        optionKeys: optionKeys.length > 0 ? optionKeys : undefined,
-        otherText,
-        text: undefined,
-      };
+    if (picked.length > 0) {
+      answers[q.questionKey] = { optionKeys: picked, otherText, text: undefined };
     }
   }
   return { name, answers };

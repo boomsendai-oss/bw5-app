@@ -7,7 +7,7 @@
 import { useEffect, useState, use as usePromise } from 'react';
 import { getPublicSurvey, submitSurveyResponse, type PublicSurveyView } from './actions';
 import { installSurveyErrorHandlers, reportSurveyClientError } from './reportError';
-import { gridCellKey, gridColsForRow, type QuestionDef } from '@/lib/survey';
+import { gridCellKey, gridColsForRow, OTHER_KEY, type QuestionDef } from '@/lib/survey';
 
 type AnswerState = Record<string, { optionKeys: string[]; otherText: string; text: string }>;
 
@@ -139,6 +139,23 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
     });
   };
 
+  // gridのその他テキストは、入力の有無で__other選択を自動同期する
+  // (チップの無いgridでもテキストだけで「その他を選んだ」ことになるように)。
+  const setGridOtherText = (q: QuestionDef, value: string) => {
+    setAnswers((prev) => {
+      const cur = prev[q.questionKey];
+      if (!cur) return prev;
+      const has = cur.optionKeys.includes(OTHER_KEY);
+      let keys = cur.optionKeys;
+      if (value.trim()) {
+        if (!has) keys = [...keys, OTHER_KEY];
+      } else if (has) {
+        keys = keys.filter((k) => k !== OTHER_KEY);
+      }
+      return { ...prev, [q.questionKey]: { ...cur, optionKeys: keys, otherText: value } };
+    });
+  };
+
   // gridExpand: 行(ジャンル等)のタップで列を開閉。閉じるときはその行の選択も消す
   // (隠れた選択がそのまま送信される事故を防ぐ)。
   const toggleRow = (q: QuestionDef, rowKey: string) => {
@@ -168,7 +185,7 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
               key,
               {
                 optionKeys: a.optionKeys.length > 0 ? a.optionKeys : undefined,
-                otherText: a.otherText.trim() || undefined,
+                otherText: a.optionKeys.includes(OTHER_KEY) ? a.otherText.trim() || undefined : undefined,
                 text: a.text.trim() || undefined,
               },
             ])
@@ -302,7 +319,7 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
                       <input
                         type="text"
                         value={a.otherText}
-                        onChange={(e) => setAnswer(q.questionKey, { otherText: e.target.value })}
+                        onChange={(e) => setGridOtherText(q, e.target.value)}
                         className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
                       />
                     </div>
@@ -336,16 +353,31 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
                     );
                   })}
                   {q.allowOther ? (
-                    <div className="pt-1">
-                      <label className="block text-xs text-slate-500">その他(自由記入)</label>
-                      <input
-                        type="text"
-                        value={a.otherText}
-                        onChange={(e) => setAnswer(q.questionKey, { otherText: e.target.value })}
-                        placeholder="例: POP・LOCK など"
-                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
-                      />
-                    </div>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => toggleOption(q, OTHER_KEY)}
+                        className={`w-full text-left rounded-lg border px-3 py-2.5 text-sm transition ${
+                          a.optionKeys.includes(OTHER_KEY)
+                            ? 'border-teal-500 bg-teal-50 text-teal-800 font-bold'
+                            : 'border-slate-300 bg-white text-slate-700'
+                        }`}
+                      >
+                        {a.optionKeys.includes(OTHER_KEY) ? '✓ ' : ''}
+                        その他
+                      </button>
+                      {a.optionKeys.includes(OTHER_KEY) ? (
+                        <div className="pt-1">
+                          <label className="block text-xs text-slate-500">よろしければ内容もどうぞ(空欄でもOK)</label>
+                          <input
+                            type="text"
+                            value={a.otherText}
+                            onChange={(e) => setAnswer(q.questionKey, { otherText: e.target.value })}
+                            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          />
+                        </div>
+                      ) : null}
+                    </>
                   ) : null}
                 </div>
               )}

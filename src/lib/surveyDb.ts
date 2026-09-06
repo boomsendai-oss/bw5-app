@@ -223,15 +223,16 @@ export async function submitResponse(surveyId: number, validated: ValidatedRespo
       const questionId = idByKey.get(a.questionKey);
       if (!questionId) continue;
       for (const key of a.optionKeys) {
+        if (key === OTHER_KEY) continue;
         await tx.execute({
           sql: 'INSERT INTO survey_answers (response_id, question_id, option_key, text_value) VALUES (?, ?, ?, ?)',
           args: [responseId, questionId, key, null],
         });
       }
-      if (a.otherText) {
+      if (a.optionKeys.includes(OTHER_KEY) || a.otherText) {
         await tx.execute({
           sql: 'INSERT INTO survey_answers (response_id, question_id, option_key, text_value) VALUES (?, ?, ?, ?)',
-          args: [responseId, questionId, OTHER_KEY, a.otherText],
+          args: [responseId, questionId, OTHER_KEY, a.otherText ?? null],
         });
       }
       if (a.text) {
@@ -403,7 +404,7 @@ export async function listMemberSurveyAnswers(boomMemberId: number): Promise<Mem
       const label = String(row.label);
       let value: string;
       if (row.option_key === OTHER_KEY) {
-        value = `その他: ${row.text_value ?? ''}`;
+        value = row.text_value ? `その他: ${row.text_value}` : 'その他';
       } else if (row.option_key) {
         value = optionLabel(rowToQuestion(row), String(row.option_key));
       } else {

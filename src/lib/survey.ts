@@ -299,18 +299,24 @@ export function validateResponseInput(
     }
 
     const validKeys = new Set(q.qtype === 'grid' ? gridCellKeys(q) : q.options.map((o) => o.key));
-    for (const k of optionKeys) {
+    // 「その他」はテキストを書かなくても選択できる(記述は任意・TARO 2026-09-06)。
+    if (q.allowOther) validKeys.add(OTHER_KEY);
+    // 旧形式(テキストのみで__otherキーなし)は__other選択とみなして正規化
+    let keys = optionKeys;
+    if (otherText && q.allowOther && !keys.includes(OTHER_KEY)) keys = [...keys, OTHER_KEY];
+    for (const k of keys) {
       if (!validKeys.has(k)) return `「${q.label}」に不正な選択肢が含まれています`;
     }
-    if (new Set(optionKeys).size !== optionKeys.length) return `「${q.label}」の選択が重複しています`;
+    if (new Set(keys).size !== keys.length) return `「${q.label}」の選択が重複しています`;
     if (!q.allowOther && otherText) return `「${q.label}」の回答形式が不正です`;
+    if (otherText && !keys.includes(OTHER_KEY)) return `「${q.label}」の回答形式が不正です`;
     if (otherText && otherText.length > MAX_OTHER) return `「${q.label}」のその他は${MAX_OTHER}文字以内にしてください`;
     if (text) return `「${q.label}」の回答形式が不正です`;
 
-    const picked = optionKeys.length + (otherText ? 1 : 0);
+    const picked = keys.length;
     if (q.qtype === 'single' && picked > 1) return `「${q.label}」は1つだけ選択してください`;
     if (q.required && picked === 0) return `「${q.label}」に回答してください`;
-    if (picked > 0) answers.push({ questionKey: q.questionKey, optionKeys, otherText, text: null });
+    if (picked > 0) answers.push({ questionKey: q.questionKey, optionKeys: keys, otherText, text: null });
   }
 
   return { name, answers };

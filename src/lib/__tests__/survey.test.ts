@@ -202,6 +202,15 @@ describe('validateResponseInput', () => {
       })
     ).toBe('string');
   });
+  it('__otherをテキストなしで選択できる(記述は任意)', () => {
+    const v = validateResponseInput(QS, {
+      answers: { weekday: { optionKeys: ['mon'] }, temp: { optionKeys: ['must'] }, genre: { optionKeys: [OTHER_KEY] } },
+    });
+    if (typeof v === 'string') throw new Error(v);
+    const genre = v.answers.find((a) => a.questionKey === 'genre');
+    expect(genre?.optionKeys).toEqual([OTHER_KEY]);
+    expect(genre?.otherText).toBeNull();
+  });
   it('allowOther=trueならotherTextだけでも回答になる', () => {
     const v = validateResponseInput(QS, {
       answers: { weekday: { optionKeys: ['mon'] }, temp: { optionKeys: ['must'] }, genre: { otherText: 'POP' } },

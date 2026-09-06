@@ -37,7 +37,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
       if (!q) continue;
       const value =
         a.optionKey === OTHER_KEY
-          ? `その他:${a.textValue ?? ''}`
+          ? (a.textValue ? `その他:${a.textValue}` : 'その他')
           : a.optionKey
             ? optionLabel(q, a.optionKey)
             : a.textValue ?? '';

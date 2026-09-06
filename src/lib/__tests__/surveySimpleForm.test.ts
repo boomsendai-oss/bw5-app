@@ -73,7 +73,7 @@ describe('parseSimpleFormData', () => {
     expect(payload.name).toBe('山田太郎');
     expect(payload.answers.grade).toEqual({ optionKeys: ['es_low', 'adult'], otherText: undefined, text: undefined });
     expect(payload.answers.temp?.optionKeys).toEqual(['must']);
-    expect(payload.answers.genre).toEqual({ optionKeys: ['hiphop'], otherText: 'POP', text: undefined });
+    expect(payload.answers.genre).toEqual({ optionKeys: ['hiphop', OTHER_KEY], otherText: 'POP', text: undefined });
     expect(payload.answers.schedule?.optionKeys).toEqual(['mon__t18']);
     expect(payload.answers.voice).toEqual({ optionKeys: undefined, otherText: undefined, text: 'よろしくお願いします' });
   });
@@ -83,9 +83,9 @@ describe('parseSimpleFormData', () => {
     expect(payload.name).toBeUndefined();
     expect(Object.keys(payload.answers)).toEqual(['temp']);
   });
-  it('__otherを選んだがテキスト空なら otherText を送らない(=選択なし扱いに落とす)', () => {
+  it('__otherをテキストなしで選んでも有効な回答になる(記述は任意・TARO 2026-09-06)', () => {
     const form = fakeForm({ [fieldName('q', 'temp')]: ['must'], [fieldName('q', 'genre')]: [OTHER_KEY] });
     const payload = parseSimpleFormData(QS, form);
-    expect(payload.answers.genre).toBeUndefined();
+    expect(payload.answers.genre).toEqual({ optionKeys: [OTHER_KEY], otherText: undefined, text: undefined });
   });
 });

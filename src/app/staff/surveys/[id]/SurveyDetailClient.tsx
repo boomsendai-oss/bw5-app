@@ -354,7 +354,7 @@ function ResponsesTab({ survey, responses }: { survey: SurveyView; responses: Re
           if (!q) continue;
           const value =
             a.optionKey === OTHER_KEY
-              ? `その他: ${a.textValue ?? ''}`
+              ? (a.textValue ? `その他: ${a.textValue}` : 'その他')
               : a.optionKey
                 ? resolveOptionLabel(q, a.optionKey)
                 : a.textValue ?? '';
@@ -404,7 +404,7 @@ function MatchTab({
       if (!q) continue;
       const value =
         a.optionKey === OTHER_KEY
-          ? `その他: ${a.textValue ?? ''}`
+          ? (a.textValue ? `その他: ${a.textValue}` : 'その他')
           : a.optionKey
             ? resolveOptionLabel(q, a.optionKey)
             : a.textValue ?? '';
