@@ -1,0 +1,24 @@
+{
+  "mentions": [
+    "m55keiko",
+    "kousukekokeko"
+  ],
+  "lessons": [
+    {
+      "start": "11:00",
+      "instructor": "KEIKO"
+    },
+    {
+      "start": "12:15",
+      "instructor": "KOKEKO"
+    },
+    {
+      "start": "13:30",
+      "instructor": "KOKEKO"
+    },
+    {
+      "start": "15:00",
+      "instructor": "KEIKO"
+    }
+  ]
+}
