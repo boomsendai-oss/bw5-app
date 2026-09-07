@@ -280,7 +280,7 @@ describe('isValidEmail(入力欄の即時判定用)', () => {
 import { calcProfitSummary, DEFAULT_UNIT_COST, type ProfitRow } from '../tshirtOrder';
 
 describe('calcProfitSummary(概算利益)', () => {
-  // 一般=3,500 / インストラクター=1,500(原価のみ) / 無料=0
+  // 一般=3,500 / インストラクター=1,500(原価と同額のつもりだったが実原価1,600のため-100) / 無料=0
   const rows: ProfitRow[] = [
     { qty: 1, totalAmount: 3500, shippingFee: 0 },
     { qty: 1, totalAmount: 3500, shippingFee: 0 },
@@ -288,40 +288,41 @@ describe('calcProfitSummary(概算利益)', () => {
     { qty: 1, totalAmount: 0, shippingFee: 0 },
   ];
 
-  it('売上・原価・利益を出す(原価は1枚1,500円の概算)', () => {
+  it('売上・原価・利益を出す(原価は1枚1,600円の実額)', () => {
     const r = calcProfitSummary(rows, DEFAULT_UNIT_COST);
     expect(r.qty).toBe(4);
     expect(r.revenue).toBe(8500);
-    expect(r.cost).toBe(6000);
-    expect(r.profit).toBe(2500);
+    expect(r.cost).toBe(6400);
+    expect(r.profit).toBe(2100);
   });
 
-  it('一般1枚あたりの利益は2,000円', () => {
+  it('一般1枚あたりの利益は1,900円', () => {
     const r = calcProfitSummary([{ qty: 1, totalAmount: 3500, shippingFee: 0 }], DEFAULT_UNIT_COST);
-    expect(r.profit).toBe(2000);
+    expect(r.profit).toBe(1900);
   });
 
-  it('インストラクター価格(原価のみ)は利益0', () => {
+  // イントラ価格1,500は「原価と同額」のつもりで決めたが、実原価は1,600だったので1枚100円の持ち出しになる
+  it('インストラクター価格1,500は実原価1,600を下回るので-100', () => {
     const r = calcProfitSummary([{ qty: 1, totalAmount: 1500, shippingFee: 0 }], DEFAULT_UNIT_COST);
-    expect(r.profit).toBe(0);
+    expect(r.profit).toBe(-100);
   });
 
-  it('無料配布は原価だけ引かれる(赤字1,500円)', () => {
+  it('無料配布は原価だけ引かれる(赤字1,600円)', () => {
     const r = calcProfitSummary([{ qty: 1, totalAmount: 0, shippingFee: 0 }], DEFAULT_UNIT_COST);
-    expect(r.profit).toBe(-1500);
+    expect(r.profit).toBe(-1600);
   });
 
   it('送料は売上から除く(実費の預かりで利益ではない)', () => {
     const r = calcProfitSummary([{ qty: 1, totalAmount: 4300, shippingFee: 800 }], DEFAULT_UNIT_COST);
     expect(r.revenue).toBe(3500);
     expect(r.shipping).toBe(800);
-    expect(r.profit).toBe(2000);
+    expect(r.profit).toBe(1900);
   });
 
   it('複数枚の注文は枚数分の原価がかかる', () => {
     const r = calcProfitSummary([{ qty: 3, totalAmount: 10500, shippingFee: 0 }], DEFAULT_UNIT_COST);
-    expect(r.cost).toBe(4500);
-    expect(r.profit).toBe(6000);
+    expect(r.cost).toBe(4800);
+    expect(r.profit).toBe(5700);
   });
 
   it('原価の単価は変えられる(発注数で変動するため)', () => {

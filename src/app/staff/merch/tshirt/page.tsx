@@ -140,7 +140,8 @@ export default function StaffTshirtPage() {
           <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
             送料は業者へ払う実費の預かりなので、売上からも利益からも除いています。
             一般価格(¥3,500)は1枚あたり{yen(3500 - v.unitCost)}の利益、
-            インストラクター価格(¥1,500)は原価と同額で利益0、無料配布は原価分だけ差し引かれます。
+            インストラクター価格(¥1,500)は実原価{yen(v.unitCost)}を下回るので1枚{yen(v.unitCost - 1500)}の持ち出し、
+            無料配布は原価分だけ差し引かれます。
           </p>
         </section>
 
