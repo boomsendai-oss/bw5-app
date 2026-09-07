@@ -86,17 +86,29 @@ const caption = buildTikTokTitle(sanitizeHandlesForOtherPlatform(String(reel.cap
 const outDir = join(HERE, 'out', String(reel.id));
 mkdirSync(outDir, { recursive: true });
 
-function stage(relPath, label) {
-  if (!relPath) return null;
-  const src = join(APP_ROOT, 'public', String(relPath).replace(/^\//, ''));
-  if (!existsSync(src)) throw new Error(`${label} が見つかりません: ${src}`);
-  const dst = join(outDir, basename(src));
-  copyFileSync(src, dst);
+// 素材は R2 の絶対URL(2026-09-08移行)。このMacには生成時のローカルコピー(public/ 配下・
+// git管理外)が残っているので、あればそれを使い、無ければ公開URLからダウンロードする。
+// 旧い相対パス(/reels/...)はローカル public/ から取る。
+async function stage(pathOrUrl, label) {
+  if (!pathOrUrl) return null;
+  const s = String(pathOrUrl);
+  const isUrl = /^https?:\/\//.test(s);
+  const rel = isUrl ? decodeURIComponent(new URL(s).pathname) : s;
+  const local = join(APP_ROOT, 'public', rel.replace(/^\//, ''));
+  const dst = join(outDir, basename(local));
+  if (existsSync(local)) {
+    copyFileSync(local, dst);
+    return dst;
+  }
+  if (!isUrl) throw new Error(`${label} が見つかりません: ${local}`);
+  const res = await fetch(s);
+  if (!res.ok) throw new Error(`${label} のダウンロードに失敗 ${res.status}: ${s}`);
+  writeFileSync(dst, new Uint8Array(await res.arrayBuffer()));
   return dst;
 }
 
-const videoPath = stage(reel.video_path, '動画');
-const coverPath = stage(reel.cover_path, 'カバー');
+const videoPath = await stage(reel.video_path, '動画');
+const coverPath = await stage(reel.cover_path, 'カバー');
 if (!coverPath) {
   console.error('⚠️ このリールには cover_path がありません。TikTokはカバーを後から変更できないので、先にカバーを用意すること。');
   process.exit(1);

@@ -1,7 +1,7 @@
 // 単発リール投稿スクリプト（ステージリール用・手動/スケジュール実行）
 //
 // 使い方:
-//   node scripts/post_reel_once.mjs --video-url https://bw5-app.vercel.app/reels/xxx.mp4 \
+//   node scripts/post_reel_once.mjs --video-url https://media.boom-sendai.com/reels/xxx.mp4 \
 //        --caption-file /path/to/caption.txt [--dry-run]
 //
 // --dry-run: コンテナ作成(アップロード検証)まで行い、公開はしない

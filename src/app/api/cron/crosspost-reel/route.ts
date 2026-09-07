@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveMediaUrl } from '@/lib/mediaUrl';
 import { execute, getAll, getOne } from '@/lib/db';
 import { nowUtcIso } from '@/lib/dateJst';
 import {
@@ -264,12 +265,11 @@ export async function POST(req: NextRequest) {
     )) as ReelRow | null;
     if (!reel) return await fail(`reel_queue #${target.reel_id} が見つかりません`);
 
+    // 素材は R2 の絶対URL(2026-09-08移行)。旧い相対パス(/reels/...)は自分のoriginで解決する。
     const origin = new URL(req.url).origin;
-    const videoUrl = reel.video_path.startsWith('http')
-      ? reel.video_path
-      : `${origin}${reel.video_path}`;
+    const videoUrl = resolveMediaUrl(reel.video_path, origin);
 
-    // 動画バイト列を取得(public配下のファイルを自分のoriginから取る)。
+    // 動画バイト列を取得(R2の公開URLから取る)。
     // Threads と Facebook は**向こうがURLを取りに来る**方式なので、ここでは落とさない
     // (リールは1本50MB近くあり、要らないダウンロードは関数の時間とメモリを食うだけ)。
     const PULLS_URL = ['threads', 'facebook'];
@@ -317,7 +317,7 @@ export async function POST(req: NextRequest) {
       // APIに開放された日からコード変更なしで効き始める)
       if (reel.cover_path) {
         try {
-          const coverUrl = reel.cover_path.startsWith('http') ? reel.cover_path : `${origin}${reel.cover_path}`;
+          const coverUrl = resolveMediaUrl(reel.cover_path, origin);
           const cres = await fetch(coverUrl);
           if (cres.ok) await trySetThumbnail(out.videoId, new Uint8Array(await cres.arrayBuffer()));
         } catch { /* サムネイルは任意・本体の成否に影響させない */ }

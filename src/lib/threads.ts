@@ -12,7 +12,8 @@
 //
 // 投稿の要点:
 //   - 動画は**公開URLをThreads側が取りに来る**方式(バイト列を送らない)。
-//     BOOMのリールは https://bw5-app.vercel.app/reels/*.mp4 で公開済みなのでそのまま渡せる。
+//     BOOMのリールは Cloudflare R2 (https://media.boom-sendai.com/reels/*.mp4) で公開済みなので
+//     そのまま渡せる(2026-09-08 に Vercel public/reels から移行)。
 //   - コンテナ作成 → 処理待ち → publish の2段階。作成直後にpublishすると失敗するので
 //     ステータスを見ながら待つ(公式の目安は約30秒)。
 //   - 上限は24時間で250投稿。BOOMの運用(週2〜3本)では当たらない。
