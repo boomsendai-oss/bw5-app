@@ -5,7 +5,7 @@
 // 2部門に出ている人は、完了画面から続けてもう片方の受付に進める。
 //
 // 迷わせないことを最優先にする。1画面につき操作は1つ、文字は大きく、戻れるようにする。
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { kioskDraw, kioskMarkPaid } from './actions';
 import { needsPhotoGuide, nextKioskStep, phaseForDivision, remainingDivisions } from '@/lib/bf6Kiosk';
 import type { KioskEntrant } from '@/lib/bf6Kiosk';
@@ -67,43 +67,76 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
     } else setScreen('draw');
   };
 
-  /** ルーレットを回し始める。裏では先に結果を確定させておく。 */
+  const stopSpin = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  /**
+   * ルーレットを回し始める。回している裏で枠を確保しておく。
+   * 見た目だけ回して止めた瞬間に枠を取りに行くと、複数台で同時に操作したときに
+   * 「表示された番号と実際に取れた枠が違う」が起きるため、先に確定させる。
+   */
   const startRoll = useCallback(async () => {
     if (!sel || rolling) return;
     setError('');
+    pendingRef.current = null;
     setRolling(true);
-    const faces = phaseForDivision(division) === 'block' ? ['A', 'B'] : Array.from({ length: 16 }, (_, i) => String(i + 1));
+    const faces =
+      phaseForDivision(division) === 'block'
+        ? ['A', 'B']
+        : Array.from({ length: 16 }, (_, i) => String(i + 1));
     let i = 0;
+    stopSpin();
     timerRef.current = setInterval(() => {
       i += 1;
       setRollFace(faces[i % faces.length]);
     }, 70);
 
-    const r = await kioskDraw(sel.itemId, division);
-    if ('error' in r) {
-      if (timerRef.current) clearInterval(timerRef.current);
+    try {
+      const r = await kioskDraw(sel.itemId, division);
+      if ('error' in r) {
+        stopSpin();
+        setRolling(false);
+        setError(r.error);
+        return;
+      }
+      pendingRef.current = r;
+    } catch {
+      stopSpin();
       setRolling(false);
-      setError(r.error);
-      return;
+      setError('通信に失敗しました。もう一度お試しください。');
     }
-    pendingRef.current = r;
-  }, [sel, division, rolling]);
+  }, [sel, division, rolling, stopSpin]);
 
   /** 止める。まだ結果が返っていなければ、返るまで回し続ける。 */
   const stopRoll = useCallback(() => {
+    let waited = 0;
     const settle = () => {
       const r = pendingRef.current;
       if (!r) {
+        waited += 120;
+        if (waited > 10000) {
+          stopSpin();
+          setRolling(false);
+          setError('時間内に確定できませんでした。スタッフにお声がけください。');
+          return;
+        }
         setTimeout(settle, 120);
         return;
       }
-      if (timerRef.current) clearInterval(timerRef.current);
+      stopSpin();
       setRolling(false);
       setResult(r);
       setScreen('result');
     };
     settle();
-  }, []);
+  }, [stopSpin]);
+
+  // 画面を離れるときにルーレットを止める(タイマーが残り続けないように)
+  useEffect(() => () => stopSpin(), [stopSpin]);
 
   const markPaid = async () => {
     if (!sel) return;
