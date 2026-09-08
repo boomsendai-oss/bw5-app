@@ -2,7 +2,9 @@
 
 // 当日の受付端末(iPad想定)。3〜4台で同時に使う。
 // 設計方針: 迷わせない。検索して名前を押す → 部門ボタンを押す → 結果が大きく出る。
+import PhotoCapture from './PhotoCapture';
 import { useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { receptionCollectCash, receptionDraw } from './actions';
 import type { ReceptionEntrant } from '@/lib/bf6DrawDb';
 import type { Bf6DrawDivision, Bf6DrawPhase } from '@/lib/bf6Draw';
@@ -12,7 +14,17 @@ const yen = (n: number) => `¥${n.toLocaleString()}`;
 
 type Drawn = { division: string; slotNo: number; block?: 'A' | 'B' };
 
-export function ReceptionClient({ entrants, phase }: { entrants: ReceptionEntrant[]; phase: Bf6DrawPhase }) {
+export function ReceptionClient({
+  entrants,
+  phase,
+  photoItemIds,
+}: {
+  entrants: ReceptionEntrant[];
+  phase: Bf6DrawPhase;
+  photoItemIds: number[];
+}) {
+  const router = useRouter();
+  const photoSet = useMemo(() => new Set(photoItemIds), [photoItemIds]);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<ReceptionEntrant | null>(null);
   const [drawn, setDrawn] = useState<Drawn | null>(null);
@@ -135,12 +147,15 @@ export function ReceptionClient({ entrants, phase }: { entrants: ReceptionEntran
 
       <div className="space-y-2">
         {list.map((e) => (
-          <button
+          <div
             key={e.itemId}
-            onClick={() => { setSel(e); setErr(null); }}
-            className={`flex w-full items-center justify-between rounded-2xl border p-4 text-left ${
+            className={`rounded-2xl border ${
               e.checkedIn ? 'border-sand-200 bg-sand-50' : 'border-sand-300 bg-white'
             }`}
+          >
+          <button
+            onClick={() => { setSel(e); setErr(null); }}
+            className="flex w-full items-center justify-between p-4 text-left"
           >
             <span>
               <span className="text-lg font-black text-navy-900">{e.dancerName}</span>
@@ -162,6 +177,15 @@ export function ReceptionClient({ entrants, phase }: { entrants: ReceptionEntran
               )}
             </span>
           </button>
+          <div className="border-t border-sand-100 px-4 py-2">
+            <PhotoCapture
+              itemId={e.itemId}
+              dancerName={e.dancerName}
+              hasPhoto={photoSet.has(e.itemId)}
+              onDone={() => router.refresh()}
+            />
+          </div>
+          </div>
         ))}
         {list.length === 0 && <p className="p-6 text-center text-sm text-neutral-400">該当なし</p>}
       </div>

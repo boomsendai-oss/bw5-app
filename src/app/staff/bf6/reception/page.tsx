@@ -6,6 +6,7 @@
 import StaffPageHeader from '@/components/StaffPageHeader';
 import Link from 'next/link';
 import { listBf6ReceptionEntrants } from '@/lib/bf6DrawDb';
+import { listBf6PhotoItemIds } from '@/lib/bf6PhotoDb';
 import { ReceptionClient } from './ReceptionClient';
 import { SlotSeeder } from './SlotSeeder';
 import type { Bf6DrawPhase } from '@/lib/bf6Draw';
@@ -19,7 +20,10 @@ export default async function StaffBf6ReceptionPage({
 }) {
   const { phase: raw } = await searchParams;
   const phase: Bf6DrawPhase = raw === 'bracket' ? 'bracket' : 'block';
-  const entrants = await listBf6ReceptionEntrants();
+  const [entrants, photoIds] = await Promise.all([
+    listBf6ReceptionEntrants(),
+    listBf6PhotoItemIds(),
+  ]);
 
   // ビギナーは受付時にトーナメント位置まで引くので、blockフェーズでもbracketを使う
   const forPhase = entrants.map((e) => ({
@@ -57,7 +61,7 @@ export default async function StaffBf6ReceptionPage({
         </div>
 
         <SlotSeeder phase={phase} />
-        <ReceptionClient entrants={forPhase} phase={phase} />
+        <ReceptionClient entrants={forPhase} phase={phase} photoItemIds={[...photoIds]} />
       </div>
     </div>
   );
