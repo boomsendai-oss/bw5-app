@@ -53,3 +53,8 @@ scripts/fixed_qr/discover_out/
 .env.vercel-prod-snapshot
 scripts/_tmp_*
 *.tmp.mjs
+
+# リール素材は Cloudflare R2 (https://media.boom-sendai.com) に置く(2026-09-08移行)。
+# ローカルの public/reels, public/reel-drafts は Mac常駐パイプラインの作業コピー。git/Vercelには乗せない
+/public/reels/
+/public/reel-drafts/
