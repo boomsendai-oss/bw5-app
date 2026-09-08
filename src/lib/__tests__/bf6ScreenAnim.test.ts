@@ -85,3 +85,33 @@ describe('部門の切り替え', () => {
       .toEqual([{ round: 'qf', matchNo: 1, winnerSlot: 3 }]);
   });
 });
+
+describe('勝者が上がる先の枠', () => {
+  it('1回戦の第1・第2試合の勝者は、ベスト8の第1試合へ上がる', async () => {
+    const { parentMatch } = await import('../bf6ScreenAnim');
+    expect(parentMatch('beginner', 'r16', 1)).toEqual({ round: 'qf', matchNo: 1 });
+    expect(parentMatch('beginner', 'r16', 2)).toEqual({ round: 'qf', matchNo: 1 });
+  });
+
+  it('第3・第4試合の勝者はベスト8の第2試合へ', async () => {
+    const { parentMatch } = await import('../bf6ScreenAnim');
+    expect(parentMatch('beginner', 'r16', 3)).toEqual({ round: 'qf', matchNo: 2 });
+    expect(parentMatch('beginner', 'r16', 4)).toEqual({ round: 'qf', matchNo: 2 });
+  });
+
+  it('決勝の勝者に上の試合は無い(優勝枠へ入る)', async () => {
+    const { parentMatch } = await import('../bf6ScreenAnim');
+    expect(parentMatch('beginner', 'f', 1)).toBeNull();
+  });
+
+  it('小中学生・一般はベスト8が最初なので、その上は準決勝', async () => {
+    const { parentMatch } = await import('../bf6ScreenAnim');
+    expect(parentMatch('kids', 'qf', 1)).toEqual({ round: 'sf', matchNo: 1 });
+    expect(parentMatch('kids', 'qf', 4)).toEqual({ round: 'sf', matchNo: 2 });
+  });
+
+  it('知らないラウンドならnull', async () => {
+    const { parentMatch } = await import('../bf6ScreenAnim');
+    expect(parentMatch('kids', 'r16', 1)).toBeNull();
+  });
+});

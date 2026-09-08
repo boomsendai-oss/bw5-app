@@ -54,3 +54,19 @@ export function vsAnimKey(s: {
 }): string {
   return `${s.division}|${s.round ?? '-'}|${s.matchNo ?? '-'}`;
 }
+
+/**
+ * その試合の勝者が上がっていく先の試合。
+ * 勝者が決まった瞬間に「上の段の枠へカードがせり上がる」演出を出すために使う。
+ * 決勝には上が無いのでnull(優勝枠は別扱い)。
+ */
+export function parentMatch(
+  division: string,
+  round: string,
+  matchNo: number
+): { round: string; matchNo: number } | null {
+  const order = division === 'beginner' ? ['r16', 'qf', 'sf', 'f'] : ['qf', 'sf', 'f'];
+  const i = order.indexOf(round);
+  if (i < 0 || i === order.length - 1) return null;
+  return { round: order[i + 1], matchNo: Math.ceil(matchNo / 2) };
+}
