@@ -262,7 +262,7 @@ export async function GET(req: NextRequest) {
       //   そちらを読むと、フォーム経由でない会員(発表会名簿からの移行分)が丸ごと欠ける。
       //   実害: 3/21 多賀城HOUSE で内海さん・佐々木さんが候補に出なかった(2026-08-18)。
       const att = await getAll(
-        `SELECT r.start_time, r.end_time, r.program_name, r.full_name, r.boom_member_id,
+        `SELECT r.start_time, r.end_time, r.program_name, r.staff_name, r.full_name, r.boom_member_id,
                 COALESCE(NULLIF(trim(m.instagram_handle), ''),
                          NULLIF(trim(m.instagram_handle_mother), ''),
                          NULLIF(trim(m.instagram_handle_father), '')) AS instagram_handle,
@@ -278,9 +278,13 @@ export async function GET(req: NextRequest) {
       if (att.length === 0) continue;
       const lessons2: AttendLesson[] = [...new Map(att.map((a) => [
         `${a.start_time}|${a.program_name}`,
-        { start: String(a.start_time), end: a.end_time ? String(a.end_time) : null, program: String(a.program_name) },
+        {
+          start: String(a.start_time), end: a.end_time ? String(a.end_time) : null,
+          program: String(a.program_name), staff: a.staff_name ? String(a.staff_name) : null,
+        },
       ])).values()];
-      const lesson = pickLessonForShot(lessons2, hhmm);
+      // 講師名も渡す。同時間帯に複数クラスが重なる日(8/30のSAYUKI×ベーシック)で取り違えないため。
+      const lesson = pickLessonForShot(lessons2, hhmm, d.instructor ? String(d.instructor) : null);
       if (!lesson) continue;
       const here = att.filter((a) => String(a.start_time) === lesson.start && String(a.program_name) === lesson.program && a.boom_member_id != null);
       if (here.length === 0) continue;

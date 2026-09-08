@@ -37,3 +37,40 @@ describe('normalizeIgHandle', () => {
   it('日本語などの不正はnull', () => expect(normalizeIgHandle('うみ')).toBeNull());
   it('空はnull', () => expect(normalizeIgHandle('')).toBeNull());
 });
+
+describe('pickLessonForShot — 講師で絞る(TARO 2026-09-08の実害)', () => {
+  // 8/30の実データ: SAYUKI FREE STYLE(14:00-15:30) と ベーシック(15:00-16:00) が重なる
+  const day = [
+    { start: '14:00', end: '15:30', program: 'SAYUKI / FREE STYLE', staff: 'SAYUKI' },
+    { start: '15:00', end: '16:00', program: 'ベーシックダンスクラス', staff: 'KEIKO' },
+  ];
+
+  it('講師を渡さないと開始が近いベーシックを選んでしまう(修正前の挙動)', () => {
+    expect(pickLessonForShot(day, '15:33')?.program).toBe('ベーシックダンスクラス');
+  });
+
+  it('講師SAYUKIを渡すとFREE STYLEを選ぶ', () => {
+    expect(pickLessonForShot(day, '15:33', 'SAYUKI')?.program).toBe('SAYUKI / FREE STYLE');
+  });
+
+  it('講師KEIKOを渡すとベーシックを選ぶ', () => {
+    expect(pickLessonForShot(day, '15:33', 'KEIKO')?.program).toBe('ベーシックダンスクラス');
+  });
+
+  it('講師名の表記ゆれ(全角/小文字/空白)を吸収する', () => {
+    expect(pickLessonForShot(day, '15:33', ' sayuki ')?.program).toBe('SAYUKI / FREE STYLE');
+    expect(pickLessonForShot(day, '15:33', 'ＳＡＹＵＫＩ')?.program).toBe('SAYUKI / FREE STYLE');
+  });
+
+  it('その講師のレッスンが無い日は従来どおり時刻で選ぶ(空振りで候補ゼロにしない)', () => {
+    expect(pickLessonForShot(day, '15:33', 'AOI')?.program).toBe('ベーシックダンスクラス');
+  });
+
+  it('「K@TTSU / AOI」のような連名でも部分一致で拾う', () => {
+    const d2 = [
+      { start: '11:00', end: '12:30', program: '多賀城 HOUSE', staff: 'K@TTSU' },
+      { start: '11:00', end: '12:00', program: '初めてのヒップホップ', staff: 'KEIKO' },
+    ];
+    expect(pickLessonForShot(d2, '12:10', 'K@TTSU / AOI')?.program).toBe('多賀城 HOUSE');
+  });
+});

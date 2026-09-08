@@ -8,7 +8,7 @@
  * 載せるかどうかは毎回TAROのタップ=同意判断は人間に残す。
  */
 
-export type AttendLesson = { start: string; end: string | null; program: string };
+export type AttendLesson = { start: string; end: string | null; program: string; staff?: string | null };
 
 /** 'HH:MM'→分。不正はnull。 */
 function toMin(s: string | null | undefined): number | null {
@@ -16,22 +16,45 @@ function toMin(s: string | null | undefined): number | null {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
+/** 講師名の照合用。全角/半角・空白・大小文字のゆれを吸収する。 */
+function normStaff(s: string | null | undefined): string {
+  return String(s ?? '').normalize('NFKC').replace(/[\s　]+/g, '').toUpperCase();
+}
+
 /**
  * 撮影時刻(JSTのHH:MM)から「どのレッスンの撮影か」を選ぶ。
  * レッスン中〜終了45分後(片付け・居残り中の撮影)に収まるものを最優先し、
  * 無ければ開始時刻が一番近いレッスン。終了時刻不明は開始+90分とみなす。
+ *
+ * ⚠️ 時刻だけでは決められない場合がある(TARO 2026-09-08の実害):
+ * 8/30は SAYUKI FREE STYLE(14:00-15:30) と ベーシックダンスクラス(15:00-16:00) が重なっており、
+ * 15:33撮影の SAYUKI のリールに「開始が近い」だけでベーシックの受講者が紐づいた。
+ * 下書きの講師名(instructor)が分かっている時は、まず講師でレッスンを絞る。
  */
-export function pickLessonForShot(lessons: AttendLesson[], shotHhmm: string): AttendLesson | null {
+export function pickLessonForShot(
+  lessons: AttendLesson[], shotHhmm: string, instructor?: string | null
+): AttendLesson | null {
   if (lessons.length === 0) return null;
+  // ① 講師で絞れるなら先に絞る(複数クラスが同時間帯に重なっていても取り違えない)
+  const want = normStaff(instructor);
+  let scope = lessons;
+  if (want) {
+    const byStaff = lessons.filter((l) => {
+      const got = normStaff(l.staff);
+      if (!got) return false;
+      return got === want || got.includes(want) || want.includes(got);
+    });
+    if (byStaff.length > 0) scope = byStaff;
+  }
   const shot = toMin(shotHhmm);
-  if (shot == null) return lessons.length === 1 ? lessons[0] : null;
-  const within = lessons.filter((l) => {
+  if (shot == null) return scope.length === 1 ? scope[0] : null;
+  const within = scope.filter((l) => {
     const s = toMin(l.start);
     if (s == null) return false;
     const e = toMin(l.end) ?? s + 90;
     return shot >= s && shot <= e + 45;
   });
-  const pool = within.length > 0 ? within : lessons;
+  const pool = within.length > 0 ? within : scope;
   return pool.reduce((best, l) =>
     Math.abs((toMin(l.start) ?? 0) - shot) < Math.abs((toMin(best.start) ?? 0) - shot) ? l : best
   );
