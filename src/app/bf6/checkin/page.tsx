@@ -2,6 +2,7 @@
 // その場でログインさせるのが現実的でない(ガイドアクセスでロックして設置する)。
 // 表示するのはダンサーネームのみで、本名・連絡先は返さない。
 import { listKioskEntrants } from '@/lib/bf6KioskDb';
+import { syncBf6Slots } from '@/lib/bf6DrawDb';
 import CheckinClient from './CheckinClient';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,8 @@ export const metadata = {
 };
 
 export default async function Bf6CheckinPage() {
+  // エントリーは締切まで増えるので、開くたびにくじの本数を合わせる(減らさない)
+  await syncBf6Slots();
   const entrants = await listKioskEntrants();
   return <CheckinClient entrants={entrants} />;
 }

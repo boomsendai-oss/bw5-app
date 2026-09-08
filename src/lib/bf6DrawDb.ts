@@ -6,7 +6,7 @@
 // item_id IS NULL の条件を付けて、取れた台だけが rowsAffected=1 になるようにする。
 import { getAll, getOne, execute } from './db';
 import { nowUtcIso } from './dateJst';
-import { slotCountFor, blockOfSlot, type Bf6DrawDivision, type Bf6DrawPhase } from './bf6Draw';
+import { slotCountFor, slotsToAdd, blockOfSlot, type Bf6DrawDivision, type Bf6DrawPhase } from './bf6Draw';
 
 /** 部門・フェーズのスロットを用意する。既にある分は消さない(再実行しても安全)。 */
 export async function seedBf6Slots(
@@ -217,4 +217,52 @@ export async function listBf6ReceptionEntrants(): Promise<ReceptionEntrant[]> {
     checkedIn: checked.has(Number(r.id)),
     draws: byItem.get(Number(r.id)) ?? [],
   }));
+}
+
+/**
+ * エントリー数に合わせてくじの本数を自動で合わせる。
+ * 受付画面を開くたびに走らせる想定(締切まで人数が動くため)。
+ *
+ * ⚠️ 減らすことはしない。すでに引かれた番号が変わると当日の組み合わせが崩れる。
+ * すでにある本数はそのまま、足りないぶんだけ末尾に足す。
+ */
+export async function syncBf6Slots(): Promise<
+  { division: string; phase: string; added: number; total: number }[]
+> {
+  const rows = await getAll(
+    `SELECT i.divisions FROM bf_order_items i JOIN bf_orders o ON o.id = i.order_id
+      WHERE i.item_type = 'entry' AND o.payment_status IN ('paid','cash_due')`
+  ).catch(() => []);
+  const count: Record<string, number> = { beginner: 0, kids: 0, general: 0 };
+  for (const r of rows) {
+    for (const d of JSON.parse(String(r.divisions ?? '[]')) as string[]) {
+      if (d in count) count[d] += 1;
+    }
+  }
+
+  const existing = await getAll(
+    'SELECT division, phase, COUNT(*) AS n, MAX(slot_no) AS mx FROM bf_draw GROUP BY division, phase'
+  ).catch(() => []);
+  const have = new Map(existing.map((r) => [`${r.division}|${r.phase}`, { n: Number(r.n), mx: Number(r.mx ?? 0) }]));
+
+  // ビギナーは受付でトーナメント位置まで決まる。小中・一般は予選ブロック。
+  const plan: { division: Bf6DrawDivision; phase: Bf6DrawPhase }[] = [
+    { division: 'beginner', phase: 'bracket' },
+    { division: 'kids', phase: 'block' },
+    { division: 'general', phase: 'block' },
+  ];
+
+  const out: { division: string; phase: string; added: number; total: number }[] = [];
+  for (const { division, phase } of plan) {
+    const cur = have.get(`${division}|${phase}`) ?? { n: 0, mx: 0 };
+    const add = slotsToAdd({ division, phase, entrantCount: count[division] ?? 0, existing: cur.n });
+    for (let i = 1; i <= add; i += 1) {
+      await execute(
+        'INSERT INTO bf_draw (division, phase, slot_no) VALUES (?, ?, ?) ON CONFLICT(division, phase, slot_no) DO NOTHING',
+        [division, phase, cur.mx + i]
+      );
+    }
+    out.push({ division, phase, added: add, total: cur.n + add });
+  }
+  return out;
 }

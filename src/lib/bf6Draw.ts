@@ -58,3 +58,20 @@ export function nextMatchIndex(matches: BracketMatch[]): number | null {
   const i = matches.findIndex((m) => m.winnerSlot === null);
   return i === -1 ? null : i;
 }
+
+/**
+ * いま何本くじを足せばよいか。
+ *
+ * エントリーは締切まで増減するので、受付のたびに本数を合わせる。
+ * ⚠️ 減らすことはしない。すでに引かれた番号が変わってしまい、
+ *    当日の組み合わせが崩れるため(キャンセルで人数が減っても本数は据え置く)。
+ */
+export function slotsToAdd(input: {
+  division: Bf6DrawDivision;
+  phase: Bf6DrawPhase;
+  entrantCount: number;
+  existing: number;
+}): number {
+  const need = slotCountFor(input.division, input.phase, input.entrantCount);
+  return Math.max(0, need - input.existing);
+}
