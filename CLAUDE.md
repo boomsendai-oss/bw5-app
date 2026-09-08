@@ -127,6 +127,20 @@ input/textarea が body の色を**継承**する。ページ側で背景だけ�
 - 実例: 七ヶ浜アンケート(2026-08-31)で回答者全員が名前を見えないまま入力していた。
   お客さんからの報告で発覚(2026-08-31 TARO「二度と同じミスをしないで」)。同型の事故が過去にも複数回
 
+### 12. リール動画・カバー・下書きは Cloudflare R2 に置く（public/reels に commit しない）【2026-09-08移行】
+
+`public/reels` 1.6GB を git/Vercelデプロイに乗せていたため、動画を足すたびに本番デプロイが走り
+Vercel Hobby の Deployment Storage 10GB を使い切った(2026-09-08)。以後の置き場は R2 バケット `boom-reels`。
+
+- ✅ 完成リール/カバーの公開: `node scripts/upload_reel.mjs <mp4> <cover.jpg>` → 出た絶対URL
+  (`https://media.boom-sendai.com/reels/...`)を `reel_queue.video_path / cover_path` に入れる
+- ✅ 下書き(候補タイル/プレビュー): `node scripts/upload_reel.mjs --draft <dirName> <files...>`
+- ❌ `public/reels/` `public/reel-drafts/` に置いて commit しない(.gitignore済。ローカルの中身はMac常駐パイプラインの作業コピー)
+- ❌ DBに相対パス `/reels/...` を新規に入れない(gitに動画が無いので配信されない)。
+  旧行は `src/lib/mediaUrl.ts` の `resolveMediaUrl` が origin で解決する後方互換のみ
+- 実装の正本は `scripts/lib/r2media.mjs`(wrangler `r2 object put`・OAuth=boom.sendai@gmail.com)。
+  Mac常駐 `reel_pipeline.mjs` は同じモジュールを import して自動アップロードする(`work/r2_enabled` フラグ)
+
 ## ディレクトリ構成 (要点)
 
 ```
