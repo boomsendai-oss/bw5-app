@@ -137,7 +137,16 @@ export default function PhotoCapture({
       for (let i = 0; i < alpha.length; i += 1) od.data[i * 4 + 3] = alpha[i];
       octx.putImageData(od, 0, 0);
 
-      const blob: Blob = await new Promise((resolve) => out.toBlob((b) => resolve(b!), 'image/png'));
+      // PNGは重い。LEDで必要な解像度まで落としてから書き出す(32人ぶんをDBに入れるため)
+      const SAVE_H = 760;
+      const sw = Math.round((w / h) * SAVE_H);
+      const small = document.createElement('canvas');
+      small.width = sw;
+      small.height = SAVE_H;
+      const sctx = small.getContext('2d')!;
+      sctx.imageSmoothingQuality = 'high';
+      sctx.drawImage(out, 0, 0, sw, SAVE_H);
+      const blob: Blob = await new Promise((resolve) => small.toBlob((b) => resolve(b!), 'image/png'));
       blobRef.current = blob;
       setPreview(URL.createObjectURL(blob));
       setPhase('preview');

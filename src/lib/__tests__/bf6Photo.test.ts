@@ -79,10 +79,25 @@ describe('切り抜きマスクの整形', () => {
     expect(out[0]).toBeLessThan(15);
   });
 
-  it('中間は中間値になる(輪郭が階段状にならない)', () => {
-    const out = refineMask(mk([0.5]), 1, 1);
+  it('境目の中間は中間値になる(輪郭が階段状にならない)', () => {
+    // しきい値は 0.5〜0.86。その真ん中あたりを渡す
+    const out = refineMask(mk([0.68]), 1, 1);
     expect(out[0]).toBeGreaterThan(40);
     expect(out[0]).toBeLessThan(215);
+  });
+
+  it('しきい値を内側に寄せてある(フチに背景の色を巻き込まないため)', () => {
+    // 素のモデルなら「人物寄り」と判定される 0.5 でも、ここでは透明にする
+    expect(refineMask(mk([0.5]), 1, 1)[0]).toBeLessThan(15);
+  });
+
+  it('近傍を平均して階段を均す(単独の点は周囲に薄まる)', () => {
+    const w = 3, h = 3;
+    const conf = new Float32Array(w * h);
+    conf[4] = 1; // 中央だけ人物
+    const out = refineMask(conf, w, h);
+    expect(out[4]).toBeLessThan(255); // 均されて下がる
+    expect(out[0]).toBeGreaterThan(0); // 周囲に少し滲む
   });
 
   it('画素数ぶんの結果を返す', () => {

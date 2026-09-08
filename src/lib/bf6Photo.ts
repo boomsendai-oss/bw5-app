@@ -55,22 +55,47 @@ export function fitBustFrame(src: { width: number; height: number }): Frame {
 
 /**
  * セグメンテーションの確信度(0〜1)を、そのままアルファに使える0〜255へ整形する。
- * 素の確信度をそのまま使うと輪郭が硬く、髪の毛のあたりが階段状になる。
- * 中央付近を伸ばして、境目に中間値を残す。
+ *
+ * モデルが返すマスクは元画像より粗いので、そのまま使うと輪郭が階段状になる。
+ * さらに境目に背景の色が残って白いフチが出る。対策として:
+ *   1. 判定のしきい値を上げ、輪郭を内側へ寄せる(背景の画素を巻き込まない)
+ *   2. 近傍を平均して階段を均す
  */
 export function refineMask(conf: Float32Array, width: number, height: number): Uint8ClampedArray {
-  const out = new Uint8ClampedArray(width * height);
-  const LO = 0.35;
-  const HI = 0.72;
-  for (let i = 0; i < out.length; i += 1) {
+  const LO = 0.5;
+  const HI = 0.86; // 内側に寄せてフチの背景を落とす
+  const raw = new Float32Array(width * height);
+  for (let i = 0; i < raw.length; i += 1) {
     const v = conf[i] ?? 0;
     let t: number;
     if (v <= LO) t = 0;
     else if (v >= HI) t = 1;
     else t = (v - LO) / (HI - LO);
-    // 端を少しなめらかに(硬い縁を避ける)
-    const eased = t * t * (3 - 2 * t);
-    out[i] = Math.round(eased * 255);
+    raw[i] = t * t * (3 - 2 * t);
+  }
+
+  // 3x3 の平均で階段を均す(画素数が少ないときは素通し)
+  const out = new Uint8ClampedArray(width * height);
+  if (width < 3 || height < 3) {
+    for (let i = 0; i < raw.length; i += 1) out[i] = Math.round(raw[i] * 255);
+    return out;
+  }
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      let sum = 0;
+      let n = 0;
+      for (let dy = -1; dy <= 1; dy += 1) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= height) continue;
+        for (let dx = -1; dx <= 1; dx += 1) {
+          const xx = x + dx;
+          if (xx < 0 || xx >= width) continue;
+          sum += raw[yy * width + xx];
+          n += 1;
+        }
+      }
+      out[y * width + x] = Math.round((sum / n) * 255);
+    }
   }
   return out;
 }

@@ -796,15 +796,18 @@ function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue';
       <p className={`text-[1.6vw] font-black tracking-[0.5em] ${accent}`}>
         {corner === 'red' ? 'RED' : 'BLUE'}
       </p>
-      {slot?.hasPhoto && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={`/api/bf6/photo/${slot.slotNo}?division=${division}`}
-          alt=""
-          className="bf6-cut mx-auto h-[64vh] w-auto max-w-[46vw] object-contain object-bottom"
-          style={{ filter: glow }}
-        />
-      )}
+      {/* 写真の有無で名前の高さがずれないよう、枠は常に確保する */}
+      <div className="flex h-[64vh] items-end justify-center">
+        {slot?.hasPhoto && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/bf6/photo/${slot.slotNo}?division=${division}`}
+            alt=""
+            className="bf6-cut max-h-full w-auto max-w-[46vw] object-contain object-bottom"
+            style={{ filter: glow }}
+          />
+        )}
+      </div>
       <p
         className="bf6-face bf6-chrome bf6-sheen relative -mt-[1.5vh] break-words text-[9vw] font-black italic leading-[0.92]"
         data-text={slot?.dancerName ?? '—'}
