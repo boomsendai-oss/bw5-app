@@ -104,8 +104,10 @@ export default function RootLayout({
               // 即時実行 (head 解析中)
               setup();
               // DOM完成後にもう一度 (Next.js が遅れて挿入する manifest を確実に上書き)
-              if (d.readyState === 'loading') {
-                d.addEventListener('DOMContentLoaded', setup);
+              // ⚠️ d は setup() 内のローカル変数。ここ(外側)で使うと ReferenceError で以降の
+              // 再適用が登録されなくなる(2026-05-02〜全ページで発生・2026-09-08修正)
+              if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', setup);
               }
               // load 後にもう一度 (iOS がここで manifest を読み始める前に最終状態を確定)
               window.addEventListener('load', setup);
