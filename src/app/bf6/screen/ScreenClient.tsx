@@ -114,19 +114,35 @@ export function ScreenClient() {
     const a = m.slotA ? slots[String(m.slotA)] : undefined;
     const b = m.slotB ? slots[String(m.slotB)] : undefined;
     return (
-      <Stage>
+      <Stage plain>
         {/* key を変えることで、試合が変わったときだけ登場アニメを再生し直す */}
         <div key={vsAnimKey(state)} className="bf6-shake relative h-full w-full">
-          {/* 赤コーナー / 青コーナーの下地 */}
-          <div className="bf6-corner-l absolute inset-y-0 left-0 w-1/2 bg-[linear-gradient(100deg,rgba(220,38,38,0.42),rgba(220,38,38,0.06)_72%,transparent)]" />
-          <div className="bf6-corner-r absolute inset-y-0 right-0 w-1/2 bg-[linear-gradient(260deg,rgba(37,99,235,0.42),rgba(37,99,235,0.06)_72%,transparent)]" />
+          {/* 背景は動画。暗闇→左右から赤青が突入→中央で衝突→煙が広がって落ち着く。
+              試合ごとに1回だけ再生し、最後のコマで止める(ループさせない)。
+              読み込みや再生に失敗しても、poster の静止画が残るので画面は成立する。 */}
+          <video
+            key={vsAnimKey(state)}
+            className="absolute inset-0 h-full w-full object-cover"
+            src="/bf6/vs-bg.mp4"
+            poster="/bf6/vs-bg-last.jpg"
+            autoPlay
+            muted
+            playsInline
+            preload="auto"
+          />
+          {/* 名前が乗る下端だけ軽く落とす。中央に暗幕を敷くと動画の鮮やかさが死ぬ。 */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[26%] bg-[linear-gradient(to_top,rgba(5,7,12,0.62),transparent)]" />
           {/* 衝突の閃光 */}
           <div className="bf6-flashout pointer-events-none absolute inset-0 bg-white" />
 
           <div className="relative flex h-full w-full flex-col">
-            <p className="bf6-drop pt-[2vh] text-center text-[2vw] font-black tracking-[0.4em] text-white/80">
-              {DIV_LABEL[state.division]}部門 / {ROUND_LABEL[m.round] ?? m.round}
-            </p>
+            <div className="bf6-drop flex items-start justify-between px-[2.5vw] pt-[2vh]">
+              <p className="text-[2vw] font-black tracking-[0.35em] text-white/85">
+                {DIV_LABEL[state.division]}部門 / {ROUND_LABEL[m.round] ?? m.round}
+              </p>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/bf6/led-title.png" alt="" className="h-[8vh] w-auto opacity-95" />
+            </div>
 
             <div className="relative flex flex-1 items-center justify-center px-[1.5vw] pb-[2vh]">
               <div className="bf6-in-left flex-1 text-center">
@@ -140,7 +156,7 @@ export function ScreenClient() {
                     key={i}
                     className="bf6-spark-g absolute left-0 top-0 block"
                     style={{
-                      animationDelay: `${1560 + sp.delay}ms`,
+                      animationDelay: `${1200 + sp.delay}ms`,
                       animationDuration: `${sp.dur}ms`,
                       // @ts-expect-error CSS変数でキーフレームに終点を渡す
                       '--fall': `${sp.fall}vw`,
@@ -156,7 +172,7 @@ export function ScreenClient() {
                         // @ts-expect-error CSS変数でキーフレームに終点を渡す
                         '--sx': `${sp.dist}vw`,
                         '--rot': `${sp.deg}deg`,
-                        animationDelay: `${1560 + sp.delay}ms`,
+                        animationDelay: `${1200 + sp.delay}ms`,
                         animationDuration: `${sp.dur}ms`,
                       }}
                     />
@@ -191,9 +207,13 @@ export function ScreenClient() {
   return (
     <Stage>
       <div className="flex h-full w-full flex-col px-[2.5vw] py-[2vh]">
-        <p className="text-center text-[2vw] font-black tracking-[0.4em] text-orange-400">
-          {DIV_LABEL[state.division]}部門 TOURNAMENT
-        </p>
+        <div className="flex items-start justify-between">
+          <p className="text-[2vw] font-black tracking-[0.4em] text-orange-400">
+            {DIV_LABEL[state.division]}部門 TOURNAMENT
+          </p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/bf6/led-title.png" alt="" className="h-[8vh] w-auto opacity-95" />
+        </div>
         <div className="mt-[1.5vh] flex flex-1 flex-col">
           {rows.map((row, ri) => (
             <div
@@ -224,6 +244,8 @@ export function ScreenClient() {
                         <PersonCard
                           cell={c}
                           slots={slots}
+                          rowIndex={ri}
+                          rowCount={rows.length}
                           mode={
                             c.round !== null && flashArrive.has(`${c.round}|${c.matchNo}`)
                               ? 'arrive'
@@ -297,11 +319,18 @@ function Connectors({ count, active }: { count: number; active: Map<number, 'a' 
 }
 
 function PersonCard({
-  cell, slots, mode, compact,
-}: { cell: BracketCell; slots: Record<string, Slot>; mode: 'win' | 'arrive' | null; compact: boolean }) {
+  cell, slots, mode, compact, rowIndex, rowCount,
+}: {
+  cell: BracketCell; slots: Record<string, Slot>; mode: 'win' | 'arrive' | null;
+  compact: boolean; rowIndex: number; rowCount: number;
+}) {
   const slot = cell.slotNo ? slots[String(cell.slotNo)] : undefined;
-  const base = 'w-full truncate rounded-[0.4vw] border px-[0.4vw] py-[0.5vh] text-center font-black transition-all duration-500';
-  const size = compact ? 'text-[0.85vw]' : 'text-[1.2vw]';
+  const base = 'w-full truncate rounded-[0.4vw] border px-[0.4vw] py-[0.6vh] text-center font-black transition-all duration-500';
+  // 上の段ほど残っている人が少ない=枠が広いので、文字も大きくする。
+  // rowIndex 0 は優勝枠(別描画)なので、1回戦が最大の rowIndex になる。
+  const depth = rowCount - 1 - rowIndex; // 1回戦=0、決勝=最大
+  const SIZES = ['text-[0.95vw]', 'text-[1.4vw]', 'text-[2vw]', 'text-[2.8vw]'];
+  const size = SIZES[Math.min(depth, SIZES.length - 1)] ?? (compact ? 'text-[0.95vw]' : 'text-[1.4vw]');
   const look =
     cell.state === 'won'
       ? 'border-orange-400/80 bg-orange-500/20 text-orange-200'
@@ -339,10 +368,14 @@ function ChampionCard({ cell, slots }: { cell: BracketCell; slots: Record<string
   );
 }
 
-function Stage({ children }: { children: React.ReactNode }) {
+
+function Stage({ children, plain }: { children: React.ReactNode; plain?: boolean }) {
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#05070c] text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_20%,rgba(249,115,22,0.10),transparent_60%)]" />
+      {/* オレンジの膜はロゴ/表用。背景動画の上に乗せると色が濁るのでVSでは出さない */}
+      {!plain && (
+        <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_20%,rgba(249,115,22,0.10),transparent_60%)]" />
+      )}
       <div className="relative h-full w-full">{children}</div>
       <ScreenAnimStyles />
     </div>
@@ -439,6 +472,163 @@ function ScreenAnimStyles() {
         100%      { opacity: 0; }
       }
       @keyframes bf6CornerIn { 0% { opacity:0; } 100% { opacity:1; } }
+      /* ── 背景に常時の動き ── */
+      /* 稲妻の明滅。放電は「ほぼ消えている→一瞬強く光る→残光」なので、
+         滞在時間の大半を暗くしておき、短い山を2つ作る。層ごとに周期をずらす。 */
+
+      /* ── VS: 名前どうしが中央で正面衝突 → 弾かれる → VSが割り込む(全体3.4秒) ──
+         時間の設計: 0-46% 寄せ / 46-52% 衝突と圧縮 / 52-70% 弾かれる / 70-100% 収まる  */
+      @keyframes bf6InLeft {
+        0%   { opacity: 0; transform: translateX(-64vw) skewX(-10deg) scale(0.94); }
+        12%  { opacity: 1; }
+        40%  { transform: translateX(9vw) skewX(-7deg) scale(0.98); }
+        46%  { transform: translateX(13.5vw) skewX(0deg) scale(1.06); } /* 接触 */
+        50%  { transform: translateX(12.4vw) scaleX(0.9) scaleY(1.1); } /* 潰れる */
+        58%  { transform: translateX(-3.5vw) scale(1); }                 /* 弾かれる */
+        70%  { transform: translateX(1.6vw); }
+        82%  { transform: translateX(-0.6vw); }
+        100% { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes bf6InRight {
+        0%   { opacity: 0; transform: translateX(64vw) skewX(10deg) scale(0.94); }
+        12%  { opacity: 1; }
+        40%  { transform: translateX(-9vw) skewX(7deg) scale(0.98); }
+        46%  { transform: translateX(-13.5vw) skewX(0deg) scale(1.06); }
+        50%  { transform: translateX(-12.4vw) scaleX(0.9) scaleY(1.1); }
+        58%  { transform: translateX(3.5vw) scale(1); }
+        70%  { transform: translateX(-1.6vw); }
+        82%  { transform: translateX(0.6vw); }
+        100% { opacity: 1; transform: translateX(0); }
+      }
+      /* VSは衝突して離れたあと(58%〜)に割り込む */
+      /* ⚠️ ここで filter を使わないこと。.bf6-chrome の drop-shadow(立体感)を
+         上書きしてしまい、VSだけ平たく見える。登場は scale と opacity で作る。 */
+      @keyframes bf6VsHit {
+        0%, 56% { opacity: 0; transform: translate(-50%,-50%) scale(3.6) rotate(-9deg); }
+        72%     { opacity: 1; transform: translate(-50%,-50%) scale(0.86) rotate(0deg); }
+        80%     { transform: translate(-50%,-50%) scale(1.12); }
+        100%    { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+      }
+      /* 衝突の熱源 */
+      @keyframes bf6Core {
+        0%, 45.5% { opacity: 0; transform: translate(-50%,-50%) scale(0.1); }
+        48%       { opacity: 1; transform: translate(-50%,-50%) scale(1.2); }
+        62%       { opacity: 0; transform: translate(-50%,-50%) scale(2.4); }
+        100%      { opacity: 0; }
+      }
+      @keyframes bf6Shock {
+        0%, 46% { opacity: 0; transform: translate(-50%,-50%) scale(0.12); }
+        50%     { opacity: 0.95; }
+        70%     { opacity: 0; transform: translate(-50%,-50%) scale(2.2); }
+        100%    { opacity: 0; transform: translate(-50%,-50%) scale(2.2); }
+      }
+      @keyframes bf6Shock2 {
+        0%, 46.5% { opacity: 0; transform: translate(-50%,-50%) scale(0.06); }
+        51%       { opacity: 1; }
+        64%       { opacity: 0; transform: translate(-50%,-50%) scale(1.5); }
+        100%      { opacity: 0; transform: translate(-50%,-50%) scale(1.5); }
+      }
+      /* 火花: 中心から放射しつつ失速し、同時に重力で落ちる。
+         明滅を挟むと「燃えている粒」に見える。 */
+      @keyframes bf6Spark {
+        0%   { opacity: 0; transform: rotate(var(--rot)) translateX(0) scaleX(0.15); }
+        6%   { opacity: 1; transform: rotate(var(--rot)) translateX(0.8vw) scaleX(1); }
+        34%  { opacity: 1; }
+        46%  { opacity: 0.55; }
+        58%  { opacity: 1; }
+        78%  { opacity: 0.5; }
+        100% { opacity: 0; transform: rotate(var(--rot)) translateX(var(--sx)) scaleX(0.18); }
+      }
+      /* 外側は重力ぶんだけ落とす(放射と分けることで放物線になる) */
+      @keyframes bf6SparkGravity {
+        0%   { transform: translateY(0); }
+        100% { transform: translateY(var(--fall)); }
+      }
+      /* 衝突の瞬間だけ画面を揺らす */
+      @keyframes bf6Shake {
+        0%, 45.5% { transform: translate(0,0) rotate(0deg); }
+        46.4%     { transform: translate(-0.9vw, 0.5vw) rotate(-0.35deg); }
+        47.3%     { transform: translate(0.8vw, -0.6vw) rotate(0.3deg); }
+        48.2%     { transform: translate(-0.6vw, -0.35vw) rotate(-0.2deg); }
+        49.1%     { transform: translate(0.45vw, 0.4vw) rotate(0.15deg); }
+        50%       { transform: translate(-0.3vw, -0.2vw) rotate(-0.1deg); }
+        51%       { transform: translate(0.15vw, 0.12vw); }
+        52%, 100% { transform: translate(0,0) rotate(0deg); }
+      }
+      @keyframes bf6FlashOut {
+        0%, 45.5% { opacity: 0; }
+        47%       { opacity: 0.5; }
+        53%       { opacity: 0; }
+        100%      { opacity: 0; }
+      }
+      @keyframes bf6CornerIn { 0% { opacity:0; } 100% { opacity:1; } }
+      /* ── 背景に常時の動き ── */
+      /* 背景: ゆっくり寄りながら流れる。2枚の明滅を入れ替えて放電が絶えない状態にする。 */
+      @keyframes bf6BgDrift {
+        0%   { transform: scale(1.06) translate3d(-0.6%, -0.4%, 0); }
+        50%  { transform: scale(1.12) translate3d(0.6%, 0.5%, 0); }
+        100% { transform: scale(1.06) translate3d(-0.6%, -0.4%, 0); }
+      }
+      /* 放電のゆらぎ。等間隔にせず刻みを散らす */
+      @keyframes bf6BgFlickA {
+        0%,100% { opacity: 1;    filter: brightness(1); }
+        9%      { opacity: 0.86; filter: brightness(1.3); }
+        14%     { opacity: 1;    filter: brightness(0.94); }
+        37%     { opacity: 0.72; filter: brightness(1.18); }
+        52%     { opacity: 1;    filter: brightness(1); }
+        68%     { opacity: 0.8;  filter: brightness(1.34); }
+        74%     { opacity: 1;    filter: brightness(0.96); }
+        91%     { opacity: 0.9;  filter: brightness(1.22); }
+      }
+      @keyframes bf6BgFlickB {
+        0%,100% { opacity: 0;    filter: brightness(1.1); }
+        11%     { opacity: 0.55; }
+        17%     { opacity: 0.05; }
+        33%     { opacity: 0.7;  filter: brightness(1.3); }
+        41%     { opacity: 0.1;  }
+        59%     { opacity: 0.62; }
+        66%     { opacity: 0;    }
+        83%     { opacity: 0.75; filter: brightness(1.25); }
+        88%     { opacity: 0.08; }
+      }
+      /* 赤/青が不規則に脈打つ(等間隔だと機械的に見えるので刻みを散らす) */
+      @keyframes bf6PulseL {
+        0%,100% { filter: brightness(1); }
+        12%     { filter: brightness(1.22); }
+        18%     { filter: brightness(0.96); }
+        41%     { filter: brightness(1.14); }
+        58%     { filter: brightness(1); }
+        73%     { filter: brightness(1.28); }
+        79%     { filter: brightness(1.02); }
+      }
+      @keyframes bf6PulseR {
+        0%,100% { filter: brightness(1); }
+        9%      { filter: brightness(1.1); }
+        27%     { filter: brightness(1.26); }
+        33%     { filter: brightness(0.97); }
+        52%     { filter: brightness(1.18); }
+        67%     { filter: brightness(1); }
+        88%     { filter: brightness(1.24); }
+      }
+      /* 中央の境目が放電のように明滅する */
+      @keyframes bf6Seam {
+        0%,100% { opacity: 0.25; transform: translateX(-50%) scaleX(1); }
+        7%      { opacity: 0.9;  transform: translateX(-50%) scaleX(2.2); }
+        11%     { opacity: 0.15; transform: translateX(-50%) scaleX(0.7); }
+        23%     { opacity: 0.75; transform: translateX(-50%) scaleX(1.7); }
+        29%     { opacity: 0.3;  }
+        44%     { opacity: 1;    transform: translateX(-50%) scaleX(2.6); }
+        49%     { opacity: 0.2;  transform: translateX(-50%) scaleX(0.9); }
+        63%     { opacity: 0.7;  transform: translateX(-50%) scaleX(1.5); }
+        71%     { opacity: 0.25; }
+        86%     { opacity: 0.85; transform: translateX(-50%) scaleX(2); }
+        92%     { opacity: 0.2;  }
+      }
+      @keyframes bf6Seam2 {
+        0%,100% { opacity: 0.35; }
+        44%     { opacity: 0.85; }
+        63%     { opacity: 0.45; }
+      }
       @keyframes bf6Drop { 0% { opacity:0; transform: translateY(-3vh); } 100% { opacity:1; transform:none; } }
       @keyframes bf6Rise { 0% { opacity:0; transform: translateY(3vh); } 100% { opacity:1; transform:none; } }
 
@@ -484,6 +674,13 @@ function ScreenAnimStyles() {
       @keyframes bf6Champ {
         0%,100% { box-shadow: 0 0 1.6vw rgba(249,115,22,0.45); }
         50%     { box-shadow: 0 0 3.4vw 0.4vw rgba(249,115,22,0.85); }
+      }
+
+      /* バストアップは腰のあたりで切れるので、下端をフェードさせて地に溶かす。
+         写真ごとに加工しなくてよいよう、表示側でマスクをかける。 */
+      .bf6-cut {
+        -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 72%, rgba(0,0,0,0.55) 88%, transparent 100%);
+        mask-image: linear-gradient(to bottom, #000 0%, #000 72%, rgba(0,0,0,0.55) 88%, transparent 100%);
       }
 
       /* ダンサーネームとVSは欧文が主。Hiragino Sans の最太ウェイトは "S" の右上が
@@ -541,7 +738,7 @@ function ScreenAnimStyles() {
         -webkit-background-clip: text; background-clip: text; color: transparent;
         /* ⚠️ 親から縁取りを受け継ぐと輪郭が二重に出て、文字が欠けて見える */
         -webkit-text-stroke: 0;
-        animation: bf6Sheen 3.4s cubic-bezier(.3,0,.2,1) both;
+        animation: bf6Sheen 2.6s cubic-bezier(.3,0,.2,1) both;
         pointer-events: none;
       }
       @keyframes bf6Sheen {
@@ -550,20 +747,22 @@ function ScreenAnimStyles() {
         100%     { background-position: -60% 0; }
       }
 
+      .bf6-pulse-l  { animation: bf6CornerIn .5s ease-out both, bf6PulseL 4.2s ease-in-out infinite; }
+      .bf6-pulse-r  { animation: bf6CornerIn .5s ease-out both, bf6PulseR 3.7s ease-in-out infinite; }
       .bf6-corner-l { animation: bf6CornerIn .5s ease-out both; }
       .bf6-corner-r { animation: bf6CornerIn .5s ease-out both; }
-      .bf6-in-left  { animation: bf6InLeft   3.4s cubic-bezier(.7,0,.28,1) both; }
-      .bf6-in-right { animation: bf6InRight  3.4s cubic-bezier(.7,0,.28,1) both; }
-      .bf6-vs       { animation: bf6VsHit    3.4s cubic-bezier(.2,1.3,.35,1) both; }
-      .bf6-core     { animation: bf6Core     3.4s ease-out both; }
-      .bf6-shock    { animation: bf6Shock    3.4s ease-out both; }
-      .bf6-shock2   { animation: bf6Shock2   3.4s ease-out both; }
+      .bf6-in-left  { animation: bf6InLeft   2.6s cubic-bezier(.7,0,.28,1) both; }
+      .bf6-in-right { animation: bf6InRight  2.6s cubic-bezier(.7,0,.28,1) both; }
+      .bf6-vs       { animation: bf6VsHit    2.6s cubic-bezier(.2,1.3,.35,1) both; }
+      .bf6-core     { animation: bf6Core     2.6s ease-out both; }
+      .bf6-shock    { animation: bf6Shock    2.6s ease-out both; }
+      .bf6-shock2   { animation: bf6Shock2   2.6s ease-out both; }
       .bf6-spark    { animation-name: bf6Spark; animation-timing-function: cubic-bezier(.08,.75,.3,1); animation-fill-mode: both; }
       .bf6-spark-g  { animation-name: bf6SparkGravity; animation-timing-function: cubic-bezier(.35,0,.85,1); animation-fill-mode: both; }
-      .bf6-shake    { animation: bf6Shake 3.4s linear both; }
-      .bf6-flashout { animation: bf6FlashOut 3.4s ease-out both; }
+      .bf6-shake    { animation: bf6Shake 2.6s linear both; }
+      .bf6-flashout { animation: bf6FlashOut 2.6s ease-out both; }
       .bf6-drop     { animation: bf6Drop     .5s ease-out both; }
-      .bf6-rise     { animation: bf6Rise     .5s ease-out 3.1s both; }
+      .bf6-rise     { animation: bf6Rise     .5s ease-out 2.4s both; }
       .bf6-winlit   { animation: bf6WinLit  1.5s cubic-bezier(.2,1.2,.3,1) both; }
       .bf6-trace-leg  { animation: bf6TraceLeg  1.5s cubic-bezier(.3,.1,.2,1) both; }
       .bf6-trace-bar  { animation: bf6TraceBar  1.5s cubic-bezier(.3,.1,.2,1) both; }
@@ -594,7 +793,7 @@ function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue';
       : 'drop-shadow(0 0 2.5vw rgba(59,130,246,0.55)) drop-shadow(0 1.2vh 1.6vh rgba(0,0,0,0.75))';
   return (
     <div>
-      <p className={`text-[1.5vw] font-black tracking-[0.5em] ${accent}`}>
+      <p className={`text-[1.6vw] font-black tracking-[0.5em] ${accent}`}>
         {corner === 'red' ? 'RED' : 'BLUE'}
       </p>
       {slot?.hasPhoto && (
@@ -602,17 +801,17 @@ function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue';
         <img
           src={`/api/bf6/photo/${slot.slotNo}?division=${division}`}
           alt=""
-          className="mx-auto h-[54vh] w-auto max-w-[42vw] object-contain object-bottom"
+          className="bf6-cut mx-auto h-[64vh] w-auto max-w-[46vw] object-contain object-bottom"
           style={{ filter: glow }}
         />
       )}
       <p
-        className="bf6-face bf6-chrome bf6-sheen relative -mt-[0.5vh] break-words text-[7.2vw] font-black italic leading-[0.95]"
+        className="bf6-face bf6-chrome bf6-sheen relative -mt-[1.5vh] break-words text-[9vw] font-black italic leading-[0.92]"
         data-text={slot?.dancerName ?? '—'}
       >
         {slot?.dancerName ?? '—'}
       </p>
-      {slot?.rep && <p className="mt-[0.4vh] text-[1.7vw] font-bold text-white/60">{slot.rep}</p>}
+      {slot?.rep && <p className="mt-[0.2vh] text-[1.9vw] font-bold text-white/60">{slot.rep}</p>}
     </div>
   );
 }
