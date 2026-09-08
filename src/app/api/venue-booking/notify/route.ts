@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { notifyVenueBooking, type VenueNotifyInput } from '@/lib/venueBookingNotify';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 function authorized(req: NextRequest): boolean {
   const secret = process.env.VENUE_NOTIFY_SECRET;
