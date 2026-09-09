@@ -15,6 +15,7 @@ import {
   pickTopicClusters,
   tokenizeQuery,
   validateDraft,
+  wardOf,
 } from '../blogAutoDraft';
 
 describe('normalizeQuery / tokenizeQuery', () => {
@@ -213,6 +214,7 @@ describe('スケジュール・構成', () => {
 describe('プロンプト', () => {
   const facts = {
     classesByArea: { 長町: ['土 15:30 長町 WAACK 入門 / 60分 / 講師YURI / ララガーデン内'] },
+    rotationByDay: ['水曜: 宮城野区文化センター リハーサル室(仙台市宮城野区)=13回・K スタジオ(仙台市青葉区)=6回'],
     instructors: ['TARO(HIPHOP)'],
     existingPosts: [{ slug: 'dance-school-cost-guide', title: '費用' }],
   };
@@ -235,5 +237,26 @@ describe('プロンプト', () => {
     expect(u).toContain('仙台 シニアダンス サークル');
     expect(u).toContain('今週新しく表示が付いた語');
     expect(u).toContain('Q&A主導型');
+  });
+});
+
+// 2026-09-09: 宮城野区記事で「区内に会場なし」と誤って書かれた事故の根本対策
+describe('週替わり会場の実績を事実ブロックに渡す', () => {
+  it('wardOf は住所から区・市を抜く', () => {
+    expect(wardOf('〒983-0012 宮城県仙台市宮城野区出花１丁目15−２１')).toBe('仙台市宮城野区');
+    expect(wardOf('〒985-0863 宮城県多賀城市東田中2丁目40-1')).toBe('多賀城市');
+    expect(wardOf('〒985-0802 宮城県宮城郡七ヶ浜町花渕浜字大原12')).toBe('宮城郡七ヶ浜町');
+    expect(wardOf('')).toBe('');
+  });
+  it('システムプロンプトに週替わり会場の実績と否定形禁止が入る', () => {
+    const p = buildSystemPrompt({
+      classesByArea: {},
+      rotationByDay: ['水曜: 宮城野区文化センター リハーサル室(仙台市宮城野区)=13回'],
+      instructors: [],
+      existingPosts: [],
+    } as never);
+    expect(p).toContain('宮城野区文化センター リハーサル室(仙台市宮城野区)=13回');
+    expect(p).toContain('否定形はこの一覧を見て');
+    expect(p).toContain('宮城野区文化センター(宮城野区榴岡');
   });
 });
