@@ -3,8 +3,18 @@
 import { getAll } from '@/lib/db';
 import type { KioskEntrant } from '@/lib/bf6Kiosk';
 
+/** 当日現金の内訳。「¥8,500」だけ出しても何の金額か分からないため(TARO 2026-09-09)。 */
+export type KioskLine = { label: string; qty: number; amount: number };
+
 /** 支払いの消し込みは注文単位なので、注文IDも一緒に持たせる。 */
-export type KioskRow = KioskEntrant & { orderId: number };
+export type KioskRow = KioskEntrant & { orderId: number; breakdown: KioskLine[] };
+
+const LINE_LABEL: Record<string, string> = {
+  entry: 'バトルエントリー',
+  ticket_adult: '観覧チケット(中学生以上)',
+  ticket_child: '観覧チケット(小学生)',
+  stream: 'オンライン配信',
+};
 
 /** 出場者の一覧。抽選済みかどうかも一緒に返す。 */
 export async function listKioskEntrants(): Promise<KioskRow[]> {
@@ -21,6 +31,26 @@ export async function listKioskEntrants(): Promise<KioskRow[]> {
   const drawn = await getAll(
     'SELECT item_id, division FROM bf_draw WHERE item_id IS NOT NULL'
   ).catch(() => []);
+
+  // 当日現金の注文だけ、明細を注文ごとにまとめる(受付で「何の¥8,500か」を見せる)
+  const lines = await getAll(
+    `SELECT i.order_id, i.item_type, i.qty, i.unit_amount
+       FROM bf_order_items i JOIN bf_orders o ON o.id = i.order_id
+      WHERE o.payment_status = 'cash_due'
+      ORDER BY i.order_id, i.sort_order`
+  ).catch(() => []);
+  const byOrder = new Map<number, KioskLine[]>();
+  for (const l of lines) {
+    const k = Number(l.order_id);
+    const list = byOrder.get(k) ?? [];
+    const qty = Number(l.qty ?? 1);
+    list.push({
+      label: LINE_LABEL[String(l.item_type)] ?? String(l.item_type),
+      qty,
+      amount: qty * Number(l.unit_amount ?? 0),
+    });
+    byOrder.set(k, list);
+  }
   const byItem = new Map<number, string[]>();
   for (const d of drawn) {
     const k = Number(d.item_id);
@@ -37,6 +67,7 @@ export async function listKioskEntrants(): Promise<KioskRow[]> {
     // 当日現金は注文単位。1回払えば同じ注文の全部門ぶんが済む
     amountDue: r.payment_status === 'cash_due' ? Number(r.amount_total) : 0,
     orderId: Number(r.order_id),
+    breakdown: byOrder.get(Number(r.order_id)) ?? [],
     drawnDivisions: byItem.get(Number(r.id)) ?? [],
   }));
 }

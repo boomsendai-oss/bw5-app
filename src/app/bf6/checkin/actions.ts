@@ -6,7 +6,7 @@
 import { checkInBf6, claimBf6Slot, listBf6Slots } from '@/lib/bf6DrawDb';
 import { setBf6OrderStatusStaff } from '@/lib/bf6Db';
 import { phaseForDivision } from '@/lib/bf6Kiosk';
-import { opponentSlot, type Bf6DrawDivision } from '@/lib/bf6Draw';
+import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 
 /**
  * くじを引く。二度引きは claimBf6Slot 側で弾かれ、同じ枠が返る。
@@ -22,8 +22,6 @@ export async function kioskDraw(
   | {
       slotNo: number;
       block?: 'A' | 'B';
-      /** 1回戦の相手。まだ誰も引いていなければ name は null */
-      opponent?: { slotNo: number; name: string | null };
       /** トーナメント表を描くための 枠→名前。引いていない枠は入らない */
       holders?: Record<number, string>;
       slotCount?: number;
@@ -44,13 +42,7 @@ export async function kioskDraw(
   const slots = await listBf6Slots(division as Bf6DrawDivision, phase);
   const holders: Record<number, string> = {};
   for (const s of slots) if (s.dancerName) holders[s.slotNo] = s.dancerName;
-  const opp = opponentSlot(r.slotNo);
-  return {
-    ...r,
-    opponent: { slotNo: opp, name: holders[opp] ?? null },
-    holders,
-    slotCount: slots.length,
-  };
+  return { ...r, holders, slotCount: slots.length };
 }
 
 /** 当日現金を受け取ったことをスタッフが記録する。 */

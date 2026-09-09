@@ -8,7 +8,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { kioskDraw, kioskMarkPaid } from './actions';
 import { needsPhotoGuide, nextKioskStep, phaseForDivision, remainingDivisions } from '@/lib/bf6Kiosk';
-import BracketView from './BracketView';
+import KioskBracket from './KioskBracket';
+import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 import type { KioskEntrant } from '@/lib/bf6Kiosk';
 import type { KioskRow } from '@/lib/bf6KioskDb';
 
@@ -35,11 +36,9 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
 
   // 抽選演出
   const [rolling, setRolling] = useState(false);
-  const [rollFace, setRollFace] = useState('?');
   const [result, setResult] = useState<{
     slotNo: number;
     block?: 'A' | 'B';
-    opponent?: { slotNo: number; name: string | null };
     holders?: Record<number, string>;
     slotCount?: number;
   } | null>(null);
@@ -47,7 +46,6 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
   const pendingRef = useRef<{
     slotNo: number;
     block?: 'A' | 'B';
-    opponent?: { slotNo: number; name: string | null };
     holders?: Record<number, string>;
     slotCount?: number;
   } | null>(null);
@@ -110,18 +108,10 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
     setError('');
     pendingRef.current = null;
     setRolling(true);
-    // ⚠️ 1→2→3… と順番に回すと「目押しできる」と誤解される。
-    //    実際は押す前にサーバ側で枠が確定しているので、狙った番号は絶対に出ない。
-    //    狙えると思わせたまま違う番号を出すのは、イカサマを疑われる最悪の形。
-    //    そこで毎回ランダムな面を出し、ぼかして数字を読めなくする(TARO指摘 2026-09-09)。
-    const faces =
-      phaseForDivision(division) === 'block'
-        ? ['A', 'B']
-        : Array.from({ length: 16 }, (_, i) => String(i + 1));
+    // ⚠️ 回っている間に数字を出さない。順番でもランダムでもぼかしても「予想できる」と
+    //    思われる(TARO実機 2026-09-09)。実際は押す前にサーバ側で枠が確定しているので、
+    //    狙えると思わせるのはイカサマを疑われる最悪の形。数字は結果画面で初めて出す。
     stopSpin();
-    timerRef.current = setInterval(() => {
-      setRollFace(faces[Math.floor(Math.random() * faces.length)]);
-    }, 55);
 
     try {
       const r = await kioskDraw(sel.itemId, division);
@@ -162,7 +152,9 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
       setScreen('result');
     };
     settle();
-  }, [stopSpin]);
+    // ⚠️ sel と division を依存に入れないと、最初の描画時の null を掴んだままになり
+    //    「引いた人を覚える」が一度も動かない(実機で HiMa が灰色にならなかった)
+  }, [stopSpin, sel, division]);
 
   // 画面を離れるときにルーレットを止める(タイマーが残り続けないように)
   useEffect(() => () => stopSpin(), [stopSpin]);
@@ -275,6 +267,19 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
             お近くのスタッフに声をかけて<br />エントリー費をお支払いください
           </p>
           <p className="mt-6 text-[5vh] font-black text-orange-400">¥{sel.amountDue.toLocaleString()}</p>
+          {sel.breakdown.length > 0 && (
+            <ul className="mt-3 w-full max-w-md rounded-2xl bg-white/[0.05] px-5 py-3 text-left">
+              {sel.breakdown.map((l, i) => (
+                <li key={i} className="flex items-baseline justify-between gap-3 py-1 text-[1.9vh]">
+                  <span className="text-white/75">
+                    {l.label}
+                    {l.qty > 1 && <span className="text-white/45"> ×{l.qty}</span>}
+                  </span>
+                  <span className="font-bold">¥{l.amount.toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <p className="mt-8 text-[1.8vh] text-white/50">支払いが済んだら、スタッフが下のボタンを押します</p>
           <button
             disabled={busy}
@@ -299,13 +304,23 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
             {phaseForDivision(division) === 'block' ? '予選のブロックを決めます' : 'トーナメントの位置を決めます'}
           </p>
 
-          {/* 回している間は数字を読ませない。読めると「目押しできる」と思われるため */}
-          <div className="mt-8 flex h-[26vh] w-[26vh] items-center justify-center overflow-hidden rounded-3xl border-4 border-orange-500 bg-neutral-900">
+          {/* 回っている間は数字を一切出さない(読めると目押しできると思われる) */}
+          <style>{`
+            @keyframes kioskSpin { to { transform: rotate(360deg); } }
+            @keyframes kioskPulse { 0%,100% { opacity: .35; transform: scale(.92); } 50% { opacity: 1; transform: scale(1.08); } }
+          `}</style>
+          <div className="relative mt-8 flex h-[26vh] w-[26vh] items-center justify-center">
+            <div
+              className={`absolute inset-0 rounded-full border-[1.1vh] border-orange-500/25 ${
+                rolling ? 'border-t-orange-400 border-r-orange-300' : ''
+              }`}
+              style={rolling ? { animation: 'kioskSpin 0.55s linear infinite' } : undefined}
+            />
             <span
-              className="text-[12vh] font-black italic leading-none"
-              style={rolling ? { filter: 'blur(10px)', opacity: 0.85 } : undefined}
+              className="text-[12vh] font-black italic leading-none text-orange-400"
+              style={rolling ? { animation: 'kioskPulse 0.9s ease-in-out infinite' } : undefined}
             >
-              {rolling ? rollFace : '?'}
+              ?
             </span>
           </div>
           {rolling && <p className="mt-3 text-[1.9vh] font-bold text-white/45">抽選中…</p>}
@@ -349,9 +364,10 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
             {result.block ? `${result.block}ブロック` : `${result.slotNo}番`}
           </p>
 
-          {/* 番号だけでは伝わらないので、表の中の自分の位置と勝ち上がりを見せる */}
+          {/* 番号だけでは伝わらないので、LEDと同じ形の表の中に自分の名前を出す */}
           {result.holders && result.slotCount ? (
-            <BracketView
+            <KioskBracket
+              division={division as Bf6DrawDivision}
               mySlot={result.slotNo}
               slotCount={result.slotCount}
               holders={result.holders}
