@@ -2,7 +2,7 @@
 // ①真実カレンダー(boom.sendaiプライマリ)の当日「七ヶ浜」レッスン予定に会場を書き込み
 // ②BOOMメールへ完了/失敗メール(予定リンク付き)を送る。認証はgoogleCalendar.tsと同じ保存済みrefresh_token。
 import { google } from 'googleapis';
-import { getOne } from './db';
+import { getOne, execute } from './db';
 import { sendEmail } from './email';
 
 const REFRESH_TOKEN_KEY = 'google_calendar_refresh_token';
@@ -15,9 +15,10 @@ export type VenueNotifyInput = {
   location?: string;       // 会場表記。指定時のみカレンダーの場所を更新
   match?: string;          // 予定タイトルの絞り込み語(既定「七ヶ浜」)
   dry_run?: boolean;       // trueなら書込みも送信もせず対象予定だけ返す
+  dedupe_key?: string;     // 同じキーのメールは一度しか送らない(30分ポーリングの通知嵐防止)
 };
 export type VenueNotifyEvent = { id: string; summary: string; start: string; location: string | null; htmlLink: string | null; updated: boolean };
-export type VenueNotifyResult = { ok: true; events: VenueNotifyEvent[]; mailed: boolean; dry_run: boolean };
+export type VenueNotifyResult = { ok: true; events: VenueNotifyEvent[]; mailed: boolean; dry_run: boolean; deduped?: boolean };
 
 async function primaryCalendar() {
   const clientId = process.env.GOOGLE_CAL_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
@@ -61,9 +62,18 @@ export async function notifyVenueBooking(input: VenueNotifyInput): Promise<Venue
   const links = events.map((ev) => `・${ev.start.slice(11, 16)} ${ev.summary}\n${ev.htmlLink ?? '(リンクなし)'}`).join('\n');
   const text = `${input.body}\n\n■ Googleカレンダー（${input.location ? '会場を記入済み' : '該当予定'}）\n${links || '（当日の該当予定が見つかりませんでした）'}\n\n— 七ヶ浜会場予約bot`;
   let mailed = false;
+  let deduped = false;
   if (!dryRun) {
-    await sendEmail({ to: NOTIFY_TO, subject: input.subject, text });
-    mailed = true;
+    const dk = input.dedupe_key ? `venue_notify:${input.dedupe_key}` : null;
+    if (dk) {
+      const seen = await getOne('SELECT value FROM settings WHERE key = ?', [dk]);
+      if (seen) deduped = true;
+    }
+    if (!deduped) {
+      await sendEmail({ to: NOTIFY_TO, subject: input.subject, text });
+      mailed = true;
+      if (dk) await execute('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [dk, new Date().toISOString()]);
+    }
   }
-  return { ok: true, events, mailed, dry_run: dryRun };
+  return { ok: true, events, mailed, dry_run: dryRun, deduped };
 }
