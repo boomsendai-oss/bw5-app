@@ -32,6 +32,20 @@ export function proxy(req: NextRequest) {
 
   if (pathname === '/staff/events/login' || pathname === '/api/staff/events/login') return NextResponse.next();
 
+  // BF6当日オペ(クルー)は /staff とは別系統のPINで入れる。
+  // 当日だけ手伝うスタッフに管理パスワードを渡すと会員名簿・収支まで見えてしまうため。
+  // ここは cookie の存在確認だけ(edgeではDBに触れない)。実際の検証は layout 側の
+  // isCrewAuthorized() が行う。
+  if (pathname.startsWith('/bf6/crew')) {
+    if (pathname === '/bf6/crew/login') return NextResponse.next();
+    if (req.cookies.get('bf6_crew_auth')?.value) return NextResponse.next();
+    if (req.cookies.get('staff_events_auth')?.value) return NextResponse.next();
+    const url = req.nextUrl.clone();
+    url.pathname = '/bf6/crew/login';
+    url.searchParams.set('next', pathname);
+    return NextResponse.redirect(url);
+  }
+
   const cookie = req.cookies.get('staff_events_auth')?.value;
   if (cookie) return NextResponse.next();
 
@@ -64,6 +78,9 @@ export const config = {
     '/api/staff/:path*',
     '/api/settings',
     '/api/upload',
+    // BF6当日オペ。/staff とは別PIN(bf6_crew_auth)で入れる隔離された運用画面
+    '/bf6/crew',
+    '/bf6/crew/:path*',
     // M24: BW5管理画面。旧実装は sessionStorage フラグだけで実質ノーガードだった
     '/admin',
     '/admin/:path*',
