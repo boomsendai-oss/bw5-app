@@ -74,7 +74,6 @@ export default function KioskBracket({
           </div>
         ))}
       </div>
-      <p className="mt-3 text-center text-[1.5vh] text-white/35">「—」はまだ受付していない人です</p>
     </div>
   );
 }

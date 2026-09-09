@@ -172,9 +172,12 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
     }
   };
 
-  /** 完了後、もう片方の部門が残っていれば続けて受付する */
+  /** 完了後、もう片方の部門が残っていれば続けて受付する(この端末で引いた分も除く) */
   const rest = sel
-    ? remainingDivisions({ ...sel, drawnDivisions: [...sel.drawnDivisions, division] })
+    ? remainingDivisions({
+        ...sel,
+        drawnDivisions: sel.divisions.filter((d) => d === division || isDrawn(sel, d)),
+      })
     : [];
 
   return (
@@ -278,15 +281,19 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
                   <span className="font-bold">¥{l.amount.toLocaleString()}</span>
                 </li>
               ))}
+              <li className="mt-1 flex items-baseline justify-between border-t border-white/15 pt-2 text-[2vh]">
+                <span className="font-bold text-white/75">合計</span>
+                <span className="font-black text-orange-300">¥{sel.amountDue.toLocaleString()}</span>
+              </li>
             </ul>
           )}
-          <p className="mt-8 text-[1.8vh] text-white/50">支払いが済んだら、スタッフが下のボタンを押します</p>
+          <p className="mt-8 text-[1.8vh] text-white/50">支払いが済んだら、下のボタンを押してください</p>
           <button
             disabled={busy}
             onClick={markPaid}
             className="mt-4 w-full max-w-md rounded-2xl bg-gradient-to-b from-orange-500 to-orange-700 py-6 text-[2.6vh] font-black disabled:opacity-50"
           >
-            {busy ? '…' : '支払いを受け取りました(スタッフ操作)'}
+            {busy ? '…' : '支払いを終了しました'}
           </button>
           <button onClick={() => setScreen('name')} className="mt-3 text-[1.8vh] text-white/40 underline">
             戻る
@@ -382,6 +389,9 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
               <p className="mt-2 text-[2vh] leading-relaxed text-white/70">
                 受付で受け取って、腕につけておいてください。
               </p>
+              {rest.length === 0 && needsPhotoGuide(sel.divisions) && (
+                <p className="mt-3 text-[1.8vh] text-orange-200/80">このあとビギナー部門の写真撮影があります</p>
+              )}
             </div>
           )}
 
@@ -400,9 +410,10 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
           <p className="text-[3.4vh] font-black">エントリー受付が完了しました</p>
           <p className="mt-3 text-[2.2vh] font-bold text-white/70">{sel.dancerName} さん</p>
 
-          {needsPhotoGuide([division]) && (
+          {/* 写真の案内は全部門が終わってから出す。途中で出すと次の部門の受付を忘れる(TARO 2026-09-09) */}
+          {rest.length === 0 && needsPhotoGuide(sel.divisions) && (
             <div className="mt-8 w-full max-w-md rounded-2xl border border-orange-500/60 bg-orange-500/10 px-5 py-6">
-              <p className="text-[2.4vh] font-black text-orange-300">写真の撮影があります</p>
+              <p className="text-[2.4vh] font-black text-orange-300">ビギナー部門の写真撮影があります</p>
               <p className="mt-2 text-[1.9vh] leading-relaxed text-white/80">
                 お近くのスタッフに声をかけて、<br />エントリー写真を撮ってもらってください
               </p>
@@ -411,8 +422,8 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
 
           {rest.length > 0 ? (
             <>
-              <p className="mt-8 text-[2vh] font-bold text-white/70">
-                続けて {rest.map((d) => DIV_LABEL[d]).join('・')} の受付ができます
+              <p className="mt-8 text-[2.2vh] font-black text-orange-300">
+                次は {rest.map((d) => DIV_LABEL[d]).join('・')} の受付です
               </p>
               {rest.map((d) => (
                 <button
@@ -426,7 +437,7 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
                   }}
                   className="mt-3 w-full max-w-md rounded-2xl bg-gradient-to-b from-orange-500 to-orange-700 py-6 text-[2.4vh] font-black"
                 >
-                  {DIV_LABEL[d]} の受付に進む
+                  次は {DIV_LABEL[d]} の受付に進む
                 </button>
               ))}
               <button onClick={reset} className="mt-4 text-[1.9vh] text-white/40 underline">
