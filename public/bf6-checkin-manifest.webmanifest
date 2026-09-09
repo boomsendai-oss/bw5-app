@@ -1,0 +1,11 @@
+{
+  "name": "BF6 受付",
+  "short_name": "BF6 受付",
+  "start_url": "/bf6/checkin",
+  "scope": "/bf6/checkin",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "orientation": "portrait",
+  "icons": [{ "src": "/images/icon-bf6-checkin.png", "sizes": "512x512", "type": "image/png" }]
+}

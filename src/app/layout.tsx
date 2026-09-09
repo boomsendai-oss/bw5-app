@@ -65,7 +65,20 @@ export default function RootLayout({
                 // theme-color もパス別: スタッフ=ネイビー / BF6=黒(イベント配色) / それ以外=BW5オレンジ
                 rm('meta[name="theme-color"]');
                 add('meta', {name: 'theme-color', content: isKiosk ? '#F4EDE5' : isStaff ? '#101040' : isDark ? '#0a0a0a' : '#f27a1a'});
-                if (isKiosk) {
+                // BF6当日: /bf6/crew=スタッフ / /bf6/checkin=出場者が自分で触るiPad。
+                // どちらもホーム画面に入れて使うので、start_url を自分のページにした
+                // 専用manifestを当てる。ここを通さないと main-manifest の start_url "/" が
+                // 効いてBW5のトップに飛ぶ(2026-09-09 TARO報告)。
+                var isCrew = p.indexOf('/bf6/crew') === 0;
+                var isCheckin = p.indexOf('/bf6/checkin') === 0;
+                if (isCrew || isCheckin) {
+                  add('link', {rel: 'manifest', href: isCrew ? '/bf6-crew-manifest.webmanifest' : '/bf6-checkin-manifest.webmanifest'});
+                  add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
+                  add('meta', {name: 'mobile-web-app-capable', content: 'yes'});
+                  add('meta', {name: 'apple-mobile-web-app-title', content: isCrew ? 'BF6 当日オペ' : 'BF6 受付'});
+                  add('link', {rel: 'apple-touch-icon', href: isCrew ? '/images/icon-bf6-crew.png' : '/images/icon-bf6-checkin.png'});
+                  d.title = isCrew ? 'BF6 当日オペ' : 'BF6 受付';
+                } else if (isKiosk) {
                   // 無人物販kiosk: iPadのホーム画面登録で専用アイコン/名前+全画面(standalone)
                   add('link', {rel: 'manifest', href: '/kiosk-manifest.webmanifest'});
                   add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});

@@ -84,6 +84,16 @@ export async function staffSendBf6Broadcast(key: string): Promise<{ sent: number
   return r;
 }
 
+/** 失敗した宛先にだけ送り直す(Gmailのスロットリングで落ちた分の回収)。 */
+export async function staffRetryBf6BroadcastFailures(
+  key: string
+): Promise<{ sent: number; failed: number }> {
+  const { retryBf6BroadcastFailures } = await import('@/lib/bf6Broadcast');
+  const r = await retryBf6BroadcastFailures(key);
+  revalidatePath('/staff/bf6/broadcast');
+  return r;
+}
+
 // ===== キャンセル待ち =====
 
 export async function staffOfferNextWaitlist(division: string): Promise<

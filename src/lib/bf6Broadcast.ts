@@ -181,6 +181,17 @@ export async function getBf6BroadcastRecipients(
   return rows.map((r) => String(r.email));
 }
 
+/**
+ * 送信の間隔(ミリ秒)。
+ * ⚠️ 0にすると Gmail SMTP が `421 4.3.0 Temporary System Problem` で弾き始める。
+ * 2026-09-09 の配信案内(46通)で実際に8通落ちた。アドレスの問題ではなく速度の問題。
+ */
+const SEND_INTERVAL_MS = 900;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export type Bf6BroadcastResult = {
   sent: number;
   failed: number;
@@ -206,7 +217,8 @@ export async function sendBf6Broadcast(key: string): Promise<Bf6BroadcastResult>
   const recipients = await getBf6BroadcastRecipients(audience);
   let sent = 0;
   let failed = 0;
-  for (const to of recipients) {
+  for (const [idx, to] of recipients.entries()) {
+    if (idx > 0) await wait(SEND_INTERVAL_MS);
     try {
       await sendEmail({ to, subject, text: body });
       sent += 1;
@@ -241,4 +253,68 @@ export async function listBf6Broadcasts(): Promise<
     failedCount: Number(r.failed_count ?? 0),
     createdAt: String(r.created_at ?? ''),
   }));
+}
+
+/**
+ * 失敗した宛先にだけ送り直す。
+ *
+ * Gmail のスロットリング(421)で落ちた分を拾うためのもの。本文は送信時に
+ * bf_broadcast へ保存したものをそのまま使う(テンプレートを後から直しても、
+ * 一度送ったものと違う文面が同じ人に届かないようにするため)。
+ */
+export async function retryBf6BroadcastFailures(key: string): Promise<Bf6BroadcastResult> {
+  const b = await getAll('SELECT id, subject, body FROM bf_broadcast WHERE key = ?', [key]);
+  if (b.length === 0) return { sent: 0, failed: 0 };
+  const broadcastId = Number(b[0].id);
+  const subject = String(b[0].subject);
+  const body = String(b[0].body);
+
+  const rows = await getAll(
+    "SELECT email FROM bf_broadcast_recipient WHERE broadcast_id = ? AND status = 'failed' ORDER BY email",
+    [broadcastId]
+  );
+
+  let sent = 0;
+  let failed = 0;
+  for (const [idx, r] of rows.entries()) {
+    if (idx > 0) await wait(SEND_INTERVAL_MS);
+    const to = String(r.email);
+    try {
+      await sendEmail({ to, subject, text: body });
+      sent += 1;
+      await execute(
+        "UPDATE bf_broadcast_recipient SET status = 'sent', error = NULL WHERE broadcast_id = ? AND email = ?",
+        [broadcastId, to]
+      );
+    } catch (e) {
+      failed += 1;
+      const msg = e instanceof Error ? e.message : String(e);
+      await execute(
+        'UPDATE bf_broadcast_recipient SET error = ? WHERE broadcast_id = ? AND email = ?',
+        [msg.slice(0, 300), broadcastId, to]
+      );
+    }
+  }
+
+  // 集計を貼り直す(履歴の成功/失敗件数を実態に合わせる)
+  const agg = await getAll(
+    "SELECT status, COUNT(*) AS n FROM bf_broadcast_recipient WHERE broadcast_id = ? GROUP BY status",
+    [broadcastId]
+  );
+  const okAll = Number(agg.find((x) => x.status === 'sent')?.n ?? 0);
+  const ngAll = Number(agg.find((x) => x.status === 'failed')?.n ?? 0);
+  await execute('UPDATE bf_broadcast SET sent_count = ?, failed_count = ? WHERE id = ?', [okAll, ngAll, broadcastId]);
+
+  return { sent, failed };
+}
+
+/** 失敗が残っている一斉メールの key と件数(スタッフ画面の再送ボタン用)。 */
+export async function listBf6BroadcastFailures(): Promise<{ key: string; failed: number }[]> {
+  const rows = await getAll(
+    `SELECT b.key AS key, COUNT(*) AS n
+       FROM bf_broadcast_recipient r JOIN bf_broadcast b ON b.id = r.broadcast_id
+      WHERE r.status = 'failed'
+      GROUP BY b.key`
+  ).catch(() => []);
+  return rows.map((r) => ({ key: String(r.key), failed: Number(r.n) }));
 }

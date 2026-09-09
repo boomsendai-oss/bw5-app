@@ -1,0 +1,11 @@
+{
+  "name": "BF6 当日オペ",
+  "short_name": "BF6 当日",
+  "start_url": "/bf6/crew",
+  "scope": "/bf6/crew",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#101040",
+  "orientation": "portrait",
+  "icons": [{ "src": "/images/icon-bf6-crew.png", "sizes": "512x512", "type": "image/png" }]
+}

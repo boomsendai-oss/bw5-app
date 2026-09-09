@@ -1,17 +1,20 @@
 // スタッフ: BF6 エントリー者への一斉メール。/staff/* 配下のためproxy認証で保護(規約4.5)。
 import StaffPageHeader from '@/components/StaffPageHeader';
-import { BF6_BROADCAST_TEMPLATES, getBf6BroadcastRecipients, listBf6Broadcasts } from '@/lib/bf6Broadcast';
+import { BF6_BROADCAST_TEMPLATES, getBf6BroadcastRecipients, listBf6Broadcasts, listBf6BroadcastFailures } from '@/lib/bf6Broadcast';
 import { SendButton } from './SendButton';
+import { RetryButton } from './RetryButton';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StaffBf6BroadcastPage() {
   // 宛先の範囲はテンプレートごとに違う(当日の段取り=エントリー者だけ / 配信の案内=全員)
-  const [entrants, all, history] = await Promise.all([
+  const [entrants, all, history, failures] = await Promise.all([
     getBf6BroadcastRecipients('entrants'),
     getBf6BroadcastRecipients('all'),
     listBf6Broadcasts(),
+    listBf6BroadcastFailures(),
   ]);
+  const failedOf = (key: string) => failures.find((f) => f.key === key)?.failed ?? 0;
   const countOf = (a: 'entrants' | 'all') => (a === 'all' ? all.length : entrants.length);
   const sentKeys = new Set(history.map((h) => h.key));
 
@@ -47,6 +50,11 @@ export default async function StaffBf6BroadcastPage() {
             </pre>
             <div className="mt-4">
               <SendButton templateKey={t.key} count={countOf(t.audience)} alreadySent={sentKeys.has(t.key)} />
+              {failedOf(t.key) > 0 && (
+                <div className="mt-3">
+                  <RetryButton templateKey={t.key} failed={failedOf(t.key)} />
+                </div>
+              )}
             </div>
           </section>
         ))}
