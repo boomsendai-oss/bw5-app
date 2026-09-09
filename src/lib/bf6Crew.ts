@@ -54,6 +54,12 @@ export const CREW_TASKS: CrewTask[] = [
     when: '受付時(ビギナー) / 予選後(ベスト8)',
   },
   {
+    href: '/bf6/crew/qualifiers',
+    title: '予選通過者',
+    desc: '小中・一般の予選が終わったら、通過した8名をチェック。くじ引き②と写真はこの8名だけになる',
+    when: '予選終了後',
+  },
+  {
     href: '/bf6/crew/reception?phase=bracket',
     title: 'くじ引き②(ベスト8)',
     desc: '予選を通過した小中・一般がトーナメントの位置を引く',

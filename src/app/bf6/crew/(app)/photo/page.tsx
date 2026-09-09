@@ -2,12 +2,12 @@
 //
 // ⚠️ 全員を一覧に出してはいけない(TARO 2026-09-09)。
 //   ビギナー   … 受付でトーナメント位置まで決まるので全員撮る
-//   小中・一般 … 予選を通過してベスト8のくじ(くじ引き②)を引いた人だけ撮る。
+//   小中・一般 … 「予選通過者」でチェックされた8名だけ撮る(くじ引き②を待たなくてよい)。
 //               それまでは「まだ予選通過者が決まっていません」でリストを出さない。
-// 予選通過の判定は bf_draw の phase='bracket' に枠があるかどうか(くじ引き②と連動)。
 import Link from 'next/link';
 import { listBf6ReceptionEntrants } from '@/lib/bf6DrawDb';
 import { listBf6PhotoItemIds } from '@/lib/bf6PhotoDb';
+import { listBf6Qualifiers } from '@/lib/bf6QualifierDb';
 import CrewHeader from '../CrewHeader';
 import PhotoList, { type PhotoRow } from './PhotoList';
 
@@ -28,16 +28,17 @@ export default async function CrewPhotoPage({
   const { division: raw } = await searchParams;
   const division: Div = TABS.some((t) => t.key === raw) ? (raw as Div) : 'beginner';
 
-  const [entrants, photoIds] = await Promise.all([
+  const [entrants, photoIds, qualifiers] = await Promise.all([
     listBf6ReceptionEntrants(),
     listBf6PhotoItemIds(),
+    listBf6Qualifiers(),
   ]);
 
-  // その部門で「撮るべき人」とトーナメント枠番号
-  const slotOf = (e: (typeof entrants)[number]) =>
-    e.draws.find((d) => d.division === division && d.phase === 'bracket')?.slotNo ?? null;
+  // その部門で「撮るべき人」。小中・一般は予選通過者(くじ引き②を待たずに撮り始められる)
   const target = entrants.filter((e) =>
-    division === 'beginner' ? e.divisions.includes('beginner') : slotOf(e) !== null
+    division === 'beginner'
+      ? e.divisions.includes('beginner')
+      : (qualifiers[division]?.has(e.itemId) ?? false)
   );
 
   const rows: PhotoRow[] = target
@@ -83,13 +84,13 @@ export default async function CrewPhotoPage({
             <p className="mt-2 text-sm leading-relaxed text-neutral-500">
               {TABS.find((t) => t.key === division)?.label}部門は、予選を通過した8名だけ撮影します。
               <br />
-              予選が終わったら「くじ引き②(ベスト8)」を行ってください。引いた人がここに出ます。
+              予選が終わったら「予選通過者」でチェックしてください。チェックした人がここに出ます。
             </p>
             <Link
-              href="/bf6/crew/reception?phase=bracket"
+              href={`/bf6/crew/qualifiers?division=${division}`}
               className="mt-4 inline-block rounded-xl bg-sand-100 px-4 py-2 text-sm font-bold text-navy-700"
             >
-              くじ引き②(ベスト8)へ
+              予選通過者をチェックする
             </Link>
           </div>
         ) : (

@@ -7,6 +7,8 @@ import StaffPageHeader from '@/components/StaffPageHeader';
 import Link from 'next/link';
 import { listBf6ReceptionEntrants } from '@/lib/bf6DrawDb';
 import { listBf6PhotoItemIds } from '@/lib/bf6PhotoDb';
+import { listBf6Qualifiers } from '@/lib/bf6QualifierDb';
+import { filterForBracketDraw, QUALIFIER_COUNT } from '@/lib/bf6Qualifier';
 import { ReceptionClient } from './ReceptionClient';
 import { SlotSeeder } from './SlotSeeder';
 import type { Bf6DrawPhase } from '@/lib/bf6Draw';
@@ -20,17 +22,19 @@ export default async function StaffBf6ReceptionPage({
 }) {
   const { phase: raw } = await searchParams;
   const phase: Bf6DrawPhase = raw === 'bracket' ? 'bracket' : 'block';
-  const [entrants, photoIds] = await Promise.all([
+  const [entrants, photoIds, qualifiers] = await Promise.all([
     listBf6ReceptionEntrants(),
     listBf6PhotoItemIds(),
+    listBf6Qualifiers(),
   ]);
 
   // ビギナーは受付時にトーナメント位置まで引くので、blockフェーズでもbracketを使う
-  const forPhase = entrants.map((e) => ({
-    ...e,
-    divisions:
-      phase === 'bracket' ? e.divisions.filter((d) => d !== 'beginner') : e.divisions,
-  })).filter((e) => e.divisions.length > 0);
+  // くじ引き②(ベスト8)は、予選通過者としてチェックされた人だけ(押し間違い防止・TARO 2026-09-09)。
+  const forPhase = phase === 'bracket' ? filterForBracketDraw(entrants, qualifiers) : entrants;
+  const shortage =
+    phase === 'bracket'
+      ? (['kids', 'general'] as const).filter((d) => (qualifiers[d]?.size ?? 0) !== QUALIFIER_COUNT)
+      : [];
 
   return (
     <div>
@@ -60,6 +64,15 @@ export default async function StaffBf6ReceptionPage({
           </Link>
         </div>
 
+        {shortage.length > 0 && (
+          <div className="rounded-xl border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-black">予選通過者が {QUALIFIER_COUNT} 名そろっていません</p>
+            <p className="mt-1 text-xs">
+              {shortage.map((d) => (d === 'kids' ? '小中学生' : '一般')).join('・')}:
+              「予選通過者」でチェックしてから、くじ引き②を行ってください。
+            </p>
+          </div>
+        )}
         <SlotSeeder phase={phase} />
         <ReceptionClient entrants={forPhase} phase={phase} photoItemIds={[...photoIds]} />
       </div>

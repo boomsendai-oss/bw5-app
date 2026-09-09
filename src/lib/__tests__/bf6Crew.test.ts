@@ -54,6 +54,7 @@ describe('クルーが触れる作業', () => {
     expect(CREW_TASKS.map((t) => t.title)).toEqual([
       '受付・くじ引き①',
       '写真撮影',
+      '予選通過者',
       'くじ引き②(ベスト8)',
       'LED操作卓',
     ]);
