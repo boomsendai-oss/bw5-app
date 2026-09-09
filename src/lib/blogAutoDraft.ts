@@ -444,7 +444,7 @@ BOOMくんのセリフでも捏造は禁止。
 HIPHOP / ストリートジャズ / HOUSE / ガールズHIPHOP / WAACK / フリースタイル / NEW JACK SWING。ブレイキンはワークショップ実施済みでレギュラークラスを今年中に開講予定。**K-POPはやっていない**(聞かれたら正直に書く)。
 ## クラス(2026年9月時点・公開中のもの)
 ${classes}
-※水曜・木曜・金曜は会場が週によって変わる。会場を固定して断定せず「公式LINEとレッスンカレンダーで確認」に倒す。ただし実際に使っている会場は次の通りで、**「〇〇区に会場は無い」のような否定形はこの一覧を見て、本当に無い場合にしか書かない**(例: 宮城野区文化センターは宮城野区榴岡にある)
+※水曜・木曜・金曜は会場が週によって変わる。会場を固定して断定せず「公式LINEとレッスンカレンダーで確認」に倒す。ただし実際に使っている会場は次の通りで、**「〇〇区に会場は無い」のような否定形はこの一覧を見て、本当に無い場合にしか書かない**。ただし【臨時会場】は運用が終わると嘘になるので**記事に会場名を書かず**、「水木は週替わりで区内の施設を使う週もある」程度に留める(2026-09-09 TARO)
 ${facts.rotationByDay.length ? facts.rotationByDay.map((l) => `  - ${l}`).join('\n') : '  - (実績データなし)'}
 ※日曜14:00のAZUMAスタジオ3クラスと、土曜15:30の長町のクラスは、週によって開催されるクラスが変わる(固定ローテではない)。「毎週〇〇がある」と書かない
 ※長町のスタジオは「ララガーデン内(ララガーデン長町4階)」と書く。提携先の施設名(コナスポ/KONAMI)は書かない
@@ -456,7 +456,7 @@ ${PRICE_FACTS}
 ## 公開してよい数字
 ${PUBLIC_NUMBERS}
 ## 会場表記(記事で使ってよい名前)
-仙台市内=GOATスタジオ(青葉区本町)・AZUMA スタジオ(青葉区二日町)・Kスタジオ(青葉区花京院)・宮城野区文化センター(宮城野区榴岡・水曜に多い週替わり会場) / 長町=ララガーデン内 / 多賀城=T's STUDIO・マイダンスショップ(住所は仙台市宮城野区出花だが多賀城寄り) / 七ヶ浜=七ヶ浜国際村・アクアスタジオ(アクアリーナ内)
+仙台市内=GOATスタジオ(青葉区本町)・AZUMA スタジオ(青葉区二日町)・Kスタジオ(青葉区花京院) / 長町=ララガーデン内 / 多賀城=T's STUDIO・マイダンスショップ(住所は仙台市宮城野区出花だが多賀城寄り) / 七ヶ浜=七ヶ浜国際村・アクアスタジオ(アクアリーナ内)
 
 # 書いてはいけないこと
 - **BOOM自身が線引きしていない対比を記事の軸にしない**(例:「サークルとスクールの違い」「教室とスタジオの違い」)。検索語にそういう言葉があっても、冒頭で一度受け止めるだけにして、対比で論を立てない(2026-09-04 TARO却下の実例)
@@ -638,17 +638,23 @@ export async function loadFacts(): Promise<DraftFacts> {
   // 週替わり(水木金)の会場実績: 「〇〇区に会場は無い」と誤って書かないために、実際に使った会場を回数つきで渡す
   // (2026-09-08 宮城野区記事で「区内に会場なし」と書いて公開された事故の根本対策。宮城野区文化センターは非公開会場のため名前が渡っていなかった)
   const rotationRows = (await getAll(
-    `SELECT CAST(strftime('%w', li.date) AS INT) dow, s.name studio, s.address addr, COUNT(*) n
+    `SELECT CAST(strftime('%w', li.date) AS INT) dow, s.name studio, s.address addr, s.is_public, COUNT(*) n
        FROM lesson_instances li JOIN studios s ON s.id = li.studio_id
       WHERE li.status = 'scheduled' AND CAST(strftime('%w', li.date) AS INT) IN (3,4,5)
         AND li.date BETWEEN date('now','-90 days') AND date('now','+30 days')
-      GROUP BY dow, s.name, s.address ORDER BY dow, n DESC`
-  )) as Array<{ dow: number; studio: string; addr: string | null; n: number }>;
+      GROUP BY dow, s.name, s.address, s.is_public ORDER BY dow, n DESC`
+  )) as Array<{ dow: number; studio: string; addr: string | null; is_public: number; n: number }>;
   const rotationByDay: string[] = [];
   for (const d of [3, 4, 5]) {
     const rows = rotationRows.filter((r) => Number(r.dow) === d);
     if (rows.length === 0) continue;
-    const list = rows.map((r) => `${String(r.studio).replace(/\s+/g, ' ')}${r.addr ? `(${wardOf(String(r.addr))})` : ''}=${Number(r.n)}回`).join('・');
+    const list = rows
+      .map((r) => {
+        const pub = r.is_public === 1;
+        const ward = r.addr ? wardOf(String(r.addr)) : '';
+        return `${String(r.studio).replace(/\s+/g, ' ')}${ward ? `(${ward})` : ''}${pub ? '' : '【臨時会場・記事に名前を書かない】'}=${Number(r.n)}回`;
+      })
+      .join('・');
     rotationByDay.push(`${WEEKDAY_JA[d]}曜: ${list}`);
   }
 

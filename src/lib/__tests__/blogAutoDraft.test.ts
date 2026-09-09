@@ -257,6 +257,6 @@ describe('週替わり会場の実績を事実ブロックに渡す', () => {
     } as never);
     expect(p).toContain('宮城野区文化センター リハーサル室(仙台市宮城野区)=13回');
     expect(p).toContain('否定形はこの一覧を見て');
-    expect(p).toContain('宮城野区文化センター(宮城野区榴岡');
+    expect(p).toContain('記事に会場名を書かず');
   });
 });
