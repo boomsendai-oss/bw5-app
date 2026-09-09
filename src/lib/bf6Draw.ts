@@ -75,3 +75,14 @@ export function slotsToAdd(input: {
   const need = slotCountFor(input.division, input.phase, input.entrantCount);
   return Math.max(0, need - input.existing);
 }
+
+/**
+ * トーナメント表で、その枠の1回戦の相手枠。
+ * 組み合わせは 1-2 / 3-4 / 5-6 … なので、奇数なら+1、偶数なら-1。
+ *
+ * 受付で番号だけ伝えても出場者には何のことか分からない(TARO指摘 2026-09-09)。
+ * 「7番」ではなく「7番、1回戦は8番の◯◯さんと」まで出すために使う。
+ */
+export function opponentSlot(slotNo: number): number {
+  return slotNo % 2 === 1 ? slotNo + 1 : slotNo - 1;
+}

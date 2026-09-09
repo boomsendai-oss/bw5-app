@@ -266,3 +266,21 @@ export async function syncBf6Slots(): Promise<
   }
   return out;
 }
+
+/**
+ * その枠を引いた人の名前。まだ誰も引いていなければ null。
+ * 受付の結果画面で「1回戦の相手」を出すために使う。
+ */
+export async function getBf6SlotHolder(
+  division: Bf6DrawDivision,
+  phase: Bf6DrawPhase,
+  slotNo: number
+): Promise<string | null> {
+  const row = await getOne(
+    `SELECT i.dancer_name FROM bf_draw d
+       JOIN bf_order_items i ON i.id = d.item_id
+      WHERE d.division = ? AND d.phase = ? AND d.slot_no = ? AND d.item_id IS NOT NULL`,
+    [division, phase, slotNo]
+  ).catch(() => null);
+  return row?.dancer_name ? String(row.dancer_name) : null;
+}

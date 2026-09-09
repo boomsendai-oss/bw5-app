@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { kioskDraw, kioskMarkPaid } from './actions';
 import { needsPhotoGuide, nextKioskStep, phaseForDivision, remainingDivisions } from '@/lib/bf6Kiosk';
+import BracketView from './BracketView';
 import type { KioskEntrant } from '@/lib/bf6Kiosk';
 import type { KioskRow } from '@/lib/bf6KioskDb';
 
@@ -20,6 +21,8 @@ const DIV = [
   { key: 'general', label: '一般部門', note: '年齢制限なし', color: 'from-red-500 to-red-700' },
 ];
 const DIV_LABEL: Record<string, string> = Object.fromEntries(DIV.map((d) => [d.key, d.label]));
+// リストバンドの表記。当日は「小中A」「一般B」と書かれたバンドを配る(TARO 2026-09-09)
+const BAND_LABEL: Record<string, string> = { kids: '小中', general: '一般', beginner: 'ビギナー' };
 
 export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
   const [screen, setScreen] = useState<Screen>('home');
@@ -28,13 +31,26 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [doneLocal, setDoneLocal] = useState<Set<string>>(new Set());
 
   // 抽選演出
   const [rolling, setRolling] = useState(false);
   const [rollFace, setRollFace] = useState('?');
-  const [result, setResult] = useState<{ slotNo: number; block?: 'A' | 'B' } | null>(null);
+  const [result, setResult] = useState<{
+    slotNo: number;
+    block?: 'A' | 'B';
+    opponent?: { slotNo: number; name: string | null };
+    holders?: Record<number, string>;
+    slotCount?: number;
+  } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pendingRef = useRef<{ slotNo: number; block?: 'A' | 'B' } | null>(null);
+  const pendingRef = useRef<{
+    slotNo: number;
+    block?: 'A' | 'B';
+    opponent?: { slotNo: number; name: string | null };
+    holders?: Record<number, string>;
+    slotCount?: number;
+  } | null>(null);
 
   const inDivision = useMemo(
     () => entrants.filter((e) => e.divisions.includes(division)),
@@ -44,6 +60,13 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
     const k = q.trim().toLowerCase();
     return k ? inDivision.filter((e) => e.dancerName.toLowerCase().includes(k)) : inDivision;
   }, [inDivision, q]);
+
+  // この端末で引き終わった人。
+  // ⚠️ 受付中はサーバ主導の再描画を入れられない(進行中の画面が壊れるため)ので、
+  //    一覧のdrawnDivisionsは開いたときのまま古くなる。ここで補う。
+  //    これが無いと、引いた直後の人がまた選べてしまい「二重に引ける」ように見える。
+  const isDrawn = (e: Entrant, div: string) =>
+    e.drawnDivisions.includes(div) || doneLocal.has(`${e.itemId}:${div}`);
 
   const reset = () => {
     setScreen('home');
@@ -59,7 +82,10 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
   const pickName = (e: Entrant) => {
     setSel(e);
     setError('');
-    const step = nextKioskStep(e, division);
+    const step = nextKioskStep(
+      { ...e, drawnDivisions: isDrawn(e, division) ? [...e.drawnDivisions, division] : e.drawnDivisions },
+      division
+    );
     if (step.kind === 'pay') setScreen('pay');
     else if (step.kind === 'done') {
       setError('この部門の受付はすでに完了しています。スタッフにお声がけください。');
@@ -84,16 +110,18 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
     setError('');
     pendingRef.current = null;
     setRolling(true);
+    // ⚠️ 1→2→3… と順番に回すと「目押しできる」と誤解される。
+    //    実際は押す前にサーバ側で枠が確定しているので、狙った番号は絶対に出ない。
+    //    狙えると思わせたまま違う番号を出すのは、イカサマを疑われる最悪の形。
+    //    そこで毎回ランダムな面を出し、ぼかして数字を読めなくする(TARO指摘 2026-09-09)。
     const faces =
       phaseForDivision(division) === 'block'
         ? ['A', 'B']
         : Array.from({ length: 16 }, (_, i) => String(i + 1));
-    let i = 0;
     stopSpin();
     timerRef.current = setInterval(() => {
-      i += 1;
-      setRollFace(faces[i % faces.length]);
-    }, 70);
+      setRollFace(faces[Math.floor(Math.random() * faces.length)]);
+    }, 55);
 
     try {
       const r = await kioskDraw(sel.itemId, division);
@@ -130,6 +158,7 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
       stopSpin();
       setRolling(false);
       setResult(r);
+      if (sel) setDoneLocal((prev) => new Set(prev).add(`${sel.itemId}:${division}`));
       setScreen('result');
     };
     settle();
@@ -208,7 +237,7 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
           {error && <Err>{error}</Err>}
           <div className="mt-4 space-y-2 pb-8">
             {list.map((e) => {
-              const already = e.drawnDivisions.includes(division);
+              const already = isDrawn(e, division);
               return (
                 <button
                   key={e.itemId}
@@ -218,7 +247,18 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
                   }`}
                 >
                   <span className="text-[2.6vh] font-black">{e.dancerName}</span>
-                  {already && <span className="text-[1.7vh] font-bold">受付済</span>}
+                  <span className="flex shrink-0 items-center gap-2">
+                    {e.amountDue > 0 ? (
+                      <span className="rounded-full bg-amber-500/20 px-3 py-1 text-[1.6vh] font-black text-amber-300">
+                        当日現金 ¥{e.amountDue.toLocaleString()}
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-[1.6vh] font-bold text-emerald-300">
+                        支払い済み
+                      </span>
+                    )}
+                    {already && <span className="text-[1.7vh] font-bold">受付済</span>}
+                  </span>
                 </button>
               );
             })}
@@ -259,9 +299,16 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
             {phaseForDivision(division) === 'block' ? '予選のブロックを決めます' : 'トーナメントの位置を決めます'}
           </p>
 
-          <div className="mt-8 flex h-[26vh] w-[26vh] items-center justify-center rounded-3xl border-4 border-orange-500 bg-neutral-900">
-            <span className="text-[12vh] font-black italic leading-none">{rolling ? rollFace : '?'}</span>
+          {/* 回している間は数字を読ませない。読めると「目押しできる」と思われるため */}
+          <div className="mt-8 flex h-[26vh] w-[26vh] items-center justify-center overflow-hidden rounded-3xl border-4 border-orange-500 bg-neutral-900">
+            <span
+              className="text-[12vh] font-black italic leading-none"
+              style={rolling ? { filter: 'blur(10px)', opacity: 0.85 } : undefined}
+            >
+              {rolling ? rollFace : '?'}
+            </span>
           </div>
+          {rolling && <p className="mt-3 text-[1.9vh] font-bold text-white/45">抽選中…</p>}
 
           {error && <Err>{error}</Err>}
 
@@ -291,12 +338,37 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
           <p className="mt-8 text-[2.4vh] font-bold text-orange-400">
             {result.block ? '予選ブロック' : 'トーナメント'}
           </p>
-          <p className="mt-2 text-[16vh] font-black italic leading-none text-orange-400">
+          <p
+            className={`mt-2 font-black italic leading-none text-orange-400 ${
+              result.holders ? 'text-[11vh]' : 'text-[16vh]'
+            }`}
+          >
             {result.block ?? result.slotNo}
           </p>
           <p className="mt-2 text-[2.4vh] font-bold">
             {result.block ? `${result.block}ブロック` : `${result.slotNo}番`}
           </p>
+
+          {/* 番号だけでは伝わらないので、表の中の自分の位置と勝ち上がりを見せる */}
+          {result.holders && result.slotCount ? (
+            <BracketView
+              mySlot={result.slotNo}
+              slotCount={result.slotCount}
+              holders={result.holders}
+            />
+          ) : null}
+
+          {result.block && (
+            <div className="mt-7 w-full max-w-md rounded-2xl border border-orange-500/40 bg-orange-500/5 p-5 text-center">
+              <p className="text-[2.6vh] font-black text-orange-300">
+                「{BAND_LABEL[division]}{result.block}」のリストバンド
+              </p>
+              <p className="mt-2 text-[2vh] leading-relaxed text-white/70">
+                受付で受け取って、腕につけておいてください。
+              </p>
+            </div>
+          )}
+
           <button
             onClick={() => setScreen('done')}
             className="mt-10 w-full max-w-md rounded-2xl bg-gradient-to-b from-orange-500 to-orange-700 py-6 text-[2.6vh] font-black"

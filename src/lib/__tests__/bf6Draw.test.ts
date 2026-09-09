@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   blockOfSlot,
   bracketPairs,
+  opponentSlot,
   drawUnitsForEntry,
   slotCountFor,
   nextMatchIndex,
@@ -73,5 +74,24 @@ describe('次の試合', () => {
 
   it('全部決まっていれば null', () => {
     expect(nextMatchIndex([m(1), m(2)])).toBeNull();
+  });
+});
+
+describe('1回戦の相手枠', () => {
+  it('奇数の次が相手(1の相手は2)', () => {
+    expect(opponentSlot(1)).toBe(2);
+    expect(opponentSlot(7)).toBe(8);
+  });
+
+  it('偶数の前が相手(8の相手は7)', () => {
+    expect(opponentSlot(2)).toBe(1);
+    expect(opponentSlot(8)).toBe(7);
+  });
+
+  it('bracketPairs の組み合わせと矛盾しない', () => {
+    for (const [a, b] of bracketPairs(16)) {
+      expect(opponentSlot(a)).toBe(b);
+      expect(opponentSlot(b)).toBe(a);
+    }
   });
 });
