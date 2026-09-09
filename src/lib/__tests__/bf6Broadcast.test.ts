@@ -33,3 +33,49 @@ describe('BF6 一斉メールのテンプレート', () => {
     expect(() => buildBf6Broadcast('does-not-exist')).toThrow();
   });
 });
+
+describe('オンライン配信の案内テンプレート', () => {
+  it('テンプレートが存在し、宛先は「有効な注文すべて」', () => {
+    const t = BF6_BROADCAST_TEMPLATES.find((x) => x.key === 'stream-invite-1');
+    expect(t).toBeTruthy();
+    // 買い手は出場者だけでなく観覧客のご家族でもあるため entrants では狭すぎる
+    expect(t!.audience).toBe('all');
+  });
+
+  it('件名で「遠方の家族向け」だと分かる', () => {
+    const { subject } = buildBf6Broadcast('stream-invite-1');
+    expect(subject).toContain('遠方');
+    expect(subject).toContain('オンライン配信');
+  });
+
+  it('価格・アーカイブ・購入URLが入る', () => {
+    const { body } = buildBf6Broadcast('stream-invite-1');
+    expect(body).toContain('¥1,500');
+    expect(body).toContain('1週間のアーカイブ');
+    expect(body).toContain('https://bw5-app.vercel.app/bf6/stream');
+  });
+
+  it('同時視聴1端末と事前カード決済を明記する(問い合わせ・クレームの元になる)', () => {
+    const { body } = buildBf6Broadcast('stream-invite-1');
+    expect(body).toContain('同時に視聴できるのは1端末まで');
+    expect(body).toContain('事前のカード決済のみ');
+  });
+
+  it('当日の集合時刻には触れない(2通目の役割を奪わない)', () => {
+    const { body } = buildBf6Broadcast('stream-invite-1');
+    expect(body).not.toContain('13:30');
+  });
+});
+
+describe('宛先の範囲', () => {
+  it('テンプレートごとに宛先の範囲が決まっている', () => {
+    for (const t of BF6_BROADCAST_TEMPLATES) {
+      expect(['entrants', 'all']).toContain(t.audience);
+      expect(t.audienceNote.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('集合時刻の案内はエントリー者だけに送る(観覧客に送ると混乱する)', () => {
+    expect(buildBf6Broadcast('call-time-1').audience).toBe('entrants');
+  });
+});

@@ -6,7 +6,13 @@ import { SendButton } from './SendButton';
 export const dynamic = 'force-dynamic';
 
 export default async function StaffBf6BroadcastPage() {
-  const [recipients, history] = await Promise.all([getBf6BroadcastRecipients(), listBf6Broadcasts()]);
+  // 宛先の範囲はテンプレートごとに違う(当日の段取り=エントリー者だけ / 配信の案内=全員)
+  const [entrants, all, history] = await Promise.all([
+    getBf6BroadcastRecipients('entrants'),
+    getBf6BroadcastRecipients('all'),
+    listBf6Broadcasts(),
+  ]);
+  const countOf = (a: 'entrants' | 'all') => (a === 'all' ? all.length : entrants.length);
   const sentKeys = new Set(history.map((h) => h.key));
 
   return (
@@ -19,10 +25,13 @@ export default async function StaffBf6BroadcastPage() {
       />
       <div className="mx-auto max-w-3xl space-y-6 p-4">
         <section className="rounded-2xl border border-sand-200 bg-white p-4">
-          <p className="text-sm font-bold text-navy-900">宛先 {recipients.length} 名</p>
-          <p className="mt-1 text-xs text-neutral-500">
-            バトルエントリーを含む有効な注文(決済済み・当日現金)のメールアドレス。重複は除いています。
-            観覧チケットのみ・配信チケットのみの購入者には送りません。
+          <p className="text-sm font-bold text-navy-900">宛先の候補</p>
+          <ul className="mt-1 space-y-1 text-xs text-neutral-500">
+            <li>エントリー者のみ … {entrants.length} 名</li>
+            <li>有効な注文すべて … {all.length} 名</li>
+          </ul>
+          <p className="mt-2 text-xs text-neutral-500">
+            重複は除いています。どちらを使うかはメールごとに決まっていて、下の各項目に書いてあります。
           </p>
         </section>
 
@@ -30,11 +39,14 @@ export default async function StaffBf6BroadcastPage() {
           <section key={t.key} className="rounded-2xl border border-sand-200 bg-white p-4">
             <p className="text-xs font-bold tracking-widest text-brand-600">{t.label}</p>
             <p className="mt-1 text-sm font-black text-navy-900">{t.subject}</p>
+            <p className="mt-2 rounded-lg bg-sand-50 px-3 py-2 text-xs leading-relaxed text-neutral-600">
+              宛先 {countOf(t.audience)} 名 — {t.audienceNote}
+            </p>
             <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-sand-50 p-3 text-xs leading-relaxed text-neutral-700">
               {t.body}
             </pre>
             <div className="mt-4">
-              <SendButton templateKey={t.key} count={recipients.length} alreadySent={sentKeys.has(t.key)} />
+              <SendButton templateKey={t.key} count={countOf(t.audience)} alreadySent={sentKeys.has(t.key)} />
             </div>
           </section>
         ))}

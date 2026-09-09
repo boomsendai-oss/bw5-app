@@ -10,11 +10,23 @@ import { getAll, execute } from './db';
 import { sendEmail } from './email';
 import { nowUtcIso } from './dateJst';
 
+/**
+ * 宛先の範囲。テンプレートごとに変える。
+ *  entrants … バトルエントリーを含む有効注文。当日の段取り(集合時刻など)はこちら。
+ *              観覧・配信のみの購入者に送ると混乱するため。
+ *  all      … 有効注文すべて(エントリー+観覧チケット)。会場に来る人みんなに関係する
+ *              案内はこちら。配信チケットを既に持っている人は自動で除く。
+ */
+export type Bf6BroadcastAudience = 'entrants' | 'all';
+
 export type Bf6BroadcastTemplate = {
   key: string;
   label: string;
   subject: string;
   body: string;
+  audience: Bf6BroadcastAudience;
+  /** 画面に出す宛先の説明 */
+  audienceNote: string;
 };
 
 const CALL_TIME_BODY = `BOOMER'S FIGHT!!! vol.6 にエントリーいただき、ありがとうございます。
@@ -67,24 +79,96 @@ const CALL_TIME_BODY = `BOOMER'S FIGHT!!! vol.6 にエントリーいただき�
 BOOM DANCE SCHOOL
 BOOMER'S FIGHT!!! vol.6`;
 
+// 配信チケットの案内。狙いは「遠方のご家族に勧めてもらう」こと。
+// 出場者・観覧客の親戚が主な買い手になるため、宛先は entrants ではなく all。
+const STREAM_INVITE_BODY = `BOOMER'S FIGHT!!! vol.6 にお申し込みいただき、ありがとうございます。
+
+当日の様子を、会場に来られない方向けにオンラインで生配信します。
+遠方のご家族・ご親戚にご覧いただけますので、よろしければお知らせください。
+
+
+▼ オンライン配信 視聴チケット
+
+  1キー ¥1,500(税込)
+  当日のライブ配信 + 終了後1週間のアーカイブ
+  スマホ・PC・タブレットからご覧いただけます
+
+  https://bw5-app.vercel.app/bf6/stream
+
+
+▼ 離れて住むご家族へのプレゼントにも
+
+  ご購入いただくと、視聴用のキーがメールで届きます。
+  そのキーをお送りいただくだけでご覧いただけます。
+
+  ※ 1キーにつき同時に視聴できるのは1端末までです。
+    2か所で同時にご覧になる場合は2キーご購入ください。
+  ※ お支払いは事前のカード決済のみです。
+
+
+当日のタイムテーブルなど詳しいご案内は、あらためてお送りします。
+
+BOOM DANCE SCHOOL
+BOOMER'S FIGHT!!! vol.6`;
+
 export const BF6_BROADCAST_TEMPLATES: Bf6BroadcastTemplate[] = [
   {
     key: 'call-time-1',
     label: '集合時刻の案内(1通目)',
     subject: "【BOOMER'S FIGHT!!! vol.6】当日は13:30集合です(バトルエントリー者の方へ)",
     body: CALL_TIME_BODY,
+    audience: 'entrants',
+    audienceNote:
+      'バトルエントリーを含む有効な注文(決済済み・当日現金)。観覧チケットのみ・配信チケットのみの購入者には送りません。',
+  },
+  {
+    key: 'stream-invite-1',
+    label: 'オンライン配信のご案内',
+    subject: "【BOOMER'S FIGHT!!! vol.6】遠方のご家族はオンライン配信でご覧いただけます",
+    body: STREAM_INVITE_BODY,
+    audience: 'all',
+    audienceNote:
+      'エントリー・観覧チケットを問わず有効な注文すべて。配信チケットを既にお持ちの方は自動で除きます。',
   },
 ];
 
 /** テンプレートを取り出す。未知のキーは投げる(誤送信の防止)。 */
-export function buildBf6Broadcast(key: string): { subject: string; body: string } {
+export function buildBf6Broadcast(key: string): {
+  subject: string;
+  body: string;
+  audience: Bf6BroadcastAudience;
+} {
   const t = BF6_BROADCAST_TEMPLATES.find((x) => x.key === key);
   if (!t) throw new Error(`未知の一斉メールテンプレート: ${key}`);
-  return { subject: t.subject, body: t.body };
+  return { subject: t.subject, body: t.body, audience: t.audience };
 }
 
-/** 宛先 = バトルエントリーを含む有効注文のメールアドレス(重複除去)。 */
-export async function getBf6BroadcastRecipients(): Promise<string[]> {
+/**
+ * 宛先のメールアドレス(重複除去)。
+ *
+ * all のときは、配信チケットを既に買っている人を除く。
+ * 買った本人に「買いませんか」と送るのは失礼だし、問い合わせの原因になる。
+ */
+export async function getBf6BroadcastRecipients(
+  audience: Bf6BroadcastAudience = 'entrants'
+): Promise<string[]> {
+  if (audience === 'all') {
+    const rows = await getAll(
+      `SELECT DISTINCT o.email AS email
+         FROM bf_orders o
+        WHERE o.payment_status IN ('paid','cash_due')
+          AND o.email IS NOT NULL AND o.email != ''
+          AND o.email NOT IN (
+            SELECT o2.email FROM bf_orders o2
+              JOIN bf_order_items i2 ON i2.order_id = o2.id
+             WHERE i2.item_type = 'stream'
+               AND o2.payment_status IN ('paid','cash_due')
+          )
+        ORDER BY o.email`
+    );
+    return rows.map((r) => String(r.email));
+  }
+
   const rows = await getAll(
     `SELECT DISTINCT o.email AS email
        FROM bf_orders o
@@ -108,7 +192,7 @@ export type Bf6BroadcastResult = {
  * 1件ずつ送り、個別の失敗で全体を止めない。
  */
 export async function sendBf6Broadcast(key: string): Promise<Bf6BroadcastResult> {
-  const { subject, body } = buildBf6Broadcast(key);
+  const { subject, body, audience } = buildBf6Broadcast(key);
   const now = nowUtcIso();
 
   // key の UNIQUE で二重送信を弾く。挿入できなければ既に送信済み。
@@ -119,7 +203,7 @@ export async function sendBf6Broadcast(key: string): Promise<Bf6BroadcastResult>
   if ((ins.rowsAffected ?? 0) === 0) return { sent: 0, failed: 0, alreadySent: true };
   const broadcastId = Number(ins.lastInsertRowid);
 
-  const recipients = await getBf6BroadcastRecipients();
+  const recipients = await getBf6BroadcastRecipients(audience);
   let sent = 0;
   let failed = 0;
   for (const to of recipients) {
