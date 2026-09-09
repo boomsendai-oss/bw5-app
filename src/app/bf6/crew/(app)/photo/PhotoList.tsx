@@ -17,7 +17,7 @@ export type PhotoRow = {
   slots: { division: string; slotNo: number }[];
 };
 
-export default function PhotoList({ rows }: { rows: PhotoRow[] }) {
+export default function PhotoList({ rows, division }: { rows: PhotoRow[]; division: string }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [onlyTodo, setOnlyTodo] = useState(true);
@@ -35,7 +35,7 @@ export default function PhotoList({ rows }: { rows: PhotoRow[] }) {
     <div className="space-y-3">
       <div className="rounded-xl border border-sand-200 bg-white p-3">
         <p className="text-sm font-bold text-navy-900">
-          撮影済み {done} / {rows.length} 人
+          {DIV_LABEL[division] ?? division}: 撮影済み {done} / {rows.length} 人
         </p>
         <p className="mt-1 text-xs leading-relaxed text-neutral-500">
           無地の壁の前で、頭の上と左右に少し余白をあけて撮ってください。背景はその場で自動で抜けます。
@@ -68,8 +68,8 @@ export default function PhotoList({ rows }: { rows: PhotoRow[] }) {
               <p className="truncate text-base font-black text-navy-900">{r.dancerName}</p>
               <p className="mt-0.5 text-xs text-neutral-500">
                 {r.divisions.map((d) => DIV_LABEL[d] ?? d).join(' / ')}
-                {r.slots.length > 0 &&
-                  ' · ' + r.slots.map((s) => `${DIV_LABEL[s.division] ?? s.division}${s.slotNo}番`).join(' ')}
+                {r.slots.some((s) => s.division === division) &&
+                  ` · ${r.slots.find((s) => s.division === division)!.slotNo}番`}
               </p>
             </div>
             <PhotoCapture
