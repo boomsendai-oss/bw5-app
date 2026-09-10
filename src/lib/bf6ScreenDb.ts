@@ -7,7 +7,7 @@
 //   操作側 … /staff/bf6/control
 import { getAll, getOne, execute } from './db';
 import { nowUtcIso } from './dateJst';
-import { roundsFor, seedRound1, advanceRound, isRoundComplete, nextUndecided, type Match, type Round } from './bf6Bracket';
+import { roundsFor, seedRound1, advanceRound, applyByes, isRoundComplete, nextUndecided, type Match, type Round } from './bf6Bracket';
 import type { Bf6DrawDivision } from './bf6Draw';
 
 export type ScreenMode = 'logo' | 'bracket' | 'vs';
@@ -77,8 +77,16 @@ export async function seedBf6Bracket(division: Bf6DrawDivision): Promise<{ creat
   );
   const slotCount = Number(row?.n ?? 0);
   if (slotCount === 0) return { created: 0 };
-  const r1 = seedRound1(division, slotCount);
+  // 誰も引いていない枠は不戦勝にする(人のいない枠を相手として映さない・TARO実機 2026-09-10)
+  const drawn = await getAll(
+    "SELECT slot_no FROM bf_draw WHERE division = ? AND phase = 'bracket' AND item_id IS NOT NULL",
+    [division]
+  ).catch(() => []);
+  const holders = new Set(drawn.map((r) => Number(r.slot_no)));
+  const r1 = applyByes(seedRound1(division, slotCount), holders);
   await upsertMatches(division, r1);
+  // 不戦勝だけで埋まったラウンドは、操作を待たずに次を作る(VSを出さない・TARO 2026-09-10)
+  await advanceWhileComplete(division, roundsFor(division)[0]);
   return { created: r1.length };
 }
 
@@ -96,11 +104,30 @@ export async function setBf6Winner(
     'UPDATE bf_match SET winner_slot = ?, updated_at = ? WHERE division = ? AND round = ? AND match_no = ?',
     [winnerSlot, nowUtcIso(), division, round, matchNo]
   );
-  const all = await listBf6Matches(division);
-  const cur = all.filter((m) => m.round === round);
-  if (isRoundComplete(cur)) {
+  await advanceWhileComplete(division, round);
+}
+
+/**
+ * そのラウンドが完了していれば次のラウンドを作り、それも完了していればさらに次へ。
+ * 不戦勝が連鎖する(人が少ない)ときに、操作なしで自動的に進めるため。
+ */
+async function advanceWhileComplete(division: Bf6DrawDivision, from: Round): Promise<void> {
+  const rounds = roundsFor(division);
+  let round: Round | undefined = from;
+  while (round) {
+    const all = await listBf6Matches(division);
+    const cur = all.filter((m) => m.round === round);
+    if (cur.length === 0 || !isRoundComplete(cur)) return;
+    const next: Round | undefined = rounds[rounds.indexOf(round) + 1];
+    if (!next) return;
+    if (all.some((m) => m.round === next)) {
+      round = next; // 既に作ってある(二度押し・再入)なら、その先を見る
+      continue;
+    }
     const nextMatches = advanceRound(division, round, cur);
-    if (nextMatches.length > 0) await upsertMatches(division, nextMatches);
+    if (nextMatches.length === 0) return;
+    await upsertMatches(division, nextMatches);
+    round = next;
   }
 }
 

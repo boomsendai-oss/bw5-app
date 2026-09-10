@@ -1,4 +1,5 @@
 'use client';
+import { isByeMatch, isEmptyMatch } from '@/lib/bf6Bracket';
 
 // 操作卓。手元には「いまLEDに映っているもの」のプレビューと操作UIの両方が見える。
 // LED側には出力用の映像だけが行く(別機器で /bf6/screen を開いているため)。
@@ -36,6 +37,15 @@ export function ControlClient({
   const name = (slot: number | null) => (slot ? slots[String(slot)]?.dancerName || `${slot}番` : '—');
 
   const run = (fn: () => Promise<unknown>) => start(async () => { await fn(); router.refresh(); });
+
+  // 勝者を押す対象は「いまLEDに映っている試合」。任意の試合を出しているときに
+  // 次の試合の勝者ボタンが出ると押し間違える(TARO実機 2026-09-10)。
+  const shown =
+    s.mode === 'vs' && s.round && s.matchNo
+      ? matches.find((m) => m.round === s.round && m.matchNo === s.matchNo) ?? null
+      : null;
+  const target = shown ?? nextMatch;
+  const targetIsShown = shown !== null;
 
   return (
     <div className="space-y-5">
@@ -101,29 +111,36 @@ export function ControlClient({
 
       {/* 通常運転: 次の試合 → VS表示 → 勝者タップ */}
       <div className="rounded-2xl border-2 border-brand-500 bg-white p-4">
-        {nextMatch ? (
+        {target ? (
           <>
             <p className="text-xs font-bold tracking-widest text-brand-600">
-              次の試合 — {ROUND_LABEL[nextMatch.round] ?? nextMatch.round} 第{nextMatch.matchNo}試合
+              {targetIsShown ? 'いまLEDに出ている試合' : '次の試合'} — {ROUND_LABEL[target.round] ?? target.round} 第{target.matchNo}試合
             </p>
             <p className="mt-2 text-center text-lg font-black text-navy-900">
-              {name(nextMatch.slotA)} <span className="mx-2 text-brand-600">VS</span> {name(nextMatch.slotB)}
+              {name(target.slotA)} <span className="mx-2 text-brand-600">VS</span> {name(target.slotB)}
             </p>
-            <button
-              disabled={pending}
-              onClick={() => run(() => controlShowVs(nextMatch.round, nextMatch.matchNo))}
-              className="mt-3 w-full rounded-xl bg-brand-600 py-4 font-black text-white disabled:opacity-50"
-            >
-              この試合のVS画面を出す
-            </button>
+            {!targetIsShown && (
+              <button
+                disabled={pending}
+                onClick={() => run(() => controlShowVs(target.round, target.matchNo))}
+                className="mt-3 w-full rounded-xl bg-brand-600 py-4 font-black text-white disabled:opacity-50"
+              >
+                この試合のVS画面を出す
+              </button>
+            )}
+            {target.winnerSlot && (
+              <p className="mt-3 rounded-lg bg-sand-100 px-3 py-2 text-center text-xs font-bold text-neutral-600">
+                この試合は {name(target.winnerSlot)} の勝ちで確定済みです
+              </p>
+            )}
             <p className="mt-4 text-xs font-bold text-neutral-500">勝者をタップ</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              {[nextMatch.slotA, nextMatch.slotB].map((slot) =>
+              {[target.slotA, target.slotB].map((slot) =>
                 slot ? (
                   <button
                     key={slot}
                     disabled={pending}
-                    onClick={() => run(() => controlSetWinner(s.division, nextMatch.round as Round, nextMatch.matchNo, slot))}
+                    onClick={() => run(() => controlSetWinner(s.division, target.round as Round, target.matchNo, slot))}
                     className="rounded-xl bg-navy-900 py-5 text-base font-black text-white disabled:opacity-50"
                   >
                     {name(slot)}
@@ -181,8 +198,13 @@ export function ControlClient({
           <summary className="cursor-pointer text-sm font-bold text-navy-900">
             任意の試合を出す(順番を飛ばす・戻す)
           </summary>
+          {matches.some((m) => isByeMatch(m) || isEmptyMatch(m)) && (
+            <p className="mt-2 text-[11px] text-neutral-500">
+              不戦勝(相手がいない試合)はVSを出さず自動で上がるので、ここには出しません。
+            </p>
+          )}
           <div className="mt-3 space-y-2">
-            {matches.map((m) => (
+            {matches.filter((m) => !isByeMatch(m) && !isEmptyMatch(m)).map((m) => (
               <div key={`${m.round}-${m.matchNo}`} className="flex items-center gap-2">
                 <span className="w-20 shrink-0 text-[11px] font-bold text-neutral-500">
                   {ROUND_LABEL[m.round] ?? m.round}#{m.matchNo}

@@ -93,6 +93,11 @@ export function ScreenClient() {
       }
     };
 
+    // ロゴ画面の画像を先に読んでおく(ロゴに戻すときだけ重い・TARO実機 2026-09-10)
+    for (const src of ['/bf6/flyer-hero-v2.jpg', '/bf6/led-title.png', '/bf6/vs-bg-last.jpg']) {
+      const im = new Image();
+      im.src = src;
+    }
     tick();
     const id = setInterval(tick, 1000);
     return () => {
@@ -145,7 +150,8 @@ export function ScreenClient() {
             </div>
 
             <div className="relative flex flex-1 items-center justify-center px-[1.5vw] pb-[2vh]">
-              <div className="bf6-in-left flex-1 text-center">
+              {/* 左右は内容量に関係なく必ず半分ずつ(片側が空でもVSが中央からずれない・TARO実機 2026-09-10) */}
+              <div className="bf6-in-left w-1/2 min-w-0 shrink-0 grow-0 basis-1/2 overflow-hidden text-center">
                 <Side slot={a} corner="red" division={state.division} />
               </div>
 
@@ -191,7 +197,7 @@ export function ScreenClient() {
                 VS
               </p>
 
-              <div className="bf6-in-right flex-1 text-center">
+              <div className="bf6-in-right w-1/2 min-w-0 shrink-0 grow-0 basis-1/2 overflow-hidden text-center">
                 <Side slot={b} corner="blue" division={state.division} />
               </div>
             </div>
@@ -808,12 +814,16 @@ function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue';
           />
         )}
       </div>
-      <p
-        className="bf6-face bf6-chrome bf6-sheen relative -mt-[1.5vh] break-words text-[9vw] font-black italic leading-[0.92]"
-        data-text={slot?.dancerName ?? '—'}
-      >
-        {slot?.dancerName ?? '—'}
-      </p>
+      {slot?.dancerName ? (
+        <p
+          className="bf6-face bf6-chrome bf6-sheen relative -mt-[1.5vh] break-words text-[9vw] font-black italic leading-[0.92]"
+          data-text={slot.dancerName}
+        >
+          {slot.dancerName}
+        </p>
+      ) : (
+        <p className="relative -mt-[1.5vh] text-[4vw] font-black tracking-[0.3em] text-white/35">不戦勝</p>
+      )}
       {slot?.rep && <p className="mt-[0.2vh] text-[1.9vw] font-bold text-white/60">{slot.rep}</p>}
     </div>
   );

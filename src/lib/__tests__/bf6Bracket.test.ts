@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
-  roundsFor, roundLabel, seedRound1, advanceRound, nextUndecided, isRoundComplete,
+  roundsFor,
+  roundLabel,
+  seedRound1,
+  advanceRound,
+  nextUndecided,
+  isRoundComplete,
   type Match,
+  applyByes,
+  isByeMatch,
+  isEmptyMatch,
 } from '../bf6Bracket';
 
 const m = (no: number, a: number | null, b: number | null, w: number | null = null): Match =>
@@ -70,5 +78,54 @@ describe('ラウンドの進行', () => {
   });
   it('決勝の次は無い', () => {
     expect(advanceRound('kids', 'f', [{ round: 'f', matchNo: 1, slotA: 1, slotB: 2, winnerSlot: 1 }])).toEqual([]);
+  });
+});
+
+describe('人がいない枠は不戦勝', () => {
+  it('引いていない枠は null になり、引いた枠は残る', () => {
+    const r1 = seedRound1('beginner', 16);
+    const out = applyByes(r1, new Set([1, 6, 7, 15]));
+    expect(out[0]).toMatchObject({ slotA: 1, slotB: null }); // 1 vs (2は空)
+    expect(out[2]).toMatchObject({ slotA: null, slotB: 6 }); // (5は空) vs 6
+    expect(out[3]).toMatchObject({ slotA: 7, slotB: null });
+    expect(out[7]).toMatchObject({ slotA: 15, slotB: null });
+  });
+
+  it('不戦勝の試合は自動で決まり、次の試合探しで飛ばされる', () => {
+    const out = applyByes(seedRound1('beginner', 16), new Set([1, 6, 7, 15]));
+    expect(nextUndecided(out)).toBeNull(); // 全部片側だけ=全部不戦勝
+  });
+
+  it('両方いる試合だけが「次の試合」になる', () => {
+    const out = applyByes(seedRound1('beginner', 16), new Set([1, 2, 6, 7]));
+    expect(nextUndecided(out)).toMatchObject({ matchNo: 1, slotA: 1, slotB: 2 });
+  });
+
+  it('両方いない試合は両方 null(その山は空のまま上がる)', () => {
+    const out = applyByes(seedRound1('beginner', 16), new Set([1]));
+    expect(out[1]).toMatchObject({ slotA: null, slotB: null });
+  });
+});
+
+describe('不戦勝と空の試合の扱い(VSを出さず自動で上げる)', () => {
+  it('片方だけの試合は不戦勝、両方いないのは空', () => {
+    const [bye, empty, real] = applyByes(seedRound1('beginner', 6), new Set([1, 5, 6]));
+    expect(isByeMatch(bye)).toBe(true); // 1 vs (2は空)
+    expect(isEmptyMatch(empty)).toBe(true); // 3,4 とも空
+    expect(isByeMatch(real)).toBe(false); // 5 vs 6
+    expect(isEmptyMatch(real)).toBe(false);
+  });
+
+  it('空の試合はラウンド完了の判定に含めない', () => {
+    const r1 = applyByes(seedRound1('beginner', 4), new Set([1]));
+    // 1 vs 空(不戦勝) / 空 vs 空 → 誰も操作しなくても完了
+    expect(isRoundComplete(r1)).toBe(true);
+  });
+
+  it('不戦勝の勝者はそのまま次のラウンドへ上がり、空の山は空のまま', () => {
+    const r1 = applyByes(seedRound1('beginner', 4), new Set([1]));
+    const next = advanceRound('beginner', 'r16', r1);
+    expect(next).toHaveLength(1);
+    expect(next[0]).toMatchObject({ slotA: 1, slotB: null }); // また不戦勝
   });
 });

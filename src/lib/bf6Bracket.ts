@@ -41,13 +41,24 @@ function effectiveWinner(m: Match): number | null {
   return m.winnerSlot;
 }
 
-/** 操作が必要な次の試合。不戦勝は自動確定なので飛ばす。 */
-export function nextUndecided(matches: Match[]): Match | null {
-  return matches.find((m) => effectiveWinner(m) === null) ?? null;
+/** 両方とも空の試合(その山に誰もいない)。表示も操作も要らない。 */
+export function isEmptyMatch(m: Match): boolean {
+  return m.slotA === null && m.slotB === null;
 }
 
+/** 片方しかいない試合=不戦勝。VSは出さず自動で勝ち上がる(TARO 2026-09-10)。 */
+export function isByeMatch(m: Match): boolean {
+  return !isEmptyMatch(m) && (m.slotA === null || m.slotB === null);
+}
+
+/** 操作が必要な次の試合。不戦勝と空の試合は飛ばす。 */
+export function nextUndecided(matches: Match[]): Match | null {
+  return matches.find((m) => !isEmptyMatch(m) && effectiveWinner(m) === null) ?? null;
+}
+
+/** 空の試合は「済んだ」扱い。不戦勝は自動確定。 */
 export function isRoundComplete(matches: Match[]): boolean {
-  return matches.every((m) => effectiveWinner(m) !== null);
+  return matches.every((m) => isEmptyMatch(m) || effectiveWinner(m) !== null);
 }
 
 /** 勝者を次のラウンドへ繰り上げる。決勝の次は無い。 */
@@ -64,4 +75,19 @@ export function advanceRound(division: Bf6DrawDivision, current: Round, matches:
     out.push({ round: next, matchNo: no, slotA: winners[i] ?? null, slotB: winners[i + 1] ?? null, winnerSlot: null });
   }
   return out;
+}
+
+/**
+ * 誰も引いていない枠を空(null=不戦勝)にする。
+ *
+ * ビギナーは枠が16固定なので、欠席や未受付があると「番号はあるが人がいない枠」が残る。
+ * それを対戦相手として出すと、LEDに「JIN vs 2番」のような試合が映り、勝者も押せない
+ * (TARO実機 2026-09-10)。人がいない枠は最初から不戦勝として扱う。
+ */
+export function applyByes(matches: Match[], holders: Set<number>): Match[] {
+  return matches.map((m) => ({
+    ...m,
+    slotA: m.slotA !== null && holders.has(m.slotA) ? m.slotA : null,
+    slotB: m.slotB !== null && holders.has(m.slotB) ? m.slotB : null,
+  }));
 }

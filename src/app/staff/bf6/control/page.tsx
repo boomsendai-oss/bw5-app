@@ -10,8 +10,11 @@ export const dynamic = 'force-dynamic';
 
 export default async function StaffBf6ControlPage() {
   const state = await getBf6ScreenState();
-  const matches = await listBf6Matches(state.division);
-  const names = await listBf6SlotNames(state.division);
+  // 直列に待つとDB往復ぶん遅い(最初のタップが重い・TARO実機 2026-09-10)
+  const [matches, names] = await Promise.all([
+    listBf6Matches(state.division),
+    listBf6SlotNames(state.division),
+  ]);
   const next = findNextMatch(state.division, matches);
 
   return (
