@@ -44,11 +44,14 @@ export default async function CrewHomePage() {
           <Link
             key={t.href}
             href={t.href}
-            className="block rounded-2xl border border-sand-200 bg-white p-4 active:bg-sand-100"
+            className="block rounded-2xl border border-sand-200 bg-white p-4 shadow-sm transition active:scale-[0.98] active:bg-sand-100 active:shadow-none"
           >
-            <div className="flex items-baseline justify-between gap-3">
+            <div className="flex items-center justify-between gap-3">
               <p className="text-lg font-black text-navy-900">{t.title}</p>
-              <p className="shrink-0 text-xs font-bold text-brand-600">{t.when}</p>
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="text-xs font-bold text-brand-600">{t.when}</span>
+                <span className="text-xl font-black text-neutral-300">›</span>
+              </span>
             </div>
             <p className="mt-1 text-sm leading-relaxed text-neutral-500">{t.desc}</p>
           </Link>

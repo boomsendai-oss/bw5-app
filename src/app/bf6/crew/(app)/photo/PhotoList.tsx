@@ -49,14 +49,27 @@ export default function PhotoList({ rows, division }: { rows: PhotoRow[]; divisi
         className="w-full rounded-xl border border-sand-300 bg-white px-4 py-3 text-base outline-none focus:border-brand-500"
       />
 
-      <button
-        onClick={() => setOnlyTodo((v) => !v)}
-        className={`w-full rounded-xl py-2.5 text-sm font-black ${
-          onlyTodo ? 'bg-brand-600 text-white' : 'bg-sand-100 text-neutral-600'
-        }`}
-      >
-        {onlyTodo ? 'まだ撮っていない人だけ表示中' : '全員表示中'}
-      </button>
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-bold text-neutral-500">表示</span>
+        <div className="flex flex-1 overflow-hidden rounded-xl border border-sand-300 bg-white">
+          {(
+            [
+              { key: true, label: `まだの人 (${rows.length - done})` },
+              { key: false, label: `全員 (${rows.length})` },
+            ] as const
+          ).map((o) => (
+            <button
+              key={String(o.key)}
+              onClick={() => setOnlyTodo(o.key)}
+              className={`flex-1 py-2.5 text-sm font-black transition active:scale-95 ${
+                onlyTodo === o.key ? 'bg-brand-600 text-white' : 'text-neutral-600'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <ul className="space-y-2">
         {list.map((r) => (

@@ -6,7 +6,7 @@
 // 機器間の通信を障害点にしないため)。モデルは自前で配信しているので
 // 外部CDNにも依存しない。
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PHOTO_TARGET_HEIGHT, fitBustFrame, refineMask } from '@/lib/bf6Photo';
+import { PHOTO_TARGET_HEIGHT, fillEdgeColors, fitBustFrame, refineMask } from '@/lib/bf6Photo';
 
 type Phase = 'idle' | 'loading' | 'live' | 'working' | 'preview' | 'saving';
 
@@ -77,7 +77,10 @@ export default function PhotoCapture({
       });
     }
     const seg = new w.SelfieSegmentation({ locateFile: (f: string) => `/bf6/seg/${f}` });
-    seg.setOptions({ modelSelection: 1, selfieMode: false });
+    // modelSelection 0 = 一般モデル(256x256)、1 = 横長モデル(144x256・速い)。
+    // 実機で肩や髪が抜けきらなかったため(2026-09-10)、解像度の高い 0 を使う。
+    // 5秒→少し延びるが、当日は1人ずつなので許容。
+    seg.setOptions({ modelSelection: 0, selfieMode: false });
     await seg.initialize();
     segRef.current = seg;
     return seg;
@@ -134,6 +137,8 @@ export default function PhotoCapture({
       const octx = out.getContext('2d')!;
       octx.drawImage(shot, 0, 0);
       const od = octx.getImageData(0, 0, w, h);
+      // 境目の半透明画素に壁の色が混ざって灰色のフチになるので、近くの人物の色で塗り替える
+      fillEdgeColors(od.data, alpha, w, h);
       for (let i = 0; i < alpha.length; i += 1) od.data[i * 4 + 3] = alpha[i];
       octx.putImageData(od, 0, 0);
 

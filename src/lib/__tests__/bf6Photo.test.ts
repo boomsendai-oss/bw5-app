@@ -5,6 +5,7 @@ import {
   validatePhotoUpload,
   fitBustFrame,
   refineMask,
+  fillEdgeColors,
 } from '../bf6Photo';
 
 describe('写真アップロードの検証', () => {
@@ -141,5 +142,41 @@ describe('切り抜きマスクの整形', () => {
 describe('書き出しの基準', () => {
   it('LEDで粗く見えない高さを持つ', () => {
     expect(PHOTO_TARGET_HEIGHT).toBeGreaterThanOrEqual(800);
+  });
+});
+
+describe('境目の色の塗り替え(灰色のフチ対策)', () => {
+  // 3x1: [不透明の赤][半透明・壁の色が混ざった灰色][透明の白い壁]
+  const make = () => {
+    const rgba = new Uint8ClampedArray([255, 0, 0, 255, 180, 180, 180, 120, 255, 255, 255, 0]);
+    const alpha = new Uint8ClampedArray([255, 120, 0]);
+    return { rgba, alpha };
+  };
+
+  it('半透明の画素は、いちばん近い不透明画素の色になる', () => {
+    const { rgba, alpha } = make();
+    fillEdgeColors(rgba, alpha, 3, 1);
+    expect([rgba[4], rgba[5], rgba[6]]).toEqual([255, 0, 0]);
+  });
+
+  it('アルファ自体は変えない(形は refineMask の責任)', () => {
+    const { rgba, alpha } = make();
+    fillEdgeColors(rgba, alpha, 3, 1);
+    expect(rgba[7]).toBe(120);
+    expect([...alpha]).toEqual([255, 120, 0]);
+  });
+
+  it('不透明・透明の画素は触らない', () => {
+    const { rgba, alpha } = make();
+    fillEdgeColors(rgba, alpha, 3, 1);
+    expect([rgba[0], rgba[1], rgba[2]]).toEqual([255, 0, 0]);
+    expect([rgba[8], rgba[9], rgba[10]]).toEqual([255, 255, 255]);
+  });
+
+  it('半径内に不透明画素が無ければそのまま', () => {
+    const rgba = new Uint8ClampedArray([180, 180, 180, 120]);
+    const alpha = new Uint8ClampedArray([120]);
+    fillEdgeColors(rgba, alpha, 1, 1);
+    expect([rgba[0], rgba[1], rgba[2]]).toEqual([180, 180, 180]);
   });
 });

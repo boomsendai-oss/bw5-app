@@ -46,7 +46,7 @@ export default async function CrewReceptionPage({
         <div className="flex gap-2">
           <Link
             href="/bf6/crew/reception?phase=block"
-            className={`flex-1 rounded-xl py-3 text-center text-sm font-black ${
+            className={`flex-1 rounded-xl py-3 text-center text-sm font-black transition active:scale-95 ${
               phase === 'block' ? 'bg-brand-600 text-white' : 'bg-sand-100 text-neutral-600'
             }`}
           >
@@ -54,7 +54,7 @@ export default async function CrewReceptionPage({
           </Link>
           <Link
             href="/bf6/crew/reception?phase=bracket"
-            className={`flex-1 rounded-xl py-3 text-center text-sm font-black ${
+            className={`flex-1 rounded-xl py-3 text-center text-sm font-black transition active:scale-95 ${
               phase === 'bracket' ? 'bg-brand-600 text-white' : 'bg-sand-100 text-neutral-600'
             }`}
           >

@@ -47,7 +47,7 @@ export default async function CrewQualifiersPage({
             <Link
               key={t.key}
               href={`/bf6/crew/qualifiers?division=${t.key}`}
-              className={`flex-1 rounded-xl py-3 text-center text-sm font-black ${
+              className={`flex-1 rounded-xl py-3 text-center text-sm font-black transition active:scale-95 ${
                 t.key === division ? 'bg-brand-600 text-white' : 'bg-sand-100 text-neutral-600'
               }`}
             >

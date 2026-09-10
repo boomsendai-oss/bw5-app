@@ -113,6 +113,56 @@ export function refineMask(conf: Float32Array, width: number, height: number): U
 
   // 50%点を内側へ寄せる。ぼかしで外側に広がった半透明帯(背景色が乗る)を切り落とす
   const out = new Uint8ClampedArray(n);
-  for (let i = 0; i < n; i += 1) out[i] = Math.round(smooth(cur[i], 0.4, 0.95) * 255);
+  // 実機(2026-09-10)で3〜4pxの背景色の帯が残ったため、さらに内側へ寄せる
+  for (let i = 0; i < n; i += 1) out[i] = Math.round(smooth(cur[i], 0.6, 0.98) * 255);
   return out;
+}
+
+/**
+ * 境目の半透明画素の色を、いちばん近い不透明画素の色で塗り替える(エッジ拡張)。
+ *
+ * 半透明の画素には撮影時の背景(壁)の色が混ざっていて、暗いLEDの上で灰色のフチになる。
+ * 背景色を推定して引き算する方法もあるが、壁が均一とは限らない。
+ * 近くの「確実に人物」の色をそのまま使うほうが、どんな背景でも破綻しない。
+ *
+ * rgba は Canvas の ImageData.data(RGBA連続)。alpha は同じ画素数のアルファ。
+ * 戻り値は無く rgba を書き換える。
+ */
+export function fillEdgeColors(
+  rgba: Uint8ClampedArray,
+  alpha: Uint8ClampedArray,
+  width: number,
+  height: number,
+  radius = 6
+): void {
+  const n = width * height;
+  // 元の色を退避(書き換え中の画素を参照しないため)
+  const src = new Uint8ClampedArray(rgba);
+  for (let i = 0; i < n; i += 1) {
+    const a = alpha[i];
+    if (a === 0 || a === 255) continue;
+    const x = i % width;
+    const y = (i - x) / width;
+    let best = -1;
+    let bestD = Infinity;
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      const yy = y + dy;
+      if (yy < 0 || yy >= height) continue;
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        const xx = x + dx;
+        if (xx < 0 || xx >= width) continue;
+        const j = yy * width + xx;
+        if (alpha[j] !== 255) continue;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) {
+          bestD = d;
+          best = j;
+        }
+      }
+    }
+    if (best < 0) continue;
+    rgba[i * 4] = src[best * 4];
+    rgba[i * 4 + 1] = src[best * 4 + 1];
+    rgba[i * 4 + 2] = src[best * 4 + 2];
+  }
 }
