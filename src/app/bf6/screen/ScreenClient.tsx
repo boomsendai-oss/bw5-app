@@ -99,7 +99,7 @@ export function ScreenClient() {
     };
 
     // ロゴ画面の画像を先に読んでおく(ロゴに戻すときだけ重い・TARO実機 2026-09-10)
-    for (const src of ['/bf6/flyer-hero-v2.jpg', '/bf6/led-title.png', '/bf6/vs-bg-last.jpg']) {
+    for (const src of ['/bf6/flyer-hero-v2.jpg', '/bf6/led-title.png', '/bf6/vs-bg-first.jpg']) {
       const im = new Image();
       im.src = src;
     }
@@ -140,7 +140,10 @@ export function ScreenClient() {
             key={vsAnimKey(state)}
             className="absolute inset-0 h-full w-full object-cover"
             src="/bf6/vs-bg.mp4"
-            poster="/bf6/vs-bg-last.jpg"
+            /* ⚠️ poster に最終フレームを使わないこと。再生前に明るい終わりの絵が出て、
+                  暗転してから再生が始まる不自然な順になる(TARO実機 2026-09-10)。
+                  先頭フレーム(ほぼ真っ黒)なら、そのまま自然に動画へつながる。 */
+            poster="/bf6/vs-bg-first.jpg"
             autoPlay
             muted
             playsInline
