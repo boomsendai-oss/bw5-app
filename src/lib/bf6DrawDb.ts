@@ -52,15 +52,31 @@ export async function claimBf6Slot(
 
   // 空き枠の選択と確定を1本のUPDATEで行う。取れなければ他の端末が先に取っている。
   for (let attempt = 0; attempt < 12; attempt++) {
-    const r = await execute(
-      `UPDATE bf_draw
-          SET item_id = ?, drawn_at = ?
-        WHERE id = (SELECT id FROM bf_draw
-                     WHERE division = ? AND phase = ? AND item_id IS NULL
-                     ORDER BY RANDOM() LIMIT 1)
-          AND item_id IS NULL`,
-      [itemId, nowUtcIso(), division, phase]
-    );
+    let r: { rowsAffected?: number };
+    try {
+      r = await execute(
+        `UPDATE bf_draw
+            SET item_id = ?, drawn_at = ?
+          WHERE id = (SELECT id FROM bf_draw
+                       WHERE division = ? AND phase = ? AND item_id IS NULL
+                       ORDER BY RANDOM() LIMIT 1)
+            AND item_id IS NULL`,
+        [itemId, nowUtcIso(), division, phase]
+      );
+    } catch (e) {
+      // 同じ人が二度押しすると、負けた側が UNIQUE(division, phase, item_id) に当たる。
+      // 自分の枠はもう確定しているので、それを返す(出場者にエラーを見せない)。
+      // 実機3台の同時テストで、連打3回のうち2回がエラー画面になっていた(2026-09-10)。
+      const mine = await getOne(
+        'SELECT slot_no FROM bf_draw WHERE division = ? AND phase = ? AND item_id = ?',
+        [division, phase, itemId]
+      );
+      if (mine) {
+        const slotNo = Number(mine.slot_no);
+        return { slotNo, block: await blockFor(division, phase, slotNo), alreadyDrawn: true };
+      }
+      throw e;
+    }
     if ((r.rowsAffected ?? 0) > 0) {
       const row = await getOne(
         'SELECT slot_no FROM bf_draw WHERE division = ? AND phase = ? AND item_id = ?',
