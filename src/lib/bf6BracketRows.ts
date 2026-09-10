@@ -81,12 +81,26 @@ export function buildBracketRows(division: Bf6DrawDivision, matches: M[]): Brack
     const rd = rounds[i];
     const expected = firstCount > 0 ? firstCount / Math.pow(2, i) : Math.pow(2, rounds.length - 1 - i);
     const ms = (byRound.get(rd) ?? []).slice().sort((a, b) => a.matchNo - b.matchNo);
+    // 下の段(1つ前のラウンド)。次の試合がまだ作られていなくても、勝者が決まった時点で
+    // 上の段に名前を出す(勝った瞬間にせり上がる演出のため・TARO実機 2026-09-10)。
+    const below = i > 0 ? (byRound.get(rounds[i - 1]) ?? []) : [];
+    const feederWinner = (matchNo: number, side: 0 | 1): number | null => {
+      const f = below.find((m) => m.matchNo === matchNo * 2 - 1 + side);
+      return f ? effectiveWinner(f) : null;
+    };
     const cells: BracketCell[] = [];
     for (let k = 0; k < expected; k += 1) {
       const m = ms[k];
       if (!m) {
-        cells.push({ slotNo: null, state: 'empty', round: rd, matchNo: k + 1 });
-        cells.push({ slotNo: null, state: 'empty', round: rd, matchNo: k + 1 });
+        // 試合レコードが無い段: 下の段で決まった勝者を「待機中」として置く
+        for (const side of [0, 1] as const) {
+          const w = feederWinner(k + 1, side);
+          cells.push(
+            w === null
+              ? { slotNo: null, state: 'empty', round: rd, matchNo: k + 1 }
+              : { slotNo: w, state: 'pending', round: rd, matchNo: k + 1 }
+          );
+        }
         continue;
       }
       cells.push(cellFor(m, m.slotA));

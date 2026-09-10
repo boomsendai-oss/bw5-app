@@ -151,7 +151,7 @@ export function ScreenClient() {
 
             <div className="relative flex flex-1 items-center justify-center px-[1.5vw] pb-[2vh]">
               {/* 左右は内容量に関係なく必ず半分ずつ(片側が空でもVSが中央からずれない・TARO実機 2026-09-10) */}
-              <div className="bf6-in-left w-1/2 min-w-0 shrink-0 grow-0 basis-1/2 overflow-hidden text-center">
+              <div className="bf6-in-left w-1/2 min-w-0 shrink-0 grow-0 basis-1/2 overflow-hidden text-center will-change-transform">
                 <Side slot={a} corner="red" division={state.division} />
               </div>
 
@@ -184,20 +184,23 @@ export function ScreenClient() {
                     />
                   </span>
                 ))}
-                <span className="bf6-core absolute left-0 top-0 block h-[6vw] w-[6vw] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,#fff_0%,#fde68a_35%,rgba(249,115,22,0)_70%)]" />
-                <span className="bf6-shock absolute left-0 top-0 block h-[26vw] w-[26vw] -translate-x-1/2 -translate-y-1/2 rounded-full border-[0.3vw] border-orange-400/80" />
-                <span className="bf6-shock2 absolute left-0 top-0 block h-[26vw] w-[26vw] -translate-x-1/2 -translate-y-1/2 rounded-full border-[0.16vw] border-white/70" />
+                <span className="bf6-core absolute left-0 top-0 block h-[6vw] w-[6vw] rounded-full bg-[radial-gradient(circle,#fff_0%,#fde68a_35%,rgba(249,115,22,0)_70%)]" />
+                <span className="bf6-shock absolute left-0 top-0 block h-[26vw] w-[26vw] rounded-full border-[0.3vw] border-orange-400/80" />
+                <span className="bf6-shock2 absolute left-0 top-0 block h-[26vw] w-[26vw] rounded-full border-[0.16vw] border-white/70" />
               </div>
 
               {/* VSは衝突して離れたあとに割り込む */}
               <p
-                className="bf6-face bf6-vs bf6-chrome bf6-sheen pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-[10vw] font-black italic leading-none"
+                // ⚠️ -translate-x-1/2 を付けないこと。Tailwind v4 では `translate` プロパティになり、
+                //    キーフレーム(bf6VsHit)の transform: translate(-50%,-50%) と二重にかかって
+                //    VSがちょうど自分の幅ぶん左にずれる(TARO実機 2026-09-10・実測で確認)。
+                className="bf6-face bf6-vs bf6-chrome bf6-sheen pointer-events-none absolute left-1/2 top-1/2 z-30 whitespace-nowrap text-[10vw] font-black italic leading-none"
                 data-text="VS"
               >
                 VS
               </p>
 
-              <div className="bf6-in-right w-1/2 min-w-0 shrink-0 grow-0 basis-1/2 overflow-hidden text-center">
+              <div className="bf6-in-right w-1/2 min-w-0 shrink-0 grow-0 basis-1/2 overflow-hidden text-center will-change-transform">
                 <Side slot={b} corner="blue" division={state.division} />
               </div>
             </div>
@@ -793,10 +796,12 @@ function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue';
   const accent = corner === 'red' ? 'text-red-400' : 'text-blue-400';
   // 背景を切り抜いた人物を大きく出す。切り抜き前提なので枠も丸マスクも付けない。
   // 写真が無い人は名前だけで成立する(全員ぶん集まらなくても破綻しない)。
+  // ぼかし半径の大きい drop-shadow を2重にかけると、大きな切り抜き画像では
+  // 登場アニメ中にカクつく(TARO実機 2026-09-10)。色の縁取りは1つ・半径小さめに。
   const glow =
     corner === 'red'
-      ? 'drop-shadow(0 0 2.5vw rgba(239,68,68,0.55)) drop-shadow(0 1.2vh 1.6vh rgba(0,0,0,0.75))'
-      : 'drop-shadow(0 0 2.5vw rgba(59,130,246,0.55)) drop-shadow(0 1.2vh 1.6vh rgba(0,0,0,0.75))';
+      ? 'drop-shadow(0 0 1vw rgba(239,68,68,0.6))'
+      : 'drop-shadow(0 0 1vw rgba(59,130,246,0.6))';
   return (
     <div>
       <p className={`text-[1.6vw] font-black tracking-[0.5em] ${accent}`}>

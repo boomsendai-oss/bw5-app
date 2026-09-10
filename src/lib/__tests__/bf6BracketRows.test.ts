@@ -94,3 +94,44 @@ describe('下から上へ積む縦型トーナメント表', () => {
     expect(bottom.cells[0].state).toBe('won');
   });
 });
+
+describe('勝った瞬間に上の段へ名前が出る(次の試合がまだ無くても)', () => {
+  const r16 = (no: number, a: number | null, b: number | null, w: number | null) => ({
+    round: 'r16', matchNo: no, slotA: a, slotB: b, winnerSlot: w,
+  });
+  const qf = (no: number, a: number | null, b: number | null, w: number | null) => ({
+    round: 'qf', matchNo: no, slotA: a, slotB: b, winnerSlot: w,
+  });
+
+  it('ベスト8第1試合の勝者が、準決勝の段に「待機中」で出る', () => {
+    const rows = buildBracketRows('beginner', [
+      qf(1, 1, 4, 1), qf(2, 6, 7, null), qf(3, null, null, null), qf(4, 14, 15, null),
+      r16(1, 1, null, null), r16(2, null, 4, null), r16(3, null, 6, null), r16(4, 7, null, null),
+      r16(5, null, null, null), r16(6, null, null, null), r16(7, null, 14, null), r16(8, 15, null, null),
+    ]);
+    const sf = rows.find((r) => r.round === 'sf')!;
+    expect(sf.cells[0]).toMatchObject({ slotNo: 1, state: 'pending', round: 'sf', matchNo: 1 });
+    expect(sf.cells[1]).toMatchObject({ slotNo: null, state: 'empty' }); // qf#2 はまだ
+  });
+
+  it('不戦勝の人は最初から上の段に出る', () => {
+    const rows = buildBracketRows('beginner', [
+      r16(1, 1, null, null), r16(2, null, 4, null), r16(3, null, null, null), r16(4, 7, null, null),
+      r16(5, null, null, null), r16(6, null, null, null), r16(7, null, null, null), r16(8, null, null, null),
+    ]);
+    const q = rows.find((r) => r.round === 'qf')!;
+    expect(q.cells.slice(0, 4).map((c) => c.slotNo)).toEqual([1, 4, null, 7]);
+    expect(q.cells[0].state).toBe('pending');
+  });
+
+  it('次の試合が作られていれば、そのレコードを優先する', () => {
+    const rows = buildBracketRows('beginner', [
+      qf(1, 1, 4, null),
+      r16(1, 1, null, null), r16(2, null, 4, null), r16(3, null, null, null), r16(4, null, null, null),
+      r16(5, null, null, null), r16(6, null, null, null), r16(7, null, null, null), r16(8, null, null, null),
+    ]);
+    const q = rows.find((r) => r.round === 'qf')!;
+    expect(q.cells[0]).toMatchObject({ slotNo: 1, state: 'pending' });
+    expect(q.cells[1]).toMatchObject({ slotNo: 4, state: 'pending' });
+  });
+});
