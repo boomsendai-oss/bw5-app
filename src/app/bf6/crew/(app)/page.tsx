@@ -3,14 +3,18 @@ import Link from 'next/link';
 import { CREW_TASKS } from '@/lib/bf6Crew';
 import { listBf6ReceptionEntrants } from '@/lib/bf6DrawDb';
 import { listBf6PhotoItemIds } from '@/lib/bf6PhotoDb';
+import { listBf6CashOrders } from '@/lib/bf6CashDb';
+import { cashTotals } from '@/lib/bf6Cash';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CrewHomePage() {
-  const [entrants, photoIds] = await Promise.all([
+  const [entrants, photoIds, cashOrders] = await Promise.all([
     listBf6ReceptionEntrants(),
     listBf6PhotoItemIds(),
+    listBf6CashOrders(),
   ]);
+  const cash = cashTotals(cashOrders);
   const checkedIn = entrants.filter((e) => e.checkedIn).length;
   const withPhoto = entrants.filter((e) => photoIds.has(e.itemId)).length;
 
@@ -37,6 +41,21 @@ export default async function CrewHomePage() {
             <span className="text-base font-bold text-neutral-400"> 人ぶん</span>
           </p>
         </div>
+        {cash.orders > 0 && (
+          <div className="col-span-2 rounded-xl border border-sand-200 bg-white p-3">
+            <p className="text-xs font-bold text-neutral-500">当日現金</p>
+            <p className="mt-0.5 text-2xl font-black tabular-nums text-navy-900">
+              ¥{cash.collectedYen.toLocaleString()}
+              <span className="text-base font-bold text-neutral-400">
+                {' '}
+                / ¥{cash.dueYen.toLocaleString()}
+              </span>
+              <span className="ml-2 text-sm font-bold text-neutral-400">
+                {cash.collectedOrders} / {cash.orders} 件
+              </span>
+            </p>
+          </div>
+        )}
       </div>
 
       <nav className="mt-5 space-y-3">

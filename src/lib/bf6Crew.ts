@@ -48,6 +48,12 @@ export const CREW_TASKS: CrewTask[] = [
     when: '13:30-14:00',
   },
   {
+    href: '/bf6/crew/cash',
+    title: '当日現金の集金',
+    desc: '事前決済をしていない人から現金を受け取り、その場で記録する。お金は注文ごと(きょうだいは1回)',
+    when: '13:30-14:00',
+  },
+  {
     href: '/bf6/crew/photo',
     title: '写真撮影',
     desc: 'VS画面に出す顔写真を撮る。背景はその場で自動で抜ける',
