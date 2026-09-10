@@ -176,16 +176,17 @@ export async function listBf6ReceptionEntrants(): Promise<ReceptionEntrant[]> {
         AND o.payment_status IN ('paid','cash_due')
       ORDER BY i.dancer_name`
   );
-  const checked = await listBf6CheckedIn();
-  const draws = await getAll(
-    `SELECT division, phase, slot_no, item_id FROM bf_draw WHERE item_id IS NOT NULL`
-  ).catch(() => []);
+  // 直列に待つと DB 往復ぶんだけ遅くなる(スマホで「ボタンが重い」の一因・2026-09-10)。独立した問い合わせは並列に。
+  const [checked, draws, slotTotals] = await Promise.all([
+    listBf6CheckedIn(),
+    getAll(`SELECT division, phase, slot_no, item_id FROM bf_draw WHERE item_id IS NOT NULL`).catch(() => []),
+    getAll('SELECT division, phase, COUNT(*) AS n FROM bf_draw GROUP BY division, phase').catch(() => []),
+  ]);
   const totals = new Map<string, number>();
   for (const d of draws) {
     const k = `${d.division}|${d.phase}`;
     totals.set(k, (totals.get(k) ?? 0) + 1);
   }
-  const slotTotals = await getAll('SELECT division, phase, COUNT(*) AS n FROM bf_draw GROUP BY division, phase').catch(() => []);
   const totalByKey = new Map(slotTotals.map((r) => [`${r.division}|${r.phase}`, Number(r.n)]));
 
   const byItem = new Map<number, ReceptionEntrant['draws']>();

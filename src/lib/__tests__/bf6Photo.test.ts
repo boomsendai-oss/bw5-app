@@ -81,7 +81,8 @@ describe('切り抜きマスクの整形', () => {
 
   it('境目の中間は中間値になる(輪郭が階段状にならない)', () => {
     // しきい値は 0.5〜0.86。その真ん中あたりを渡す
-    const out = refineMask(mk([0.68]), 1, 1);
+    // 2段のしきい値(判定→内側寄せ)を通っても、確信度が十分高い境目は中間値で残る
+    const out = refineMask(mk([0.78]), 1, 1);
     expect(out[0]).toBeGreaterThan(40);
     expect(out[0]).toBeLessThan(215);
   });
@@ -91,13 +92,36 @@ describe('切り抜きマスクの整形', () => {
     expect(refineMask(mk([0.5]), 1, 1)[0]).toBeLessThan(15);
   });
 
-  it('近傍を平均して階段を均す(単独の点は周囲に薄まる)', () => {
-    const w = 3, h = 3;
+  it('塊の輪郭はなだらかになり、内側は不透明のまま(階段を均す)', () => {
+    const w = 12;
+    const h = 12;
     const conf = new Float32Array(w * h);
-    conf[4] = 1; // 中央だけ人物
+    for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) conf[y * w + x] = x < 6 ? 1 : 0;
     const out = refineMask(conf, w, h);
-    expect(out[4]).toBeLessThan(255); // 均されて下がる
-    expect(out[0]).toBeGreaterThan(0); // 周囲に少し滲む
+    expect(out[6 * w + 1]).toBe(255); // 内側
+    expect(out[6 * w + 10]).toBe(0); // 背景
+    const edge = [out[6 * w + 4], out[6 * w + 5], out[6 * w + 6], out[6 * w + 7]];
+    expect(edge.some((v) => v > 0 && v < 255)).toBe(true); // 境目に中間値がある
+    for (let k = 1; k < edge.length; k += 1) expect(edge[k]).toBeLessThanOrEqual(edge[k - 1]); // 単調に落ちる
+  });
+
+  it('境目は内側に寄る(背景の色が乗る半透明帯を切り落とす)', () => {
+    const w = 12;
+    const h = 12;
+    const conf = new Float32Array(w * h);
+    for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) conf[y * w + x] = x < 6 ? 1 : 0;
+    const out = refineMask(conf, w, h);
+    // 元の境界(x=5|6)の外側 x=6 はほぼ透明になっている
+    expect(out[6 * w + 6]).toBeLessThan(60);
+  });
+
+  it('ゴマ粒のノイズ(孤立した1画素)は消える', () => {
+    const w = 9;
+    const h = 9;
+    const conf = new Float32Array(w * h);
+    conf[4 * w + 4] = 1;
+    const out = refineMask(conf, w, h);
+    expect(Math.max(...out)).toBe(0);
   });
 
   it('画素数ぶんの結果を返す', () => {

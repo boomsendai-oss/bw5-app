@@ -54,48 +54,65 @@ export function fitBustFrame(src: { width: number; height: number }): Frame {
 }
 
 /**
- * セグメンテーションの確信度(0〜1)を、そのままアルファに使える0〜255へ整形する。
+ * MediaPipeの確信度マップをアルファに整える。
  *
- * モデルが返すマスクは元画像より粗いので、そのまま使うと輪郭が階段状になる。
- * さらに境目に背景の色が残って白いフチが出る。対策として:
- *   1. 判定のしきい値を上げ、輪郭を内側へ寄せる(背景の画素を巻き込まない)
- *   2. 近傍を平均して階段を均す
+ * 実機(2026-09-10)で分かったこと:
+ *  - モデルは256px程度で切り抜くため、髪の輪郭が階段状になる
+ *  - 境目の半透明画素に背景の壁の色が乗り、暗いLEDの上で灰色のフチになる
+ * 対策: ①しきい値で決める → ②画像サイズに応じた半径でぼかして階段を均す →
+ *       ③50%点を内側に寄せて(浸食)フチの背景を落とす。ゴマ粒ノイズも消える。
  */
 export function refineMask(conf: Float32Array, width: number, height: number): Uint8ClampedArray {
-  const LO = 0.5;
-  const HI = 0.86; // 内側に寄せてフチの背景を落とす
-  const raw = new Float32Array(width * height);
-  for (let i = 0; i < raw.length; i += 1) {
-    const v = conf[i] ?? 0;
-    let t: number;
-    if (v <= LO) t = 0;
-    else if (v >= HI) t = 1;
-    else t = (v - LO) / (HI - LO);
-    raw[i] = t * t * (3 - 2 * t);
-  }
+  const LO = 0.55;
+  const HI = 0.9;
+  const smooth = (v: number, lo: number, hi: number) => {
+    if (v <= lo) return 0;
+    if (v >= hi) return 1;
+    const t = (v - lo) / (hi - lo);
+    return t * t * (3 - 2 * t);
+  };
 
-  // 3x3 の平均で階段を均す(画素数が少ないときは素通し)
-  const out = new Uint8ClampedArray(width * height);
-  if (width < 3 || height < 3) {
-    for (let i = 0; i < raw.length; i += 1) out[i] = Math.round(raw[i] * 255);
-    return out;
-  }
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      let sum = 0;
-      let n = 0;
-      for (let dy = -1; dy <= 1; dy += 1) {
-        const yy = y + dy;
-        if (yy < 0 || yy >= height) continue;
-        for (let dx = -1; dx <= 1; dx += 1) {
+  const n = width * height;
+  let cur: Float32Array = new Float32Array(n);
+  for (let i = 0; i < n; i += 1) cur[i] = smooth(conf[i] ?? 0, LO, HI);
+
+  // 画像が大きいほど階段も大きいので、半径はサイズに比例させる(760px高で約4px)
+  const r = Math.max(1, Math.round(Math.min(width, height) / 150));
+  const boxBlur = (src: Float32Array): Float32Array => {
+    const tmp = new Float32Array(n);
+    const dst = new Float32Array(n);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        let sum = 0;
+        let cnt = 0;
+        for (let dx = -r; dx <= r; dx += 1) {
           const xx = x + dx;
           if (xx < 0 || xx >= width) continue;
-          sum += raw[yy * width + xx];
-          n += 1;
+          sum += src[y * width + xx];
+          cnt += 1;
         }
+        tmp[y * width + x] = sum / cnt;
       }
-      out[y * width + x] = Math.round((sum / n) * 255);
     }
-  }
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        let sum = 0;
+        let cnt = 0;
+        for (let dy = -r; dy <= r; dy += 1) {
+          const yy = y + dy;
+          if (yy < 0 || yy >= height) continue;
+          sum += tmp[yy * width + x];
+          cnt += 1;
+        }
+        dst[y * width + x] = sum / cnt;
+      }
+    }
+    return dst;
+  };
+  cur = boxBlur(boxBlur(cur)); // 2回でガウスに近い滑らかさ
+
+  // 50%点を内側へ寄せる。ぼかしで外側に広がった半透明帯(背景色が乗る)を切り落とす
+  const out = new Uint8ClampedArray(n);
+  for (let i = 0; i < n; i += 1) out[i] = Math.round(smooth(cur[i], 0.4, 0.95) * 255);
   return out;
 }
