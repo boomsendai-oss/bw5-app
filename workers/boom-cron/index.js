@@ -38,6 +38,13 @@ const JOBS = [
   // GETのみのエンドポイントなので method を明示する。
   { at: '09:10', path: '/api/cron/story-watchdog', label: 'watchdog-morning', method: 'GET' },
   { at: '19:40', path: '/api/cron/story-watchdog', label: 'watchdog-evening', method: 'GET' },
+
+  // ── 七ヶ浜レッスン会場の自動予約(WS AQ)。予約サイトの解禁=深夜0:00(応当日)。
+  // GitHub Actionsのscheduleは深夜に約3時間遅れる(2026-09-11実測: 23:40設定→02:35発火)ため、
+  // ここから workflow_dispatch で23:40に起動し、スクリプト側が0:15まで20秒おきに粘る。
+  // 認証は GH_DISPATCH_TOKEN(wrangler secret)。二重発火は workflow の concurrency で直列化される。
+  { at: '23:40', kind: 'gh-dispatch', repo: 'boomsendai-oss/shichigahama-yoyaku', workflow: 'reserve.yml', label: 'shichigahama-2340' },
+  { at: '23:43', kind: 'gh-dispatch', repo: 'boomsendai-oss/shichigahama-yoyaku', workflow: 'reserve.yml', label: 'shichigahama-2343' },
 ];
 
 /** UTCのepochミリ秒 → JSTの 'HH:MM' */
@@ -46,17 +53,36 @@ function jstHhmm(epochMs) {
 }
 
 async function runJob(job, env) {
-  const url = `${env.APP_ORIGIN}${job.path}`;
-  const method = job.method ?? 'POST';
   try {
+    if (job.kind === 'gh-dispatch') {
+      // GitHub Actions の workflow_dispatch。inputs は渡さない(repo変数 DRY_RUN を効かせる)。
+      const url = `https://api.github.com/repos/${job.repo}/actions/workflows/${job.workflow}/dispatches`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
+          accept: 'application/vnd.github+json',
+          'user-agent': 'boom-cron',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ ref: 'main' }),
+      });
+      const body = await res.text();
+      console.log(`[${job.label}] gh-dispatch ${res.status} ${body.slice(0, 200)}`);
+      return { status: res.status, body: body.slice(0, 500) };
+    }
+    const url = `${env.APP_ORIGIN}${job.path}`;
+    const method = job.method ?? 'POST';
     const res = await fetch(url, {
       method,
       headers: { 'x-cron-secret': env.CRON_SECRET_CF, 'content-type': 'application/json' },
     });
     const body = await res.text();
     console.log(`[${job.label}] ${method} ${res.status} ${body.slice(0, 300)}`);
+    return { status: res.status, body: body.slice(0, 500) };
   } catch (e) {
     console.error(`[${job.label}] 失敗: ${e}`);
+    return { status: 0, body: String(e) };
   }
 }
 
@@ -80,12 +106,8 @@ export default {
       }
       const job = JOBS.find((j) => j.label === label);
       if (!job) return Response.json({ error: `unknown job: ${label}` }, { status: 404 });
-      const url = `${env.APP_ORIGIN}${job.path}`;
-      const res = await fetch(url, {
-        method: job.method ?? 'POST',
-        headers: { 'x-cron-secret': env.CRON_SECRET_CF, 'content-type': 'application/json' },
-      });
-      return Response.json({ ran: label, status: res.status, body: (await res.text()).slice(0, 500) });
+      const r = await runJob(job, env);
+      return Response.json({ ran: label, ...r });
     }
     return Response.json({
       now_jst: jstHhmm(Date.now()),
