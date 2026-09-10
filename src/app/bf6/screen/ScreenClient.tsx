@@ -13,7 +13,7 @@ import { buildBracketRows, type BracketCell } from '@/lib/bf6BracketRows';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 
 type Match = { round: string; matchNo: number; slotA: number | null; slotB: number | null; winnerSlot: number | null };
-type Slot = { slotNo: number; dancerName: string; rep: string; hasPhoto: boolean };
+type Slot = { slotNo: number; dancerName: string; rep: string; hasPhoto: boolean; photoAt?: string | null };
 type Payload = {
   state: { mode: 'logo' | 'bracket' | 'vs'; division: string; round: string | null; matchNo: number | null; rev: number };
   matches: Match[];
@@ -812,7 +812,7 @@ function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue';
         {slot?.hasPhoto && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={`/api/bf6/photo/${slot.slotNo}?division=${division}`}
+            src={`/api/bf6/photo/${slot.slotNo}?division=${division}&v=${encodeURIComponent(slot.photoAt ?? '')}`}
             alt=""
             className="bf6-cut max-h-full w-auto max-w-[46vw] object-contain object-bottom"
             style={{ filter: glow }}

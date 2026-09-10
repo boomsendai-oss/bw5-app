@@ -6,6 +6,9 @@ import {
   fitBustFrame,
   refineMask,
   fillEdgeColors,
+  validateRawUpload,
+  isWorkerKeyValid,
+  RAW_MAX_BYTES,
 } from '../bf6Photo';
 
 describe('写真アップロードの検証', () => {
@@ -178,5 +181,30 @@ describe('境目の色の塗り替え(灰色のフチ対策)', () => {
     const alpha = new Uint8ClampedArray([120]);
     fillEdgeColors(rgba, alpha, 1, 1);
     expect([rgba[0], rgba[1], rgba[2]]).toEqual([180, 180, 180]);
+  });
+});
+
+describe('元画像(切り抜き前)の受け入れ', () => {
+  it('JPEG/PNGは通る', () => {
+    expect(validateRawUpload({ mime: 'image/jpeg', size: 100 })).toEqual({ ok: true });
+    expect(validateRawUpload({ mime: 'image/png', size: 100 })).toEqual({ ok: true });
+  });
+  it('それ以外・空・大きすぎは弾く', () => {
+    expect(validateRawUpload({ mime: 'image/heic', size: 100 }).ok).toBe(false);
+    expect(validateRawUpload({ mime: 'image/jpeg', size: 0 }).ok).toBe(false);
+    expect(validateRawUpload({ mime: 'image/jpeg', size: RAW_MAX_BYTES + 1 }).ok).toBe(false);
+  });
+});
+
+describe('切り抜き係の合言葉', () => {
+  it('一致すれば通る', () => {
+    expect(isWorkerKeyValid('cw_abc', 'cw_abc')).toBe(true);
+  });
+  it('未設定・空・不一致・長さ違いは通さない', () => {
+    expect(isWorkerKeyValid('cw_abc', '')).toBe(false);
+    expect(isWorkerKeyValid('', 'cw_abc')).toBe(false);
+    expect(isWorkerKeyValid(null, 'cw_abc')).toBe(false);
+    expect(isWorkerKeyValid('cw_abd', 'cw_abc')).toBe(false);
+    expect(isWorkerKeyValid('cw_ab', 'cw_abc')).toBe(false);
   });
 });

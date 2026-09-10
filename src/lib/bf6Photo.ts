@@ -166,3 +166,30 @@ export function fillEdgeColors(
     rgba[i * 4 + 2] = src[best * 4 + 2];
   }
 }
+
+/** 元画像(切り抜き前)の上限。スマホのJPEG(1000px高)で十分収まる。 */
+export const RAW_MAX_BYTES = 4_000_000;
+
+/** 元画像の検証。JPEG/PNGどちらでもよい(切り抜き係が読める形式なら可)。 */
+export function validateRawUpload(input: { mime: string; size: number }): PhotoValidation {
+  if (input.mime !== 'image/jpeg' && input.mime !== 'image/png') {
+    return { ok: false, error: '元画像はJPEGかPNGで送ってください' };
+  }
+  if (input.size <= 0) return { ok: false, error: '元画像が空です' };
+  if (input.size > RAW_MAX_BYTES) {
+    return { ok: false, error: `元画像が大きすぎます(${Math.round(RAW_MAX_BYTES / 1_000_000)}MBまで)` };
+  }
+  return { ok: true };
+}
+
+/**
+ * 切り抜き係の合言葉の照合。長さが違えば即 false、同じ長さなら全桁を必ず比較する
+ * (途中で抜けると、応答時間から桁ごとに当てられる)。
+ */
+export function isWorkerKeyValid(provided: string | null | undefined, stored: string): boolean {
+  if (!stored || !provided) return false;
+  if (provided.length !== stored.length) return false;
+  let diff = 0;
+  for (let i = 0; i < stored.length; i += 1) diff |= provided.charCodeAt(i) ^ stored.charCodeAt(i);
+  return diff === 0;
+}

@@ -33,6 +33,8 @@ export default function PhotoCapture({
   const streamRef = useRef<MediaStream | null>(null);
   const segRef = useRef<Segmenter>(null);
   const blobRef = useRef<Blob | null>(null);
+  // 切り抜き前の元画像。会場のMac(切り抜き係)が高品質に抜き直すために一緒に送る
+  const rawRef = useRef<Blob | null>(null);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -108,6 +110,9 @@ export default function PhotoCapture({
         video, frame.x, frame.y, frame.width, frame.height, 0, 0, w, h
       );
 
+      // 1'. 元画像をJPEGで保持(Macの切り抜き係が使う。端末内の切り抜きは仮)
+      rawRef.current = await new Promise<Blob | null>((resolve) => shot.toBlob((b) => resolve(b), 'image/jpeg', 0.9));
+
       // 2. 人物のマスクを取る
       const seg = await loadSegmenter();
       const mask: HTMLCanvasElement = await new Promise((resolve, reject) => {
@@ -168,6 +173,7 @@ export default function PhotoCapture({
       const fd = new FormData();
       fd.append('itemId', String(itemId));
       fd.append('photo', blobRef.current, 'photo.png');
+      if (rawRef.current) fd.append('raw', rawRef.current, 'raw.jpg');
       const r = await fetch('/api/bf6/photo/upload', { method: 'POST', body: fd });
       const j = await r.json();
       if (!j.ok) throw new Error(j.error ?? '保存に失敗しました');
