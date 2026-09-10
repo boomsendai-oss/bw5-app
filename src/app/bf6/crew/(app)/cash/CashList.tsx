@@ -16,7 +16,9 @@ export default function CashList({ orders }: { orders: CashOrder[] }) {
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  useEffect(() => setRows(orders), [orders]);
+  // ⚠️ orders(サーバの値)で rows を上書きし続けない。
+  // 集金するたびにサーバ側が再描画されると、押した直後の状態が巻き戻る。
+  // 最新の状態が要るときはページを開き直す。
   useEffect(() => {
     try {
       setWho(localStorage.getItem(NAME_STORE) ?? '');
@@ -137,7 +139,7 @@ export default function CashList({ orders }: { orders: CashOrder[] }) {
                       minute: '2-digit',
                       timeZone: 'Asia/Tokyo',
                     })}
-                    {done.by ? ` ${done.by}` : ''} が受け取り
+                    {done.by ? ` ${done.by} が受け取り` : ' 受け取り'}
                     {done.amount < o.amountDue ? ` / 請求 ${YEN(o.amountDue)}` : ''}
                   </p>
                 )}
