@@ -190,9 +190,14 @@ export async function GET(req: NextRequest) {
   }
   // Vercel Cron(Bearer)と GitHub Actions(x-cron-secret)の両方から叩けるようにする。
   // 朝=Vercel Cron(ストーリー中心)/夜=GH Actions(リール中心)の2回運用。
-  const bearerOk = req.headers.get('authorization') === `Bearer ${secret}`;
-  const xcronOk = req.headers.get('x-cron-secret') === secret;
-  if (!bearerOk && !xcronOk) {
+  // 2026-09-10: 発火役を Cloudflare Workers(boom-cron)へ移したので第2の鍵 CRON_SECRET_CF も受ける。
+  // CRON_SECRET は Vercel が [SENSITIVE] でマスクし値を読み出せないため、鍵を回さず増やす方式
+  // (post-story / post-reel と同じパターン)。
+  const keys = [secret, process.env.CRON_SECRET_CF].filter(Boolean) as string[];
+  const bearer = req.headers.get('authorization');
+  const header = req.headers.get('x-cron-secret');
+  const authOk = keys.some((k) => bearer === `Bearer ${k}` || header === k);
+  if (!authOk) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 

@@ -13,6 +13,10 @@ compatibility_date = "2026-08-01"
 
 # 毎分起動し、JSTの時刻を見て該当する仕事だけ叩く。
 # (cronトリガーを時刻ごとに並べるより、時刻表をコードで持つ方が変更が1箇所で済む)
+# 無料枠: Cron Triggersは5つまで・Workers無料プランは10万リクエスト/日。毎分起動=1,440/日で十分収まる。
+#
+# 秘密は wrangler secret put で登録し、Gitには置かない:
+#   CRON_SECRET_CF … アプリの /api/cron/* を叩く鍵 (post-story / post-reel / story-watchdog が受ける)
 [triggers]
 crons = ["* * * * *"]
 
