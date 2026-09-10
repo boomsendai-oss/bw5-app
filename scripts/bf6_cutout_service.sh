@@ -6,6 +6,9 @@
 #   ./scripts/bf6_cutout_service.sh status  動いているか見る
 #   ./scripts/bf6_cutout_service.sh log     直近のログを見る
 #
+# いつでも待ち受けている(テスト撮影も当日も同じ)。
+# 撮影が15分無い間だけ問い合わせを20秒おきに落とし、1枚来たら4秒おきに戻る。
+#
 # ログイン時だけでなく KeepAlive で常時見張るので、
 # ログインしっぱなしでMacを持ち歩いても動き続ける。
 set -e

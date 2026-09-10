@@ -33,10 +33,12 @@ BASE = os.environ.get("BF6_BASE_URL", "https://bw5-app.vercel.app").rstrip("/")
 KEY = os.environ.get("BF6_WORKER_KEY", "")
 POLL_SEC = float(os.environ.get("BF6_POLL_SEC", "4"))
 # 誰も撮っていない間はサーバへの問い合わせを減らす(常駐しっぱなしのため)。
-# 仕事を1件でも見たら即 POLL_SEC に戻る。
-IDLE_POLL_SEC = float(os.environ.get("BF6_IDLE_POLL_SEC", "60"))
-IDLE_AFTER_SEC = float(os.environ.get("BF6_IDLE_AFTER_SEC", "600"))
+# ただし止めはしない。テスト撮影でも必ず拾えるようにしておく(TARO要望)。
+# 1枚でも見つけたら即 POLL_SEC に戻り、撮影が続く間はずっと速いまま。
+IDLE_POLL_SEC = float(os.environ.get("BF6_IDLE_POLL_SEC", "20"))
+IDLE_AFTER_SEC = float(os.environ.get("BF6_IDLE_AFTER_SEC", "900"))
 HEARTBEAT_SEC = float(os.environ.get("BF6_HEARTBEAT_SEC", "3600"))
+
 # 保存サイズ(LEDで必要な高さ)。マッティングは画素数に比例して遅いのでこれ以上にしない
 TARGET_H = int(os.environ.get("BF6_TARGET_H", "760"))
 ERODE = int(os.environ.get("BF6_ERODE", "10"))
@@ -77,29 +79,37 @@ def multipart(fields: dict, files: dict) -> tuple[bytes, str]:
 def main() -> None:
     from rembg import remove, new_session
 
-    log(f"モデル {MODEL} を読み込み中(CPU固定)…")
-    session = new_session(MODEL, providers=["CPUExecutionProvider"])
+    session = None
 
-    # 空打ちで温める。1枚目だけ推論が3〜4倍遅くなる(ONNXの初回最適化)ため、
-    # 受付の最初の一人を待たせないよう起動時に済ませておく。
-    t = time.time()
-    try:
-        # 本番と同じ大きさ・中央に人くらいの塊。マッティングの重さは
-        # 「輪郭まわりの不明画素の量」で決まるので、真っ平らな画像では温まらない。
-        dummy = Image.new("RGB", (round(TARGET_H * 0.78), TARGET_H), (40, 60, 90))
-        d = ImageDraw.Draw(dummy)
-        d.ellipse((dummy.width * 0.2, TARGET_H * 0.05, dummy.width * 0.8, TARGET_H * 0.95),
-                  fill=(200, 170, 150))
-        remove(dummy, session=session, alpha_matting=True,
-               alpha_matting_foreground_threshold=240,
-               alpha_matting_background_threshold=15,
-               alpha_matting_erode_size=ERODE)
-        log(f"モデルの空打ち完了 {time.time() - t:.1f}s")
-    except Exception as e:  # noqa: BLE001
-        log(f"空打ちに失敗(無視して続行): {e}")
+    def ensure_model():
+        nonlocal session
+        if session is not None:
+            return
+        log(f"モデル {MODEL} を読み込み中(CPU固定)…")
+        session = new_session(MODEL, providers=["CPUExecutionProvider"])
 
-    log(f"待機開始: {BASE} を {POLL_SEC:.0f}秒おきに確認"
-        f"(仕事が無い時間が{IDLE_AFTER_SEC/60:.0f}分続いたら{IDLE_POLL_SEC:.0f}秒おきに落とす)")
+        # 空打ちで温める。1枚目だけ推論が遅くなるため、
+        # 受付の最初の一人を待たせないよう先に済ませておく。
+        t = time.time()
+        try:
+            # 本番と同じ大きさ・中央に人くらいの塊。マッティングの重さは
+            # 「輪郭まわりの不明画素の量」で決まるので、真っ平らな画像では温まらない。
+            dummy = Image.new("RGB", (round(TARGET_H * 0.78), TARGET_H), (40, 60, 90))
+            d = ImageDraw.Draw(dummy)
+            d.ellipse((dummy.width * 0.2, TARGET_H * 0.05, dummy.width * 0.8, TARGET_H * 0.95),
+                      fill=(200, 170, 150))
+            remove(dummy, session=session, alpha_matting=True,
+                   alpha_matting_foreground_threshold=240,
+                   alpha_matting_background_threshold=15,
+                   alpha_matting_erode_size=ERODE)
+            log(f"モデルの空打ち完了 {time.time() - t:.1f}s")
+        except Exception as e:  # noqa: BLE001
+            log(f"空打ちに失敗(無視して続行): {e}")
+
+    ensure_model()
+    log(f"待ち受け開始: {BASE} を{POLL_SEC:.0f}秒おきに確認"
+        f"(撮影が{IDLE_AFTER_SEC/60:.0f}分無ければ{IDLE_POLL_SEC:.0f}秒おきに落とす。"
+        f"1枚でも来たらすぐ{POLL_SEC:.0f}秒おきに戻る)")
 
     last_work = time.time()
     last_beat = time.time()
