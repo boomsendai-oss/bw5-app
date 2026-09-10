@@ -7,11 +7,16 @@ BF6 顔写真の切り抜き係(会場のMacBook Airで常駐させる)。
 サーバへ返して差し替える。Macが落ちていても仮の切り抜きが残るので、ゼロにはならない。
 
 使い方:
-  cd ~/BOOM/BW5_2026/bw5-app && ./scripts/bf6_cutout_worker.sh
+  常駐させる(当日はこちら): ./scripts/bf6_cutout_service.sh on
+  その場で動かす:           ./scripts/bf6_cutout_worker.sh
   (合言葉とURLは .env.cutout.local から読む)
 
 ⚠️ onnxruntime の CoreML プロバイダはモデル変換で長時間止まることがある(2026-09-10実測)。
-   必ず CPU に固定する。M1 で isnet + マッティングは1枚 20〜40秒程度。
+   必ず CPU に固定する。
+
+実測(2026-09-10・M1 MacBook Air・760px高): 1枚あたり約5秒(4.8〜5.7s)。
+⚠️ このプログラムが二重に動くとCPUを取り合って13〜17秒に落ちる。
+   起動は必ず bf6_cutout_service.sh 経由にする(迷子プロセスを掃除してから起こす)。
 """
 import io
 import os
@@ -21,12 +26,17 @@ import json
 import urllib.request
 import urllib.error
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 MODEL = os.environ.get("BF6_CUTOUT_MODEL", "isnet-general-use")
 BASE = os.environ.get("BF6_BASE_URL", "https://bw5-app.vercel.app").rstrip("/")
 KEY = os.environ.get("BF6_WORKER_KEY", "")
 POLL_SEC = float(os.environ.get("BF6_POLL_SEC", "4"))
+# 誰も撮っていない間はサーバへの問い合わせを減らす(常駐しっぱなしのため)。
+# 仕事を1件でも見たら即 POLL_SEC に戻る。
+IDLE_POLL_SEC = float(os.environ.get("BF6_IDLE_POLL_SEC", "60"))
+IDLE_AFTER_SEC = float(os.environ.get("BF6_IDLE_AFTER_SEC", "600"))
+HEARTBEAT_SEC = float(os.environ.get("BF6_HEARTBEAT_SEC", "3600"))
 # 保存サイズ(LEDで必要な高さ)。マッティングは画素数に比例して遅いのでこれ以上にしない
 TARGET_H = int(os.environ.get("BF6_TARGET_H", "760"))
 ERODE = int(os.environ.get("BF6_ERODE", "10"))
@@ -69,24 +79,63 @@ def main() -> None:
 
     log(f"モデル {MODEL} を読み込み中(CPU固定)…")
     session = new_session(MODEL, providers=["CPUExecutionProvider"])
-    log(f"待機開始: {BASE} を {POLL_SEC}秒おきに確認")
+
+    # 空打ちで温める。1枚目だけ推論が3〜4倍遅くなる(ONNXの初回最適化)ため、
+    # 受付の最初の一人を待たせないよう起動時に済ませておく。
+    t = time.time()
+    try:
+        # 本番と同じ大きさ・中央に人くらいの塊。マッティングの重さは
+        # 「輪郭まわりの不明画素の量」で決まるので、真っ平らな画像では温まらない。
+        dummy = Image.new("RGB", (round(TARGET_H * 0.78), TARGET_H), (40, 60, 90))
+        d = ImageDraw.Draw(dummy)
+        d.ellipse((dummy.width * 0.2, TARGET_H * 0.05, dummy.width * 0.8, TARGET_H * 0.95),
+                  fill=(200, 170, 150))
+        remove(dummy, session=session, alpha_matting=True,
+               alpha_matting_foreground_threshold=240,
+               alpha_matting_background_threshold=15,
+               alpha_matting_erode_size=ERODE)
+        log(f"モデルの空打ち完了 {time.time() - t:.1f}s")
+    except Exception as e:  # noqa: BLE001
+        log(f"空打ちに失敗(無視して続行): {e}")
+
+    log(f"待機開始: {BASE} を {POLL_SEC:.0f}秒おきに確認"
+        f"(仕事が無い時間が{IDLE_AFTER_SEC/60:.0f}分続いたら{IDLE_POLL_SEC:.0f}秒おきに落とす)")
+
+    last_work = time.time()
+    last_beat = time.time()
+    slow = False
 
     while True:
+        now = time.time()
+        idle = now - last_work
+        if not slow and idle > IDLE_AFTER_SEC:
+            slow = True
+            log(f"待ち受けを{IDLE_POLL_SEC:.0f}秒おきに落とす(仕事なし)")
+        wait = IDLE_POLL_SEC if slow else POLL_SEC
+        if now - last_beat >= HEARTBEAT_SEC:
+            last_beat = now
+            log(f"生存確認: 待ち受け中({wait:.0f}秒おき)")
+
         try:
             with req("/api/bf6/photo/queue") as r:
                 items = json.load(r).get("items", [])
         except urllib.error.HTTPError as e:
             log(f"待ち行列の取得に失敗 HTTP {e.code}(合言葉やURLを確認)")
-            time.sleep(POLL_SEC * 3)
+            time.sleep(wait * 3)
             continue
         except Exception as e:  # noqa: BLE001
             log(f"通信エラー: {e}")
-            time.sleep(POLL_SEC * 3)
+            time.sleep(wait * 3)
             continue
 
         if not items:
-            time.sleep(POLL_SEC)
+            time.sleep(wait)
             continue
+
+        last_work = time.time()
+        if slow:
+            slow = False
+            log(f"仕事を検知: 待ち受けを{POLL_SEC:.0f}秒おきに戻す")
 
         for it in items:
             item_id = int(it["itemId"])

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.boom.bf6.cutout</string>
+
+  <!-- BF6 顔写真の切り抜き係を常駐させる。
+       ログイン時だけでなく「落ちたら必ず起こし直す」設定なので、
+       ログインしっぱなしでMacを持ち歩いても止まらない。
+       仕事が無い間はサーバへの問い合わせを60秒おきに落とす(worker側で自動)。 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/kimurashintarou/BOOM/BW5_2026/bw5-app/scripts/bf6_cutout_worker.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/kimurashintarou/BOOM/BW5_2026/bw5-app</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- 読み込んだ瞬間に起動する(= 再ログインを待たない) -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- 落ちたら何度でも起こし直す。スリープ復帰後の通信エラーはworker側で握って継続する -->
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- 起動に失敗し続けたときにログを埋め尽くさないための間隔 -->
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/kimurashintarou/Library/Logs/bf6-cutout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/kimurashintarou/Library/Logs/bf6-cutout.log</string>
+</dict>
+</plist>
