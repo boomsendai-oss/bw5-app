@@ -45,6 +45,10 @@ const JOBS = [
   // 認証は GH_DISPATCH_TOKEN(wrangler secret)。二重発火は workflow の concurrency で直列化される。
   { at: '23:40', kind: 'gh-dispatch', repo: 'boomsendai-oss/shichigahama-yoyaku', workflow: 'reserve.yml', label: 'shichigahama-2340' },
   { at: '23:43', kind: 'gh-dispatch', repo: 'boomsendai-oss/shichigahama-yoyaku', workflow: 'reserve.yml', label: 'shichigahama-2343' },
+  // デッドマンスイッチ: 00:40に「今夜の予約runが成功したか」をGitHubに問い合わせ、
+  // 走っていない/失敗していたら🚨メール(件名に「失敗」=Gmail緊急ラベル)＋1回だけ再起動する。
+  // 鍵: GH_DISPATCH_TOKEN(Actions R/W) / VENUE_NOTIFY_SECRET・NOTIFY_URL(bw5-appの通知API)
+  { at: '00:40', kind: 'deadman', repo: 'boomsendai-oss/shichigahama-yoyaku', workflow: 'reserve.yml', label: 'shichigahama-deadman' },
 ];
 
 /** UTCのepochミリ秒 → JSTの 'HH:MM' */
@@ -52,8 +56,11 @@ function jstHhmm(epochMs) {
   return new Date(epochMs + 9 * 60 * 60 * 1000).toISOString().slice(11, 16);
 }
 
-async function runJob(job, env) {
+async function runJob(job, env, opts = {}) {
   try {
+    if (job.kind === 'deadman') {
+      return await deadman(job, env, opts);
+    }
     if (job.kind === 'gh-dispatch') {
       // GitHub Actions の workflow_dispatch。inputs は渡さない(repo変数 DRY_RUN を効かせる)。
       const url = `https://api.github.com/repos/${job.repo}/actions/workflows/${job.workflow}/dispatches`;
@@ -86,6 +93,66 @@ async function runJob(job, env) {
   }
 }
 
+function ghHeaders(env) {
+  return {
+    authorization: `Bearer ${env.GH_DISPATCH_TOKEN}`,
+    accept: 'application/vnd.github+json',
+    'user-agent': 'boom-cron',
+    'content-type': 'application/json',
+  };
+}
+
+/** 今夜(23:25 JST以降)の reserve.yml が成功しているか確認し、ダメなら通知+再起動 */
+async function deadman(job, env, opts = {}) {
+  const now = Date.now();
+  const jstToday = new Date(now + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  // 23:25 JST = 当日0:40の75分前。test時は「今」以降=必ず0件にして通知経路を試す
+  const since = new Date(opts.test ? now : now - 75 * 60 * 1000).toISOString();
+  const url = `https://api.github.com/repos/${job.repo}/actions/workflows/${job.workflow}/runs?per_page=30&created=${encodeURIComponent('>=' + since)}`;
+  const res = await fetch(url, { headers: ghHeaders(env) });
+  if (!res.ok) {
+    return await deadmanAlert(env, jstToday, `GitHubに問い合わせできませんでした（HTTP ${res.status}）。トークン期限切れの可能性があります。`, opts);
+  }
+  const runs = ((await res.json()).workflow_runs || []);
+  const okRun = runs.find((r) => r.conclusion === 'success');
+  const running = runs.find((r) => r.status !== 'completed');
+  console.log(`[deadman] runs=${runs.length} ok=${!!okRun} running=${!!running}`);
+  if (okRun || running) return { status: 200, body: `deadman ok: runs=${runs.length}` };
+  const failed = runs.find((r) => r.conclusion && r.conclusion !== 'success');
+  const reason = failed
+    ? `今夜の自動予約が「${failed.conclusion}」で終了しています。\n記録: ${failed.html_url}`
+    : '今夜23:40に起動するはずの自動予約が、GitHub上で1回も動いていません。';
+  // 復旧: 1回だけ再起動(0時を過ぎていても毎時巡回で空き枠は拾える)
+  let redispatch = 'テストのため再起動はしていません';
+  if (!opts.test) {
+    const d = await fetch(`https://api.github.com/repos/${job.repo}/actions/workflows/${job.workflow}/dispatches`, {
+      method: 'POST', headers: ghHeaders(env), body: JSON.stringify({ ref: 'main' }),
+    });
+    redispatch = d.status === 204 ? '自動で1回再起動しました（取れれば「確保」メールが届きます）' : `再起動にも失敗しました（HTTP ${d.status}）`;
+  }
+  return await deadmanAlert(env, jstToday, `${reason}\n\n■ 対応\n${redispatch}`, opts);
+}
+
+async function deadmanAlert(env, jstToday, detail, opts = {}) {
+  const t = opts.test ? '【テスト】' : '';
+  const subject = `${t}🚨【予約失敗】七ヶ浜 自動予約が今夜動いていません（${jstToday}）`;
+  const body = `${t}🚨 七ヶ浜レッスン会場の自動予約が、今夜正しく動いていません 🚨\n\n` +
+    `0時に開いた枠を取れていない可能性があります。\n\n■ 状況\n${detail}\n\n` +
+    `■ お願い\n1. 朝に予約サイトの「予約申込一覧」で、2ヶ月後の金曜の予約があるか確認してください\n` +
+    `2. 無ければ手動で確保するか、Claude に「七ヶ浜の自動予約が止まった」と伝えてください\n\n` +
+    `■ 連絡先\n・七ヶ浜国際村 022-357-5931\n・アクアリーナ 022-357-7890\n・予約サイト https://k3.p-kashikan.jp/town-shichigahama/index.php`;
+  const res = await fetch(env.NOTIFY_URL, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.VENUE_NOTIFY_SECRET}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ date: jstToday, subject, body, dedupe_key: opts.test ? `test:deadman:${now2()}` : `deadman:${jstToday}` }),
+  });
+  const txt = await res.text();
+  console.log(`[deadman] alert ${res.status} ${txt.slice(0, 200)}`);
+  return { status: res.status, body: `deadman ALERT sent: ${txt.slice(0, 300)}` };
+}
+
+function now2() { return new Date().toISOString().slice(0, 16); }
+
 export default {
   async scheduled(event, env, ctx) {
     const hhmm = jstHhmm(event.scheduledTime);
@@ -106,7 +173,7 @@ export default {
       }
       const job = JOBS.find((j) => j.label === label);
       if (!job) return Response.json({ error: `unknown job: ${label}` }, { status: 404 });
-      const r = await runJob(job, env);
+      const r = await runJob(job, env, { test: new URL(req.url).searchParams.get('test') === '1' });
       return Response.json({ ran: label, ...r });
     }
     return Response.json({
