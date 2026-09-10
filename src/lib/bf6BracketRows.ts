@@ -6,7 +6,14 @@
 import { roundsFor, type Round } from './bf6Bracket';
 import type { Bf6DrawDivision } from './bf6Draw';
 
-export type CellState = 'won' | 'lost' | 'pending' | 'empty';
+/**
+ * alive   … まだ勝ち残っている(オレンジ)。負けるまでずっとこれ
+ * lost    … 負けた(グレー+取り消し線)
+ * empty   … 誰もいない枠
+ * ⚠️ 「その試合に勝った」ではなく「勝ち残っているか」で塗る。上の段に上がった人が
+ *    白のままだと目立たない(TARO実機 2026-09-10)。
+ */
+export type CellState = 'alive' | 'lost' | 'empty';
 
 export type BracketCell = {
   slotNo: number | null;
@@ -37,10 +44,10 @@ function effectiveWinner(m: M): number | null {
   return m.winnerSlot;
 }
 
-function cellFor(m: M, slot: number | null): BracketCell {
+function cellFor(m: M, slot: number | null, lost: Set<number>): BracketCell {
   if (slot === null) return { slotNo: null, state: 'empty', round: m.round, matchNo: m.matchNo };
-  const w = effectiveWinner(m);
-  const state: CellState = w === null ? 'pending' : w === slot ? 'won' : 'lost';
+  // 一度でも負けていればグレー。それ以外は勝ち残り扱い(オレンジ)。
+  const state: CellState = lost.has(slot) ? 'lost' : 'alive';
   return { slotNo: slot, state, round: m.round, matchNo: m.matchNo };
 }
 
@@ -50,6 +57,14 @@ function cellFor(m: M, slot: number | null): BracketCell {
  */
 export function buildBracketRows(division: Bf6DrawDivision, matches: M[]): BracketRow[] {
   const rounds = roundsFor(division);
+  // 負けた人の枠。これ以外の名前入りの枠は「まだ勝ち残っている」= オレンジで出す。
+  // 上の段に上がった人が白のままだと目立たない(TARO実機 2026-09-10)。
+  const lost = new Set<number>();
+  for (const m of matches) {
+    const w = effectiveWinner(m);
+    if (w === null) continue;
+    for (const s of [m.slotA, m.slotB]) if (s !== null && s !== w) lost.add(s);
+  }
   const byRound = new Map<string, M[]>();
   for (const m of matches) {
     const list = byRound.get(m.round) ?? [];
@@ -72,7 +87,7 @@ export function buildBracketRows(division: Bf6DrawDivision, matches: M[]): Brack
     cells: [
       champ === null
         ? { slotNo: null, state: 'empty', round: 'f', matchNo: 1 }
-        : { slotNo: champ, state: 'won', round: 'f', matchNo: 1 },
+        : { slotNo: champ, state: 'alive', round: 'f', matchNo: 1 },
     ],
   });
 
@@ -98,13 +113,13 @@ export function buildBracketRows(division: Bf6DrawDivision, matches: M[]): Brack
           cells.push(
             w === null
               ? { slotNo: null, state: 'empty', round: rd, matchNo: k + 1 }
-              : { slotNo: w, state: 'pending', round: rd, matchNo: k + 1 }
+              : { slotNo: w, state: 'alive', round: rd, matchNo: k + 1 }
           );
         }
         continue;
       }
-      cells.push(cellFor(m, m.slotA));
-      cells.push(cellFor(m, m.slotB));
+      cells.push(cellFor(m, m.slotA, lost));
+      cells.push(cellFor(m, m.slotB, lost));
     }
     rows.push({ kind: 'round', round: rd, cells });
   }

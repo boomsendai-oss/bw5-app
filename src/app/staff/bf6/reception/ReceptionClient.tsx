@@ -166,9 +166,14 @@ export function ReceptionClient({
               </span>
             </span>
             <span className="text-right text-xs font-bold">
-              {e.draws.filter((x) => x.phase === phase).length > 0 ? (
+              {/* ⚠️ phase だけで絞ると他部門の抽選結果を拾う。ビギナーのbracket枠が
+                     小中のくじ引き②の画面に出た(TARO実機 2026-09-10)。部門も見る。 */}
+              {e.draws.filter((x) => x.phase === phase && e.divisions.includes(x.division)).length > 0 ? (
                 <span className="text-brand-600">
-                  {e.draws.filter((x) => x.phase === phase).map((x) => x.block ?? `${x.slotNo}番`).join(' / ')}
+                  {e.draws
+                    .filter((x) => x.phase === phase && e.divisions.includes(x.division))
+                    .map((x) => x.block ?? `${x.slotNo}番`)
+                    .join(' / ')}
                 </span>
               ) : e.checkedIn ? (
                 <span className="text-neutral-400">受付済</span>

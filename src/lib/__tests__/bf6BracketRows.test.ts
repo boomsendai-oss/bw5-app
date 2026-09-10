@@ -36,16 +36,16 @@ describe('下から上へ積む縦型トーナメント表', () => {
     expect(bottom.cells.map((c) => c.slotNo)).toEqual([1, 2]);
   });
 
-  it('勝った人は勝者として、負けた人は敗者として印がつく', () => {
+  it('勝ち残っている人はalive、負けた人はlostになる', () => {
     const rows = buildBracketRows('beginner', [m('r16', 1, 1, 2, 1)]);
     const bottom = rows[rows.length - 1];
-    expect(bottom.cells[0]).toMatchObject({ slotNo: 1, state: 'won' });
+    expect(bottom.cells[0]).toMatchObject({ slotNo: 1, state: 'alive' });
     expect(bottom.cells[1]).toMatchObject({ slotNo: 2, state: 'lost' });
   });
 
   it('まだ決着していない試合の2人はどちらも未決着', () => {
     const rows = buildBracketRows('beginner', [m('r16', 1, 1, 2, null)]);
-    expect(rows[rows.length - 1].cells.map((c) => c.state)).toEqual(['pending', 'pending']);
+    expect(rows[rows.length - 1].cells.map((c) => c.state)).toEqual(['alive', 'alive']);
   });
 
   it('勝者は1つ上の段に現れる', () => {
@@ -70,7 +70,7 @@ describe('下から上へ積む縦型トーナメント表', () => {
   it('優勝者の段には決勝の勝者が入る', () => {
     const rows = buildBracketRows('beginner', [m('f', 1, 5, 9, 9)]);
     expect(rows[0].cells[0].slotNo).toBe(9);
-    expect(rows[0].cells[0].state).toBe('won');
+    expect(rows[0].cells[0].state).toBe('alive');
   });
 
   it('決勝が終わっていなければ優勝者の段は空', () => {
@@ -88,10 +88,10 @@ describe('下から上へ積む縦型トーナメント表', () => {
     expect(rows[rows.length - 1].round).toBe('qf');
   });
 
-  it('不戦勝(相手なし)は勝ち扱いにする', () => {
+  it('不戦勝(相手なし)は勝ち残り扱いにする', () => {
     const rows = buildBracketRows('beginner', [m('r16', 1, 7, null, null)]);
     const bottom = rows[rows.length - 1];
-    expect(bottom.cells[0].state).toBe('won');
+    expect(bottom.cells[0].state).toBe('alive');
   });
 });
 
@@ -110,7 +110,7 @@ describe('勝った瞬間に上の段へ名前が出る(次の試合がまだ無
       r16(5, null, null, null), r16(6, null, null, null), r16(7, null, 14, null), r16(8, 15, null, null),
     ]);
     const sf = rows.find((r) => r.round === 'sf')!;
-    expect(sf.cells[0]).toMatchObject({ slotNo: 1, state: 'pending', round: 'sf', matchNo: 1 });
+    expect(sf.cells[0]).toMatchObject({ slotNo: 1, state: 'alive', round: 'sf', matchNo: 1 });
     expect(sf.cells[1]).toMatchObject({ slotNo: null, state: 'empty' }); // qf#2 はまだ
   });
 
@@ -121,7 +121,7 @@ describe('勝った瞬間に上の段へ名前が出る(次の試合がまだ無
     ]);
     const q = rows.find((r) => r.round === 'qf')!;
     expect(q.cells.slice(0, 4).map((c) => c.slotNo)).toEqual([1, 4, null, 7]);
-    expect(q.cells[0].state).toBe('pending');
+    expect(q.cells[0].state).toBe('alive');
   });
 
   it('次の試合が作られていれば、そのレコードを優先する', () => {
@@ -131,7 +131,7 @@ describe('勝った瞬間に上の段へ名前が出る(次の試合がまだ無
       r16(5, null, null, null), r16(6, null, null, null), r16(7, null, null, null), r16(8, null, null, null),
     ]);
     const q = rows.find((r) => r.round === 'qf')!;
-    expect(q.cells[0]).toMatchObject({ slotNo: 1, state: 'pending' });
-    expect(q.cells[1]).toMatchObject({ slotNo: 4, state: 'pending' });
+    expect(q.cells[0]).toMatchObject({ slotNo: 1, state: 'alive' });
+    expect(q.cells[1]).toMatchObject({ slotNo: 4, state: 'alive' });
   });
 });

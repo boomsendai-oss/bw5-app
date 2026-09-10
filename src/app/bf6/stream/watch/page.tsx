@@ -87,6 +87,16 @@ export default function Bf6StreamWatchPage() {
         <div>
           <Bf6Hero title="LIVE" subtitle="BOOMER'S FIGHT!!! vol.6 オンライン配信" />
           <div className="px-4 py-4">
+            {/* ⚠️ 配信開始前、Cloudflareのプレーヤーは英語で "Stream has not started yet" と出す。
+                   そのままだと壊れていると思われるので、上に日本語の案内を必ず添える(TARO実機 2026-09-10)。 */}
+            <div className="mb-3 rounded-2xl border border-neutral-700 bg-neutral-900 p-4 text-center">
+              <p className="text-sm font-black text-white">配信は 9/26(土) 14:30頃 に開始します</p>
+              <p className="mt-1 text-xs leading-relaxed text-neutral-400">
+                開始前は下の画面に英語で「Stream has not started yet」と表示されます。
+                <br />
+                故障ではありません。そのままお待ちいただくか、開始時刻に再度アクセスしてください。
+              </p>
+            </div>
             <div className="overflow-hidden rounded-2xl bg-black ring-1 ring-neutral-700" style={{ aspectRatio: '16 / 9' }}>
               <iframe
                 src={iframeSrc}

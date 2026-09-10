@@ -27,8 +27,9 @@ const ROUND_LABEL: Record<string, string> = { r16: 'BEST 16', qf: 'BEST 8', sf: 
 /** 勝者演出を出す時間。会場で見て分かる長さ。 */
 const WIN_FLASH_MS = 3000;
 /** 火花。中心から放射する筋。角度と距離を決め打ちして毎フレーム再計算しない。 */
-const SPARKS = Array.from({ length: 64 }, (_, i) => {
-  const a = (i / 64) * 360 + ((i * 47) % 17) - 8;
+// 本数は見た目とPCの負荷の妥協点。64本は実機でカクついた(TARO 2026-09-10)
+const SPARKS = Array.from({ length: 28 }, (_, i) => {
+  const a = (i / 28) * 360 + ((i * 47) % 17) - 8;
   const rad = (a * Math.PI) / 180;
   const far = i % 9 === 0;                       // 数本だけ遠くまで飛ぶ
   const dist = (far ? 34 : 12) + ((i * 31) % 30);
@@ -74,10 +75,14 @@ export function ScreenClient() {
 
         if (fresh.length > 0) {
           const winKeys = fresh.map((w) => `${w.round}|${w.matchNo}`);
+          // ⚠️ 試合単位のキーだと、同じ準決勝に入る2人の両方が光ってしまう
+          //    (SORAが勝ったのにJINも光った・TARO実機 2026-09-10)。枠番号まで含める。
           const upKeys = fresh
-            .map((w) => parentMatch(j.state.division, w.round, w.matchNo))
-            .filter((x): x is { round: string; matchNo: number } => x !== null)
-            .map((up) => `${up.round}|${up.matchNo}`);
+            .map((w) => {
+              const up = parentMatch(j.state.division, w.round, w.matchNo);
+              return up ? `${up.round}|${up.matchNo}|${w.winnerSlot}` : null;
+            })
+            .filter((x): x is string => x !== null);
           setFlashWin((p) => new Set([...p, ...winKeys]));
           setFlashArrive((p) => new Set([...p, ...upKeys]));
           timers.push(
@@ -98,6 +103,12 @@ export function ScreenClient() {
       const im = new Image();
       im.src = src;
     }
+    // VSの背景動画も先に取っておく(最初のVSで背景が遅れて出る・TARO実機 2026-09-10)
+    const pre = document.createElement('video');
+    pre.src = '/bf6/vs-bg.mp4';
+    pre.preload = 'auto';
+    pre.muted = true;
+    pre.load();
     tick();
     const id = setInterval(tick, 1000);
     return () => {
@@ -151,7 +162,7 @@ export function ScreenClient() {
 
             <div className="relative flex flex-1 items-center justify-center px-[1.5vw] pb-[2vh]">
               {/* 左右は内容量に関係なく必ず半分ずつ(片側が空でもVSが中央からずれない・TARO実機 2026-09-10) */}
-              <div className="bf6-in-left w-1/2 min-w-0 shrink-0 grow-0 basis-1/2 overflow-hidden text-center will-change-transform">
+              <div className="bf6-in-left w-1/2 min-w-0 shrink-0 grow-0 basis-1/2 overflow-hidden text-center">
                 <Side slot={a} corner="red" division={state.division} />
               </div>
 
@@ -200,7 +211,7 @@ export function ScreenClient() {
                 VS
               </p>
 
-              <div className="bf6-in-right w-1/2 min-w-0 shrink-0 grow-0 basis-1/2 overflow-hidden text-center will-change-transform">
+              <div className="bf6-in-right w-1/2 min-w-0 shrink-0 grow-0 basis-1/2 overflow-hidden text-center">
                 <Side slot={b} corner="blue" division={state.division} />
               </div>
             </div>
@@ -242,8 +253,8 @@ export function ScreenClient() {
                       new Map(
                         Array.from({ length: row.cells.length / 2 }, (_, k) => k)
                           .filter((k) => flashWin.has(`${row.round}|${k + 1}`))
-                          // 光は勝った側の脚から立ち上がるので、左右どちらかを渡す
-                          .map((k) => [k, row.cells[k * 2]?.state === 'won' ? 'a' : 'b'] as const)
+                          // 光は勝った側の脚から立ち上がる。負けた側(lost)でなければ左脚。
+                          .map((k) => [k, row.cells[k * 2]?.state === 'lost' ? 'b' : 'a'] as const)
                       )
                     }
                   />
@@ -256,7 +267,7 @@ export function ScreenClient() {
                           rowIndex={ri}
                           rowCount={rows.length}
                           mode={
-                            c.round !== null && flashArrive.has(`${c.round}|${c.matchNo}`)
+                            c.round !== null && flashArrive.has(`${c.round}|${c.matchNo}|${c.slotNo}`)
                               ? 'arrive'
                               : c.round !== null && flashWin.has(`${c.round}|${c.matchNo}`)
                                 ? 'win'
@@ -340,14 +351,14 @@ function PersonCard({
   const depth = rowCount - 1 - rowIndex; // 1回戦=0、決勝=最大
   const SIZES = ['text-[0.95vw]', 'text-[1.4vw]', 'text-[2vw]', 'text-[2.8vw]'];
   const size = SIZES[Math.min(depth, SIZES.length - 1)] ?? (compact ? 'text-[0.95vw]' : 'text-[1.4vw]');
+  // オレンジ=まだ勝ち残っている / グレー+取り消し線=負けた / 破線=空き枠。
+  // 勝ち上がった人が一目で分かることを優先する(TARO実機 2026-09-10)。
   const look =
-    cell.state === 'won'
-      ? 'border-orange-400/80 bg-orange-500/20 text-orange-200'
+    cell.state === 'alive'
+      ? 'border-orange-400/80 bg-orange-500/20 text-orange-100'
       : cell.state === 'lost'
         ? 'border-white/10 bg-white/[0.03] text-white/25 line-through decoration-white/20'
-        : cell.state === 'pending'
-          ? 'border-white/20 bg-white/[0.06] text-white/90'
-          : 'border-dashed border-white/10 bg-transparent text-white/20';
+        : 'border-dashed border-white/10 bg-transparent text-white/20';
   return (
     <p
       className={`${base} ${size} ${look} ${
@@ -796,12 +807,9 @@ function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue';
   const accent = corner === 'red' ? 'text-red-400' : 'text-blue-400';
   // 背景を切り抜いた人物を大きく出す。切り抜き前提なので枠も丸マスクも付けない。
   // 写真が無い人は名前だけで成立する(全員ぶん集まらなくても破綻しない)。
-  // ぼかし半径の大きい drop-shadow を2重にかけると、大きな切り抜き画像では
-  // 登場アニメ中にカクつく(TARO実機 2026-09-10)。色の縁取りは1つ・半径小さめに。
-  const glow =
-    corner === 'red'
-      ? 'drop-shadow(0 0 1vw rgba(239,68,68,0.6))'
-      : 'drop-shadow(0 0 1vw rgba(59,130,246,0.6))';
+  // ⚠️ 切り抜き写真に drop-shadow をかけないこと。大きな画像に効かせると
+  //    登場アニメ中にカクつく(TARO実機 2026-09-10・影は不要とTARO判断)。
+  //    赤青の色分けは背景動画と RED/BLUE の見出しで足りている。
   return (
     <div>
       <p className={`text-[1.6vw] font-black tracking-[0.5em] ${accent}`}>
@@ -815,7 +823,6 @@ function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue';
             src={`/api/bf6/photo/${slot.slotNo}?division=${division}&v=${encodeURIComponent(slot.photoAt ?? '')}`}
             alt=""
             className="bf6-cut max-h-full w-auto max-w-[46vw] object-contain object-bottom"
-            style={{ filter: glow }}
           />
         )}
       </div>

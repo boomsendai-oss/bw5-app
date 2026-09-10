@@ -31,9 +31,15 @@ export default async function StaffBf6ReceptionPage({
   // ビギナーは受付時にトーナメント位置まで引くので、blockフェーズでもbracketを使う
   // くじ引き②(ベスト8)は、予選通過者としてチェックされた人だけ(押し間違い防止・TARO 2026-09-09)。
   const forPhase = phase === 'bracket' ? filterForBracketDraw(entrants, qualifiers) : entrants;
-  const shortage =
+  // 部門ごとの通過者の状況。「8名そろっていません」だけだと、片方を終えた直後でも
+  // 警告が出て何が足りないか分からない(TARO実機 2026-09-10)。数で見せる。
+  const qualifierStatus =
     phase === 'bracket'
-      ? (['kids', 'general'] as const).filter((d) => (qualifiers[d]?.size ?? 0) !== QUALIFIER_COUNT)
+      ? (['kids', 'general'] as const).map((d) => ({
+          key: d,
+          label: d === 'kids' ? '小中学生' : '一般',
+          count: qualifiers[d]?.size ?? 0,
+        }))
       : [];
 
   return (
@@ -64,12 +70,26 @@ export default async function StaffBf6ReceptionPage({
           </Link>
         </div>
 
-        {shortage.length > 0 && (
-          <div className="rounded-xl border border-amber-400 bg-amber-50 p-3 text-sm text-amber-900">
-            <p className="font-black">予選通過者が {QUALIFIER_COUNT} 名そろっていません</p>
-            <p className="mt-1 text-xs">
-              {shortage.map((d) => (d === 'kids' ? '小中学生' : '一般')).join('・')}:
-              「予選通過者」でチェックしてから、くじ引き②を行ってください。
+        {qualifierStatus.length > 0 && (
+          <div className="rounded-xl border border-sand-300 bg-white p-3">
+            <p className="text-xs font-bold text-neutral-500">予選通過者の登録状況</p>
+            <ul className="mt-2 space-y-1">
+              {qualifierStatus.map((q) => (
+                <li key={q.key} className="flex items-center justify-between text-sm">
+                  <span className="font-bold text-navy-900">{q.label}</span>
+                  <span
+                    className={`font-black ${
+                      q.count === QUALIFIER_COUNT ? 'text-brand-600' : 'text-neutral-400'
+                    }`}
+                  >
+                    {q.count} / {QUALIFIER_COUNT} 名
+                    {q.count === QUALIFIER_COUNT ? ' ✓' : ' 未登録'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-neutral-500">
+              下の一覧には、登録済みの通過者だけが出ます。まだの部門は「予選通過者」でチェックしてください。
             </p>
           </div>
         )}

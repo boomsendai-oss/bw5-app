@@ -5,22 +5,46 @@ import Link from 'next/link';
 import { BF6_DIVISIONS } from '@/lib/bf6';
 import { calcBf6Remaining, getBf6Faqs, getBf6Settings, getBf6Usage, getPublicBf6Entries } from '@/lib/bf6Db';
 import { getBf6StreamConfig } from '@/lib/bf6StreamDb';
+import { countWaiting } from '@/lib/bf6WaitlistDb';
+import { displayedEntryCount, entryListCta } from '@/lib/bf6Waitlist';
 import { Bf6DetailBlock, Bf6SectionHead, Bf6Shell } from './ui';
 import { Bf6FloatingCta } from './FloatingCta';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Bf6TopPage() {
-  const [settings, usage, entries, streamCfg, faqs] = await Promise.all([
+  const [settings, usage, entries, streamCfg, faqs, ...waitingCounts] = await Promise.all([
     getBf6Settings(),
     getBf6Usage(),
     getPublicBf6Entries(),
     getBf6StreamConfig(),
     getBf6Faqs(),
+    ...BF6_DIVISIONS.map((d) => countWaiting(d.key)),
   ]);
   const remaining = calcBf6Remaining(settings, usage);
+  // 表示人数はキャンセル待ちを足す(16/16 → 17/16)。エントリーリストのページと揃える。
+  // ⚠️ 満枠判定(remaining)には足さないこと。空きがあるのに満枠に見える事故になる。
   const countByDivision = Object.fromEntries(
-    BF6_DIVISIONS.map((d) => [d.key, entries.filter((e) => e.divisions.includes(d.key)).length])
+    BF6_DIVISIONS.map((d, i) => [
+      d.key,
+      displayedEntryCount({
+        entryCount: entries.filter((e) => e.divisions.includes(d.key)).length,
+        waitingCount: Number(waitingCounts[i] ?? 0),
+      }),
+    ])
+  );
+  // 満枠の部門は「満枠」で終わらせず、キャンセル待ちの導線まで出す。
+  // 出せることに気づかず離脱してしまう(TARO 2026-09-10)。判定はエントリー本体の人数で行う。
+  const ctaByDivision = Object.fromEntries(
+    BF6_DIVISIONS.map((d, i) => [
+      d.key,
+      entryListCta({
+        division: d.key,
+        count: entries.filter((e) => e.divisions.includes(d.key)).length,
+        capacity: settings.capacity[d.key],
+        waiting: Number(waitingCounts[i] ?? 0),
+      }),
+    ])
   );
 
   return (
@@ -303,14 +327,35 @@ export default async function Bf6TopPage() {
           </div>
 
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-            {BF6_DIVISIONS.map((d) => (
-              <div key={d.key} className={`rounded-2xl p-3 text-white ring-1 ring-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_4px_12px_rgba(0,0,0,0.4)] ${d.accentBg}`}>
-                <p className="text-[10px] font-bold text-white/80">{d.key === 'beginner' && '🔰 '}{d.label}</p>
-                <p className="mt-0.5 text-xl font-black md:text-2xl">
-                  {remaining.divisions[d.key] > 0 ? `限定${settings.capacity[d.key]}名` : '満枠'}
-                </p>
-              </div>
-            ))}
+            {BF6_DIVISIONS.map((d) => {
+              const cta = ctaByDivision[d.key];
+              const card = (
+                <div className={`h-full rounded-2xl p-3 text-white ring-1 ring-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_4px_12px_rgba(0,0,0,0.4)] ${d.accentBg}`}>
+                  <p className="text-[10px] font-bold text-white/80">{d.key === 'beginner' && '🔰 '}{d.label}</p>
+                  <p className="mt-0.5 text-xl font-black md:text-2xl">
+                    {!cta.isFull ? `限定${settings.capacity[d.key]}名` : '満枠'}
+                  </p>
+                  {cta.kind === 'waitlist' && (
+                    <p className="mt-1 rounded-full bg-black/35 px-2 py-1 text-[11px] font-black leading-tight">
+                      キャンセル待ち受付中
+                      <span className="block text-[10px] font-bold text-white/80">タップして登録</span>
+                    </p>
+                  )}
+                  {cta.kind === 'waitlist_full' && (
+                    <p className="mt-1 rounded-full bg-black/35 px-2 py-1 text-[11px] font-black leading-tight">
+                      キャンセル待ちも満員
+                    </p>
+                  )}
+                </div>
+              );
+              return cta.href ? (
+                <Link key={d.key} href={cta.href} className="block">
+                  {card}
+                </Link>
+              ) : (
+                <div key={d.key}>{card}</div>
+              );
+            })}
           </div>
 
           <div id="bf6-entry-cta" className="mt-4 space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
