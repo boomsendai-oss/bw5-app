@@ -28,8 +28,10 @@ const ROUND_LABEL: Record<string, string> = { r16: 'BEST 16', qf: 'BEST 8', sf: 
 const WIN_FLASH_MS = 3000;
 /** 火花。中心から放射する筋。角度と距離を決め打ちして毎フレーム再計算しない。 */
 // 本数は見た目とPCの負荷の妥協点。64本は実機でカクついた(TARO 2026-09-10)
-const SPARKS = Array.from({ length: 28 }, (_, i) => {
-  const a = (i / 28) * 360 + ((i * 47) % 17) - 8;
+// 本数と装飾は負荷とのトレードオフ。box-shadow付き64本→28本→16本(にじみ無し)に段階的に削った
+// (TARO実機 2026-09-10・LED出力のPCでカクついたため)
+const SPARKS = Array.from({ length: 16 }, (_, i) => {
+  const a = (i / 16) * 360 + ((i * 47) % 17) - 8;
   const rad = (a * Math.PI) / 180;
   const far = i % 9 === 0;                       // 数本だけ遠くまで飛ぶ
   const dist = (far ? 34 : 12) + ((i * 31) % 30);
@@ -132,7 +134,9 @@ export function ScreenClient() {
     return (
       <Stage plain>
         {/* key を変えることで、試合が変わったときだけ登場アニメを再生し直す */}
-        <div key={vsAnimKey(state)} className="bf6-shake relative h-full w-full">
+        {/* ⚠️ ここに bf6-shake を付けないこと。動画を含む全体を毎フレーム動かすことになり、
+               画面ごと描き直しになってカクつく(TARO実機 2026-09-10)。揺れは前景だけに掛ける。 */}
+        <div key={vsAnimKey(state)} className="relative h-full w-full">
           {/* 背景は動画。暗闇→左右から赤青が突入→中央で衝突→煙が広がって落ち着く。
               試合ごとに1回だけ再生し、最後のコマで止める(ループさせない)。
               読み込みや再生に失敗しても、poster の静止画が残るので画面は成立する。 */}
@@ -154,7 +158,7 @@ export function ScreenClient() {
           {/* 衝突の閃光 */}
           <div className="bf6-flashout pointer-events-none absolute inset-0 bg-white" />
 
-          <div className="relative flex h-full w-full flex-col">
+          <div className="bf6-shake relative flex h-full w-full flex-col">
             <div className="bf6-drop flex items-start justify-between px-[2.5vw] pt-[2vh]">
               <p className="text-[2vw] font-black tracking-[0.35em] text-white/85">
                 {DIV_LABEL[state.division]}部門 / {ROUND_LABEL[m.round] ?? m.round}
@@ -187,8 +191,7 @@ export function ScreenClient() {
                       style={{
                         width: `${sp.len}vw`,
                         height: `${sp.thick}vw`,
-                        background: `linear-gradient(90deg, #fff 0%, ${sp.hot} 32%, rgba(255,120,20,0.65) 62%, rgba(255,60,0,0) 100%)`,
-                        boxShadow: `0 0 0.35vw ${sp.hot}`,
+                        background: `linear-gradient(90deg, #fff 0%, ${sp.hot} 40%, rgba(255,140,40,0.7) 70%, rgba(255,60,0,0) 100%)`,
                         // @ts-expect-error CSS変数でキーフレームに終点を渡す
                         '--sx': `${sp.dist}vw`,
                         '--rot': `${sp.deg}deg`,
