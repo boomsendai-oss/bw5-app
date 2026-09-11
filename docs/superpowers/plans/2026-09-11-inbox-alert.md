@@ -2350,6 +2350,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   - `OVERLAP_SEC` を 60分、`RunSummary.pushFailed` を追加、過去分の判定は `deps.dryRun` の時だけ
   - テスト19件（通知ありで過去分を判定しない・digest は鳴らさない・受信トレイ外は閉じない・送信失敗→再送・削除済みは再送せず閉じる・1通の失敗で止めない・締め切り後は何もしない・DB障害でも投げない・ドライラン→本番で警報が黙らない・30分無成功の警報と送信失敗時の再挑戦・成功で印を戻す を追加）
   - Commit: `fix(inbox-alert): 警報は送れた時だけ印をつけ、1通の失敗や打ち切りで黙って止まらないようにする`
+  - 再レビュー後の追加: この回に「止まっています」を送ったかをローカル変数 `stallAlerted`（`try` の外で宣言）で持ち、catch の回数による警報にも `!stallAlerted` を条件に足す（時間と回数で二重に送らない）。「時間切れ（`outOfTime`）」と「1通の失敗（`deferredError`）」を分け、時間が残っていれば1通の失敗があっても再確認と再送は行う（`complete = !outOfTime && !deferredError`）。`resolveOpen` と `resendUnnotified` は1件の `GmailApiError`・タイムアウトを飛ばして続ける。テスト22件（二重警報なし・1通の失敗でも返信済みを閉じる・1件のスレッド失敗で再確認を止めない を追加）。Commit: `fix(inbox-alert): 止まっている警報を同じ回に二重に送らず、1通の失敗があっても再確認と再送は続ける`
 
 ---
 
