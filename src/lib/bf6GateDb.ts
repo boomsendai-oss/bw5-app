@@ -6,7 +6,6 @@ import { buildBreakdownByOrder, normalizeCollector } from './bf6Cash';
 import { toOrderLine } from './bf6CashDb';
 import {
   buildGateSearchText,
-  clampHanded,
   gateSortKey,
   walkinAmount,
   type GateOrder,
@@ -80,12 +79,12 @@ export async function listBf6GateOrders(): Promise<GateOrder[]> {
   return out;
 }
 
-export type HandResult = { ok: true; handed: number } | { ok: false; error: string };
-
 /**
- * リストバンドを渡した数を足す(戻すときは負の数)。
- * 2人のスタッフが同じ家族に同時に渡しても数がずれないよう、上書きではなく足し算にする。
- * 未払いの申込には渡させない(先に受け取る)。
+ * リストバンドを渡した数を足す(戻すときは負の数)。未払いの申込には渡させない(先に受け取る)。
+ *
+ * ⚠️ 読んでから書き戻すと、2人のスタッフが同じ家族に同時に押したときに数がずれる。
+ *    足し算と0〜枚数への丸めを1本のSQLで行う。本番DBで別々の接続から同時に+1を15回送り、
+ *    15になることを確認済み(2026-09-11)。
  */
 export async function addBf6GateHanded(orderId: number, delta: number, by: string): Promise<HandResult> {
   const o = await getOne('SELECT payment_status FROM bf_orders WHERE id = ?', [orderId]);
@@ -100,15 +99,22 @@ export async function addBf6GateHanded(orderId: number, delta: number, by: strin
   const tickets = Number(t?.n ?? 0);
   if (tickets === 0) return { ok: false, error: 'この申込に観覧チケットはありません' };
 
-  const cur = await getOne('SELECT handed FROM bf_gate_entry WHERE order_id = ?', [orderId]);
-  const next = clampHanded(Number(cur?.handed ?? 0) + delta, tickets);
-  await execute(
-    `INSERT INTO bf_gate_entry (order_id, handed, handed_by, updated_at) VALUES (?, ?, ?, ?)
-     ON CONFLICT(order_id) DO UPDATE SET handed = excluded.handed, handed_by = excluded.handed_by, updated_at = excluded.updated_at`,
-    [orderId, next, normalizeCollector(by), nowUtcIso()]
+  const now = nowUtcIso();
+  const who = normalizeCollector(by);
+  const r = await execute(
+    `INSERT INTO bf_gate_entry (order_id, handed, handed_by, updated_at)
+     VALUES (?, MAX(0, MIN(?, ?)), ?, ?)
+     ON CONFLICT(order_id) DO UPDATE SET
+       handed = MAX(0, MIN(?, bf_gate_entry.handed + ?)),
+       handed_by = excluded.handed_by,
+       updated_at = excluded.updated_at
+     RETURNING handed`,
+    [orderId, tickets, delta, who, now, tickets, delta]
   );
-  return { ok: true, handed: next };
+  return { ok: true, handed: Number(r.rows?.[0]?.handed ?? 0) };
 }
+
+export type HandResult = { ok: true; handed: number } | { ok: false; error: string };
 
 // ───────── 当日券 ─────────
 

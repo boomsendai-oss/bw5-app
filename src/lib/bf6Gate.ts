@@ -35,6 +35,11 @@ export function ticketCount(o: Pick<GateOrder, 'adult' | 'child'>): number {
   return o.adult + o.child;
 }
 
+/** まだ渡していないリストバンドの本数。ボタンの文言(「全員ぶん3本渡した」等)に使う。 */
+export function gateRemaining(o: Pick<GateOrder, 'adult' | 'child' | 'handed'>): number {
+  return Math.max(0, ticketCount(o) - o.handed);
+}
+
 export type GateTotals = {
   orders: number;
   tickets: number;
@@ -167,4 +172,20 @@ export function walkinTotals(sales: WalkinSale[]): { sales: number; adult: numbe
     (t, s) => ({ sales: t.sales + 1, adult: t.adult + s.adult, child: t.child + s.child, amount: t.amount + s.amount }),
     { sales: 0, adult: 0, child: 0, amount: 0 }
   );
+}
+
+export type WalkinLine = { label: string; qty: number; unit: number; amount: number };
+
+/**
+ * 当日券の内訳。合計だけだと中学生以上と小学生が何枚ずつか分からない(TARO実機 2026-09-11)。
+ * 0枚の区分は出さない。
+ */
+export function walkinLines(
+  q: { adult: number; child: number },
+  prices: { adult: number; child: number }
+): WalkinLine[] {
+  const out: WalkinLine[] = [];
+  if (q.adult > 0) out.push({ label: '中学生以上', qty: q.adult, unit: prices.adult, amount: q.adult * prices.adult });
+  if (q.child > 0) out.push({ label: '小学生', qty: q.child, unit: prices.child, amount: q.child * prices.child });
+  return out;
 }

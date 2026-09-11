@@ -12,6 +12,8 @@ import {
   walkinAmount,
   validateWalkin,
   walkinTotals,
+  gateRemaining,
+  walkinLines,
   type GateOrder,
 } from '../bf6Gate';
 
@@ -153,5 +155,30 @@ describe('当日券(予約なしで来たお客さん)', () => {
       { id: 2, adult: 1, child: 2, amount: 4500, soldBy: 'B', createdAt: 'y' },
     ]);
     expect(t).toEqual({ sales: 2, adult: 3, child: 2, amount: 9500 });
+  });
+});
+
+describe('リストバンドの残り本数(ボタンの文言に使う)', () => {
+  it('まだ渡していない本数', () => {
+    expect(gateRemaining(g(1, { adult: 2, child: 1, handed: 1 }))).toBe(2);
+  });
+  it('渡しすぎた記録があっても0未満にしない', () => {
+    expect(gateRemaining(g(1, { adult: 1, handed: 3 }))).toBe(0);
+  });
+});
+
+describe('当日券の内訳(何枚ずついくらか)', () => {
+  // 合計だけだと、中学生以上と小学生が何枚ずつか分からない(TARO実機 2026-09-11)
+  const prices = { adult: 2500, child: 1000 };
+  it('枚数のある区分だけ、枚数と小計を出す', () => {
+    expect(walkinLines({ adult: 1, child: 2 }, prices)).toEqual([
+      { label: '中学生以上', qty: 1, unit: 2500, amount: 2500 },
+      { label: '小学生', qty: 2, unit: 1000, amount: 2000 },
+    ]);
+  });
+  it('0枚の区分は出さない', () => {
+    expect(walkinLines({ adult: 3, child: 0 }, prices)).toEqual([
+      { label: '中学生以上', qty: 3, unit: 2500, amount: 7500 },
+    ]);
   });
 });

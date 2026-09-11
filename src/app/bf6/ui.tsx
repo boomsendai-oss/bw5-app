@@ -40,7 +40,9 @@ export function Bf6Shell({
 }
 
 export const inputCls =
-  'w-full rounded-xl border-2 border-neutral-800 bg-neutral-900 px-3.5 py-3 text-base text-white placeholder-neutral-600 focus:border-red-500 focus:outline-none';
+  // 薄字(例: TARO 等)は neutral-600 だと黒地で 2.29:1 しかなく読みづらかった(実測・2026-09-11)。
+  // neutral-500 で約3.8:1。入力済みの白文字よりははっきり薄い。
+  'w-full rounded-xl border-2 border-neutral-800 bg-neutral-900 px-3.5 py-3 text-base text-white placeholder:text-neutral-500 focus:border-red-500 focus:outline-none';
 
 /** 黒帯ヒーロー。バトルイベントのブランド面はここに集約し、本文はライトで読みやすく。 */
 export function Bf6Hero({ title, subtitle }: { title: string; subtitle?: string }) {

@@ -9,5 +9,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function CrewGuard({ children }: { children: React.ReactNode }) {
   if (!(await isCrewAuthorized())) redirect('/bf6/crew/login');
-  return <div className="min-h-screen bg-sand-50 pb-16">{children}</div>;
+  // ⚠️ body の既定の文字色は BW5 用の白。明るい下地のここでは文字色を必ず濃い色に戻す
+  //    (色指定の無い数字や入力欄が白く溶けて見えなかった・TARO実機 2026-09-11)。globals.css の .bf6-crew-light も参照
+  return <div className="bf6-crew-light min-h-screen bg-sand-50 pb-16 text-navy-900">{children}</div>;
 }

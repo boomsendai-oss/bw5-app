@@ -46,7 +46,7 @@ export default function PhotoList({ rows, division }: { rows: PhotoRow[]; divisi
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="ダンサーネームで検索"
-        className="w-full rounded-xl border border-sand-300 bg-white px-4 py-3 text-base outline-none focus:border-brand-500"
+        className="w-full rounded-xl border border-sand-300 bg-white px-4 py-3 text-base text-navy-900 outline-none placeholder:text-neutral-500 focus:border-brand-500"
       />
 
       <div className="flex items-center gap-2">

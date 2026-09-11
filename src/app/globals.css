@@ -510,3 +510,24 @@ body:has(.staff-theme) {
   --sidebar-accent-foreground: #003833;
   --sidebar-ring: #00A090;
 }
+/*
+  BF6 当日オペ(クルー画面 /bf6/crew の中)。
+  body の既定の文字色は BW5 用の白(--text-primary: #fff)。明るい下地のクルー画面では、
+  色指定の無い文字・入力欄・プレースホルダーが白く溶けて見えなくなっていた
+  (検索欄やリストバンドの本数が読めない・TARO実機 2026-09-11)。ここでまとめて固定する。
+  文字 #070720 = navy-900。プレースホルダーは白地で約4.4:1(入力済みの文字より薄いが読める)。
+*/
+.bf6-crew-light {
+  color: #070720;
+}
+.bf6-crew-light input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),
+.bf6-crew-light textarea,
+.bf6-crew-light select {
+  color: #070720;
+  background-color: #ffffff;
+}
+.bf6-crew-light input::placeholder,
+.bf6-crew-light textarea::placeholder {
+  color: #7a7a86;
+  opacity: 1;
+}

@@ -138,7 +138,7 @@ export function ReceptionClient({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="ダンサーネーム / 本名で検索"
-          className="h-14 flex-1 rounded-2xl border border-sand-300 px-4 text-lg"
+          className="h-14 flex-1 rounded-2xl border border-sand-300 bg-white px-4 text-lg text-navy-900 placeholder:text-neutral-500"
         />
         <span className="whitespace-nowrap text-sm font-bold text-neutral-500">
           受付 {done}/{entrants.length}

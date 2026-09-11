@@ -92,7 +92,7 @@ export default function CashList({ orders }: { orders: CashOrder[] }) {
             value={who}
             onChange={(e) => saveWho(e.target.value)}
             placeholder="例: TARO"
-            className="mt-1 w-full rounded-xl border border-sand-300 px-3 py-2 text-base"
+            className="mt-1 w-full rounded-xl border border-sand-300 bg-white px-3 py-2 text-base text-navy-900 placeholder:text-neutral-500"
           />
         </label>
       </div>
