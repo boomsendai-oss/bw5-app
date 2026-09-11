@@ -27,6 +27,7 @@
 - （Task 9 コードレビューで追加）未対応の再確認（`listOpen`）は古い順でなく毎回ばらばら（`ORDER BY RANDOM()`）に20件取る（古い順だと21件目以降が永久に再確認されず、返信済みでも朝のまとめに残り続けるため）。メールの記録は `INSERT OR IGNORE` をやめ `ON CONFLICT DO NOTHING`（必須の値が欠けた時に黙って捨てない）。連続エラーの記録は1文の upsert＋`RETURNING`。60日の削除でドライランの未対応行も消す
 - （Task 10 コードレビューで追加）「止まっています」「連携が切れました」の警報は**送れた時だけ**印（`stallAlerted` / `tokenAlertDate`）をつける（ドライラン中や Pushover 失敗で印だけ付き、本番で黙る事故を防ぐ）。`runAccount` は例外を外に投げない（DBが落ちても他のアカウントを止めない）。1通だけGmail側で失敗し続ける時（`GmailApiError`・タイムアウト）はそのメールを次回に回して新しいメールは処理し、前回確認時刻は進めずエラーを記録する。締め切り後に呼ばれたら何もしない・本文取得の前にも締め切りを確かめる。Vercelに打ち切られてエラーすら記録できない時のため「最後の成功から30分」でも止まっていることを知らせる。再確認→再送の順にする（返信済みを鳴らさない）。成功したら連携切れの日付を戻す。取り直しの幅は60分。Pushover送信の失敗回数を数える（`pushFailed`）。過去分の判定はドライラン中だけ（run.ts 側でも強制）。再確認・再送の失敗は本処理を失敗にしない
 - （Task 11 コードレビューで追加）朝のまとめの件名の取り直しは同時5件・25秒の締め切りつき（Gmailの上限で429が出て件名が消えるのを防ぐ）。件名を取れなかった「朝のまとめ行き」は既読にせず翌朝また載せ、失敗件数 `subjectFailed` をレスポンスに出す。送信できたら真っ先に `lastDigestAt` を付け（8:10の予備で二重に送らない）、古い行の削除の失敗では500にしない。スキップ判定は「20時間以内」でなく「JSTの同じ日に送信済み」（本番投入日の午後に手動で送っても翌朝のまとめを消さない）。一時的なトークン失敗は次の件で取り直す。設定が欠けている時は両入口とも `503 ok:false`。5分おきの入口のレスポンスは先頭にエラーの要約 `errors` を置く（Workerのログは先頭約300字しか残らない）
+- （Task 13 コードレビューで追加）鍵の登録スクリプトは、Googleログインや入力の**前に** Vercel のリンク情報（`.vercel/project.json`・`projectName: bw5-app`）を確かめ、無ければ止まる（ログインだけさせて登録に失敗する事故を防ぐ）。`vercel` はリポジトリ直下を `cwd` にし、確かめた版 `vercel@53.1.0` に固定。Googleログインは `state` と PKCE(S256) を使い、`127.0.0.1` だけで待ち受け、最大9分で打ち切る
 
 ---
 
@@ -2932,6 +2933,15 @@ git commit -m "feat(inbox-alert): 鍵をVercelに登録する補助スクリプ�
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
+- [ ] **Step 4（コードレビュー後の追加）: リンク確認・state/PKCE・待ち時間の上限**
+
+  - `assertVercelLinked()`: `<リポジトリ直下>/.vercel/project.json` が無い、または `projectName` が `bw5-app` でなければ、ログイン・入力・登録の前にエラーで止まる。`client` / `gmail` / `set` の最初に呼ぶ
+  - `vercelEnvSet` は `npx --yes vercel@53.1.0 env add <name> production --force -y` を `cwd: REPO_ROOT` で実行し、起動失敗時は `r.error.message` も出す
+  - Googleログイン: `state`（16バイト）と PKCE（`code_verifier` 48バイト・`code_challenge_method: S256`）。待ち受けは `127.0.0.1`、`redirect_uri` は `http://127.0.0.1:<port>`。`state` が合わない要求は404で無視。9分でタイムアウト
+  - `open` が無くても落ちない（`.on('error', () => {})`）。プロフィール取得の失敗は分かる文言で止める。広い権限がまとめて返った時は「アラート専用のOAuthクライアントを分ける」ことを案内
+  - 確認（登録には進まない）: `.vercel` の無い worktree で `set PUSHOVER_USER_KEY` / `gmail boom --expect …` / `client` が、入力やブラウザの前に「project.json がありません」で `exit=1` になること
+  - Commit: `fix(inbox-alert): 鍵の登録はVercelのリンクを先に確かめ、Googleログインに state・PKCE・待ち時間の上限を付ける`
+
 ---
 
 ### Task 14: ドライラン結果の一覧スクリプト
@@ -3101,6 +3111,12 @@ node scripts/inbox_alert_setup.mjs set PUSHOVER_TOKEN_TARO
 - [ ] **Step 3: Gmail の読み取り専用の鍵（Claude が実行 → TARO がブラウザでログイン）**
 
 Claude が1本ずつ実行する。ブラウザが開いたら TARO が該当アカウントでログインし、「Googleはこのアプリを確認していません」→「詳細」→「移動」→「許可」。
+
+前提（Claude）: この作業は worktree（`~/BOOM/BW5_2026/bw5-app-inbox-alert`）で行う。スクリプトは Vercel のリンク情報が無いと止まるので、先に main チェックアウトからリンク情報だけを写す（`.vercel` は Git に入らない）:
+```bash
+mkdir -p .vercel && cp ~/BOOM/BW5_2026/bw5-app/.vercel/project.json .vercel/
+```
+`gmail` は TARO のログインを待つので、Bash ツールは `timeout: 600000` で実行する（スクリプト側の上限は9分）。Pushover の `set` も同じ worktree で TARO が実行する。
 
 ```bash
 node scripts/inbox_alert_setup.mjs client
