@@ -102,12 +102,13 @@ export const dbStore: AlertStore = {
   },
 
   async saveError(account, message) {
-    await ensureState(account);
-    await execute(
-      'UPDATE inbox_alert_state SET last_error = ?, consecutive_errors = consecutive_errors + 1 WHERE account = ?',
-      [message.slice(0, 500), account],
+    // 1文で「行が無ければ作る・回数を1増やす・増えた後の回数を返す」(往復を減らし、読み書きの間に割り込まれない)
+    const r = await getOne(
+      `INSERT INTO inbox_alert_state (account, last_error, consecutive_errors) VALUES (?, ?, 1)
+       ON CONFLICT(account) DO UPDATE SET last_error = excluded.last_error, consecutive_errors = consecutive_errors + 1
+       RETURNING consecutive_errors`,
+      [account, message.slice(0, 500)],
     );
-    const r = await getOne('SELECT consecutive_errors FROM inbox_alert_state WHERE account = ?', [account]);
     return Number(r?.consecutive_errors ?? 0);
   },
 
@@ -135,11 +136,13 @@ export const dbStore: AlertStore = {
   },
 
   async insertItem(item, nowIso) {
+    // OR IGNORE は NOT NULL 違反まで黙って捨てる(メールの取りこぼしに気づけない)ので、重複だけを無視する
     await execute(
-      `INSERT OR IGNORE INTO inbox_alert_items
+      `INSERT INTO inbox_alert_items
         (account, message_id, thread_id, received_ms, read_mode, tier, kind, ai_failed, in_inbox, dry_run,
          input_tokens, output_tokens, notified_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(account, message_id) DO NOTHING`,
       [
         item.account, item.messageId, item.threadId, item.receivedMs, item.readMode, item.tier, item.kind,
         item.aiFailed ? 1 : 0, item.inInbox ? 1 : 0, item.dryRun ? 1 : 0,
@@ -163,10 +166,11 @@ export const dbStore: AlertStore = {
   },
 
   async listOpen(account, limit) {
+    // 古い順に取ると、未対応が上限を超えた時に後ろの分が永久に再確認されないので、毎回ばらばらに取る
     const rows = await getAll(
       `SELECT * FROM inbox_alert_items
        WHERE account = ? AND tier = 'now' AND resolved_at IS NULL AND dry_run = 0
-       ORDER BY received_ms LIMIT ?`,
+       ORDER BY RANDOM() LIMIT ?`,
       [account, limit],
     );
     return rows.map(toOpen);
@@ -226,10 +230,10 @@ export async function countSince(sinceIso: string): Promise<{ countOnly: number;
   return { countOnly: Number(r?.count_only ?? 0), aiLight: Number(r?.ai_light ?? 0), aiFailed: Number(r?.ai_failed ?? 0) };
 }
 
-/** 60日を過ぎた行を消す。未対応(tier=now で未解決)は消さない */
+/** 60日を過ぎた行を消す。本番の未対応(tier=now で未解決)だけは消さない(ドライランの行は消える) */
 export async function purgeBefore(cutoffIso: string): Promise<void> {
   await execute(
-    "DELETE FROM inbox_alert_items WHERE created_at < ? AND NOT (tier = 'now' AND resolved_at IS NULL)",
+    "DELETE FROM inbox_alert_items WHERE created_at < ? AND NOT (tier = 'now' AND resolved_at IS NULL AND dry_run = 0)",
     [cutoffIso],
   );
 }
