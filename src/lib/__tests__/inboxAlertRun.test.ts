@@ -298,6 +298,45 @@ describe('runAccount', () => {
     expect(state.pushFailedAt).toBe(new Date(NOW).toISOString());
   });
 
+  it('一度失敗した自分の鍵は、その回の残りの通知では使わない(Pushoverが固まっても時間切れにしない)', async () => {
+    const { store, state } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const { gmail } = fakeGmail([msg('a'), msg('b')]);
+    const calls: string[] = [];
+    const { deps } = makeDeps({
+      gmail,
+      store,
+      fallbackTokens: ['po', 'po-nitro'],
+      push: async (token) => {
+        calls.push(token);
+        if (token === 'po') throw new Error('pushover timeout');
+      },
+    });
+    const r = await runAccount(account, deps);
+    expect(calls).toEqual(['po', 'po-nitro', 'po-nitro']);
+    expect(r).toMatchObject({ notified: 2, pushFailed: 2, pushFallback: 2 });
+    expect(state.pushFailedAt).toBe(new Date(NOW).toISOString());
+  });
+
+  it('全部の鍵が失敗した後は、その回の残りの通知でPushoverを呼ばない', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const { gmail } = fakeGmail([msg('a'), msg('b')]);
+    const calls: string[] = [];
+    const { deps } = makeDeps({
+      gmail,
+      store,
+      fallbackTokens: ['po', 'po-nitro'],
+      push: async (token) => {
+        calls.push(token);
+        throw new Error('pushover timeout');
+      },
+    });
+    const r = await runAccount(account, deps);
+    expect(calls).toEqual(['po', 'po-nitro']);
+    expect(r.notified).toBe(0);
+    expect(items.get('a')!.notifiedAt).toBeNull();
+    expect(items.get('b')!.notifiedAt).toBeNull();
+  });
+
   it('自分の鍵が壊れていても、止まっている警報は他の鍵で届ける', async () => {
     const { store, state } = memoryStore({ lastCheckedMs: NOW - 300_000 });
     const { gmail } = fakeGmail([], { listSince: async () => { throw new Error('gmail 500 /messages'); } });

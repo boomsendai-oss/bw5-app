@@ -99,8 +99,10 @@ export async function runAccount(account: AlertAccount, deps: RunDeps): Promise<
   // この回に「止まっています」を送った・既に送ってあるか(時間と回数の両方で二重に送らないため)
   let stallAlerted = false;
   const ownPush: OwnPush = { ok: false, failed: false };
+  // この回に一度失敗したPushoverの鍵(自分の鍵も他の鍵も)。Pushoverが固まっても、1つの鍵で待つのは1回あたり1度だけにする
+  const badTokens = new Set<string>();
   const deliver: Deliver = async (msg) => {
-    const outcome = await pushWithFallback(account, msg, deps);
+    const outcome = await pushWithFallback(account, msg, deps, badTokens);
     if (outcome === 'own') {
       ownPush.ok = true;
     } else {
@@ -403,23 +405,34 @@ async function safePush(msg: PushoverMessage, deps: RunDeps, deliver: Deliver): 
 /**
  * 通知の送信。まず自分のアカウントの鍵で送り、だめなら他のアカウントの鍵(BOOMを先頭)で順に試す。
  * 1つの鍵の設定ミスで、そのアカウントの通知も「止まっています」の警報も黙って届かなくなるのを防ぐ。
- * 他の鍵で送る時は、どのアカウントのメールか分かるよう件名の頭に〔表示名〕をつける。例外は投げない
+ * 他の鍵で送る時は、どのアカウントのメールか分かるよう件名の頭に〔表示名〕をつける。例外は投げない。
+ * その回に一度失敗した鍵(badTokens)は試さない(自分の鍵を飛ばした時も「自分の鍵で送れなかった」扱い)。
+ * 全部の鍵が失敗済みなら、Pushoverを呼ばずに 'failed' を返す
  */
-async function pushWithFallback(account: AlertAccount, msg: PushoverMessage, deps: RunDeps): Promise<PushOutcome> {
-  try {
-    await deps.push(account.pushoverToken, msg);
-    return 'own';
-  } catch {
-    // 自分の鍵で送れなかった。他のアカウントの鍵で試す
+async function pushWithFallback(
+  account: AlertAccount,
+  msg: PushoverMessage,
+  deps: RunDeps,
+  badTokens: Set<string>,
+): Promise<PushOutcome> {
+  if (!badTokens.has(account.pushoverToken)) {
+    try {
+      await deps.push(account.pushoverToken, msg);
+      return 'own';
+    } catch {
+      // 自分の鍵で送れなかった。この回はもう使わず、他のアカウントの鍵で試す
+      badTokens.add(account.pushoverToken);
+    }
   }
   const fallbackMsg: PushoverMessage = { ...msg, title: truncateChars(`〔${account.label}〕${msg.title}`, 250) };
   for (const token of new Set(deps.fallbackTokens)) {
-    if (token === account.pushoverToken) continue;
+    if (token === account.pushoverToken || badTokens.has(token)) continue;
     try {
       await deps.push(token, fallbackMsg);
       return 'fallback';
     } catch {
-      // 次の鍵を試す
+      // この回はもう使わず、次の鍵を試す
+      badTokens.add(token);
     }
   }
   return 'failed';
