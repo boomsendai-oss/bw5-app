@@ -2672,7 +2672,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```js
 
   // ── 受信箱アラート(2026-09-11)。5分おきに新着メールを判定し、毎朝8:00にまとめを送る。
-  // 8:10はまとめを送り損ねた時の予備(20時間以内に送信済みならアプリ側で何もしない)。
+  // 8:10はまとめを送り損ねた時の予備(JSTの同じ日に送信済みならアプリ側で何もしない)。
   { every: 5, path: '/api/cron/inbox-alert', label: 'inbox-alert' },
   { at: '08:00', path: '/api/cron/inbox-alert-digest', label: 'inbox-digest' },
   { at: '08:10', path: '/api/cron/inbox-alert-digest', label: 'inbox-digest-retry' },
@@ -3165,7 +3165,7 @@ Expected: デプロイ成功と `https://boom-cron.<サブドメイン>.workers.
 ```bash
 curl -s https://boom-cron.<サブドメイン>.workers.dev/ | grep -o '"every 5m inbox-alert"\|"08:00 inbox-digest"\|"08:00 story-08"'
 ```
-Expected: 3つとも表示される（既存のストーリー枠が残っていること）
+Expected: 3つとも表示される（既存のストーリー枠が残っていること）。デプロイ後の最初の 8:00 に、`npx wrangler tail boom-cron --format pretty` で `inbox-digest` の呼び出しが途中で打ち切られず応答まで記録されているか（Worker の定期実行が最大約60秒のアプリ応答を待てるか）を確かめる
 
 - [ ] **Step 8: 過去30日の判定が進むのを見守る（Claude）**
 
