@@ -19,7 +19,7 @@ Claudeの自動化で通知メールが増え、新規の問い合わせや仕�
 | 動かす場所 | クラウド（Cloudflare Worker が起動 → BOOMアプリが判定 → Pushover） |
 | 判定 | ルールで宣伝を除いたあと、AI（Claude Opus 5）が判定する |
 | 誤判定の方針 | 迷ったら鳴らす（見逃しより鳴らしすぎを許容）。基準はあとから一言で直せる |
-| 未対応の管理 | 返信する、またはGmailでアーカイブすると消える。それまで毎朝のまとめに残る |
+| 未対応の管理 | 返信する、Gmailでアーカイブする、またはゴミ箱に入れると消える（受信トレイを通らなかったメールは読んだら消える）。それまで毎朝のまとめに残る |
 
 | 段階 | 届け方 | 対象 |
 |---|---|---|
@@ -133,13 +133,13 @@ BOOM
 
 - 未対応の件名は、まとめを作る時にGmailから取り直す（DBに件名を持たない）
 - 1024字を超える分は「ほかN件」に畳む
-- 未対応は、返信かアーカイブで消えるまで毎朝載り続ける（自動では消さない）
+- 未対応は、返信・アーカイブ・ゴミ箱で消えるまで毎朝載り続ける（期間では自動で消さない）
 
 ## 6. データ（Turso・マイグレーション `20260911_inbox_alert.sql`）
 
 **件名・差出人・本文は保存しない。** 保存するのは次の2テーブルだけ。
 
-- `inbox_alert_state`: `account`（PK） / `last_checked_ms` / `last_success_at` / `last_error` / `consecutive_errors`
+- `inbox_alert_state`: `account`（PK） / `last_checked_ms` / `last_success_at` / `last_error` / `consecutive_errors` / `push_failed_at`（そのアカウントのPushoverの鍵で送れなかった時刻）
 - `inbox_alert_items`: `account` + `message_id`（PK） / `thread_id` / `received_ms` / `read_mode` / `tier` / `kind` / `notified_at` / `resolved_at` / `resolved_reason`（`replied` | `archived`） / `created_at`
   - 同じメールを二度通知しないための記録を兼ねる
   - 60日を過ぎた行は、朝のまとめ処理の中で削除する
@@ -151,13 +151,15 @@ BOOM
 - 新着: `messages.list` を `after:<前回確認時刻−10分>`（`-in:sent -in:chats`、受信トレイ外も含む）で取り、`inbox_alert_items` で重複を除く
 - 初回: その時点までのメールは既読扱いで記録し、通知しない
 - 返信済み: 同じスレッドに、そのメールより新しい「送信済み」ラベルのメッセージがある
-- アーカイブ済み: そのメールに INBOX ラベルが無い
+- アーカイブ済み: そのメールに INBOX ラベルが無い（受信時に受信トレイにあったメールのみ）
+- ゴミ箱: そのメールに TRASH ラベルがある
+- 受信時に受信トレイに無かったメール（振り分けで受信トレイを通らない等）: UNREAD ラベルが無くなったら（読んだら）閉じる
 - 再確認の対象: `tier=now` かつ未解決のもの（毎回、最大20件）
 
 ## 8. 認証情報
 
 - クラウドには**読み取り専用（`gmail.readonly`）の新しい鍵**を置く。今ある鍵（`gmail.modify`＝送信・削除も可）はクラウドに置かない
-- OAuthクライアントは boom所有の `gmail-mcp-504722`（本番公開済み・外部）を3アカウント共通で使う。同意画面に「未確認のアプリ」と表示されるが、進めてよい
+- OAuthクライアントは boom所有の `gmail-mcp-504722`（本番公開済み・外部）を3アカウント共通で使う。同意画面に「未確認のアプリ」と表示されるが、進めてよい。Googleが以前の許可（`gmail.modify`）もまとめて返して登録が止まった場合は、同じプロジェクトにアラート専用のデスクトップ用クライアントを作り、補助スクリプトの `--keys` で3アカウントとも切り替える
 - 鍵の発行: ローカルの補助スクリプトでTAROがGoogleログインを3回行う。発行した鍵はチャットに出さず、スクリプトから直接Vercelの環境変数に登録する
 - Vercel環境変数（新規）: `GMAIL_ALERT_CLIENT_ID` / `GMAIL_ALERT_CLIENT_SECRET` / `GMAIL_ALERT_REFRESH_TOKEN_BOOM` / `_NITROASH` / `_TARO` / `PUSHOVER_USER_KEY` / `PUSHOVER_TOKEN_BOOM` / `_NITROASH` / `_TARO`
 - 既存を流用: `ANTHROPIC_API_KEY` / `CRON_SECRET_CF`
@@ -170,7 +172,7 @@ BOOM
 | AIが使えない（クレジット切れ・障害） | `ai_full` は「【AI判定できず】」を付けて即時通知、`ai_light` は朝のまとめへ。まとめに件数を出す |
 | Gmailの鍵が失効（invalid_grant） | Pushoverで「○○の連携が切れました」を即時（同じアカウントは1日1回まで） |
 | 連続失敗（`consecutive_errors` が6回＝約30分） | Pushoverで「受信箱アラートが止まっています」 |
-| Pushoverへの送信失敗 | `notified_at` を空のまま残し、次回に再送 |
+| Pushoverへの送信失敗 | 他のアカウントの鍵（BOOM優先）で件名に〔アカウント名〕を付けて送り直す。全部だめなら `notified_at` を空のまま残し、次回に再送。自分の鍵で送れなかったことは `push_failed_at` に残し、朝のまとめの稼働欄に「要確認（通知の送信に失敗・Pushoverの鍵を確認）」と出す。朝のまとめ自体も他の鍵で送り直す |
 | 仕組みごと止まる（Worker/Vercel） | 朝のまとめが届かない＝止まっている合図（TAROに周知） |
 
 ## 10. 既存の仕組みとの関係
