@@ -3,19 +3,21 @@
 // 鍵の値は画面にもファイルにも出さない(Gitにも STATE.md にも書かない)。
 //
 // 使い方(Vercel のリンク情報 .vercel/project.json があるリポジトリで実行する。無ければログインや入力の前に止まる):
-//   node scripts/inbox_alert_setup.mjs client
-//       boom所有のOAuthクライアント(~/.gmail-mcp/gcp-oauth.keys.json)を
-//       GMAIL_ALERT_CLIENT_ID / GMAIL_ALERT_CLIENT_SECRET に登録する
-//   node scripts/inbox_alert_setup.mjs gmail <boom|nitroash|taro> --expect <メールアドレス>
+//   node scripts/inbox_alert_setup.mjs client [--keys <JSONのパス>]
+//       OAuthクライアントを GMAIL_ALERT_CLIENT_ID / GMAIL_ALERT_CLIENT_SECRET に登録する。
+//       --keys を省くと boom所有のクライアント(~/.gmail-mcp/gcp-oauth.keys.json)を使う。
+//       --keys にはGoogle Cloudでダウンロードした JSON({"installed":{...}} か {"web":{...}})を渡す(先頭の ~ は展開する)
+//   node scripts/inbox_alert_setup.mjs gmail <boom|nitroash|taro> --expect <メールアドレス> [--keys <JSONのパス>]
 //       ブラウザでGoogleにログイン(読み取り専用の許可)し、ログインしたアドレスが --expect と
-//       一致した時だけ GMAIL_ALERT_REFRESH_TOKEN_<BOOM|NITROASH|TARO> に登録する(ログインを待つのは最大9分)
+//       一致した時だけ GMAIL_ALERT_REFRESH_TOKEN_<BOOM|NITROASH|TARO> に登録する(ログインを待つのは最大9分)。
+//       client で --keys を使った時は、gmail にも同じ --keys を渡す(別のクライアントで取った鍵は、登録したクライアントでは使えない)
 //   node scripts/inbox_alert_setup.mjs set <PUSHOVER_USER_KEY|PUSHOVER_TOKEN_BOOM|PUSHOVER_TOKEN_NITROASH|PUSHOVER_TOKEN_TARO>
 //       値を貼り付けて登録する(入力は画面に表示しない)。TAROが自分のターミナルで実行する
 import http from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import readline from 'node:readline';
@@ -24,6 +26,8 @@ const SUFFIX = { boom: 'BOOM', nitroash: 'NITROASH', taro: 'TARO' };
 const SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 const SETTABLE = ['PUSHOVER_USER_KEY', 'PUSHOVER_TOKEN_BOOM', 'PUSHOVER_TOKEN_NITROASH', 'PUSHOVER_TOKEN_TARO'];
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
+/** --keys を省いた時に使う、boom所有のOAuthクライアント */
+const DEFAULT_KEYS = join(homedir(), '.gmail-mcp', 'gcp-oauth.keys.json');
 /** Googleのログインと「許可」を待つ上限 */
 const LOGIN_TIMEOUT_MS = 9 * 60 * 1000;
 /** 挙動を確かめた版に固定する(値を標準入力で受け取り、--force で上書き、-y で確認を省く) */
@@ -32,9 +36,12 @@ const VERCEL = 'vercel@53.1.0';
 function usage() {
   console.error([
     '使い方:',
-    '  node scripts/inbox_alert_setup.mjs client',
-    '  node scripts/inbox_alert_setup.mjs gmail <boom|nitroash|taro> --expect <メールアドレス>',
+    '  node scripts/inbox_alert_setup.mjs client [--keys <JSONのパス>]',
+    '  node scripts/inbox_alert_setup.mjs gmail <boom|nitroash|taro> --expect <メールアドレス> [--keys <JSONのパス>]',
     `  node scripts/inbox_alert_setup.mjs set <${SETTABLE.join('|')}>`,
+    '',
+    '  --keys: Google Cloudでダウンロードした OAuthクライアントの JSON。省くと ~/.gmail-mcp/gcp-oauth.keys.json',
+    '          client で --keys を使った時は、gmail にも同じ --keys を渡してください',
   ].join('\n'));
   process.exit(2);
 }
@@ -51,9 +58,38 @@ function assertVercelLinked() {
   }
 }
 
-function oauthClient() {
-  const keys = JSON.parse(readFileSync(join(homedir(), '.gmail-mcp', 'gcp-oauth.keys.json'), 'utf8'));
-  const c = keys.installed ?? keys.web;
+function expandHome(p) {
+  if (p === '~') return homedir();
+  if (p.startsWith('~/')) return join(homedir(), p.slice(2));
+  return p;
+}
+
+/**
+ * OAuthクライアントのIDとシークレットを JSON から読む。
+ * エラーの文言にファイルの中身を入れない(JSONの読み取りエラーはシークレットの一部を含むことがあるため)
+ */
+function oauthClient(keysPath) {
+  const p = keysPath ? resolve(expandHome(keysPath)) : DEFAULT_KEYS;
+  let raw;
+  try {
+    raw = readFileSync(p, 'utf8');
+  } catch (e) {
+    throw new Error(`OAuthクライアントの JSON を読めません（${p}・${e.code ?? 'エラー'}）。パスを確かめてください。登録していません`);
+  }
+  let keys;
+  try {
+    keys = JSON.parse(raw);
+  } catch {
+    throw new Error(`OAuthクライアントの JSON の形が壊れています（${p}）。Google Cloudでダウンロードした JSON を指定してください。登録していません`);
+  }
+  const c = keys?.installed ?? keys?.web;
+  if (!c || typeof c.client_id !== 'string' || !c.client_id || typeof c.client_secret !== 'string' || !c.client_secret) {
+    throw new Error(
+      `OAuthクライアントの JSON に "installed" か "web" の client_id と client_secret がありません（${p}）。` +
+        'Google Cloudの「OAuth 2.0 クライアント ID」でダウンロードした JSON を指定してください。登録していません',
+    );
+  }
+  console.log(`OAuthクライアント: ${p}`);
   return { id: c.client_id, secret: c.client_secret };
 }
 
@@ -95,11 +131,12 @@ function waitForCode(server, redirect, state) {
   });
 }
 
-async function gmailFlow(account, expect) {
+async function gmailFlow(account, expect, keysPath) {
   const suffix = SUFFIX[account];
   if (!suffix || !expect) usage();
   assertVercelLinked();
-  const { id, secret } = oauthClient();
+  // 登録済みの GMAIL_ALERT_CLIENT_* と同じクライアントで取らないと、本番でその鍵を使えない
+  const { id, secret } = oauthClient(keysPath);
 
   // 認可コードの送り込み・横取りを防ぐため state と PKCE(S256) を使い、このMacの中だけで待ち受ける
   const state = randomBytes(16).toString('base64url');
@@ -143,7 +180,8 @@ async function gmailFlow(account, expect) {
   if (scopes.length !== 1 || scopes[0] !== SCOPE) {
     throw new Error(
       `読み取り専用以外の権限が含まれています（${tok.scope}）。登録していません。` +
-        '同じOAuthクライアントで以前に広い権限を許可したアカウントでは、Googleが権限をまとめて返すことがあります。その場合はアラート専用のOAuthクライアントを分けてください',
+        '同じOAuthクライアントで以前に広い権限を許可したアカウントでは、Googleが権限をまとめて返すことがあります。' +
+        'その場合はアラート専用のOAuthクライアントを分け、client と gmail の両方に --keys でその JSON を渡してください',
     );
   }
 
@@ -181,18 +219,31 @@ async function setFlow(name) {
   vercelEnvSet(name, value);
 }
 
-async function clientFlow() {
+async function clientFlow(keysPath) {
   assertVercelLinked();
-  const { id, secret } = oauthClient();
+  const { id, secret } = oauthClient(keysPath);
   vercelEnvSet('GMAIL_ALERT_CLIENT_ID', id);
   vercelEnvSet('GMAIL_ALERT_CLIENT_SECRET', secret);
 }
 
-const [cmd, arg, flag, flagValue] = process.argv.slice(2);
+/** `--name 値` を取り出して args から除く。値が無ければ使い方を出して止める */
+function takeOption(args, name) {
+  const i = args.indexOf(name);
+  if (i < 0) return undefined;
+  const value = args[i + 1];
+  if (!value || value.startsWith('--')) usage();
+  args.splice(i, 2);
+  return value;
+}
+
+const args = process.argv.slice(2);
+const keysPath = takeOption(args, '--keys');
+const expect = takeOption(args, '--expect');
+const [cmd, arg] = args;
 try {
-  if (cmd === 'client') await clientFlow();
-  else if (cmd === 'gmail') await gmailFlow(arg, flag === '--expect' ? flagValue : undefined);
-  else if (cmd === 'set') await setFlow(arg);
+  if (cmd === 'client') await clientFlow(keysPath);
+  else if (cmd === 'gmail') await gmailFlow(arg, expect, keysPath);
+  else if (cmd === 'set' && keysPath === undefined) await setFlow(arg);
   else usage();
 } catch (e) {
   console.error(`失敗: ${e.message}`);
