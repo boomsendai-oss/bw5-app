@@ -22,7 +22,7 @@ function memoryStore(initial: Partial<AlertState> = {}) {
   const items = new Map<string, StoredItem>();
   const toOpen = (i: StoredItem): OpenItem => ({
     account: i.account, messageId: i.messageId, threadId: i.threadId, receivedMs: i.receivedMs,
-    kind: i.kind, aiFailed: i.aiFailed, inInbox: i.inInbox,
+    kind: i.kind, aiFailed: i.aiFailed, inInbox: i.inInbox, notified: Boolean(i.notifiedAt),
   });
   const store: AlertStore = {
     getState: async () => ({ ...state }),
@@ -215,7 +215,35 @@ describe('runAccount', () => {
     expect(items.get('filtered')!.resolved).toBeNull();
   });
 
-  it('受信トレイを通らなかったメールは、読んだら閉じる', async () => {
+  it('通知が届いていない未対応は、受信トレイ外で既読でも閉じず、鍵が直った回に届ける', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    // フィルタで受信トレイを通らず、既読にもされたメール
+    const { gmail } = fakeGmail([msg('filtered', { labels: ['Label_1'] })]);
+    const broken = makeDeps({
+      gmail,
+      store,
+      fallbackTokens: ['po', 'po-nitro'],
+      push: async () => {
+        throw new Error('pushover down');
+      },
+    });
+    const r1 = await runAccount(account, broken.deps);
+    expect(r1).toMatchObject({ notified: 0, resolved: 0 });
+    expect(items.get('filtered')).toMatchObject({ tier: 'now', inInbox: false, notifiedAt: null, resolved: null });
+
+    const fixed = makeDeps({ gmail, store, fallbackTokens: ['po', 'po-nitro'] });
+    const r2 = await runAccount(account, fixed.deps);
+    expect(r2).toMatchObject({ notified: 1, resolved: 0 });
+    expect(fixed.pushed.map((m) => m.title)).toEqual(['【新規の問い合わせ】件名filtered']);
+    expect(items.get('filtered')).toMatchObject({ resolved: null });
+    expect(items.get('filtered')!.notifiedAt).not.toBeNull();
+
+    // 届いた後は、読んである受信トレイ外のメールとして閉じる
+    await runAccount(account, fixed.deps);
+    expect(items.get('filtered')!.resolved).toBe('archived');
+  });
+
+  it('通知済みの受信トレイ外のメールは、読んだら閉じる', async () => {
     const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
     await store.insertItem({ ...storedNow('filtered', NOW - 60_000), inInbox: false }, 'x');
     const { gmail } = fakeGmail([], {

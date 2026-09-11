@@ -378,7 +378,7 @@ async function resolveOpen(account: AlertAccount, token: string, deps: RunDeps, 
       if (isRetryableGmailError(e)) continue;
       throw e;
     }
-    const reason = threadResolution(messages, item.messageId, item.inInbox);
+    const reason = threadResolution(messages, item.messageId, { inInbox: item.inInbox, notified: item.notified });
     if (reason) {
       await deps.store.markResolved(account.key, item.messageId, reason, isoNow(deps));
       summary.resolved++;

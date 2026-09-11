@@ -39,6 +39,8 @@ export type OpenItem = {
   kind: Kind;
   aiFailed: boolean;
   inInbox: boolean;
+  /** 通知が届いたか(notified_at がある)。届いていないものはアーカイブ・既読では閉じない */
+  notified: boolean;
 };
 
 /** run.ts が使う操作。テストではメモリ上の偽物を渡す */
@@ -80,6 +82,7 @@ function toOpen(r: any): OpenItem {
     kind: r.kind,
     aiFailed: Number(r.ai_failed) === 1,
     inInbox: Number(r.in_inbox) === 1,
+    notified: r.notified_at !== null && r.notified_at !== undefined && r.notified_at !== '',
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

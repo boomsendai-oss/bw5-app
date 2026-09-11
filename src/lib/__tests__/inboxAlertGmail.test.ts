@@ -73,32 +73,55 @@ describe('extractBodyText', () => {
 
 describe('threadResolution', () => {
   const target: GmailMessage = { id: 'a', threadId: 't', labelIds: ['INBOX'], internalDate: '1000' };
+  const sent: GmailMessage = { id: 'b', threadId: 't', labelIds: ['SENT'], internalDate: '2000' };
+  /** 受信時に受信トレイにあり、通知も届いた */
+  const inbox = { inInbox: true, notified: true };
+  /** 受信時に受信トレイに無く、通知は届いた */
+  const outside = { inInbox: false, notified: true };
   it('対象より新しい送信済みがあれば返信済み', () => {
-    const sent: GmailMessage = { id: 'b', threadId: 't', labelIds: ['SENT'], internalDate: '2000' };
-    expect(threadResolution([target, sent], 'a', true)).toBe('replied');
+    expect(threadResolution([target, sent], 'a', inbox)).toBe('replied');
   });
   it('対象より古い送信済みは返信扱いしない', () => {
     const oldSent: GmailMessage = { id: 'b', threadId: 't', labelIds: ['SENT'], internalDate: '500' };
-    expect(threadResolution([oldSent, target], 'a', true)).toBeNull();
+    expect(threadResolution([oldSent, target], 'a', inbox)).toBeNull();
+  });
+  it('返信済みはゴミ箱より先に判定する', () => {
+    expect(threadResolution([{ ...target, labelIds: ['TRASH'] }, sent], 'a', inbox)).toBe('replied');
   });
   it('INBOXラベルが外れていればアーカイブ済み', () => {
-    expect(threadResolution([{ ...target, labelIds: [] }], 'a', true)).toBe('archived');
+    expect(threadResolution([{ ...target, labelIds: [] }], 'a', inbox)).toBe('archived');
   });
   it('受信時に受信トレイに無かったメールはアーカイブ判定しない', () => {
-    expect(threadResolution([{ ...target, labelIds: ['UNREAD'] }], 'a', false)).toBeNull();
+    expect(threadResolution([{ ...target, labelIds: ['UNREAD'] }], 'a', outside)).toBeNull();
   });
   it('受信トレイを通らなかったメールは、読んだら閉じる', () => {
-    expect(threadResolution([{ ...target, labelIds: [] }], 'a', false)).toBe('archived');
+    expect(threadResolution([{ ...target, labelIds: [] }], 'a', outside)).toBe('archived');
   });
   it('ゴミ箱に入れたら閉じる', () => {
-    expect(threadResolution([{ ...target, labelIds: ['TRASH', 'INBOX'] }], 'a', true)).toBe('archived');
-    expect(threadResolution([{ ...target, labelIds: ['TRASH', 'UNREAD'] }], 'a', false)).toBe('archived');
+    expect(threadResolution([{ ...target, labelIds: ['TRASH', 'INBOX'] }], 'a', inbox)).toBe('archived');
+    expect(threadResolution([{ ...target, labelIds: ['TRASH', 'UNREAD'] }], 'a', outside)).toBe('archived');
+  });
+  it('迷惑メールにしたら閉じる', () => {
+    expect(threadResolution([{ ...target, labelIds: ['SPAM', 'INBOX'] }], 'a', inbox)).toBe('archived');
+    expect(threadResolution([{ ...target, labelIds: ['SPAM', 'UNREAD'] }], 'a', outside)).toBe('archived');
+  });
+  it('通知が届いていないメールは、アーカイブ・既読では閉じない(閉じると再送されなくなるため)', () => {
+    expect(threadResolution([{ ...target, labelIds: [] }], 'a', { inInbox: true, notified: false })).toBeNull();
+    expect(threadResolution([{ ...target, labelIds: [] }], 'a', { inInbox: false, notified: false })).toBeNull();
+  });
+  it('通知が届いていないメールでも、返信・ゴミ箱・迷惑メール・削除では閉じる', () => {
+    const unsent = { inInbox: false, notified: false };
+    expect(threadResolution([{ ...target, labelIds: [] }, sent], 'a', unsent)).toBe('replied');
+    expect(threadResolution([{ ...target, labelIds: ['TRASH'] }], 'a', unsent)).toBe('archived');
+    expect(threadResolution([{ ...target, labelIds: ['SPAM'] }], 'a', unsent)).toBe('archived');
+    expect(threadResolution(null, 'a', unsent)).toBe('archived');
+    expect(threadResolution([sent], 'a', unsent)).toBe('archived');
   });
   it('スレッドが消えていればアーカイブ扱い', () => {
-    expect(threadResolution(null, 'a', true)).toBe('archived');
+    expect(threadResolution(null, 'a', inbox)).toBe('archived');
   });
   it('対象のメールがスレッドに無ければアーカイブ扱い', () => {
-    expect(threadResolution([{ id: 'z', threadId: 't', labelIds: ['INBOX'], internalDate: '1' }], 'a', true)).toBe('archived');
+    expect(threadResolution([{ id: 'z', threadId: 't', labelIds: ['INBOX'], internalDate: '1' }], 'a', inbox)).toBe('archived');
   });
 });
 
