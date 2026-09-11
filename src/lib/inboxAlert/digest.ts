@@ -31,7 +31,8 @@ const SUBJECT_MAX = 40;
 const STALE_MS = 30 * 60 * 1000;
 /** 1回だけの一時的なエラーでは「要確認」にしない(止まった時の警報は run.ts で連続6回) */
 const ERROR_ALERT_MIN = 2;
-const PUSH_FAILING_NOTE = '（通知の送信に失敗・Pushoverの鍵を確認）';
+/** 一時的な失敗でも付くので、すぐ鍵を疑わせない言い方にする(朝のまとめを自分の鍵で送れたら消える) */
+const PUSH_FAILING_NOTE = '（通知の送信に失敗・続く場合はPushoverの鍵を確認）';
 
 const SHORT_KIND: Record<Kind, string> = {
   new_inquiry: '【新規】',

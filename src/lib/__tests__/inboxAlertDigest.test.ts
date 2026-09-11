@@ -106,7 +106,11 @@ describe('healthLines', () => {
   it('Pushoverの鍵で送れていないアカウントは、動いていても要確認にして鍵の確認を促す', () => {
     expect(healthLines([{ label: 'BOOM', lastSuccessMs: NOW - 60_000, consecutiveErrors: 0, pushFailing: true }], NOW)).toEqual([
       '■稼働 要確認',
-      '・BOOM: 最終成功 9/12 07:59（通知の送信に失敗・Pushoverの鍵を確認）',
+      '・BOOM: 最終成功 9/12 07:59（通知の送信に失敗・続く場合はPushoverの鍵を確認）',
+    ]);
+    expect(healthLines([{ label: '個人', lastSuccessMs: null, consecutiveErrors: 0, pushFailing: true }], NOW)).toEqual([
+      '■稼働 要確認',
+      '・個人: まだ一度も成功していません（通知の送信に失敗・続く場合はPushoverの鍵を確認）',
     ]);
   });
   it('1回だけのエラーでは要確認にせず、2回以上続いたら回数を出す', () => {

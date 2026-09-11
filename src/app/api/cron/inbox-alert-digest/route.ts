@@ -11,6 +11,7 @@ import {
   loadGmailClient,
   loadPushoverUser,
   missingAccountLabels,
+  pushoverTokensInFallbackOrder,
   type AccountKey,
   type AlertAccount,
 } from '@/lib/inboxAlert/accounts';
@@ -141,17 +142,13 @@ export async function POST(req: NextRequest) {
   ]);
   const pending = await mapLimit(open, SUBJECT_CONCURRENCY, toDigestItem);
   const later = await mapLimit(undigested, SUBJECT_CONCURRENCY, toDigestItem);
-  const health = await Promise.all(
-    accounts.map(async (a) => {
-      const s = await dbStore.getState(a.key);
-      return {
-        label: a.label,
-        lastSuccessMs: s.lastSuccessAt ? Date.parse(s.lastSuccessAt) : null,
-        consecutiveErrors: s.consecutiveErrors,
-        pushFailing: Boolean(s.pushFailedAt),
-      };
-    }),
-  );
+  const states = await Promise.all(accounts.map(async (a) => ({ account: a, state: await dbStore.getState(a.key) })));
+  const health = states.map(({ account: a, state: s }) => ({
+    label: a.label,
+    lastSuccessMs: s.lastSuccessAt ? Date.parse(s.lastSuccessAt) : null,
+    consecutiveErrors: s.consecutiveErrors,
+    pushFailing: Boolean(s.pushFailedAt),
+  }));
 
   const digest = buildDigest({
     nowMs,
@@ -165,26 +162,40 @@ export async function POST(req: NextRequest) {
   });
   const subjectFailed = open.length + undigested.length - fetched.size;
 
+  // まとめを届けたPushoverの鍵の持ち主(BOOM以外の鍵で届いた時は pushFallback=true)。鍵そのものはレスポンスに出さない
+  let sentVia: AccountKey | null = null;
+  let pushFallback = false;
   if (!dryRun) {
     // BOOMの鍵から順に試す(1つの鍵が壊れていても、まとめ自体は届ける)。全部だめなら例外で500にし、8:10の予備に任せる
-    const senderTokens = [
-      ...accounts.filter((a) => a.key === 'boom'),
-      ...accounts.filter((a) => a.key !== 'boom'),
-    ].map((a) => a.pushoverToken);
-    let lastError: unknown = null;
-    let delivered = false;
-    for (const token of new Set(senderTokens)) {
+    const tokens = pushoverTokensInFallbackOrder(accounts);
+    let lastError: unknown = new Error('pushover: 試す鍵がありません');
+    let usedToken: string | null = null;
+    for (const token of tokens) {
       try {
         await sendPushover(token, pushoverUser, digest);
-        delivered = true;
+        usedToken = token;
         break;
       } catch (e) {
         lastError = e;
       }
     }
-    if (!delivered) throw lastError;
+    if (usedToken === null) throw lastError;
     // 送れたら真っ先に印をつける(この後の書き込みで落ちても、8:10の予備で同じまとめを二重に送らない)
     await setLastDigestAt(nowIso);
+    const owner =
+      accounts.find((a) => a.key === 'boom' && a.pushoverToken === usedToken) ??
+      accounts.find((a) => a.pushoverToken === usedToken);
+    sentVia = owner?.key ?? null;
+    pushFallback = usedToken !== tokens[0];
+    // 自分の鍵でまとめを届けられたアカウントは、送信失敗の印を消す(一時的な失敗で「要確認」が毎朝残り続けないため)
+    for (const { account: a, state: s } of states) {
+      if (a.pushoverToken !== usedToken || !s.pushFailedAt) continue;
+      try {
+        await dbStore.setPushFailedAt(a.key, '');
+      } catch {
+        // 消せなくても、次に自分の鍵で通知を送れた回に消える。まとめは届いているので失敗にしない
+      }
+    }
     // 件名を取れなかった分は「まとめに載せた」扱いにせず、翌朝もう一度載せる
     await markDigested(undigested.filter((it) => fetched.has(itemKey(it))), nowIso);
     try {
@@ -198,6 +209,8 @@ export async function POST(req: NextRequest) {
     ok: true,
     dryRun,
     sent: !dryRun,
+    sentVia,
+    pushFallback,
     pending: pending.length,
     later: later.length,
     subjectFailed,
