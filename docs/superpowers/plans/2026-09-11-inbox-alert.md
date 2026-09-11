@@ -18,6 +18,7 @@
 - メールアドレスはコードに書かず、実行時にGmailのプロフィールAPIから取る（公開リポジトリに個人アドレスを載せないため）
 - 朝のまとめは「BOOM」のPushoverアプリから送る。3段目の見出しは「お金・その他」
 - （Task 3 コードレビューで追加）設定が欠けて監視できないアカウントは黙って外さず、朝のまとめの稼働欄と入口のレスポンスに「未設定」として出す（`missingAccountLabels`）。過去分の判定（`INBOX_ALERT_BACKFILL_DAYS`）はドライラン中だけ有効にする（通知ありで過去30日ぶんを一斉に鳴らさないため）
+- （Task 4 コードレビューで追加）件数だけ（`count_only`）にするのは「Gmailが宣伝・SNSに分類」**かつ**「一斉配信の印（List-Unsubscribe / Precedence bulk等 / 登録済みの自動送信元）がある」メールだけ。印の無い宣伝分類は、人のメールの誤分類かもしれないので通常どおり読む。差出人の解析（表示名の中の `<...>`・複数宛先）、noreplyの表記ゆれ（`no_reply` 等）、`Auto-Submitted: no (注釈)` も対応
 
 ---
 
@@ -491,6 +492,15 @@ git commit -m "feat(inbox-alert): ラベルとヘッダーで読み方を決め�
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
+
+- [ ] **Step 6（コードレビュー後の追加）: 宣伝分類の見逃し対策と差出人解析の強化**
+
+  - `count_only` は「宣伝・SNS分類」かつ「一斉配信の印（List-Unsubscribe / Precedence bulk・list・junk / 登録済みの自動送信元）」の時だけ。印が無ければ通常の判定へ
+  - `senderAddress` は末尾の `<...>` を使い、アドレスの文字から `,;()` を除く
+  - noreply判定を `no[-_.]?reply|do[-_.]?not[-_.]?reply` に広げる。`Auto-Submitted` は先頭の `no` だけを見る（空も `no` 扱い）
+  - テスト追加: 印の無い宣伝分類は読む・更新/フォーラム分類は件数だけにしない・表示名の `<...>`・複数宛先・`no_reply`・`do.not.reply`・`no (manual)`・似たドメイン（計12テスト）
+  - Commit: `fix(inbox-alert): 宣伝分類でも一斉配信の印が無いメールは読む・差出人の解析を堅くする`
+  - ⚠️ Task 10 のテストの宣伝メールには `List-Unsubscribe` ヘッダーを付けておくこと（付けないと件数だけにならない）
 
 ---
 
@@ -1772,7 +1782,7 @@ function memoryStore(initial: Partial<AlertState> = {}) {
   return { store, state, items };
 }
 
-function msg(id: string, opts: { labels?: string[]; subject?: string } = {}): GmailMessage {
+function msg(id: string, opts: { labels?: string[]; subject?: string; headers?: Record<string, string> } = {}): GmailMessage {
   return {
     id,
     threadId: `t-${id}`,
@@ -1780,7 +1790,11 @@ function msg(id: string, opts: { labels?: string[]; subject?: string } = {}): Gm
     internalDate: String(NOW - 60_000),
     payload: {
       mimeType: 'text/plain',
-      headers: [{ name: 'From', value: '"山田" <p@gmail.com>' }, { name: 'Subject', value: opts.subject ?? `件名${id}` }],
+      headers: [
+        { name: 'From', value: '"山田" <p@gmail.com>' },
+        { name: 'Subject', value: opts.subject ?? `件名${id}` },
+        ...Object.entries(opts.headers ?? {}).map(([name, value]) => ({ name, value })),
+      ],
       body: { data: b64('本文') },
     },
   };
@@ -1847,7 +1861,7 @@ describe('runAccount', () => {
     await store.insertItem({ ...storedNow('old', 0), tier: 'count', notified: false }, 'x');
     const { gmail, listedAfter } = fakeGmail([
       msg('old'),
-      msg('promo', { labels: ['INBOX', 'CATEGORY_PROMOTIONS'] }),
+      msg('promo', { labels: ['INBOX', 'CATEGORY_PROMOTIONS'], headers: { 'List-Unsubscribe': '<mailto:u@shop.jp>' } }),
       msg('human', { subject: '体験レッスンの相談' }),
     ]);
     const { deps, pushed, classified } = makeDeps({ gmail, store });
