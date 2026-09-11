@@ -5,16 +5,20 @@ import { listBf6ReceptionEntrants } from '@/lib/bf6DrawDb';
 import { listBf6PhotoItemIds } from '@/lib/bf6PhotoDb';
 import { listBf6CashOrders } from '@/lib/bf6CashDb';
 import { cashTotals } from '@/lib/bf6Cash';
+import { listBf6GateOrders } from '@/lib/bf6GateDb';
+import { gateTotals } from '@/lib/bf6Gate';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CrewHomePage() {
-  const [entrants, photoIds, cashOrders] = await Promise.all([
+  const [entrants, photoIds, cashOrders, gateOrders] = await Promise.all([
     listBf6ReceptionEntrants(),
     listBf6PhotoItemIds(),
     listBf6CashOrders(),
+    listBf6GateOrders(),
   ]);
   const cash = cashTotals(cashOrders);
+  const gate = gateTotals(gateOrders);
   const checkedIn = entrants.filter((e) => e.checkedIn).length;
   const withPhoto = entrants.filter((e) => photoIds.has(e.itemId)).length;
 
@@ -53,6 +57,15 @@ export default async function CrewHomePage() {
               <span className="ml-2 text-sm font-bold text-neutral-400">
                 {cash.collectedOrders} / {cash.orders} 件
               </span>
+            </p>
+          </div>
+        )}
+        {gate.tickets > 0 && (
+          <div className="col-span-2 rounded-xl border border-sand-200 bg-white p-3">
+            <p className="text-xs font-bold text-neutral-500">観覧の入場(リストバンド)</p>
+            <p className="mt-0.5 text-2xl font-black tabular-nums text-navy-900">
+              {gate.handed}
+              <span className="text-base font-bold text-neutral-400"> / {gate.tickets} 枚</span>
             </p>
           </div>
         )}

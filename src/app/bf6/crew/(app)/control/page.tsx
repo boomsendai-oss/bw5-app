@@ -8,6 +8,7 @@ import {
   listBf6Matches,
   listBf6SlotNames,
   findNextMatch,
+  countBf6Undrawn,
 } from '@/lib/bf6ScreenDb';
 import CrewHeader from '../CrewHeader';
 
@@ -16,9 +17,10 @@ export const dynamic = 'force-dynamic';
 export default async function CrewControlPage() {
   const state = await getBf6ScreenState();
   // 直列に待つとDB往復ぶん遅い(最初のタップが重い・TARO実機 2026-09-10)
-  const [matches, names] = await Promise.all([
+  const [matches, names, draw] = await Promise.all([
     listBf6Matches(state.division),
     listBf6SlotNames(state.division),
+    countBf6Undrawn(state.division),
   ]);
   const next = findNextMatch(state.division, matches);
 
@@ -31,6 +33,8 @@ export default async function CrewControlPage() {
           matches={matches}
           slots={Object.fromEntries(names)}
           nextMatch={next}
+          draw={draw}
+          allowReset={false} // 本番中の押し間違いを防ぐため、クルー画面にはリセットを出さない(TARO 2026-09-11)
         />
       </div>
     </div>

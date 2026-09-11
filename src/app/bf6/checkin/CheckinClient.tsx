@@ -6,7 +6,7 @@
 //
 // 迷わせないことを最優先にする。1画面につき操作は1つ、文字は大きく、戻れるようにする。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { kioskDraw, kioskMarkPaid } from './actions';
+import { kioskDraw, kioskIsPaid } from './actions';
 import { needsPhotoGuide, nextKioskStep, phaseForDivision, remainingDivisions } from '@/lib/bf6Kiosk';
 import KioskBracket from './KioskBracket';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
@@ -159,14 +159,39 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
   // 画面を離れるときにルーレットを止める(タイマーが残り続けないように)
   useEffect(() => () => stopSpin(), [stopSpin]);
 
-  const markPaid = async () => {
+  // 支払い画面にいる間、集金係が受け取りを記録したかを確認し続け、記録されたら自動で抽選へ進む。
+  // ⚠️ 出場者がこの端末で「支払い済み」にする手段は置かない(払わずに押せてしまうため)。
+  const [payWaitNote, setPayWaitNote] = useState('');
+  useEffect(() => {
+    if (screen !== 'pay' || !sel) return;
+    let stop = false;
+    const tick = async () => {
+      const paid = await kioskIsPaid(sel.orderId).catch(() => false);
+      if (stop) return;
+      if (paid) {
+        setSel({ ...sel, amountDue: 0, paymentStatus: 'paid' });
+        setScreen('draw');
+        return;
+      }
+      setTimeout(tick, 2000);
+    };
+    tick();
+    return () => {
+      stop = true;
+    };
+  }, [screen, sel]);
+
+  const checkPaidNow = async () => {
     if (!sel) return;
     setBusy(true);
     try {
-      await kioskMarkPaid(sel.orderId);
-      // 支払い済みとして扱い、そのまま抽選へ
-      setSel({ ...sel, amountDue: 0, paymentStatus: 'paid' });
-      setScreen('draw');
+      const paid = await kioskIsPaid(sel.orderId).catch(() => false);
+      if (paid) {
+        setSel({ ...sel, amountDue: 0, paymentStatus: 'paid' });
+        setScreen('draw');
+      } else {
+        setPayWaitNote('まだ受け取りの記録がありません。集金係のスタッフに声をかけてください');
+      }
     } finally {
       setBusy(false);
     }
@@ -287,13 +312,20 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
               </li>
             </ul>
           )}
-          <p className="mt-8 text-[1.8vh] text-white/50">支払いが済んだら、下のボタンを押してください</p>
+          <p className="mt-8 text-[2vh] font-bold text-white/70">
+            集金係が受け取りを記録すると、自動で次に進みます
+          </p>
+          <div className="mt-4 flex items-center gap-3 text-[1.8vh] text-white/50">
+            <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-orange-400" />
+            受け取りを待っています
+          </div>
+          {payWaitNote && <p className="mt-4 text-[1.8vh] font-bold text-orange-300">{payWaitNote}</p>}
           <button
             disabled={busy}
-            onClick={markPaid}
-            className="mt-4 w-full max-w-md rounded-2xl bg-gradient-to-b from-orange-500 to-orange-700 py-6 text-[2.6vh] font-black disabled:opacity-50"
+            onClick={checkPaidNow}
+            className="mt-6 w-full max-w-md rounded-2xl border border-white/20 py-4 text-[2vh] font-bold text-white/80 disabled:opacity-50"
           >
-            {busy ? '…' : '支払いを終了しました'}
+            {busy ? '…' : '進まないときはこちら'}
           </button>
           <button onClick={() => setScreen('name')} className="mt-3 text-[1.8vh] text-white/40 underline">
             戻る

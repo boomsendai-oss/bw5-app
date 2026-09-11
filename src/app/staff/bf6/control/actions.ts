@@ -3,7 +3,7 @@
 // LED演出の操作。/staff/bf6/control と /bf6/crew/control の両方から呼ばれる。
 // どちらの経路も proxy + layout で認証済み(規約4.5)。
 import { revalidatePath } from 'next/cache';
-import { setBf6ScreenState, setBf6Winner, seedBf6Bracket, type ScreenMode } from '@/lib/bf6ScreenDb';
+import { setBf6ScreenState, setBf6Winner, reflectBf6Bracket, type ReflectResult, type ScreenMode } from '@/lib/bf6ScreenDb';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 import type { Round } from '@/lib/bf6Bracket';
 
@@ -38,14 +38,27 @@ export async function controlSetWinner(
   revalidateBoth();
 }
 
-export async function controlSeedBracket(division: Bf6DrawDivision): Promise<{ created: number }> {
-  const r = await seedBf6Bracket(division);
+/** くじ引きの結果をトーナメントに反映する。試合前なら何度押してもよい(TARO 2026-09-11)。 */
+export async function controlReflectBracket(division: Bf6DrawDivision): Promise<ReflectResult> {
+  const r = await reflectBf6Bracket(division);
   revalidateBoth();
   return r;
 }
 
-export async function controlResetBracket(division: Bf6DrawDivision): Promise<void> {
+/** 開発・テスト用の合言葉。本番中の押し間違いで準決勝までの結果が消える事故を防ぐ(TARO 2026-09-11)。 */
+const RESET_WORD = 'リセット';
+
+/**
+ * 試合結果と組み合わせを消す。くじ引き(枠の割当)は残る。
+ * ⚠️ 本番ではほぼ使わない。画面の確認に加え、サーバ側でも合言葉が無ければ消さない。
+ */
+export async function controlResetBracket(
+  division: Bf6DrawDivision,
+  confirmWord: string
+): Promise<{ ok: boolean }> {
+  if (confirmWord !== RESET_WORD) return { ok: false };
   const { resetBf6Bracket } = await import('@/lib/bf6ScreenDb');
   await resetBf6Bracket(division);
   revalidateBoth();
+  return { ok: true };
 }

@@ -10,6 +10,8 @@ import {
   applyByes,
   isByeMatch,
   isEmptyMatch,
+  planBracketReflect,
+  undrawnSlotCount,
 } from '../bf6Bracket';
 
 const m = (no: number, a: number | null, b: number | null, w: number | null = null): Match =>
@@ -127,5 +129,75 @@ describe('不戦勝と空の試合の扱い(VSを出さず自動で上げる)', 
     const next = advanceRound('beginner', 'r16', r1);
     expect(next).toHaveLength(1);
     expect(next[0]).toMatchObject({ slotA: 1, slotB: null }); // また不戦勝
+  });
+});
+
+describe('くじ引きの結果をトーナメントに反映する(何度押しても安全)', () => {
+  // 「作る」を早く押すと、まだ引いていない枠が不戦勝のまま固まっていた(TARO 2026-09-11)。
+  // 反映は現在のくじ引き状態に合わせ直す操作にし、試合前なら何度押してもよいようにする。
+  const r1 = (holders: number[], slots = 16) => applyByes(seedRound1('beginner', slots), new Set(holders));
+  const all16 = Array.from({ length: 16 }, (_, i) => i + 1);
+
+  it('まだ試合が無ければ、1回戦を全部作る', () => {
+    const p = planBracketReflect('beginner', [], 16, new Set(all16));
+    expect(p.kind).toBe('ok');
+    if (p.kind !== 'ok') return;
+    expect(p.matches).toHaveLength(8);
+    expect(p.changed).toBe(8);
+    expect(p.dropRounds).toEqual([]);
+  });
+
+  it('くじ引きが変わっていなければ何も変えない', () => {
+    const stored = r1(all16);
+    const p = planBracketReflect('beginner', stored, 16, new Set(all16));
+    expect(p.kind === 'ok' && p.changed).toBe(0);
+  });
+
+  it('遅れて来た人が空いていた枠を引いたら、不戦勝だった試合が対戦に戻る', () => {
+    const noShow = all16.filter((s) => s !== 4); // 4番が未受付 → 第2試合(3 vs 4)は不戦勝
+    const stored = r1(noShow);
+    expect(stored[1]).toMatchObject({ slotA: 3, slotB: null });
+    const p = planBracketReflect('beginner', stored, 16, new Set(all16)); // 4番を後から引いた
+    expect(p.kind).toBe('ok');
+    if (p.kind !== 'ok') return;
+    expect(p.changed).toBe(1);
+    expect(p.matches[1]).toMatchObject({ matchNo: 2, slotA: 3, slotB: 4, winnerSlot: null });
+  });
+
+  it('勝者が決まっている試合の組み合わせは変えられない(止めて理由を出す)', () => {
+    const stored = r1(all16).map((m) => (m.matchNo === 1 ? { ...m, winnerSlot: 1 } : m));
+    const p = planBracketReflect('beginner', stored, 16, new Set(all16.filter((s) => s !== 2)));
+    expect(p.kind).toBe('blocked');
+  });
+
+  it('次のラウンドで勝者が決まっていたら、1回戦は変えられない', () => {
+    const noShow = all16.filter((s) => s !== 4);
+    const stored = [
+      ...r1(noShow).map((m) => (m.slotA && m.slotB ? { ...m, winnerSlot: m.slotA } : m)),
+      { round: 'qf' as const, matchNo: 1, slotA: 1, slotB: 3, winnerSlot: 1 },
+    ];
+    const p = planBracketReflect('beginner', stored, 16, new Set(all16));
+    expect(p.kind).toBe('blocked');
+  });
+
+  it('次のラウンドが作られていても未決着なら、作り直す対象にする', () => {
+    const noShow = all16.filter((s) => s !== 4);
+    const stored = [
+      ...r1(noShow).map((m) => (m.slotA && m.slotB ? { ...m, winnerSlot: m.slotA } : m)),
+      { round: 'qf' as const, matchNo: 1, slotA: 1, slotB: 3, winnerSlot: null },
+    ];
+    const p = planBracketReflect('beginner', stored, 16, new Set(all16));
+    expect(p.kind).toBe('ok');
+    if (p.kind !== 'ok') return;
+    expect(p.dropRounds).toEqual(['qf']);
+  });
+
+  it('小中・一般はベスト8から作る', () => {
+    const p = planBracketReflect('kids', [], 8, new Set([1, 2, 3, 4, 5, 6, 7, 8]));
+    expect(p.kind === 'ok' && p.matches.every((m) => m.round === 'qf')).toBe(true);
+  });
+
+  it('まだ引いていない枠の数を返す(押す前に警告を出すため)', () => {
+    expect(undrawnSlotCount(16, new Set([1, 2, 3]))).toBe(13);
   });
 });

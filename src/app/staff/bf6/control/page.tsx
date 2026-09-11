@@ -4,16 +4,17 @@
 // iPad1台でHDMIに出すとミラーリングになり操作UIまで映るため、2台構成が前提。
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { ControlClient } from './ControlClient';
-import { getBf6ScreenState, listBf6Matches, listBf6SlotNames, findNextMatch } from '@/lib/bf6ScreenDb';
+import { getBf6ScreenState, listBf6Matches, listBf6SlotNames, findNextMatch, countBf6Undrawn } from '@/lib/bf6ScreenDb';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StaffBf6ControlPage() {
   const state = await getBf6ScreenState();
   // 直列に待つとDB往復ぶん遅い(最初のタップが重い・TARO実機 2026-09-10)
-  const [matches, names] = await Promise.all([
+  const [matches, names, draw] = await Promise.all([
     listBf6Matches(state.division),
     listBf6SlotNames(state.division),
+    countBf6Undrawn(state.division),
   ]);
   const next = findNextMatch(state.division, matches);
 
@@ -31,6 +32,8 @@ export default async function StaffBf6ControlPage() {
           matches={matches}
           slots={Object.fromEntries(names)}
           nextMatch={next}
+          draw={draw}
+          allowReset={true} // 本部画面だけリセットを出す(開発・テスト用)
         />
       </div>
     </div>

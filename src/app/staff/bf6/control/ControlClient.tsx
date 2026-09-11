@@ -5,7 +5,7 @@ import { isByeMatch, isEmptyMatch } from '@/lib/bf6Bracket';
 // LED側には出力用の映像だけが行く(別機器で /bf6/screen を開いているため)。
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { controlResetBracket, controlSeedBracket, controlSetMode, controlSetWinner, controlShowVs } from './actions';
+import { controlReflectBracket, controlResetBracket, controlSetMode, controlSetWinner, controlShowVs } from './actions';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 import type { Match, Round } from '@/lib/bf6Bracket';
 import type { ScreenMode, ScreenState, SlotName } from '@/lib/bf6ScreenDb';
@@ -23,12 +23,16 @@ const MODES: { key: ScreenMode; label: string }[] = [
 const ROUND_LABEL: Record<string, string> = { r16: 'ベスト16', qf: 'ベスト8', sf: '準決勝', f: '決勝' };
 
 export function ControlClient({
-  initialState, matches, slots, nextMatch,
+  initialState, matches, slots, nextMatch, draw, allowReset,
 }: {
   initialState: ScreenState;
   matches: Match[];
   slots: Record<string, SlotName>;
   nextMatch: Match | null;
+  /** その部門のトーナメント枠の数と、まだ誰も引いていない枠の数 */
+  draw: { slots: number; undrawn: number };
+  /** リセットを出すか。本番中の押し間違いを防ぐため、クルー画面では出さない */
+  allowReset: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -67,7 +71,7 @@ export function ControlClient({
         <p className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800 ring-1 ring-amber-300">
           VSモードですが、この部門のトーナメントがまだありません。
           映す試合が無いときLEDにはロゴが出ます(観客に崩れた画面を見せないため)。
-          下の「くじ引きの結果からトーナメントを作る」を押してください。
+          下の「くじ引きの結果を反映する」を押してください。
         </p>
       )}
 
@@ -156,41 +160,13 @@ export function ControlClient({
         ) : (
           <div className="text-center">
             <p className="text-sm font-bold text-neutral-500">
-              {matches.length === 0 ? 'トーナメントが未作成です' : 'この部門は全試合終了しました'}
+              {matches.length === 0
+                ? 'トーナメントがまだありません。下の「くじ引きの結果を反映する」を押してください'
+                : 'この部門は全試合終了しました'}
             </p>
-            {matches.length === 0 && (
-              <button
-                disabled={pending}
-                onClick={() => run(async () => {
-                  const r = await controlSeedBracket(s.division);
-                  setMsg(r.created > 0 ? `${r.created}試合を作成しました` : 'くじ引きが未実施です(先に受付でトーナメント枠を引いてください)');
-                })}
-                className="mt-3 w-full rounded-xl bg-navy-900 py-4 font-black text-white disabled:opacity-50"
-              >
-                くじ引きの結果からトーナメントを作る
-              </button>
-            )}
-            {msg && <p className="mt-3 text-xs font-bold text-brand-700">{msg}</p>}
           </div>
         )}
       </div>
-
-      {matches.length > 0 && (
-        <details className="rounded-2xl border border-sand-300 bg-white p-4">
-          <summary className="cursor-pointer text-xs font-bold text-neutral-400">トーナメントをリセット</summary>
-          <p className="mt-2 text-xs text-neutral-500">
-            この部門の試合結果と組み合わせを消します。くじ引きの結果(枠の割当)は残ります。
-            練習で動かしたあと、本番前に一度押してください。
-          </p>
-          <button
-            disabled={pending}
-            onClick={() => { if (confirm(`${DIVS.find((d) => d.key === s.division)?.label}部門の試合結果を消します。よろしいですか?`)) run(() => controlResetBracket(s.division)); }}
-            className="mt-3 w-full rounded-xl bg-red-600 py-3 text-sm font-black text-white disabled:opacity-50"
-          >
-            この部門をリセット
-          </button>
-        </details>
-      )}
 
       {/* 手動で任意の試合を出す */}
       {matches.length > 0 && (
@@ -223,6 +199,67 @@ export function ControlClient({
               </div>
             ))}
           </div>
+        </details>
+      )}
+
+      {/* くじ引きの結果を反映する。試合前なら何度押してもよい(TARO 2026-09-11) */}
+      <div className="rounded-2xl border border-sand-300 bg-white p-4">
+        <p className="text-sm font-black text-navy-900">くじ引きの結果をトーナメントに反映</p>
+        <p className="mt-1 text-xs leading-relaxed text-neutral-500">
+          {draw.slots === 0
+            ? 'この部門のトーナメント枠はまだありません。'
+            : draw.undrawn === 0
+              ? `${draw.slots}枠すべて引き終わっています。`
+              : `${draw.slots}枠のうち、まだ引いていない枠が ${draw.undrawn} つあります。反映するとその相手は不戦勝で上がります。`}
+          あとから引いた人がいても、その人の試合がまだならもう一度押せば対戦に戻ります。
+        </p>
+        <button
+          disabled={pending || draw.slots === 0}
+          onClick={() => {
+            if (
+              draw.undrawn > 0 &&
+              !confirm(`まだ引いていない枠が ${draw.undrawn} つあります。その相手は不戦勝になります。反映しますか?`)
+            ) {
+              return;
+            }
+            run(async () => {
+              const r = await controlReflectBracket(s.division);
+              if (!r.ok) setMsg(r.reason);
+              else if (r.changed === 0) setMsg('変わったところはありません');
+              else setMsg(`${r.changed}試合を反映しました`);
+            });
+          }}
+          className="mt-3 w-full rounded-xl bg-navy-900 py-4 font-black text-white disabled:opacity-50"
+        >
+          くじ引きの結果を反映する
+        </button>
+        {msg && <p className="mt-3 text-xs font-bold text-brand-700">{msg}</p>}
+      </div>
+
+      {allowReset && matches.length > 0 && (
+        <details className="rounded-2xl border border-red-200 bg-white p-4">
+          <summary className="cursor-pointer text-xs font-bold text-neutral-400">
+            開発・テスト用: この部門をリセット
+          </summary>
+          <p className="mt-2 text-xs text-neutral-500">
+            この部門の試合結果と組み合わせをすべて消します。くじ引きの結果(枠の割当)は残ります。
+            本番中は使いません。
+          </p>
+          <button
+            disabled={pending}
+            onClick={() => {
+              const label = DIVS.find((d) => d.key === s.division)?.label;
+              const word = prompt(`${label}部門の試合結果を全部消します。本当に消す場合は「リセット」と入力してください`);
+              if (word !== 'リセット') return;
+              run(async () => {
+                const r = await controlResetBracket(s.division, word);
+                setMsg(r.ok ? 'リセットしました' : 'リセットしませんでした');
+              });
+            }}
+            className="mt-3 w-full rounded-xl bg-red-600 py-3 text-sm font-black text-white disabled:opacity-50"
+          >
+            この部門をリセット
+          </button>
         </details>
       )}
     </div>

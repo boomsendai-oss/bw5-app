@@ -7,7 +7,7 @@
 //   操作側 … /staff/bf6/control
 import { getAll, getOne, execute } from './db';
 import { nowUtcIso } from './dateJst';
-import { roundsFor, seedRound1, advanceRound, applyByes, isRoundComplete, nextUndecided, type Match, type Round } from './bf6Bracket';
+import { roundsFor, advanceRound, isRoundComplete, nextUndecided, planBracketReflect, undrawnSlotCount, type Match, type Round } from './bf6Bracket';
 import type { Bf6DrawDivision } from './bf6Draw';
 
 export type ScreenMode = 'logo' | 'bracket' | 'vs';
@@ -69,25 +69,62 @@ async function upsertMatches(division: Bf6DrawDivision, matches: Match[]): Promi
   }
 }
 
-/** くじ引きの結果(bf_draw)から1回戦を作る。締切後・抽選後に一度実行する。 */
-export async function seedBf6Bracket(division: Bf6DrawDivision): Promise<{ created: number }> {
-  const row = await getOne(
-    "SELECT COUNT(*) AS n FROM bf_draw WHERE division = ? AND phase = 'bracket'",
-    [division]
-  );
-  const slotCount = Number(row?.n ?? 0);
-  if (slotCount === 0) return { created: 0 };
-  // 誰も引いていない枠は不戦勝にする(人のいない枠を相手として映さない・TARO実機 2026-09-10)
-  const drawn = await getAll(
-    "SELECT slot_no FROM bf_draw WHERE division = ? AND phase = 'bracket' AND item_id IS NOT NULL",
+export type ReflectResult =
+  | { ok: true; changed: number; undrawn: number }
+  | { ok: false; reason: string };
+
+/**
+ * くじ引きの結果をトーナメントに反映する。試合前なら何度押してもよい。
+ *
+ * ⚠️ 以前の「作る」は1回きりで、受付の途中で押すと未受付の枠が不戦勝のまま固まり、
+ *    リセットして作り直すしかなかった(TARO 2026-09-11)。
+ *    今は「今のくじ引き状態に合わせ直す」ので、遅れて来た人が後から引いても、
+ *    その人の試合がまだなら押し直せば対戦に戻る。決着した試合は壊さない。
+ */
+export async function reflectBf6Bracket(division: Bf6DrawDivision): Promise<ReflectResult> {
+  const slots = await getAll(
+    "SELECT slot_no, item_id FROM bf_draw WHERE division = ? AND phase = 'bracket'",
     [division]
   ).catch(() => []);
-  const holders = new Set(drawn.map((r) => Number(r.slot_no)));
-  const r1 = applyByes(seedRound1(division, slotCount), holders);
-  await upsertMatches(division, r1);
+  if (slots.length === 0) {
+    return { ok: false, reason: 'トーナメントの枠がまだありません。先に受付でくじを引いてください' };
+  }
+  const holders = new Set(slots.filter((r) => r.item_id !== null).map((r) => Number(r.slot_no)));
+  if (holders.size === 0) return { ok: false, reason: 'まだ誰もくじを引いていません' };
+
+  const stored = await listBf6Matches(division);
+  const plan = planBracketReflect(division, stored, slots.length, holders);
+  if (plan.kind === 'blocked') return { ok: false, reason: plan.reason };
+
+  const undrawn = undrawnSlotCount(slots.length, holders);
+  if (plan.changed === 0) return { ok: true, changed: 0, undrawn };
+
+  for (const r of plan.dropRounds) {
+    await execute('DELETE FROM bf_match WHERE division = ? AND round = ?', [division, r]);
+  }
+  for (const m of plan.matches) {
+    await execute(
+      `INSERT INTO bf_match (division, round, match_no, slot_a, slot_b, winner_slot, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(division, round, match_no) DO UPDATE SET
+         slot_a = excluded.slot_a, slot_b = excluded.slot_b,
+         winner_slot = excluded.winner_slot, updated_at = excluded.updated_at`,
+      [division, m.round, m.matchNo, m.slotA, m.slotB, m.winnerSlot, nowUtcIso()]
+    );
+  }
   // 不戦勝だけで埋まったラウンドは、操作を待たずに次を作る(VSを出さない・TARO 2026-09-10)
   await advanceWhileComplete(division, roundsFor(division)[0]);
-  return { created: r1.length };
+  return { ok: true, changed: plan.changed, undrawn };
+}
+
+/** 操作卓で「反映すると不戦勝になる枠」を先に見せるための数。 */
+export async function countBf6Undrawn(division: Bf6DrawDivision): Promise<{ slots: number; undrawn: number }> {
+  const slots = await getAll(
+    "SELECT slot_no, item_id FROM bf_draw WHERE division = ? AND phase = 'bracket'",
+    [division]
+  ).catch(() => []);
+  const holders = new Set(slots.filter((r) => r.item_id !== null).map((r) => Number(r.slot_no)));
+  return { slots: slots.length, undrawn: undrawnSlotCount(slots.length, holders) };
 }
 
 /**

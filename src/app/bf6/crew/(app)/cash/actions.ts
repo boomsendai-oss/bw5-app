@@ -3,15 +3,17 @@
 // 当日現金の集金記録。/bf6/crew 配下(クルーPIN or 本部ログインで認証済み)。
 import { revalidatePath } from 'next/cache';
 import { isCrewAuthorized } from '@/lib/bf6CrewDb';
-import { recordBf6Cash, undoBf6Cash } from '@/lib/bf6CashDb';
+import { collectBf6Cash, undoBf6Cash } from '@/lib/bf6CashDb';
 
 type Result = { ok: true } | { ok: false; error: string };
 
 export async function crewRecordCash(orderId: number, amount: number, by: string): Promise<Result> {
   if (!(await isCrewAuthorized())) return { ok: false, error: 'ログインが切れています' };
   if (!Number.isInteger(orderId) || orderId <= 0) return { ok: false, error: '注文が特定できません' };
-  if (!Number.isInteger(amount) || amount < 0) return { ok: false, error: '金額が正しくありません' };
-  await recordBf6Cash(orderId, amount, by);
+  // 受け取る額は申込の合計で固定(分割払いは扱わない)。amount は画面表示との整合確認のためだけに受ける
+  void amount;
+  const r = await collectBf6Cash(orderId, by);
+  if (!r.ok) return { ok: false, error: r.error };
   // ⚠️ 表示中の /bf6/crew/cash は revalidate しない。
   // 集金の途中でツリーが差し替わると、開いていた明細と一覧の並べ替えがぶつかり
   // React が removeChild で落ちて、以後タップが効かなくなる(実機で再現・2026-09-10)。

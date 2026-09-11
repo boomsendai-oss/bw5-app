@@ -2,9 +2,9 @@
 
 // ⚠️ 公開Server Action(認証なし)。理由: 出場者が自分で操作する受付端末のため、
 // 当日ログインさせるのが現実的でない(/api/bf6/photo/* と同じ扱い)。
-// 扱うのは抽選と当日現金の消し込みだけで、個人情報の読み書きはしない。
+// 扱うのは抽選と「支払い済みかどうかの確認」だけで、個人情報の読み書きはしない。
 import { checkInBf6, claimBf6Slot, listBf6Slots } from '@/lib/bf6DrawDb';
-import { setBf6OrderStatusStaff } from '@/lib/bf6Db';
+import { isBf6OrderPaid } from '@/lib/bf6CashDb';
 import { phaseForDivision } from '@/lib/bf6Kiosk';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 
@@ -45,7 +45,14 @@ export async function kioskDraw(
   return { ...r, holders, slotCount: slots.length };
 }
 
-/** 当日現金を受け取ったことをスタッフが記録する。 */
-export async function kioskMarkPaid(orderId: number): Promise<void> {
-  await setBf6OrderStatusStaff(orderId, 'paid');
+/**
+ * 集金係がこの申込の現金を受け取ったか。支払い済みかどうか以外は返さない。
+ *
+ * ⚠️ 以前はここに「支払い済みにする」公開アクションがあり、出場者本人が払わずに
+ *    「支払いを終了しました」を押すだけで通っていた(認証なし・2026-09-11に廃止)。
+ *    受け取りの記録は集金係のスマホ(/bf6/crew/cash)でだけ行う。
+ */
+export async function kioskIsPaid(orderId: number): Promise<boolean> {
+  if (!Number.isInteger(orderId) || orderId <= 0) return false;
+  return isBf6OrderPaid(orderId);
 }
