@@ -3076,6 +3076,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Modify: `docs/superpowers/specs/2026-09-11-inbox-alert-design.md`（冒頭の「設計書からの実装上の細部変更」を反映）
 - Modify: `~/BOOM/boom-events-hub/STATE.md`（更新ログに1行）
 
+⚠️ **実行場所**: 以下はすべて worktree（`~/BOOM/BW5_2026/bw5-app-inbox-alert`・branch `feat/inbox-alert`）で行う。他セッションが使う main チェックアウトでは作業しない。本番DBの接続情報は main チェックアウトの `.env.production.local` を絶対パスで読む（worktree に写さない）。GitHub への反映は `git fetch origin && git rebase origin/main` のあと `git push origin HEAD:main`（feature ブランチを main に早送りで載せる）。
+
 ⚠️ ここからは本番に触る。**TARO の作業**と **Claude の作業**を分けて書く。鍵の値はチャットに出さない。`git add -A` は使わない。
 
 - [ ] **Step 1: 全体の確認（Claude）**
@@ -3086,6 +3088,7 @@ npm test 2>&1 | tail -5
 npx tsc --noEmit -p . 2>&1 | tail -5
 NODE_OPTIONS=--max-old-space-size=8192 npm run build 2>&1 | tail -15
 ```
+環境変数が無くてビルドが落ちた時だけ、main チェックアウトの `.env.local` を worktree に写してから再実行する（`.env*` は Git に入らない）: `cp ~/BOOM/BW5_2026/bw5-app/.env.local .`
 Expected: テスト全件PASS・tscエラー0・`next build` 成功（ルート一覧に `/api/cron/inbox-alert` と `/api/cron/inbox-alert-digest` が出る）
 
 - [ ] **Step 2: Pushover の準備（TARO）**
@@ -3139,29 +3142,29 @@ Expected（名前だけ・11行）: `GMAIL_ALERT_CLIENT_ID` `GMAIL_ALERT_CLIENT_
 - [ ] **Step 5: 本番DBに2テーブルを追加（Claude）**
 
 ```bash
-node --env-file=.env.production.local scripts/migrate.mjs --dry-run
+node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local scripts/migrate.mjs --dry-run
 ```
 Expected: `未適用 1` と `未適用: 20260911_inbox_alert.sql` だけ。**他のファイルも未適用に出たら適用せず止めて TARO に報告する**（他セッションの台帳外DDLで後続が止まった前例: 2026-08・2026-09-05）。
 
 ```bash
-node --env-file=.env.production.local scripts/migrate.mjs
+node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local scripts/migrate.mjs
 ```
 Expected: `適用: 20260911_inbox_alert.sql (3 statements)` と `apply 完了`
 
 - [ ] **Step 6: アプリを本番に反映（Claude）**
 
 ```bash
-git fetch origin && git log --oneline origin/main..main
+git fetch origin && git rebase origin/main && git log --oneline origin/main..HEAD
 ```
 Expected: 今回のコミット（Task 1〜14 と設計書・計画書）だけ。**他セッションの未pushコミットが混ざっていたら push せず TARO に確認する。**
 
 ```bash
-git push origin main
+git fetch origin && git rebase origin/main && git push origin HEAD:main
 ```
 
 push が `rejected`（他セッションが先に push 済み）になったら、取り込んでからテストを流し直して push する:
 ```bash
-git pull --rebase origin main && npm test 2>&1 | tail -3 && git push origin main
+git fetch origin && git rebase origin/main && npm test 2>&1 | tail -3 && git push origin HEAD:main
 ```
 
 Vercel の反映を待ってから、鍵なしで弾かれることを確かめる:
@@ -3187,7 +3190,7 @@ Expected: 3つとも表示される（既存のストーリー枠が残ってい
 
 10分後と、その後1時間おきに実行:
 ```bash
-node --env-file=.env.production.local scripts/inbox_alert_review.mjs | head -12
+node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local scripts/inbox_alert_review.mjs | head -12
 ```
 Expected: 「■ 進み具合」で各アカウントが「判定中」→「完了」になり、件数が増えていく（5分ごとに約20秒ぶん判定するので、全体で数時間の見込み）。「連続エラー」が増えていたら `npx wrangler tail boom-cron --format pretty` で `[inbox-alert]` の行を見て原因を調べる。**ドライラン中は通知が来ないので、TAROは普段どおりGmailも見る。**
 
@@ -3196,14 +3199,14 @@ Expected: 「■ 進み具合」で各アカウントが「判定中」→「完
 全アカウントが「完了」になったら実行し、3つの一覧（すぐ鳴らす／朝のまとめ／見逃し候補）と AI費用を TARO に見せる。**出力をファイルに保存しない。**
 
 ```bash
-node --env-file=.env.production.local scripts/inbox_alert_review.mjs
+node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local scripts/inbox_alert_review.mjs
 ```
 
 TARO の「これは鳴らさなくていい」「これが漏れてる」を受けて、`src/lib/inboxAlert/criteria.ts`（判定の言葉）か `src/lib/inboxAlert/prefilter.ts` の `KNOWN_AUTOMATED_DOMAINS`（自動送信元）を直し、`npm test` → commit → push。
 
 もう一度判定し直して確かめたい場合だけ（**AI費用がもう1回かかるので TARO に確認してから**）、ドライランの記録を消す（次の5分おきの実行から過去30日の判定がやり直しになる）:
 ```bash
-node --env-file=.env.production.local --input-type=module -e "
+node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local --input-type=module -e "
 import { createClient } from '@libsql/client';
 const db = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
 await db.execute('DELETE FROM inbox_alert_items WHERE dry_run = 1');
@@ -3221,12 +3224,12 @@ npx --yes vercel env rm INBOX_ALERT_BACKFILL_DAYS production --yes
 git commit --allow-empty -m "chore(inbox-alert): 本番通知を開始
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
-git push origin main
+git fetch origin && git rebase origin/main && git push origin HEAD:main
 ```
 
 反映から1時間後、ドライランの行を片付ける（本番の重複防止は直近の範囲しか見ないので消してよい）:
 ```bash
-node --env-file=.env.production.local --input-type=module -e "
+node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local --input-type=module -e "
 import { createClient } from '@libsql/client';
 const db = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
 const r = await db.execute('DELETE FROM inbox_alert_items WHERE dry_run = 1');
@@ -3241,7 +3244,7 @@ console.log('deleted', r.rowsAffected);"
 4. TARO がそのメールに返信 → 次の5分おきの実行の後、Claude が確認:
 
 ```bash
-node --env-file=.env.production.local --input-type=module -e "
+node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local --input-type=module -e "
 import { createClient } from '@libsql/client';
 const db = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
 const r = await db.execute(\"SELECT account, tier, kind, notified_at, resolved_reason FROM inbox_alert_items WHERE tier = 'now' ORDER BY created_at DESC LIMIT 3\");
@@ -3260,7 +3263,7 @@ git add docs/superpowers/specs/2026-09-11-inbox-alert-design.md
 git commit -m "docs: 受信箱アラート設計書に実装時の変更を反映
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
-git push origin main
+git fetch origin && git rebase origin/main && git push origin HEAD:main
 ```
 
 `~/BOOM/boom-events-hub/STATE.md` の「## 更新ログ」の先頭に1行追加（顧客の実名・鍵は書かない）:
@@ -3284,7 +3287,7 @@ git -C ~/BOOM/boom-events-hub push
 1. 実費用を出して TARO に報告する（出典: 本番DB・時点を添える）:
 
 ```bash
-node --env-file=.env.production.local --input-type=module -e "
+node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local --input-type=module -e "
 import { createClient } from '@libsql/client';
 const db = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
 const since = new Date(Date.now() - 7 * 86400000).toISOString();
