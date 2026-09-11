@@ -17,6 +17,7 @@
 - 事前テストはローカルではなく**本番のドライラン**で行う（ローカルにAnthropicの鍵が無いため）。`INBOX_ALERT_DRY_RUN=1` と `INBOX_ALERT_BACKFILL_DAYS=30` で過去30日を5分ごとに少しずつ判定し、結果を `scripts/inbox_alert_review.mjs` で一覧する
 - メールアドレスはコードに書かず、実行時にGmailのプロフィールAPIから取る（公開リポジトリに個人アドレスを載せないため）
 - 朝のまとめは「BOOM」のPushoverアプリから送る。3段目の見出しは「お金・その他」
+- （Task 3 コードレビューで追加）設定が欠けて監視できないアカウントは黙って外さず、朝のまとめの稼働欄と入口のレスポンスに「未設定」として出す（`missingAccountLabels`）。過去分の判定（`INBOX_ALERT_BACKFILL_DAYS`）はドライラン中だけ有効にする（通知ありで過去30日ぶんを一斉に鳴らさないため）
 
 ---
 
@@ -350,6 +351,13 @@ git commit -m "feat(inbox-alert): 監視アカウントと設定の読み込み
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
+
+- [ ] **Step 6（コードレビュー後の追加）: 未設定アカウントの検出と、過去分の判定をドライラン限定にする**
+
+  - `missingAccountLabels(env): string[]` を追加（鍵かPushoverトークンが欠けたアカウントの表示名を定義順で返す）。`loadAccounts` と同じ判定を内部関数 `credentialsOf` で共有する
+  - `backfillDays` は `isDryRun(env)` でなければ常に `0`
+  - テスト追加: 未設定アカウント名・全未設定で `loadAccounts` が空・`backfillDays` の負数/小数・ドライランでなければ0（計8テスト）
+  - Commit: `fix(inbox-alert): 未設定アカウントの検出と過去分判定のドライラン限定`
 
 ---
 
@@ -1215,6 +1223,7 @@ const base: DigestInput = {
   others: [],
   counts: { countOnly: 31, aiLight: 48, aiFailed: 0 },
   health: [{ label: 'BOOM', lastSuccessMs: Date.UTC(2026, 8, 11, 22, 55), consecutiveErrors: 0 }],
+  missing: [],
 };
 
 describe('buildDigest', () => {
@@ -1260,6 +1269,12 @@ describe('healthLines', () => {
   it('監視中のアカウントが無い', () => {
     expect(healthLines([], NOW)).toEqual(['■稼働 監視中のアカウントがありません']);
   });
+  it('設定が欠けたアカウントがあれば、他が正常でも要確認にして名前を出す', () => {
+    expect(healthLines([{ label: 'BOOM', lastSuccessMs: NOW - 60_000, consecutiveErrors: 0 }], NOW, ['個人'])).toEqual([
+      '■稼働 要確認',
+      '・個人: 設定が欠けていて監視していません',
+    ]);
+  });
 });
 ```
 
@@ -1285,6 +1300,8 @@ export type DigestInput = {
   others: DigestItem[];
   counts: { countOnly: number; aiLight: number; aiFailed: number };
   health: DigestHealth[];
+  /** 設定が欠けていて監視できないアカウントの表示名(accounts.ts の missingAccountLabels) */
+  missing: string[];
 };
 
 export const DIGEST_LIMIT = 1024;
@@ -1312,12 +1329,13 @@ function section(title: string, items: DigestItem[], shown: number, nowMs: numbe
   return lines;
 }
 
-export function healthLines(health: DigestHealth[], nowMs: number): string[] {
-  if (health.length === 0) return ['■稼働 監視中のアカウントがありません'];
+export function healthLines(health: DigestHealth[], nowMs: number, missing: string[] = []): string[] {
+  const missingLines = missing.map((label) => `・${label}: 設定が欠けていて監視していません`);
+  if (health.length === 0) return ['■稼働 監視中のアカウントがありません', ...missingLines];
   const bad = health.filter(
     (h) => h.lastSuccessMs === null || nowMs - h.lastSuccessMs > STALE_MS || h.consecutiveErrors > 0,
   );
-  if (bad.length === 0) {
+  if (bad.length === 0 && missing.length === 0) {
     const oldest = Math.min(...health.map((h) => h.lastSuccessMs as number));
     return [`■稼働 ${health.length}アカウントとも正常（最終確認 ${jstHm(oldest)}）`];
   }
@@ -1328,6 +1346,7 @@ export function healthLines(health: DigestHealth[], nowMs: number): string[] {
         ? `・${h.label}: まだ一度も成功していません`
         : `・${h.label}: 最終成功 ${jstMd(h.lastSuccessMs)} ${jstHm(h.lastSuccessMs)}`,
     ),
+    ...missingLines,
   ];
 }
 
@@ -1340,7 +1359,7 @@ export function buildDigest(input: DigestInput): { title: string; message: strin
       ...section('自動化の失敗', input.failures, shown.failures, input.nowMs, false),
       ...section('お金・その他', input.others, shown.others, input.nowMs, false),
       `■件数 宣伝${input.counts.countOnly} / 自動通知${input.counts.aiLight}（AI判定できず${input.counts.aiFailed}）`,
-      ...healthLines(input.health, input.nowMs),
+      ...healthLines(input.health, input.nowMs, input.missing),
     ].join('\n');
 
   let message = render();
@@ -1357,7 +1376,7 @@ export function buildDigest(input: DigestInput): { title: string; message: strin
 - [ ] **Step 4: テストが通ることを確かめる**
 
 Run: `npx vitest run src/lib/__tests__/inboxAlertDigest.test.ts`
-Expected: PASS（4 tests）
+Expected: PASS（5 tests）
 
 - [ ] **Step 5: Commit**
 
@@ -2239,7 +2258,14 @@ export function buildLiveDeps(opts: {
 // 認証: x-cron-secret(CRON_SECRET_CF) または Authorization: Bearer(CRON_SECRET)。
 // レスポンスは件数だけ(件名・差出人は返さない。Workerのログに残るため)。
 import { NextRequest, NextResponse } from 'next/server';
-import { backfillDays, isDryRun, loadAccounts, loadGmailClient, loadPushoverUser } from '@/lib/inboxAlert/accounts';
+import {
+  backfillDays,
+  isDryRun,
+  loadAccounts,
+  loadGmailClient,
+  loadPushoverUser,
+  missingAccountLabels,
+} from '@/lib/inboxAlert/accounts';
 import { cronAuthorized } from '@/lib/inboxAlert/cronAuth';
 import { buildLiveDeps } from '@/lib/inboxAlert/live';
 import { runAccount, type RunSummary } from '@/lib/inboxAlert/run';
@@ -2259,8 +2285,15 @@ export async function POST(req: NextRequest) {
   const client = loadGmailClient();
   const pushoverUser = loadPushoverUser();
   const accounts = loadAccounts();
+  const missing = missingAccountLabels();
   if (!client || !pushoverUser || accounts.length === 0) {
-    return NextResponse.json({ ok: true, configured: false });
+    // 共通の鍵が無い時は朝のまとめも送れない。「朝のまとめが届かない＝止まっている合図」で気づく前提
+    return NextResponse.json({
+      ok: true,
+      configured: false,
+      missing,
+      missingShared: [client ? null : 'GMAIL_ALERT_CLIENT', pushoverUser ? null : 'PUSHOVER_USER_KEY'].filter(Boolean),
+    });
   }
 
   const deps = buildLiveDeps({
@@ -2277,7 +2310,7 @@ export async function POST(req: NextRequest) {
 
   const results: RunSummary[] = [];
   for (const account of ordered) results.push(await runAccount(account, deps));
-  return NextResponse.json({ ok: true, dryRun: deps.dryRun, results });
+  return NextResponse.json({ ok: true, dryRun: deps.dryRun, missing, results });
 }
 ```
 
@@ -2295,6 +2328,7 @@ import {
   loadAccounts,
   loadGmailClient,
   loadPushoverUser,
+  missingAccountLabels,
   type AccountKey,
   type AlertAccount,
 } from '@/lib/inboxAlert/accounts';
@@ -2332,7 +2366,11 @@ export async function POST(req: NextRequest) {
   const pushoverUser = loadPushoverUser();
   const accounts = loadAccounts();
   if (!client || !pushoverUser || accounts.length === 0) {
-    return NextResponse.json({ ok: true, configured: false });
+    return NextResponse.json({
+      ok: true,
+      configured: false,
+      missingShared: [client ? null : 'GMAIL_ALERT_CLIENT', pushoverUser ? null : 'PUSHOVER_USER_KEY'].filter(Boolean),
+    });
   }
 
   const dryRun = isDryRun();
@@ -2393,6 +2431,7 @@ export async function POST(req: NextRequest) {
     others: later.filter((i) => i.kind !== 'automation_failure'),
     counts,
     health,
+    missing: missingAccountLabels(),
   });
 
   if (!dryRun) {
@@ -2878,7 +2917,8 @@ Claude が1本ずつ実行する。ブラウザが開いたら TARO が該当ア
 node scripts/inbox_alert_setup.mjs client
 node scripts/inbox_alert_setup.mjs gmail boom --expect boom.sendai@gmail.com
 node scripts/inbox_alert_setup.mjs gmail nitroash --expect nitro.ash.designworks@gmail.com
-node scripts/inbox_alert_setup.mjs gmail taro --expect taro.bsb@gmail.com
+# 個人Gmailのアドレスは公開リポジトリに書かない。実行時にClaudeのメモリから入れる
+node scripts/inbox_alert_setup.mjs gmail taro --expect <個人Gmailのアドレス>
 ```
 Expected: 各行で「登録しました: …（production）」。「別のアカウント」「読み取り専用以外の権限」と出たら登録されていないので、正しいアカウントでやり直す。
 
@@ -3004,7 +3044,7 @@ console.table(r.rows);"
 ```
 Expected: テストメールの行が `notified_at` あり・`resolved_reason = replied`
 
-5. NITRO ASH（nitro.ash.designworks@gmail.com）と個人（taro.bsb@gmail.com）にも同じテストメールを送り、それぞれのアイコンで届くこと
+5. NITRO ASH と個人のGmailにも同じテストメールを送り、それぞれのアイコンで届くこと
 6. 翌朝 8:00 に「朝のまとめ」が届くこと
 
 - [ ] **Step 12: 設計書と共有ステートに記録（Claude）**

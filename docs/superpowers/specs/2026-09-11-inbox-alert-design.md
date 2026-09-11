@@ -13,7 +13,7 @@ Claudeの自動化で通知メールが増え、新規の問い合わせや仕�
 
 | 項目 | 決定 |
 |---|---|
-| 監視対象 | boom.sendai@gmail.com / nitro.ash.designworks@gmail.com / taro.bsb@gmail.com の3つ |
+| 監視対象 | BOOM（boom.sendai@gmail.com）/ NITRO ASH（nitro.ash.designworks@gmail.com）/ TARO個人のGmail の3つ（個人のアドレスは公開リポジトリに書かない） |
 | 分け方 | 全部拾ったうえで3段階に分ける（下表） |
 | 通知経路 | Pushover（iPhoneの通知専用アプリ）。アカウントごとに名前とアイコンを分ける |
 | 動かす場所 | クラウド（Cloudflare Worker が起動 → BOOMアプリが判定 → Pushover） |
@@ -201,6 +201,6 @@ BOOM
 ## 14. やらないこと
 
 - メールの返信・送信・ラベル変更（読み取り専用）
-  - 「返信しといて」は次の段階としてMac側に作る: 通知を見たTAROがClaudeに指示 → Macの既存の鍵（`gmail.modify`）と `gmail_draft_reply.py` で下書き → TAROの「送って」で送信。クラウドの鍵は読み取り専用のまま（漏れた時に、なりすまし送信や削除をされないため）。taro.bsb はMac側の鍵もその時に追加する（TARO合意 2026-09-11）
+  - 「返信しといて」は次の段階としてMac側に作る: 通知を見たTAROがClaudeに指示 → Macの既存の鍵（`gmail.modify`）と `gmail_draft_reply.py` で下書き → TAROの「送って」で送信。クラウドの鍵は読み取り専用のまま（漏れた時に、なりすまし送信や削除をされないため）。個人GmailはMac側の鍵もその時に追加する（TARO合意 2026-09-11）
 - LINEでの通知
 - 件名・差出人・本文のDB保存やログ出力
