@@ -19,6 +19,7 @@
 - 朝のまとめは「BOOM」のPushoverアプリから送る。3段目の見出しは「お金・その他」
 - （Task 3 コードレビューで追加）設定が欠けて監視できないアカウントは黙って外さず、朝のまとめの稼働欄と入口のレスポンスに「未設定」として出す（`missingAccountLabels`）。過去分の判定（`INBOX_ALERT_BACKFILL_DAYS`）はドライラン中だけ有効にする（通知ありで過去30日ぶんを一斉に鳴らさないため）
 - （Task 4 コードレビューで追加）件数だけ（`count_only`）にするのは「Gmailが宣伝・SNSに分類」**かつ**「一斉配信の印（List-Unsubscribe / Precedence bulk等 / 登録済みの自動送信元）がある」メールだけ。印の無い宣伝分類は、人のメールの誤分類かもしれないので通常どおり読む。差出人の解析（表示名の中の `<...>`・複数宛先）、noreplyの表記ゆれ（`no_reply` 等）、`Auto-Submitted: no (注釈)` も対応
+- （Task 5 コードレビューで追加）Gmail API の本文は元の文字コードに関係なくUTF-8で返ることを実データ（365日・ISO-2022-JPの129パート）で確認済み。404 は専用の `GmailNotFoundError` にし、一覧取得後に消えたメールは飛ばす／再送時に消えていたら未対応から外す（毎回の実行が落ちて「止まっています」の誤警報になるのを防ぐ）。Gmail への通信には15秒のタイムアウトを付ける（Vercelの60秒上限で黙って落ちるとエラーとして数えられないため）。同じ理由で AI判定は20秒・再試行1回（SDK既定は10分・再試行2回）、Pushover送信は10秒で打ち切る
 
 ---
 
@@ -766,6 +767,14 @@ git commit -m "feat(inbox-alert): Gmail読み取りと本文抽出・返信判�
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
+- [ ] **Step 6（コードレビュー後の追加）: 404の専用エラーとタイムアウト**
+
+  - `export class GmailNotFoundError extends Error {}` を追加し、`gmailGet` は 404 でこれを投げる。`getThreadMessages` は `instanceof GmailNotFoundError` で `null` を返す
+  - `getAccessToken` と `gmailGet` の fetch に `signal: AbortSignal.timeout(15_000)`
+  - `pageToken` を `encodeURIComponent`、`GmailPart` に `filename?` を足し `findPart` は添付（`filename` あり）を本文にしない
+  - テスト追加: ページ送り・404/500/401・`invalid_grant` 以外のトークン失敗・入れ子multipart＋末尾`=`・空本文・対象がスレッドに無い（計18テスト）
+  - Commit: `fix(inbox-alert): Gmailの404を専用エラーにし、通信にタイムアウトを付ける`
+
 ---
 
 ### Task 6: criteria.ts と classify.ts（AI判定）
@@ -988,8 +997,9 @@ export async function classifyMail(mail: MailForAi, mode: AiReadMode, callModel:
   }
 }
 
+/** 1件の判定が長引いてもVercelの60秒上限の中でエラーとして扱えるよう、時間と再試行を絞る(SDK既定は10分・再試行2回) */
 export const callClaude: CallModel = async (userPrompt) => {
-  const client = new Anthropic();
+  const client = new Anthropic({ timeout: 20_000, maxRetries: 1 });
   const res = await client.beta.messages.create({
     model: MODEL,
     max_tokens: 2000,
@@ -1184,7 +1194,11 @@ export async function sendPushover(
   });
   if (msg.url) body.set('url', msg.url);
   if (msg.url_title) body.set('url_title', msg.url_title);
-  const res = await fetchImpl('https://api.pushover.net/1/messages.json', { method: 'POST', body });
+  const res = await fetchImpl('https://api.pushover.net/1/messages.json', {
+    method: 'POST',
+    body,
+    signal: AbortSignal.timeout(10_000),
+  });
   const json = (await res.json().catch(() => ({}))) as { status?: number; errors?: string[] };
   if (!res.ok || json.status !== 1) {
     throw new Error(`pushover ${res.status} ${(json.errors ?? []).join(',')}`.trim());
@@ -1742,7 +1756,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```ts
 import { describe, it, expect } from 'vitest';
 import { runAccount, STALL_THRESHOLD, type GmailPort, type RunDeps } from '../inboxAlert/run';
-import { GmailAuthError, type GmailMessage } from '../inboxAlert/gmail';
+import { GmailAuthError, GmailNotFoundError, type GmailMessage } from '../inboxAlert/gmail';
 import type { AlertStore, AlertState, NewItem, OpenItem } from '../inboxAlert/store';
 import type { ClassifyResult } from '../inboxAlert/classify';
 import type { PushoverMessage } from '../inboxAlert/pushover';
@@ -1919,6 +1933,23 @@ describe('runAccount', () => {
     expect(items.get('q')!.resolved).toBe('replied');
   });
 
+  it('一覧を取った後に消えたメールは飛ばして、残りを処理する', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const base = fakeGmail([msg('gone'), msg('human')]);
+    const gmail: GmailPort = {
+      ...base.gmail,
+      meta: async (t, id) => {
+        if (id === 'gone') throw new GmailNotFoundError('gmail 404 /messages/gone');
+        return base.gmail.meta(t, id);
+      },
+    };
+    const { deps } = makeDeps({ gmail, store });
+    const r = await runAccount(account, deps);
+    expect(r).toMatchObject({ fresh: 2, processed: 1, complete: true });
+    expect(items.has('gone')).toBe(false);
+    expect(items.has('human')).toBe(true);
+  });
+
   it('Gmailの連携が切れたら、その日1回だけ知らせる', async () => {
     const { store, state } = memoryStore({ lastCheckedMs: NOW - 300_000 });
     const { gmail } = fakeGmail([], { accessToken: async () => { throw new GmailAuthError('invalid_grant'); } });
@@ -1955,7 +1986,15 @@ import { todayJst } from '@/lib/dateJst';
 import type { AlertAccount } from './accounts';
 import type { AiReadMode, ClassifyResult, MailForAi } from './classify';
 import { truncateChars } from './format';
-import { extractBodyText, GmailAuthError, headerMap, threadResolution, type GmailMessage, type MessageRef } from './gmail';
+import {
+  extractBodyText,
+  GmailAuthError,
+  GmailNotFoundError,
+  headerMap,
+  threadResolution,
+  type GmailMessage,
+  type MessageRef,
+} from './gmail';
 import { decideReadMode } from './prefilter';
 import { buildNowMessage, gmailLink, type PushoverMessage } from './pushover';
 import type { AlertState, AlertStore } from './store';
@@ -2032,7 +2071,12 @@ export async function runAccount(account: AlertAccount, deps: RunDeps): Promise<
         complete = false;
         break;
       }
-      await processMessage(account, ref, token, email, baseline, deps, summary);
+      try {
+        await processMessage(account, ref, token, email, baseline, deps, summary);
+      } catch (e) {
+        // 一覧を取った後に削除されたメールは飛ばす(次回の一覧にも出てこない)
+        if (!(e instanceof GmailNotFoundError)) throw e;
+      }
     }
 
     if (complete && !deps.dryRun) {
@@ -2154,7 +2198,17 @@ async function resendUnnotified(account: AlertAccount, token: string, email: str
   const items = await deps.store.listUnnotified(account.key, since, RESEND_LIMIT);
   for (const item of items) {
     if (deps.nowMs() > deps.deadlineMs) return;
-    const h = headerMap((await deps.gmail.meta(token, item.messageId)).payload);
+    let meta: GmailMessage;
+    try {
+      meta = await deps.gmail.meta(token, item.messageId);
+    } catch (e) {
+      if (!(e instanceof GmailNotFoundError)) throw e;
+      // 通知を送れないまま削除されたメールは、未対応から外す
+      await deps.store.markResolved(account.key, item.messageId, 'archived', isoNow(deps));
+      summary.resolved++;
+      continue;
+    }
+    const h = headerMap(meta.payload);
     try {
       await deps.push(
         account.pushoverToken,
@@ -2194,7 +2248,7 @@ async function safePush(account: AlertAccount, msg: PushoverMessage, deps: RunDe
 - [ ] **Step 4: テストが通ることを確かめる**
 
 Run: `npx vitest run src/lib/__tests__/inboxAlertRun.test.ts`
-Expected: PASS（7 tests）。「連携が切れた」テストが日付で落ちたら、`src/lib/dateJst.ts` の `todayJst` の返り値の形（`YYYY-MM-DD` の想定）を確かめてテストの期待値を合わせる。
+Expected: PASS（8 tests）。「連携が切れた」テストが日付で落ちたら、`src/lib/dateJst.ts` の `todayJst` の返り値の形（`YYYY-MM-DD` の想定）を確かめてテストの期待値を合わせる。
 
 - [ ] **Step 5: Commit**
 
