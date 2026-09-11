@@ -29,7 +29,7 @@
 - （Task 11 コードレビューで追加）朝のまとめの件名の取り直しは同時5件・25秒の締め切りつき（Gmailの上限で429が出て件名が消えるのを防ぐ）。件名を取れなかった「朝のまとめ行き」は既読にせず翌朝また載せ、失敗件数 `subjectFailed` をレスポンスに出す。送信できたら真っ先に `lastDigestAt` を付け（8:10の予備で二重に送らない）、古い行の削除の失敗では500にしない。スキップ判定は「20時間以内」でなく「JSTの同じ日に送信済み」（本番投入日の午後に手動で送っても翌朝のまとめを消さない）。一時的なトークン失敗は次の件で取り直す。設定が欠けている時は両入口とも `503 ok:false`。5分おきの入口のレスポンスは先頭にエラーの要約 `errors` を置く（Workerのログは先頭約300字しか残らない）
 - （Task 13 コードレビューで追加）鍵の登録スクリプトは、Googleログインや入力の**前に** Vercel のリンク情報（`.vercel/project.json`・`projectName: bw5-app`）を確かめ、無ければ止まる（ログインだけさせて登録に失敗する事故を防ぐ）。`vercel` はリポジトリ直下を `cwd` にし、確かめた版 `vercel@53.1.0` に固定。Googleログインは `state` と PKCE(S256) を使い、`127.0.0.1` だけで待ち受け、最大9分で打ち切る
 - （Task 14 コードレビューで追加）ドライラン結果の一覧スクリプトは、1件の通信エラーでも止まらずその行にエラーを出して続ける（15秒で打ち切り）。差出人は表示名だけ、表示名が無い（またはアドレスそのもの）ならドメインだけを出す（お客さんのアドレスを画面に出さない）。「このMacに鍵が無い」と「鍵で認証できない」を分けて表示。AI費用は「概算」と明記
-- （最終レビューで追加）あるアカウントの Pushover の鍵が壊れていたら、他のアカウントの鍵（BOOM優先）で件名に `〔アカウント名〕` を付けて届け、状態テーブル `push_failed_at` に記録して朝のまとめの稼働欄で「要確認（通知の送信に失敗・Pushoverの鍵を確認）」と出す。朝のまとめの送信も他の鍵で送り直す。受信トレイを通らなかった未対応は、通知が届いていれば「読んだら」閉じ、ゴミ箱・迷惑メールに入れたメールも閉じる（通知が届いていない行は返信・ゴミ箱・迷惑メールでしか閉じない＝再送を止めない）。一度失敗した Pushover の鍵はその回は全アカウントで使わない（鍵の問題とメール1通の問題は分けて扱う）（消せない未対応が朝のまとめに溜まるのを防ぐ）。鍵の登録スクリプトに `--keys <OAuthクライアントのJSON>` を足す（Googleが広い権限をまとめて返した時に、アラート専用のクライアントへ切り替えられるように）。本番投入の手順を worktree 前提に揃え、接続先の確認・Cloudflare アカウントの確認・ドライランの見方・Pushover 無料期間の予定タスクを足す
+- （最終レビューで追加）あるアカウントの Pushover の鍵が壊れていたら、他のアカウントの鍵（BOOM優先）で件名に `〔アカウント名〕` を付けて届け、状態テーブル `push_failed_at` に記録して朝のまとめの稼働欄で「要確認（通知の送信に失敗・続く場合はPushoverの鍵を確認）」と出す（朝のまとめをそのアカウントの鍵で送れたら消す）。朝のまとめの送信も他の鍵で送り直す。受信トレイを通らなかった未対応は、通知が届いていれば「読んだら」閉じ、ゴミ箱・迷惑メールに入れたメールも閉じる（消せない未対応が朝のまとめに溜まるのを防ぐ。通知が届いていない行は返信・ゴミ箱・迷惑メールでしか閉じない＝再送を止めない）。鍵そのものの失敗（時間切れ・通信エラー・鍵の無効など）が一度起きた Pushover の鍵は、その回は全アカウントで使わない（メール1通だけの失敗では外さない）。鍵の登録スクリプトに `--keys <OAuthクライアントのJSON>` を足す（Googleが広い権限をまとめて返した時に、アラート専用のクライアントへ切り替えられるように）。本番投入の手順を worktree 前提に揃え、接続先の確認・Cloudflare アカウントの確認・ドライランの見方・Pushover 無料期間の予定タスクを足す
 
 ---
 
@@ -3209,12 +3209,15 @@ curl -s https://boom-cron.<サブドメイン>.workers.dev/ | grep -o '"every 5m
 ```
 Expected: 3つとも表示される（既存のストーリー枠が残っていること）。デプロイ後の最初の 8:00 に、`npx wrangler tail boom-cron --format pretty` で `inbox-digest` の呼び出しが途中で打ち切られず応答まで記録されているか（Worker の定期実行が最大約60秒のアプリ応答を待てるか）を確かめる
 
-デプロイ直後に、他セッションが古いチェックアウトから deploy しないよう `~/BOOM/boom-events-hub/STATE.md` の「## 更新ログ」の先頭に1行追加して push する（`XX` は `date +%d` で確かめる）:
-```
-- 2026-09-XX **boom-cron に受信箱アラートの枠を追加（ドライラン中）**: boom-cron の deploy は必ず origin/main を取り込んでから行う（古いチェックアウトから deploy すると受信箱の5分おき・朝8:00の枠が消える）。本番開始は後日この欄に記録
-```
+デプロイ直後に、他セッションが古いチェックアウトから deploy しないよう STATE.md に記録する。先に最新にする（編集してから pull すると止まる）:
 ```bash
 git -C ~/BOOM/boom-events-hub pull --rebase
+```
+次に `~/BOOM/boom-events-hub/STATE.md` の「## 更新ログ」の先頭に1行追加する（`XX`・`YY` は `date` で確かめる）:
+```
+- 2026-09-XX **boom-cron に受信箱アラートの枠を追加（ドライラン中）**: boom-cron の deploy は必ず origin/main を取り込んでから行う（古いチェックアウトから deploy すると受信箱の5分おき・朝8:00の枠が消える）。Pushover導入日 2026-09-YY（無料30日の起点）。本番開始は後日この欄に記録
+```
+```bash
 git -C ~/BOOM/boom-events-hub add STATE.md
 git -C ~/BOOM/boom-events-hub commit -m "boom-cronに受信箱アラートの枠を追加(deployはorigin/mainから)
 
@@ -3297,6 +3300,10 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 git fetch origin && git rebase origin/main && git push origin HEAD:main
 ```
 
+先に最新にする（編集してから pull すると止まる）:
+```bash
+git -C ~/BOOM/boom-events-hub pull --rebase
+```
 `~/BOOM/boom-events-hub/STATE.md` の「## 更新ログ」の先頭に1行追加（顧客の実名・鍵は書かない）:
 ```
 - 2026-09-XX **受信箱アラート 本番開始**: BOOM/NITRO ASH/個人の3Gmailを5分おきにClaude Opus 5で判定し、人が対応すべきメールだけPushoverでiPhoneに通知＋毎朝8:00にまとめ(未対応は返信/アーカイブ/ゴミ箱で消える。受信トレイを通らないメールは通知が届いていれば既読で消える)。Cloudflare Worker boom-cron→bw5-app `/api/cron/inbox-alert`。クラウドの鍵はGmail読み取り専用。事前テスト=過去30日を本番ドライランで判定しTAROと基準を調整。判定基準の修正は `src/lib/inboxAlert/criteria.ts`。設計書 `bw5-app/docs/superpowers/specs/2026-09-11-inbox-alert-design.md`。boom-cron は origin/main を取り込んでから deploy する（古いチェックアウトから deploy すると受信箱の仕事が消える）。1週間後に実費用報告と旧「🚨緊急」通知タスクの停止確認
@@ -3304,7 +3311,6 @@ git fetch origin && git rebase origin/main && git push origin HEAD:main
 （`XX` は `date +%d` で確かめた本番開始日に置き換える）
 
 ```bash
-git -C ~/BOOM/boom-events-hub pull --rebase
 git -C ~/BOOM/boom-events-hub add STATE.md
 git -C ~/BOOM/boom-events-hub commit -m "受信箱アラート本番開始を記録
 
@@ -3312,7 +3318,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 git -C ~/BOOM/boom-events-hub push
 ```
 
-Pushover の30日無料期間が切れると通知も朝のまとめも届かなくなるので、Step 2 で Pushover を入れた日＋25日（日付は `date` コマンドで確かめる。すでに過ぎていたら即日 TARO に伝える）に「Pushover の購入（iPhone用 $4.99）」を知らせる一回限りの予定タスクを、TARO に確認してから作る。
+Pushover の30日無料期間が切れると通知も朝のまとめも届かなくなるので、Step 7 で STATE.md に記録した Pushover 導入日＋25日（日付は `date` コマンドで確かめる。すでに過ぎていたら即日 TARO に伝える）に「Pushover の購入（iPhone用 $4.99）」を知らせる一回限りの予定タスクを、TARO に確認してから作る。
 
 - [ ] **Step 13: 1週間後の確認（Claude＋TARO）**
 
