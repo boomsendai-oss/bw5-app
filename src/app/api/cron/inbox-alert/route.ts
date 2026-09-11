@@ -34,13 +34,16 @@ export async function POST(req: NextRequest) {
   const accounts = loadAccounts();
   const missing = missingAccountLabels();
   if (!client || !pushoverUser || accounts.length === 0) {
-    // 共通の鍵が無い時は朝のまとめも送れない。「朝のまとめが届かない＝止まっている合図」で気づく前提
-    return NextResponse.json({
-      ok: true,
-      configured: false,
-      missing,
-      missingShared: [client ? null : 'GMAIL_ALERT_CLIENT', pushoverUser ? null : 'PUSHOVER_USER_KEY'].filter(Boolean),
-    });
+    // 共通の鍵が無い時は朝のまとめも送れない。ログで異常として見えるよう 503 にする
+    return NextResponse.json(
+      {
+        ok: false,
+        configured: false,
+        missing,
+        missingShared: [client ? null : 'GMAIL_ALERT_CLIENT', pushoverUser ? null : 'PUSHOVER_USER_KEY'].filter(Boolean),
+      },
+      { status: 503 },
+    );
   }
 
   const deps = buildLiveDeps({
@@ -68,5 +71,12 @@ export async function POST(req: NextRequest) {
       });
     }
   }
-  return NextResponse.json({ ok: true, dryRun: deps.dryRun, missing, results });
+  return NextResponse.json({
+    ok: true,
+    dryRun: deps.dryRun,
+    // Workerのログは先頭約300字しか残らないので、エラーの要約を先に置く
+    errors: results.filter((r) => r.error).map((r) => `${r.account}: ${(r.error ?? '').slice(0, 80)}`),
+    missing,
+    results,
+  });
 }

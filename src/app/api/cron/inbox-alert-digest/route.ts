@@ -1,7 +1,10 @@
 // POST /api/cron/inbox-alert-digest — 受信箱アラートの朝のまとめ(boom-cron が毎朝8:00に叩き、8:10に予備で再度叩く)。
-// 20時間以内に送信済みなら何もしない(予備の発火で二重に送らないため)。
-// 未対応の件名はGmailから取り直す(DBに件名を持たないため)。まとめは「BOOM」のPushoverアプリから送る。
+// JSTの同じ日に送信済みなら何もしない(予備の発火や手動の確認で二重に送らず、翌朝のまとめも消さない)。
+// 未対応の件名はGmailから取り直す(DBに件名を持たないため)。Gmailの上限と60秒の上限を守り、少しずつ・締め切りつきで取る。
+// まとめは「BOOM」のPushoverアプリから送る。レスポンスに件名・差出人は入れない。
+// 認証: x-cron-secret(CRON_SECRET_CF) または Authorization: Bearer(CRON_SECRET)。
 import { NextRequest, NextResponse } from 'next/server';
+import { todayJst } from '@/lib/dateJst';
 import {
   isDryRun,
   loadAccounts,
@@ -14,7 +17,7 @@ import {
 import { cronAuthorized } from '@/lib/inboxAlert/cronAuth';
 import { buildDigest, type DigestItem } from '@/lib/inboxAlert/digest';
 import { charLength } from '@/lib/inboxAlert/format';
-import { getAccessToken, getMessageMeta, headerMap } from '@/lib/inboxAlert/gmail';
+import { getAccessToken, getMessageMeta, GmailAuthError, headerMap } from '@/lib/inboxAlert/gmail';
 import { sendPushover } from '@/lib/inboxAlert/pushover';
 import {
   countOpenAll,
@@ -34,8 +37,26 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const LIST_LIMIT = 60;
-const SENT_RECENTLY_MS = 20 * 60 * 60 * 1000;
 const RETENTION_MS = 60 * 24 * 60 * 60 * 1000;
+/** Gmailの1ユーザーあたりの上限(同時接続・毎秒)を守るための、件名取り直しの同時数 */
+const SUBJECT_CONCURRENCY = 5;
+/** 件名の取り直しに使ってよい時間(送信とDB書き込みの時間を残す) */
+const SUBJECT_BUDGET_MS = 25_000;
+const SUBJECT_UNAVAILABLE = '(件名を取得できませんでした)';
+
+/** 同時に limit 件までだけ走らせて、順番どおりの結果を返す */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
 
 export async function POST(req: NextRequest) {
   if (!cronAuthorized(req.headers)) {
@@ -46,44 +67,70 @@ export async function POST(req: NextRequest) {
   const pushoverUser = loadPushoverUser();
   const accounts = loadAccounts();
   if (!client || !pushoverUser || accounts.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      configured: false,
-      missingShared: [client ? null : 'GMAIL_ALERT_CLIENT', pushoverUser ? null : 'PUSHOVER_USER_KEY'].filter(Boolean),
-    });
+    // 設定が欠けている時は、ログで異常として見えるよう 503 にする
+    return NextResponse.json(
+      {
+        ok: false,
+        configured: false,
+        missing: missingAccountLabels(),
+        missingShared: [client ? null : 'GMAIL_ALERT_CLIENT', pushoverUser ? null : 'PUSHOVER_USER_KEY'].filter(Boolean),
+      },
+      { status: 503 },
+    );
   }
 
   const dryRun = isDryRun();
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
   const lastDigestAt = await getLastDigestAt();
-  if (!dryRun && lastDigestAt && nowMs - Date.parse(lastDigestAt) < SENT_RECENTLY_MS) {
-    return NextResponse.json({ ok: true, skipped: 'sent recently' });
+  if (!dryRun && lastDigestAt && todayJst(new Date(lastDigestAt)) === todayJst(new Date(nowMs))) {
+    return NextResponse.json({ ok: true, skipped: 'sent today' });
   }
   const since = lastDigestAt ?? new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
 
   const byKey = new Map<AccountKey, AlertAccount>(accounts.map((a) => [a.key, a]));
   const tokens = new Map<AccountKey, Promise<string>>();
+  const subjectDeadline = nowMs + SUBJECT_BUDGET_MS;
+  const fetched = new Set<string>();
+  const itemKey = (item: OpenItem) => `${item.account}/${item.messageId}`;
+
+  const tokenFor = (account: AlertAccount): Promise<string> => {
+    let token = tokens.get(account.key);
+    if (!token) {
+      token = getAccessToken(client, account.refreshToken);
+      tokens.set(account.key, token);
+    }
+    return token;
+  };
 
   const toDigestItem = async (item: OpenItem): Promise<DigestItem> => {
     const account = byKey.get(item.account);
-    let subject = '(件名を取得できませんでした)';
-    if (account) {
-      try {
-        if (!tokens.has(item.account)) tokens.set(item.account, getAccessToken(client, account.refreshToken));
-        const token = await tokens.get(item.account)!;
-        subject = headerMap((await getMessageMeta(token, item.messageId)).payload)['subject'] || '(件名なし)';
-      } catch {
-        // 連携切れ・削除済みでも、まとめ自体は送る
-      }
-    }
-    return {
+    const base = {
       accountLabel: account?.label ?? item.account,
       kind: item.kind,
-      subject,
       receivedMs: item.receivedMs,
       aiFailed: item.aiFailed,
     };
+    if (!account || Date.now() >= subjectDeadline) return { ...base, subject: SUBJECT_UNAVAILABLE };
+
+    let token: string;
+    try {
+      token = await tokenFor(account);
+    } catch (e) {
+      // 一時的な失敗なら次の件で取り直す(連携切れは何度試しても同じなので覚えたままにする)
+      if (!(e instanceof GmailAuthError)) tokens.delete(account.key);
+      return { ...base, subject: SUBJECT_UNAVAILABLE };
+    }
+    if (Date.now() >= subjectDeadline) return { ...base, subject: SUBJECT_UNAVAILABLE };
+
+    try {
+      const meta = await getMessageMeta(token, item.messageId);
+      fetched.add(itemKey(item));
+      return { ...base, subject: headerMap(meta.payload)['subject'] || '(件名なし)' };
+    } catch {
+      // 削除済み・一時的な失敗でも、まとめ自体は送る
+      return { ...base, subject: SUBJECT_UNAVAILABLE };
+    }
   };
 
   const [open, pendingTotal, undigested, counts] = await Promise.all([
@@ -92,8 +139,8 @@ export async function POST(req: NextRequest) {
     listUndigested(LIST_LIMIT),
     countSince(since),
   ]);
-  const pending = await Promise.all(open.map(toDigestItem));
-  const later = await Promise.all(undigested.map(toDigestItem));
+  const pending = await mapLimit(open, SUBJECT_CONCURRENCY, toDigestItem);
+  const later = await mapLimit(undigested, SUBJECT_CONCURRENCY, toDigestItem);
   const health = await Promise.all(
     accounts.map(async (a) => {
       const s = await dbStore.getState(a.key);
@@ -115,13 +162,20 @@ export async function POST(req: NextRequest) {
     health,
     missing: missingAccountLabels(),
   });
+  const subjectFailed = open.length + undigested.length - fetched.size;
 
   if (!dryRun) {
     const sender = byKey.get('boom') ?? accounts[0];
     await sendPushover(sender.pushoverToken, pushoverUser, digest);
-    await markDigested(undigested, nowIso);
+    // 送れたら真っ先に印をつける(この後の書き込みで落ちても、8:10の予備で同じまとめを二重に送らない)
     await setLastDigestAt(nowIso);
-    await purgeBefore(new Date(nowMs - RETENTION_MS).toISOString());
+    // 件名を取れなかった分は「まとめに載せた」扱いにせず、翌朝もう一度載せる
+    await markDigested(undigested.filter((it) => fetched.has(itemKey(it))), nowIso);
+    try {
+      await purgeBefore(new Date(nowMs - RETENTION_MS).toISOString());
+    } catch {
+      // 古い行の削除は翌朝やり直せばよい
+    }
   }
 
   return NextResponse.json({
@@ -130,6 +184,7 @@ export async function POST(req: NextRequest) {
     sent: !dryRun,
     pending: pending.length,
     later: later.length,
+    subjectFailed,
     chars: charLength(digest.message),
   });
 }
