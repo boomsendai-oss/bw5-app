@@ -14,6 +14,9 @@ describe('truncateChars', () => {
   it('絵文字も1文字として数える', () => {
     expect(charLength('👍あ')).toBe(2);
   });
+  it('絵文字を途中で切らない', () => {
+    expect(truncateChars('👍👍👍', 2)).toBe('👍…');
+  });
 });
 
 describe('JST表示', () => {
@@ -25,5 +28,11 @@ describe('JST表示', () => {
     expect(receivedLabel(Date.UTC(2026, 8, 11, 22, 0), NOW)).toBe('今日07:00');
     expect(receivedLabel(Date.UTC(2026, 8, 11, 3, 10), NOW)).toBe('昨日12:10');
     expect(receivedLabel(Date.UTC(2026, 8, 9, 3, 0), NOW)).toBe('9/9');
+  });
+  it('JSTの0時を境に今日/昨日/日付が切り替わる', () => {
+    expect(receivedLabel(Date.UTC(2026, 8, 11, 15, 0), NOW)).toBe('今日00:00');
+    expect(receivedLabel(Date.UTC(2026, 8, 11, 14, 59), NOW)).toBe('昨日23:59');
+    expect(receivedLabel(Date.UTC(2026, 8, 10, 15, 0), NOW)).toBe('昨日00:00');
+    expect(receivedLabel(Date.UTC(2026, 8, 10, 14, 59), NOW)).toBe('9/10');
   });
 });
