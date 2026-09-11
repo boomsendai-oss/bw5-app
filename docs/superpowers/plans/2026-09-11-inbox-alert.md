@@ -29,7 +29,7 @@
 - （Task 11 コードレビューで追加）朝のまとめの件名の取り直しは同時5件・25秒の締め切りつき（Gmailの上限で429が出て件名が消えるのを防ぐ）。件名を取れなかった「朝のまとめ行き」は既読にせず翌朝また載せ、失敗件数 `subjectFailed` をレスポンスに出す。送信できたら真っ先に `lastDigestAt` を付け（8:10の予備で二重に送らない）、古い行の削除の失敗では500にしない。スキップ判定は「20時間以内」でなく「JSTの同じ日に送信済み」（本番投入日の午後に手動で送っても翌朝のまとめを消さない）。一時的なトークン失敗は次の件で取り直す。設定が欠けている時は両入口とも `503 ok:false`。5分おきの入口のレスポンスは先頭にエラーの要約 `errors` を置く（Workerのログは先頭約300字しか残らない）
 - （Task 13 コードレビューで追加）鍵の登録スクリプトは、Googleログインや入力の**前に** Vercel のリンク情報（`.vercel/project.json`・`projectName: bw5-app`）を確かめ、無ければ止まる（ログインだけさせて登録に失敗する事故を防ぐ）。`vercel` はリポジトリ直下を `cwd` にし、確かめた版 `vercel@53.1.0` に固定。Googleログインは `state` と PKCE(S256) を使い、`127.0.0.1` だけで待ち受け、最大9分で打ち切る
 - （Task 14 コードレビューで追加）ドライラン結果の一覧スクリプトは、1件の通信エラーでも止まらずその行にエラーを出して続ける（15秒で打ち切り）。差出人は表示名だけ、表示名が無い（またはアドレスそのもの）ならドメインだけを出す（お客さんのアドレスを画面に出さない）。「このMacに鍵が無い」と「鍵で認証できない」を分けて表示。AI費用は「概算」と明記
-- （最終レビューで追加）あるアカウントの Pushover の鍵が壊れていたら、他のアカウントの鍵（BOOM優先）で件名に `〔アカウント名〕` を付けて届け、状態テーブル `push_failed_at` に記録して朝のまとめの稼働欄で「要確認（通知の送信に失敗・Pushoverの鍵を確認）」と出す。朝のまとめの送信も他の鍵で送り直す。受信トレイを通らなかった未対応は「読んだら」閉じ、ゴミ箱に入れたメールも閉じる（消せない未対応が朝のまとめに溜まるのを防ぐ）。鍵の登録スクリプトに `--keys <OAuthクライアントのJSON>` を足す（Googleが広い権限をまとめて返した時に、アラート専用のクライアントへ切り替えられるように）。本番投入の手順を worktree 前提に揃え、接続先の確認・Cloudflare アカウントの確認・ドライランの見方・Pushover 無料期間の予定タスクを足す
+- （最終レビューで追加）あるアカウントの Pushover の鍵が壊れていたら、他のアカウントの鍵（BOOM優先）で件名に `〔アカウント名〕` を付けて届け、状態テーブル `push_failed_at` に記録して朝のまとめの稼働欄で「要確認（通知の送信に失敗・Pushoverの鍵を確認）」と出す。朝のまとめの送信も他の鍵で送り直す。受信トレイを通らなかった未対応は、通知が届いていれば「読んだら」閉じ、ゴミ箱・迷惑メールに入れたメールも閉じる（通知が届いていない行は返信・ゴミ箱・迷惑メールでしか閉じない＝再送を止めない）。一度失敗した Pushover の鍵はその回は全アカウントで使わない（鍵の問題とメール1通の問題は分けて扱う）（消せない未対応が朝のまとめに溜まるのを防ぐ）。鍵の登録スクリプトに `--keys <OAuthクライアントのJSON>` を足す（Googleが広い権限をまとめて返した時に、アラート専用のクライアントへ切り替えられるように）。本番投入の手順を worktree 前提に揃え、接続先の確認・Cloudflare アカウントの確認・ドライランの見方・Pushover 無料期間の予定タスクを足す
 
 ---
 
@@ -3133,11 +3133,7 @@ node scripts/inbox_alert_setup.mjs set PUSHOVER_TOKEN_TARO
 
 Claude が1本ずつ実行する。ブラウザが開いたら TARO が該当アカウントでログインし、「Googleはこのアプリを確認していません」→「詳細」→「移動」→「許可」。
 
-前提（Claude）: この作業は worktree（`~/BOOM/BW5_2026/bw5-app-inbox-alert`）で行う。スクリプトは Vercel のリンク情報が無いと止まるので、先に main チェックアウトからリンク情報だけを写す（`.vercel` は Git に入らない）:
-```bash
-mkdir -p .vercel && cp ~/BOOM/BW5_2026/bw5-app/.vercel/project.json .vercel/
-```
-`gmail` は TARO のログインを待つので、Bash ツールは `timeout: 600000` で実行する（スクリプト側の上限は9分）。Pushover の `set` も同じ worktree で TARO が実行する。
+前提（Claude）: この作業も worktree（`~/BOOM/BW5_2026/bw5-app-inbox-alert`）で行う（Vercel のリンク情報は Step 2 の前提で写し済み）。`gmail` は TARO のログインを待つので、Bash ツールは `timeout: 600000` で実行する（スクリプト側の上限は9分）。Pushover の `set` も同じ worktree で TARO が実行する。
 
 ```bash
 node scripts/inbox_alert_setup.mjs client
@@ -3146,7 +3142,7 @@ node scripts/inbox_alert_setup.mjs gmail nitroash --expect nitro.ash.designworks
 # 個人Gmailのアドレスは公開リポジトリに書かない。実行時にClaudeのメモリから入れる
 node scripts/inbox_alert_setup.mjs gmail taro --expect <個人Gmailのアドレス>
 ```
-Expected: 各行で「登録しました: …（production）」。「別のアカウント」と出たら登録されていないので、正しいアカウントでやり直す。「読み取り専用以外の権限が含まれています」で止まった場合（boom は同じOAuthクライアントに以前 `gmail.modify` を許可しているので起きうる）は、同じアカウントでやり直しても変わらない。GCP プロジェクト `gmail-mcp-504722` で「デスクトップアプリ」型のOAuthクライアントを新しく作り、JSON を `~/.gmail-alert-oauth.keys.json` に保存（Git に入れない）→ `client --keys ~/.gmail-alert-oauth.keys.json` と、3アカウントとも `gmail … --keys ~/.gmail-alert-oauth.keys.json` でやり直す（鍵とクライアントは組で使うので、3アカウントとも新しいクライアントに揃える）。
+Expected: 各行で「登録しました: …（production）」。「別のアカウント」と出たら登録されていないので、正しいアカウントでやり直す。「読み取り専用以外の権限が含まれています」で止まった場合（boom は同じOAuthクライアントに以前 `gmail.modify` を許可しているので起きうる）は、同じアカウントでやり直しても変わらない。TARO が GCP コンソールのプロジェクト `gmail-mcp-504722` で「APIとサービス」→「認証情報」→「認証情報を作成」→「OAuth クライアント ID」→種類「デスクトップ アプリ」で新しく作り（Claude が画面を案内する）、**作成直後のダイアログで JSON をダウンロード**して `~/.gmail-alert-oauth.keys.json` に置く（シークレットは後から表示できないことがある・Git に入れない）→ `client --keys ~/.gmail-alert-oauth.keys.json` と、3アカウントとも `gmail … --keys ~/.gmail-alert-oauth.keys.json` でやり直す（鍵とクライアントは組で使うので、3アカウントとも新しいクライアントに揃える。各行に出る「client_id 末尾」が `client` の行と同じであることを見比べる）。
 
 - [ ] **Step 4: ドライランの設定と登録内容の確認（Claude）**
 
@@ -3169,7 +3165,7 @@ Expected: `true`
 ```bash
 node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local scripts/migrate.mjs --dry-run
 ```
-Expected: `未適用 1` と `未適用: 20260911_inbox_alert.sql` だけ。**他のファイルも未適用に出たら適用せず止めて TARO に報告する**（他セッションの台帳外DDLで後続が止まった前例: 2026-08・2026-09-05）。
+Expected: `未適用 1` と `未適用: 20260911_inbox_alert.sql` だけ。**他のファイルも未適用に出たら適用せず止めて TARO に報告する**（他セッションの台帳外DDLで後続が止まった前例: 2026-08・2026-09-05）。逆に `20260911_inbox_alert.sql` が未適用に出ない（既に適用済み）場合も止めて報告する（`push_failed_at` 列が無い古い版の可能性があるので、`ALTER TABLE` の台帳SQLを別に作る）。
 
 ```bash
 node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local scripts/migrate.mjs
@@ -3181,7 +3177,7 @@ Expected: `適用: 20260911_inbox_alert.sql (3 statements)` と `apply 完了`
 ```bash
 git fetch origin && git rebase origin/main && git log --oneline origin/main..HEAD
 ```
-Expected: 今回のコミット（Task 1〜14 と設計書・計画書）だけ。**他セッションの未pushコミットが混ざっていたら push せず TARO に確認する。**
+Expected: 受信箱アラートのコミット（Task 1〜14・レビュー後の修正・設計書・計画書）だけ。**他セッションの未pushコミットが混ざっていたら push せず TARO に確認する。**
 
 ```bash
 git fetch origin && git rebase origin/main && git push origin HEAD:main
@@ -3201,7 +3197,7 @@ Expected: `401` と `401`（404なら反映待ち）
 
 - [ ] **Step 7: Worker を反映（Claude）**
 
-デプロイ前に `npx wrangler whoami` で 表示されたアカウントが BOOM 側（boom.sendai@gmail.com でログインしたもの）であることを確かめる（NITRO ASH の Cloudflare は別アカウント）。他のセッションが古いチェックアウトから boom-cron を deploy すると受信箱の仕事が消えるので、以後 boom-cron の deploy は origin/main を取り込んでから行う（Step 12 で STATE.md に書く）。
+デプロイ前に `npx wrangler whoami` で 表示されたアカウントが BOOM 側（boom.sendai@gmail.com でログインしたもの）であることを確かめる（NITRO ASH の Cloudflare は別アカウント）。他のセッションが古いチェックアウトから boom-cron を deploy すると受信箱の仕事が消えるので、以後 boom-cron の deploy は origin/main を取り込んでから行う（デプロイ直後に STATE.md に書く。下記）。
 
 ```bash
 cd workers/boom-cron && npx wrangler deploy && cd ../..
@@ -3213,6 +3209,19 @@ curl -s https://boom-cron.<サブドメイン>.workers.dev/ | grep -o '"every 5m
 ```
 Expected: 3つとも表示される（既存のストーリー枠が残っていること）。デプロイ後の最初の 8:00 に、`npx wrangler tail boom-cron --format pretty` で `inbox-digest` の呼び出しが途中で打ち切られず応答まで記録されているか（Worker の定期実行が最大約60秒のアプリ応答を待てるか）を確かめる
 
+デプロイ直後に、他セッションが古いチェックアウトから deploy しないよう `~/BOOM/boom-events-hub/STATE.md` の「## 更新ログ」の先頭に1行追加して push する（`XX` は `date +%d` で確かめる）:
+```
+- 2026-09-XX **boom-cron に受信箱アラートの枠を追加（ドライラン中）**: boom-cron の deploy は必ず origin/main を取り込んでから行う（古いチェックアウトから deploy すると受信箱の5分おき・朝8:00の枠が消える）。本番開始は後日この欄に記録
+```
+```bash
+git -C ~/BOOM/boom-events-hub pull --rebase
+git -C ~/BOOM/boom-events-hub add STATE.md
+git -C ~/BOOM/boom-events-hub commit -m "boom-cronに受信箱アラートの枠を追加(deployはorigin/mainから)
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
+git -C ~/BOOM/boom-events-hub push
+```
+
 - [ ] **Step 8: 過去30日の判定が進むのを見守る（Claude）**
 
 10分後と、その後1時間おきに実行:
@@ -3223,10 +3232,10 @@ Expected: 「■ 進み具合」で各アカウントが「判定中」→「完
 
 - [ ] **Step 9: 結果を TARO と確認し、判定基準を直す（Claude＋TARO）**
 
-全アカウントが「完了」になったら、**TARO 自身がアプリの Terminal パネルで**次を実行して3つの一覧（すぐ鳴らす／朝のまとめ／見逃し候補）と AI費用を見る（件名・差出人が Claude の会話ログに残らないように）。Claude には件数・AI費用の行と、直したい点（「この差出人は鳴らさなくていい」等）だけを伝えてもらう。**出力をファイルに保存しない。**なお「件数だけ」（宣伝分類かつ一斉配信の印あり）はAIが読まないので一覧に件名が出ない。フォームサービス経由の問い合わせが宣伝に入っていないかは、TARO が Gmail の「プロモーション」タブを一度見て確かめる。
+全アカウントが「完了」になったら、**TARO 自身が macOS の「ターミナル」アプリで**（Claude のアプリの Terminal パネルは Claude が読めるので使わない。Claude はこの出力を読まない）次を実行して3つの一覧（すぐ鳴らす／朝のまとめ／見逃し候補）と AI費用を見る（件名・差出人が Claude の会話ログに残らないように）。Claude には件数・AI費用の行と、直したい点（「この差出人は鳴らさなくていい」等）だけを伝えてもらう。**出力をファイルに保存しない。**なお「件数だけ」（宣伝分類かつ一斉配信の印あり）はAIが読まないので一覧に件名が出ない。フォームサービス経由の問い合わせが宣伝に入っていないかは、TARO が Gmail の「プロモーション」タブを一度見て確かめる。
 
 ```bash
-node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local scripts/inbox_alert_review.mjs
+cd ~/BOOM/BW5_2026/bw5-app-inbox-alert && node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local scripts/inbox_alert_review.mjs
 ```
 
 TARO の「これは鳴らさなくていい」「これが漏れてる」を受けて、`src/lib/inboxAlert/criteria.ts`（判定の言葉）か `src/lib/inboxAlert/prefilter.ts` の `KNOWN_AUTOMATED_DOMAINS`（自動送信元）を直し、`npm test` → commit → push。
@@ -3290,7 +3299,7 @@ git fetch origin && git rebase origin/main && git push origin HEAD:main
 
 `~/BOOM/boom-events-hub/STATE.md` の「## 更新ログ」の先頭に1行追加（顧客の実名・鍵は書かない）:
 ```
-- 2026-09-XX **受信箱アラート 本番開始**: BOOM/NITRO ASH/個人の3Gmailを5分おきにClaude Opus 5で判定し、人が対応すべきメールだけPushoverでiPhoneに通知＋毎朝8:00にまとめ(未対応は返信/アーカイブで消える)。Cloudflare Worker boom-cron→bw5-app `/api/cron/inbox-alert`。クラウドの鍵はGmail読み取り専用。事前テスト=過去30日を本番ドライランで判定しTAROと基準を調整。判定基準の修正は `src/lib/inboxAlert/criteria.ts`。設計書 `bw5-app/docs/superpowers/specs/2026-09-11-inbox-alert-design.md`。boom-cron は origin/main を取り込んでから deploy する（古いチェックアウトから deploy すると受信箱の仕事が消える）。1週間後に実費用報告と旧「🚨緊急」通知タスクの停止確認
+- 2026-09-XX **受信箱アラート 本番開始**: BOOM/NITRO ASH/個人の3Gmailを5分おきにClaude Opus 5で判定し、人が対応すべきメールだけPushoverでiPhoneに通知＋毎朝8:00にまとめ(未対応は返信/アーカイブ/ゴミ箱で消える。受信トレイを通らないメールは通知が届いていれば既読で消える)。Cloudflare Worker boom-cron→bw5-app `/api/cron/inbox-alert`。クラウドの鍵はGmail読み取り専用。事前テスト=過去30日を本番ドライランで判定しTAROと基準を調整。判定基準の修正は `src/lib/inboxAlert/criteria.ts`。設計書 `bw5-app/docs/superpowers/specs/2026-09-11-inbox-alert-design.md`。boom-cron は origin/main を取り込んでから deploy する（古いチェックアウトから deploy すると受信箱の仕事が消える）。1週間後に実費用報告と旧「🚨緊急」通知タスクの停止確認
 ```
 （`XX` は `date +%d` で確かめた本番開始日に置き換える）
 
@@ -3303,7 +3312,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 git -C ~/BOOM/boom-events-hub push
 ```
 
-Pushover の30日無料期間が切れると通知も朝のまとめも届かなくなるので、通知開始日＋25日（日付は `date` コマンドで確かめる）に「Pushover の購入（iPhone用 $4.99）」を知らせる一回限りの予定タスクを、TARO に確認してから作る。
+Pushover の30日無料期間が切れると通知も朝のまとめも届かなくなるので、Step 2 で Pushover を入れた日＋25日（日付は `date` コマンドで確かめる。すでに過ぎていたら即日 TARO に伝える）に「Pushover の購入（iPhone用 $4.99）」を知らせる一回限りの予定タスクを、TARO に確認してから作る。
 
 - [ ] **Step 13: 1週間後の確認（Claude＋TARO）**
 
