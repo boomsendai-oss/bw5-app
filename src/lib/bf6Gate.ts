@@ -27,7 +27,7 @@ export type GateOrder = {
    * 表示には使わない。
    */
   searchText: string;
-  /** 名前順の並びの鍵。出場者のフリガナがあればその読み(ひらがな)、無ければ申込者の名前 */
+  /** 名前順の並びの鍵。出場者の本名カタカナがあればその読み(ひらがな)、無ければ申込者の名前 */
   sortKey: string;
 };
 
@@ -72,7 +72,7 @@ function normalize(s: string): string {
 export function buildGateSearchText(p: {
   buyerName: string;
   people: string[];
-  /** 出場者の本名フリガナ。親子で名字が同じなので、名字をひらがなで言われても探せる */
+  /** 出場者の本名カタカナとダンサーネームの読み。名字でもダンサーネームでも、ひらがなで探せる */
   kana: string[];
   phone: string;
 }): string {
@@ -91,10 +91,11 @@ export function matchesGateQuery(o: GateOrder, q: string): boolean {
 
 /**
  * 名前順の鍵。申込者の名前は漢字しか持っていないので、そのまま並べても読みの順にならない。
- * 出場者のフリガナ(親子で名字が同じ)があれば、それをひらがなにして使う(TARO 2026-09-11「名前でソート」)。
+ * 出場者の「本名(カタカナ)」(親子で名字が同じ)をひらがなにして使う(TARO 2026-09-11「名前でソート」)。
+ * ⚠️ 「ダンサーネームのフリガナ」はMCが呼ぶ読み(ヒマリ等)で名字ではないので使わない。
  */
-export function gateSortKey(p: { buyerName: string; kana: string[] }): string {
-  const k = p.kana.find((x) => x.trim());
+export function gateSortKey(p: { buyerName: string; realNameKana: string[] }): string {
+  const k = p.realNameKana.find((x) => x.trim());
   return normalize(k ?? p.buyerName);
 }
 

@@ -21,7 +21,7 @@ export async function listBf6GateOrders(): Promise<GateOrder[]> {
         WHERE payment_status IN ('paid','cash_due') ORDER BY id`
     ).catch(() => []),
     getAll(
-      `SELECT i.order_id, i.item_type, i.qty, i.unit_amount, i.divisions, i.dancer_name, i.dancer_kana
+      `SELECT i.order_id, i.item_type, i.qty, i.unit_amount, i.divisions, i.dancer_name, i.dancer_kana, i.performer_name
          FROM bf_order_items i JOIN bf_orders o ON o.id = i.order_id
         WHERE o.payment_status IN ('paid','cash_due')
         ORDER BY i.order_id, i.sort_order`
@@ -34,17 +34,19 @@ export async function listBf6GateOrders(): Promise<GateOrder[]> {
   const parsed = lines.map(toOrderLine);
   const breakdown = buildBreakdownByOrder(parsed, settings?.pricing.entryPerExtraDivision ?? 1500);
 
-  type Acc = { adult: number; child: number; people: string[]; kana: string[] };
+  // kana = ダンサーネームの読み(MCが呼ぶ)、realKana = 本名カタカナ(名字の読み・並び順に使う)
+  type Acc = { adult: number; child: number; people: string[]; kana: string[]; realKana: string[] };
   const acc = new Map<number, Acc>();
   for (const l of lines) {
     const id = Number(l.order_id);
-    const a = acc.get(id) ?? { adult: 0, child: 0, people: [], kana: [] };
+    const a = acc.get(id) ?? { adult: 0, child: 0, people: [], kana: [], realKana: [] };
     const type = String(l.item_type);
     if (type === 'ticket_adult') a.adult += Number(l.qty ?? 0);
     if (type === 'ticket_child') a.child += Number(l.qty ?? 0);
     if (type === 'entry') {
       if (l.dancer_name) a.people.push(String(l.dancer_name));
       if (l.dancer_kana) a.kana.push(String(l.dancer_kana));
+      if (l.performer_name) a.realKana.push(String(l.performer_name));
     }
     acc.set(id, a);
   }
@@ -66,8 +68,13 @@ export async function listBf6GateOrders(): Promise<GateOrder[]> {
       amountDue: paid ? 0 : Number(o.amount_total ?? 0),
       breakdown: paid ? [] : (breakdown.get(id) ?? []),
       handed: handed.get(id) ?? 0,
-      searchText: buildGateSearchText({ buyerName, people: a.people, kana: a.kana, phone: String(o.phone ?? '') }),
-      sortKey: gateSortKey({ buyerName, kana: a.kana }),
+      searchText: buildGateSearchText({
+        buyerName,
+        people: a.people,
+        kana: [...a.realKana, ...a.kana],
+        phone: String(o.phone ?? ''),
+      }),
+      sortKey: gateSortKey({ buyerName, realNameKana: a.realKana }),
     });
   }
   return out;
