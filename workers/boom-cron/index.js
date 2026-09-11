@@ -51,7 +51,7 @@ const JOBS = [
   { at: '00:40', kind: 'deadman', repo: 'boomsendai-oss/shichigahama-yoyaku', workflow: 'reserve.yml', label: 'shichigahama-deadman' },
 
   // ── 受信箱アラート(2026-09-11)。5分おきに新着メールを判定し、毎朝8:00にまとめを送る。
-  // 8:10はまとめを送り損ねた時の予備(20時間以内に送信済みならアプリ側で何もしない)。
+  // 8:10はまとめを送り損ねた時の予備(JSTの同じ日に送信済みならアプリ側で何もしない)。
   { every: 5, path: '/api/cron/inbox-alert', label: 'inbox-alert' },
   { at: '08:00', path: '/api/cron/inbox-alert-digest', label: 'inbox-digest' },
   { at: '08:10', path: '/api/cron/inbox-alert-digest', label: 'inbox-digest-retry' },
