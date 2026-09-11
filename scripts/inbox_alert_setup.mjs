@@ -11,6 +11,7 @@
 //       ブラウザでGoogleにログイン(読み取り専用の許可)し、ログインしたアドレスが --expect と
 //       一致した時だけ GMAIL_ALERT_REFRESH_TOKEN_<BOOM|NITROASH|TARO> に登録する(ログインを待つのは最大9分)。
 //       client で --keys を使った時は、gmail にも同じ --keys を渡す(別のクライアントで取った鍵は、登録したクライアントでは使えない)
+//   client と gmail は、使うOAuthクライアントの JSON のパスと client_id の末尾6文字を表示する(取り違えに気づくため。シークレットは出さない)
 //   node scripts/inbox_alert_setup.mjs set <PUSHOVER_USER_KEY|PUSHOVER_TOKEN_BOOM|PUSHOVER_TOKEN_NITROASH|PUSHOVER_TOKEN_TARO>
 //       値を貼り付けて登録する(入力は画面に表示しない)。TAROが自分のターミナルで実行する
 import http from 'node:http';
@@ -89,8 +90,13 @@ function oauthClient(keysPath) {
         'Google Cloudの「OAuth 2.0 クライアント ID」でダウンロードした JSON を指定してください。登録していません',
     );
   }
-  console.log(`OAuthクライアント: ${p}`);
+  console.log(`OAuthクライアント: ${p}（client_id 末尾 …${clientIdTail(c.client_id)}）`);
   return { id: c.client_id, secret: c.client_secret };
+}
+
+/** client_id の見分け用の末尾6文字。Googleの client_id は全部 .apps.googleusercontent.com で終わるので、その手前から取る */
+function clientIdTail(id) {
+  return id.replace(/\.apps\.googleusercontent\.com$/, '').slice(-6);
 }
 
 function vercelEnvSet(name, value) {
@@ -241,7 +247,8 @@ const keysPath = takeOption(args, '--keys');
 const expect = takeOption(args, '--expect');
 const [cmd, arg] = args;
 try {
-  if (cmd === 'client') await clientFlow(keysPath);
+  // client に --expect は無い(gmail と打ち間違えたまま、クライアントだけ登録し直さないため)
+  if (cmd === 'client' && expect === undefined) await clientFlow(keysPath);
   else if (cmd === 'gmail') await gmailFlow(arg, expect, keysPath);
   else if (cmd === 'set' && keysPath === undefined) await setFlow(arg);
   else usage();
