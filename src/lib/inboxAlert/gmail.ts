@@ -1,14 +1,21 @@
 // 受信箱アラート: Gmail API(読み取り専用)の薄いラッパーと、本文抽出・返信判定(純関数)。
+// 本文(body.data)はGmail APIが元の文字コードに関係なくUTF-8に変換して返す(2026-09-11 実データ365日分で確認)。
 import type { GmailClient } from './accounts';
 
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
+/** 通信が固まってもVercelの60秒上限で黙って落ちず、エラーとして数えられるようにする */
+const TIMEOUT_MS = 15_000;
 type FetchLike = typeof fetch;
 
 /** 鍵が失効・取り消しされた(Googleへの再ログインが必要) */
 export class GmailAuthError extends Error {}
 
+/** メールやスレッドが見つからない(削除済みなど) */
+export class GmailNotFoundError extends Error {}
+
 export type GmailPart = {
   mimeType?: string;
+  filename?: string;
   headers?: { name: string; value: string }[];
   body?: { data?: string };
   parts?: GmailPart[];
@@ -35,6 +42,7 @@ export async function getAccessToken(client: GmailClient, refreshToken: string, 
       refresh_token: refreshToken,
       grant_type: 'refresh_token',
     }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   const json = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string };
   if (json.error === 'invalid_grant') throw new GmailAuthError('invalid_grant');
@@ -43,8 +51,12 @@ export async function getAccessToken(client: GmailClient, refreshToken: string, 
 }
 
 async function gmailGet<T>(token: string, path: string, fetchImpl: FetchLike): Promise<T> {
-  const res = await fetchImpl(`${API}${path}`, { headers: { authorization: `Bearer ${token}` } });
+  const res = await fetchImpl(`${API}${path}`, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
   if (res.status === 401) throw new GmailAuthError('unauthorized');
+  if (res.status === 404) throw new GmailNotFoundError(`gmail 404 ${path.split('?')[0]}`);
   if (!res.ok) throw new Error(`gmail ${res.status} ${path.split('?')[0]}`);
   return (await res.json()) as T;
 }
@@ -62,7 +74,7 @@ export async function listMessageRefsSince(token: string, afterSec: number, fetc
   do {
     const page = await gmailGet<{ messages?: MessageRef[]; nextPageToken?: string }>(
       token,
-      `/messages?maxResults=500&q=${q}${pageToken ? `&pageToken=${pageToken}` : ''}`,
+      `/messages?maxResults=500&q=${q}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`,
       fetchImpl,
     );
     out.push(...(page.messages ?? []));
@@ -88,7 +100,7 @@ export async function getThreadMessages(token: string, threadId: string, fetchIm
     const t = await gmailGet<{ messages?: GmailMessage[] }>(token, `/threads/${threadId}?format=minimal`, fetchImpl);
     return t.messages ?? [];
   } catch (e) {
-    if (e instanceof Error && e.message.startsWith('gmail 404')) return null;
+    if (e instanceof GmailNotFoundError) return null;
     throw e;
   }
 }
@@ -102,7 +114,7 @@ export function headerMap(payload: GmailPart | undefined): Record<string, string
 
 function findPart(part: GmailPart | undefined, mime: string): GmailPart | null {
   if (!part) return null;
-  if ((part.mimeType ?? '').toLowerCase().startsWith(mime) && part.body?.data) return part;
+  if ((part.mimeType ?? '').toLowerCase().startsWith(mime) && part.body?.data && !part.filename) return part;
   for (const p of part.parts ?? []) {
     const hit = findPart(p, mime);
     if (hit) return hit;

@@ -1,7 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { headerMap, extractBodyText, threadResolution, getAccessToken, GmailAuthError, type GmailMessage } from '../inboxAlert/gmail';
+import {
+  headerMap,
+  extractBodyText,
+  threadResolution,
+  getAccessToken,
+  getProfileEmail,
+  getMessageMeta,
+  getThreadMessages,
+  listMessageRefsSince,
+  GmailAuthError,
+  GmailNotFoundError,
+  type GmailMessage,
+} from '../inboxAlert/gmail';
 
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
+const status = (code: number, body: unknown = {}) =>
+  (async () => new Response(JSON.stringify(body), { status: code })) as typeof fetch;
 
 describe('headerMap', () => {
   it('ヘッダー名を小文字にする', () => {
@@ -35,6 +49,25 @@ describe('extractBodyText', () => {
     };
     expect(extractBodyText(msg)).toBe('読めるスニペット');
   });
+  it('入れ子のmultipartと末尾=付きのbase64を読み、添付のテキストは本文にしない', () => {
+    const padded = Buffer.from('ok見積', 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+    expect(padded.endsWith('=')).toBe(true);
+    const msg: GmailMessage = {
+      id: 'm', threadId: 't',
+      payload: { mimeType: 'multipart/mixed', parts: [
+        { mimeType: 'text/plain', filename: 'memo.txt', body: { data: b64('添付のメモ') } },
+        { mimeType: 'multipart/alternative', parts: [{ mimeType: 'text/plain', body: { data: padded } }] },
+      ] },
+    };
+    expect(extractBodyText(msg)).toBe('ok見積');
+  });
+  it('本文が空ならスニペットを使う', () => {
+    const msg: GmailMessage = {
+      id: 'm', threadId: 't', snippet: 'スニペット',
+      payload: { mimeType: 'text/plain', body: { data: b64('   ') } },
+    };
+    expect(extractBodyText(msg)).toBe('スニペット');
+  });
 });
 
 describe('threadResolution', () => {
@@ -56,16 +89,49 @@ describe('threadResolution', () => {
   it('スレッドが消えていればアーカイブ扱い', () => {
     expect(threadResolution(null, 'a', true)).toBe('archived');
   });
+  it('対象のメールがスレッドに無ければアーカイブ扱い', () => {
+    expect(threadResolution([{ id: 'z', threadId: 't', labelIds: ['INBOX'], internalDate: '1' }], 'a', true)).toBe('archived');
+  });
 });
 
 describe('getAccessToken', () => {
   const client = { clientId: 'id', clientSecret: 's' };
   it('access_token を返す', async () => {
-    const fake = async () => new Response(JSON.stringify({ access_token: 'at' }), { status: 200 });
-    await expect(getAccessToken(client, 'rt', fake as typeof fetch)).resolves.toBe('at');
+    await expect(getAccessToken(client, 'rt', status(200, { access_token: 'at' }))).resolves.toBe('at');
   });
   it('invalid_grant は GmailAuthError にする', async () => {
-    const fake = async () => new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
-    await expect(getAccessToken(client, 'rt', fake as typeof fetch)).rejects.toBeInstanceOf(GmailAuthError);
+    await expect(getAccessToken(client, 'rt', status(400, { error: 'invalid_grant' }))).rejects.toBeInstanceOf(GmailAuthError);
+  });
+  it('invalid_grant 以外の失敗は通常のエラー', async () => {
+    const err = await getAccessToken(client, 'rt', status(400, { error: 'invalid_client' })).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(GmailAuthError);
+    expect((err as Error).message).toBe('token 400 invalid_client');
+  });
+});
+
+describe('Gmail API ラッパー', () => {
+  it('一覧は次のページが無くなるまで取り、検索条件とページトークンをURLに入れる', async () => {
+    const urls: string[] = [];
+    const fake = (async (url: string) => {
+      urls.push(url);
+      const body = urls.length === 1
+        ? { messages: [{ id: 'a', threadId: 'ta' }], nextPageToken: '123' }
+        : { messages: [{ id: 'b', threadId: 'tb' }] };
+      return new Response(JSON.stringify(body), { status: 200 });
+    }) as typeof fetch;
+    const refs = await listMessageRefsSince('tok', 1_700_000_000, fake);
+    expect(refs.map((r) => r.id)).toEqual(['a', 'b']);
+    expect(urls).toHaveLength(2);
+    expect(urls[0]).toContain(`q=${encodeURIComponent('after:1700000000 -in:sent -in:chats')}`);
+    expect(urls[1]).toContain('&pageToken=123');
+  });
+  it('スレッドが見つからなければ null、それ以外のエラーは例外', async () => {
+    await expect(getThreadMessages('tok', 't', status(404))).resolves.toBeNull();
+    await expect(getThreadMessages('tok', 't', status(500))).rejects.toThrow('gmail 500');
+  });
+  it('メールが見つからなければ GmailNotFoundError、401 は GmailAuthError', async () => {
+    await expect(getMessageMeta('tok', 'm', status(404))).rejects.toBeInstanceOf(GmailNotFoundError);
+    await expect(getProfileEmail('tok', status(401))).rejects.toBeInstanceOf(GmailAuthError);
   });
 });
