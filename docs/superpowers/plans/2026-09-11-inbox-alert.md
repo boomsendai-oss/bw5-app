@@ -3077,6 +3077,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   - 費用の見出しは「AI費用（概算）」
   - 確認は本番に触れない形で: 空の HOME と使い捨ての SQLite（`TURSO_DATABASE_URL=file:…`）で最後まで動くこと、`senderLabel` の出力
   - Commit: `fix(inbox-alert): 一覧スクリプトは1件の通信エラーで止まらず、差出人は表示名かドメインだけを出す`
+  - 再レビュー後の追加: `senderLabel` の表示名は末尾の `<…>` より前、ドメインはその `<…>` の中の本当のアドレスから取る（`"soporte@paypal.com" <attacker@evil.ru>` を `(paypal.com)` と見せない）。ドメインから `"` を除く。Commit: `fix(inbox-alert): 一覧スクリプトの差出人ドメインは山括弧の中の本当のアドレスから取る`
 
 ---
 
