@@ -25,6 +25,7 @@
 - （Task 8 で追加）URLの置き換え `stripUrls` を `format.ts` に移し、通知と朝のまとめの件名で共有する
 - （Task 8 コードレビューで追加）朝のまとめの件名は改行をつぶしてURLを消し、1件40字に切る（偽の「■稼働 正常」行の差し込みと、長い件名で他の未対応が見えなくなるのを防ぐ）。未対応の見出しは本当の件数（`countOpenAll`・一覧は60件まで）を使う。稼働欄は連続エラー2回以上で「要確認」にし回数を添える（1回の一時エラーで毎朝要確認にしない）。件数と稼働欄は字数が足りなくても必ず残す
 - （Task 9 コードレビューで追加）未対応の再確認（`listOpen`）は古い順でなく毎回ばらばら（`ORDER BY RANDOM()`）に20件取る（古い順だと21件目以降が永久に再確認されず、返信済みでも朝のまとめに残り続けるため）。メールの記録は `INSERT OR IGNORE` をやめ `ON CONFLICT DO NOTHING`（必須の値が欠けた時に黙って捨てない）。連続エラーの記録は1文の upsert＋`RETURNING`。60日の削除でドライランの未対応行も消す
+- （Task 10 コードレビューで追加）「止まっています」「連携が切れました」の警報は**送れた時だけ**印（`stallAlerted` / `tokenAlertDate`）をつける（ドライラン中や Pushover 失敗で印だけ付き、本番で黙る事故を防ぐ）。`runAccount` は例外を外に投げない（DBが落ちても他のアカウントを止めない）。1通だけGmail側で失敗し続ける時（`GmailApiError`・タイムアウト）はそのメールを次回に回して新しいメールは処理し、前回確認時刻は進めずエラーを記録する。締め切り後に呼ばれたら何もしない・本文取得の前にも締め切りを確かめる。Vercelに打ち切られてエラーすら記録できない時のため「最後の成功から30分」でも止まっていることを知らせる。再確認→再送の順にする（返信済みを鳴らさない）。成功したら連携切れの日付を戻す。取り直しの幅は60分。Pushover送信の失敗回数を数える（`pushFailed`）。過去分の判定はドライラン中だけ（run.ts 側でも強制）。再確認・再送の失敗は本処理を失敗にしない
 
 ---
 
@@ -2338,6 +2339,18 @@ git commit -m "feat(inbox-alert): 1アカウント分の判定・通知・未対
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
+- [ ] **Step 6（コードレビュー後の追加）: 黙って止まらない・黙って落とさない**
+
+  - `gmail.ts` に `export class GmailApiError extends Error {}` を足し、`gmailGet` は 401/404 以外の失敗でこれを投げる（Commit: `fix(inbox-alert): Gmail側の一時的な失敗を GmailApiError として区別する`）
+  - `run.ts`: 警報の送信 `safePush` は送れたら `true` を返し、印（`setTokenAlertDate` / `setStallAlerted(true)`）は送れた時だけつける。catch の中の記録処理も try で囲み、`runAccount` は例外を投げない
+  - 新着の処理で `GmailApiError`・`TimeoutError` はそのメールを飛ばして続け、ループ後にエラーとして記録（前回確認時刻は進めない）。`GmailNotFoundError` は従来どおり飛ばすだけ
+  - 開始時に締め切りを過ぎていたら `{ complete: false, error: 'skipped: deadline' }` を返して何もしない。`processMessage` は本文取得の前にも締め切りを確かめ、過ぎていたら記録せずに次回へ
+  - `alertIfStalledByTime`: 最後の成功から30分（`STALL_MS`）を超えていたら「監視が止まっています」を送る（送れた時だけ印）。成功したら `stallAlerted` と `tokenAlertDate` を戻す
+  - 完了時は「再確認（`resolveOpen`）→再送（`resendUnnotified`）」の順。どちらも `bestEffort` でエラーを書き残すだけにする
+  - `OVERLAP_SEC` を 60分、`RunSummary.pushFailed` を追加、過去分の判定は `deps.dryRun` の時だけ
+  - テスト19件（通知ありで過去分を判定しない・digest は鳴らさない・受信トレイ外は閉じない・送信失敗→再送・削除済みは再送せず閉じる・1通の失敗で止めない・締め切り後は何もしない・DB障害でも投げない・ドライラン→本番で警報が黙らない・30分無成功の警報と送信失敗時の再挑戦・成功で印を戻す を追加）
+  - Commit: `fix(inbox-alert): 警報は送れた時だけ印をつけ、1通の失敗や打ち切りで黙って止まらないようにする`
+
 ---
 
 ### Task 11: live.ts と2つの入口（5分おき・朝のまとめ）
@@ -2422,8 +2435,8 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 /**
- * 新しいメールの処理を始めてよい時間。1件の途中で各通信が上限まで待っても
- * (Gmail 15秒・AI判定 15秒・Pushover 10秒)、Vercelの60秒上限の中で終われるよう余裕を取る
+ * 新しいメールの処理を始めてよい時間(run.ts は本文を取る前にも締め切りを確かめる)。
+ * それでも通信が上限まで待ち続けてVercelに打ち切られた時は、run.ts が「最後の成功から30分」で止まっていることを知らせる
  */
 const BUDGET_MS = 20_000;
 
@@ -2459,7 +2472,18 @@ export async function POST(req: NextRequest) {
   const ordered = [...accounts.slice(offset), ...accounts.slice(0, offset)];
 
   const results: RunSummary[] = [];
-  for (const account of ordered) results.push(await runAccount(account, deps));
+  for (const account of ordered) {
+    try {
+      results.push(await runAccount(account, deps));
+    } catch (e) {
+      // runAccount は例外を投げない作りだが、万一でも残りのアカウントの処理を止めない
+      results.push({
+        account: account.key, fresh: 0, processed: 0, notified: 0, pushFailed: 0, resolved: 0,
+        aiFailed: 0, inputTokens: 0, outputTokens: 0, complete: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
   return NextResponse.json({ ok: true, dryRun: deps.dryRun, missing, results });
 }
 ```
