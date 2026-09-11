@@ -385,4 +385,56 @@ describe('runAccount', () => {
     await runAccount(account, deps);
     expect(state).toMatchObject({ stallAlerted: false, tokenAlertDate: '' });
   });
+
+  it('時間による警報と回数による警報を、同じ回に二重に送らない', async () => {
+    const { store } = memoryStore({
+      lastCheckedMs: NOW - 3_600_000,
+      lastSuccessAt: new Date(NOW - 40 * 60_000).toISOString(),
+      consecutiveErrors: STALL_THRESHOLD - 1,
+    });
+    const { gmail } = fakeGmail([], { listSince: async () => { throw new Error('gmail 500 /messages'); } });
+    const { deps, pushed } = makeDeps({ gmail, store });
+    await runAccount(account, deps);
+    expect(pushed.map((m) => m.title)).toEqual([STALL_TITLE]);
+  });
+
+  it('1通の失敗があっても時間が残っていれば、返信済みの未対応は閉じる', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    await store.insertItem(storedNow('q', NOW - 3_600_000), 'x');
+    const base = fakeGmail([msg('poison')]);
+    const gmail: GmailPort = {
+      ...base.gmail,
+      full: async () => {
+        throw new GmailApiError('gmail 500 /messages/poison');
+      },
+      thread: async () => [
+        { id: 'q', threadId: 't-q', labelIds: ['INBOX'], internalDate: String(NOW - 3_600_000) },
+        { id: 'r', threadId: 't-q', labelIds: ['SENT'], internalDate: String(NOW - 60_000) },
+      ],
+    };
+    const { deps } = makeDeps({ gmail, store });
+    const r = await runAccount(account, deps);
+    expect(items.get('q')!.resolved).toBe('replied');
+    expect(r).toMatchObject({ complete: false, error: 'gmail 500 /messages/poison' });
+  });
+
+  it('再確認で1件のスレッドだけ失敗しても、残りの再確認は続ける', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    await store.insertItem(storedNow('bad', NOW - 7_200_000), 'x');
+    await store.insertItem(storedNow('q', NOW - 3_600_000), 'x');
+    const { gmail } = fakeGmail([], {
+      thread: async (_t, threadId) => {
+        if (threadId === 't-bad') throw new GmailApiError('gmail 500 /threads/t-bad');
+        return [
+          { id: 'q', threadId: 't-q', labelIds: ['INBOX'], internalDate: String(NOW - 3_600_000) },
+          { id: 'r', threadId: 't-q', labelIds: ['SENT'], internalDate: String(NOW - 60_000) },
+        ];
+      },
+    });
+    const { deps } = makeDeps({ gmail, store });
+    const r = await runAccount(account, deps);
+    expect(items.get('q')!.resolved).toBe('replied');
+    expect(items.get('bad')!.resolved).toBeNull();
+    expect(r.complete).toBe(true);
+  });
 });

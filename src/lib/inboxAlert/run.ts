@@ -85,10 +85,12 @@ export async function runAccount(account: AlertAccount, deps: RunDeps): Promise<
     return { ...summary, error: 'skipped: deadline' };
   }
   let state: AlertState | null = null;
+  // この回に「止まっています」を送った・既に送ってあるか(時間と回数の両方で二重に送らないため)
+  let stallAlerted = false;
 
   try {
     state = await deps.store.getState(account.key);
-    const stallAlerted = state.stallAlerted || (await alertIfStalledByTime(account, state, startMs, deps));
+    stallAlerted = state.stallAlerted || (await alertIfStalledByTime(account, state, startMs, deps));
 
     const token = await deps.gmail.accessToken(account.refreshToken);
     const email = await deps.gmail.profileEmail(token);
@@ -105,17 +107,17 @@ export async function runAccount(account: AlertAccount, deps: RunDeps): Promise<
     const fresh = refs.filter((r) => !known.has(r.id)).reverse();
     summary.fresh = fresh.length;
 
-    let complete = true;
+    let outOfTime = false;
     let deferredError: unknown = null;
     for (const ref of fresh) {
       if (deps.nowMs() > deps.deadlineMs) {
-        complete = false;
+        outOfTime = true;
         break;
       }
       try {
         const outcome = await processMessage(account, ref, token, email, baseline, deps, summary);
         if (outcome === 'deferred') {
-          complete = false;
+          outOfTime = true;
           break;
         }
       } catch (e) {
@@ -123,15 +125,16 @@ export async function runAccount(account: AlertAccount, deps: RunDeps): Promise<
         if (e instanceof GmailNotFoundError) continue;
         // 1通だけGmail側で失敗しても新しいメールは処理する(前回確認時刻を進めないので、そのメールは次回に再挑戦)
         if (isRetryableGmailError(e)) {
-          complete = false;
           deferredError ??= e;
           continue;
         }
         throw e;
       }
     }
+    const complete = !outOfTime && !deferredError;
 
-    if (complete && !deps.dryRun) {
+    // 時間が残っていれば、1通の失敗があっても再確認と再送は行う(返信済みを閉じ、送れなかった通知を届ける)
+    if (!outOfTime && !deps.dryRun) {
       // 先に返信済み・アーカイブ済みを閉じてから、送れなかった通知を再送する(返信済みのメールを鳴らさない)
       await bestEffort(summary, () => resolveOpen(account, token, deps, summary));
       await bestEffort(summary, () => resendUnnotified(account, token, email, deps, summary));
@@ -163,6 +166,7 @@ export async function runAccount(account: AlertAccount, deps: RunDeps): Promise<
         const sent =
           errors >= STALL_THRESHOLD &&
           !current.stallAlerted &&
+          !stallAlerted &&
           (await safePush(account, {
             title: STALL_TITLE(account),
             message: `約30分エラーが続いています: ${truncateChars(message, 200)}`,
@@ -290,6 +294,8 @@ async function resendUnnotified(account: AlertAccount, token: string, email: str
     try {
       meta = await deps.gmail.meta(token, item.messageId);
     } catch (e) {
+      // 1件だけGmail側で失敗しても、残りの再送は続ける
+      if (isRetryableGmailError(e)) continue;
       if (!(e instanceof GmailNotFoundError)) throw e;
       // 通知を送れないまま削除されたメールは、未対応から外す
       await deps.store.markResolved(account.key, item.messageId, 'archived', isoNow(deps));
@@ -323,7 +329,15 @@ async function resolveOpen(account: AlertAccount, token: string, deps: RunDeps, 
   const open = await deps.store.listOpen(account.key, RESOLVE_LIMIT);
   for (const item of open) {
     if (deps.nowMs() > deps.deadlineMs) return;
-    const reason = threadResolution(await deps.gmail.thread(token, item.threadId), item.messageId, item.inInbox);
+    let messages: GmailMessage[] | null;
+    try {
+      messages = await deps.gmail.thread(token, item.threadId);
+    } catch (e) {
+      // 1件のスレッドだけGmail側で失敗しても、残りの再確認は続ける
+      if (isRetryableGmailError(e)) continue;
+      throw e;
+    }
+    const reason = threadResolution(messages, item.messageId, item.inInbox);
     if (reason) {
       await deps.store.markResolved(account.key, item.messageId, reason, isoNow(deps));
       summary.resolved++;
