@@ -292,6 +292,21 @@ export async function syncBf6Slots(): Promise<
 }
 
 /**
+ * 受付画面(スタッフ・クルー)を開いたときに、くじの枠を用意する。何度呼んでも減らさない。
+ *
+ * ⚠️ 以前は受付iPad(/bf6/checkin)だけが枠を自動で作っていて、スタッフの受付画面では
+ *    「抽選枠の準備」ボタンを押すまで枠が無く、くじが「空き枠がありません」になった(2026-09-11)。
+ * - 受付時(①): ビギナー16枠・小中/一般はエントリー数ぶんのブロック枠(syncBf6Slots と同じ)
+ * - 予選後(②): 上に加えて、小中/一般のベスト8の枠を8つずつ
+ */
+export async function ensureBf6ReceptionSlots(phase: Bf6DrawPhase): Promise<void> {
+  await syncBf6Slots();
+  if (phase === 'bracket') {
+    for (const d of ['kids', 'general'] as const) await seedBf6Slots(d, 'bracket', 8);
+  }
+}
+
+/**
  * その枠を引いた人の名前。まだ誰も引いていなければ null。
  * 受付の結果画面で「1回戦の相手」を出すために使う。
  */

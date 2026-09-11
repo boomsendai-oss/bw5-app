@@ -29,13 +29,14 @@ export async function kioskDraw(
     }
   | { error: string }
 > {
-  await checkInBf6(itemId);
   const r = await claimBf6Slot(
     division as Bf6DrawDivision,
     phaseForDivision(division),
     itemId
   );
   if (!r) return { error: '空き枠がありません。スタッフにお声がけください。' };
+  // くじに成功したときだけチェックインを付ける(失敗しても受付済みに見えていた・2026-09-11)
+  await checkInBf6(itemId);
 
   const phase = phaseForDivision(division);
   if (phase !== 'bracket') return r;

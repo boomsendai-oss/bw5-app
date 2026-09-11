@@ -4,12 +4,11 @@
 //   ?phase=block   … 受付時。ビギナーはトーナメント位置、小中/一般はA/Bブロック
 //   ?phase=bracket … 予選終了後。小中/一般の通過者がベスト8の位置を引く
 import Link from 'next/link';
-import { listBf6ReceptionEntrants } from '@/lib/bf6DrawDb';
+import { ensureBf6ReceptionSlots, listBf6ReceptionEntrants } from '@/lib/bf6DrawDb';
 import { listBf6PhotoItemIds } from '@/lib/bf6PhotoDb';
 import { listBf6Qualifiers } from '@/lib/bf6QualifierDb';
 import { filterForBracketDraw, QUALIFIER_COUNT } from '@/lib/bf6Qualifier';
 import { ReceptionClient } from '@/app/staff/bf6/reception/ReceptionClient';
-import { SlotSeeder } from '@/app/staff/bf6/reception/SlotSeeder';
 import CrewHeader from '../CrewHeader';
 import type { Bf6DrawPhase } from '@/lib/bf6Draw';
 
@@ -23,6 +22,8 @@ export default async function CrewReceptionPage({
   // d = 開いておく部門のタブ(端末ごとに担当部門を固定できる)
   const { phase: raw, d } = await searchParams;
   const phase: Bf6DrawPhase = raw === 'bracket' ? 'bracket' : 'block';
+  // くじの枠は開くたびに自動で用意する(締切まで人数が増えるため。減らさない)
+  await ensureBf6ReceptionSlots(phase);
   const [entrants, photoIds, qualifiers] = await Promise.all([
     listBf6ReceptionEntrants(),
     listBf6PhotoItemIds(),
@@ -92,7 +93,6 @@ export default async function CrewReceptionPage({
             </p>
           </div>
         )}
-        <SlotSeeder phase={phase} />
         <ReceptionClient entrants={forPhase} phase={phase} photoItemIds={[...photoIds]} initialDivision={d} />
       </div>
     </div>
