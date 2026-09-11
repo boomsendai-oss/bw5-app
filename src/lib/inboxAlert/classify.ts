@@ -1,5 +1,6 @@
 // 受信箱アラート: Claude Opus 5 でメールを判定する。AIが使えない時はルール判定(見逃さない側)に切り替える。
 // 本文はプロンプトに渡すだけで、ログにもDBにも残さない。
+// メールは外部の誰でも書ける入力なので、<mail> タグで区切り、要約からURL・連絡先を消す(通知経由の誘導を防ぐ)。
 import Anthropic from '@anthropic-ai/sdk';
 import { CRITERIA } from './criteria';
 import { truncateChars } from './format';
@@ -22,6 +23,10 @@ export const MODEL = 'claude-opus-5';
 export const FALLBACK_MODEL = 'claude-opus-4-8';
 const BODY_LIMIT: Record<AiReadMode, number> = { ai_light: 500, ai_full: 3000 };
 
+/** AIが使えない時でも、これに当たる自動送信メールは朝まで待たせずに鳴らす */
+const ACTION_HINT =
+  /失敗|エラー|停止|未払|残高不足|期限|至急|緊急|ご対応|お願いします|返信|メッセージが届|お問い合わせ|failed|declined|suspend|past due|overdue|action required|credit balance/i;
+
 export const OUTPUT_SCHEMA = {
   type: 'object',
   properties: {
@@ -33,16 +38,30 @@ export const OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
+const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
+
 export function buildUserPrompt(mail: MailForAi, mode: AiReadMode): string {
+  const body = truncateChars(mail.body, BODY_LIMIT[mode]).replace(/<\/?mail>/gi, '');
   return [
     `受信アカウント: ${mail.accountLabel}`,
-    `差出人: ${mail.from}`,
-    `件名: ${mail.subject}`,
-    `受信日時: ${mail.receivedIso}`,
+    `受信日時(UTC): ${mail.receivedIso}`,
     `読み方: ${mode === 'ai_light' ? '自動送信の可能性が高い(本文は冒頭だけ)' : '人が書いた可能性がある'}`,
+    '<mail>',
+    `差出人: ${oneLine(mail.from)}`,
+    `件名: ${oneLine(mail.subject)}`,
     '本文:',
-    truncateChars(mail.body, BODY_LIMIT[mode]),
+    body,
+    '</mail>',
   ].join('\n');
+}
+
+/** 要約からURL・メールアドレス・電話番号を消す(日付は残す) */
+export function scrubSummary(s: string): string {
+  return s
+    .normalize('NFKC')
+    .replace(/https?:\/\/\S+|www\.\S+/gi, '[URL]')
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[メール]')
+    .replace(/\+81[\d\- ]{9,13}|0\d{1,4}-\d{1,4}-\d{3,4}|0\d{9,10}/g, '[番号]');
 }
 
 export function parseClassification(text: string): Classification | null {
@@ -55,30 +74,51 @@ export function parseClassification(text: string): Classification | null {
   if (!value || typeof value !== 'object') return null;
   const o = value as Record<string, unknown>;
   if (!TIERS.includes(o.tier as Tier) || !KINDS.includes(o.kind as Kind) || typeof o.summary !== 'string') return null;
-  return { tier: o.tier as Tier, kind: o.kind as Kind, summary: truncateChars(o.summary.trim(), 60), aiFailed: false };
+  return {
+    tier: o.tier as Tier,
+    kind: o.kind as Kind,
+    summary: truncateChars(scrubSummary(o.summary).trim(), 60),
+    aiFailed: false,
+  };
 }
 
-/** AIが使えない時の判定。全文を読むメール(人が書いた風)は鳴らし、冒頭だけのメールは朝のまとめに回す */
-export function fallbackClassification(mode: AiReadMode, error: string): Classification {
-  return { tier: mode === 'ai_full' ? 'now' : 'digest', kind: 'other', summary: '', aiFailed: true, error };
+/**
+ * AIが使えない時の判定。全文を読むメール(人が書いた風)は鳴らす。
+ * 冒頭だけのメール(自動送信風)は朝のまとめに回すが、失敗・停止・至急などの言葉があれば鳴らす。
+ */
+export function fallbackClassification(
+  mode: AiReadMode,
+  error: string,
+  mail?: Pick<MailForAi, 'subject' | 'body'>,
+): Classification {
+  const hinted = !!mail && ACTION_HINT.test(`${mail.subject}\n${truncateChars(mail.body, 500)}`);
+  return { tier: mode === 'ai_full' || hinted ? 'now' : 'digest', kind: 'other', summary: '', aiFailed: true, error };
 }
 
 export async function classifyMail(mail: MailForAi, mode: AiReadMode, callModel: CallModel = callClaude): Promise<ClassifyResult> {
   try {
     const r = await callModel(buildUserPrompt(mail, mode));
     const usage = { inputTokens: r.inputTokens, outputTokens: r.outputTokens };
-    if (r.stopReason === 'refusal') return { ...fallbackClassification(mode, 'refusal'), ...usage };
+    if (r.stopReason === 'refusal') return { ...fallbackClassification(mode, 'refusal', mail), ...usage };
+    if (r.stopReason === 'max_tokens') return { ...fallbackClassification(mode, 'max_tokens', mail), ...usage };
     const parsed = parseClassification(r.text);
-    if (!parsed) return { ...fallbackClassification(mode, 'unparseable'), ...usage };
+    if (!parsed) return { ...fallbackClassification(mode, 'unparseable', mail), ...usage };
     return { ...parsed, ...usage };
   } catch (e) {
-    return { ...fallbackClassification(mode, e instanceof Error ? e.message : String(e)), inputTokens: 0, outputTokens: 0 };
+    return {
+      ...fallbackClassification(mode, e instanceof Error ? e.message : String(e), mail),
+      inputTokens: 0,
+      outputTokens: 0,
+    };
   }
 }
 
-/** 1件の判定が長引いてもVercelの60秒上限の中でエラーとして扱えるよう、時間と再試行を絞る(SDK既定は10分・再試行2回) */
+/**
+ * 1件の判定が長引いてもVercelの60秒上限の中でエラーとして扱えるよう、時間を絞り再試行しない
+ * (SDK既定は10分・再試行2回。失敗は見逃さない側のルール判定に倒れる)
+ */
 export const callClaude: CallModel = async (userPrompt) => {
-  const client = new Anthropic({ timeout: 20_000, maxRetries: 1 });
+  const client = new Anthropic({ timeout: 15_000, maxRetries: 0 });
   const res = await client.beta.messages.create({
     model: MODEL,
     max_tokens: 2000,
