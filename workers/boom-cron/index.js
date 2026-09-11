@@ -49,6 +49,12 @@ const JOBS = [
   // 走っていない/失敗していたら🚨メール(件名に「失敗」=Gmail緊急ラベル)＋1回だけ再起動する。
   // 鍵: GH_DISPATCH_TOKEN(Actions R/W) / VENUE_NOTIFY_SECRET・NOTIFY_URL(bw5-appの通知API)
   { at: '00:40', kind: 'deadman', repo: 'boomsendai-oss/shichigahama-yoyaku', workflow: 'reserve.yml', label: 'shichigahama-deadman' },
+
+  // ── 受信箱アラート(2026-09-11)。5分おきに新着メールを判定し、毎朝8:00にまとめを送る。
+  // 8:10はまとめを送り損ねた時の予備(20時間以内に送信済みならアプリ側で何もしない)。
+  { every: 5, path: '/api/cron/inbox-alert', label: 'inbox-alert' },
+  { at: '08:00', path: '/api/cron/inbox-alert-digest', label: 'inbox-digest' },
+  { at: '08:10', path: '/api/cron/inbox-alert-digest', label: 'inbox-digest-retry' },
 ];
 
 /** UTCのepochミリ秒 → JSTの 'HH:MM' */
@@ -156,7 +162,8 @@ function now2() { return new Date().toISOString().slice(0, 16); }
 export default {
   async scheduled(event, env, ctx) {
     const hhmm = jstHhmm(event.scheduledTime);
-    const due = JOBS.filter((j) => j.at === hhmm);
+    const minute = Number(hhmm.slice(3));
+    const due = JOBS.filter((j) => j.at === hhmm || (j.every && minute % j.every === 0));
     if (due.length === 0) return;
     ctx.waitUntil(Promise.all(due.map((j) => runJob(j, env))));
   },
@@ -179,7 +186,7 @@ export default {
     return Response.json({
       now_jst: jstHhmm(Date.now()),
       app: env.APP_ORIGIN,
-      jobs: JOBS.map((j) => `${j.at} ${j.label}`),
+      jobs: JOBS.map((j) => (j.every ? `every ${j.every}m ${j.label}` : `${j.at} ${j.label}`)),
     });
   },
 };
