@@ -18,6 +18,8 @@ export function buildLiveDeps(opts: {
   pushoverUser: string;
   /** 全アカウントのPushoverの鍵(BOOMを先頭)。自分の鍵で送れなかった時に順に試す */
   fallbackTokens: string[];
+  /** このcron呼び出しで鍵ごと使えなかったPushoverの鍵(全アカウントで共有する1つのSet) */
+  badTokens: Set<string>;
   deadlineMs: number;
   dryRun: boolean;
   backfillDays: number;
@@ -35,6 +37,7 @@ export function buildLiveDeps(opts: {
     classify: (mail, mode) => classifyMail(mail, mode),
     push: (appToken, msg) => sendPushover(appToken, opts.pushoverUser, msg),
     fallbackTokens: opts.fallbackTokens,
+    badTokens: opts.badTokens,
     nowMs: () => Date.now(),
     deadlineMs: opts.deadlineMs,
     dryRun: opts.dryRun,

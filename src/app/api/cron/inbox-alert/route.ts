@@ -56,6 +56,8 @@ export async function POST(req: NextRequest) {
     client,
     pushoverUser,
     fallbackTokens,
+    // 鍵ごと使えなかったPushoverの鍵は、この呼び出しの全アカウントで共有する(固まった鍵をアカウントごとに待たない)
+    badTokens: new Set<string>(),
     deadlineMs: Date.now() + BUDGET_MS,
     dryRun: isDryRun(),
     backfillDays: backfillDays(),

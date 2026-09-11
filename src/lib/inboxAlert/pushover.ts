@@ -65,6 +65,32 @@ export function buildNowMessage(input: {
   };
 }
 
+/**
+ * Pushoverに送れなかった。
+ * tokenLevel=true は「その鍵では何を送ってもだめ」な失敗(時間切れ・通信エラー・5xx・429・鍵やユーザーキーが無効)。
+ * false はそのメール1通だけの失敗(それ以外の4xx)で、他のメールではその鍵を使い続けてよい
+ */
+export class PushoverError extends Error {
+  readonly status: number;
+  readonly tokenLevel: boolean;
+  constructor(message: string, status: number, tokenLevel: boolean) {
+    super(message);
+    this.name = 'PushoverError';
+    this.status = status;
+    this.tokenLevel = tokenLevel;
+  }
+}
+
+type PushoverResponse = { status?: number; errors?: unknown[]; token?: string; user?: string };
+
+/** アプリの鍵かユーザーキーが無効だと言っているか */
+function saysKeyInvalid(json: PushoverResponse): boolean {
+  if (json.token === 'invalid' || json.user === 'invalid') return true;
+  return (json.errors ?? []).some((e) => /application token|user key|user identifier/i.test(String(e)));
+}
+
+const isAbort = (e: unknown) => e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError');
+
 export async function sendPushover(
   appToken: string,
   userKey: string,
@@ -81,13 +107,26 @@ export async function sendPushover(
   if (msg.url) body.set('url', msg.url);
   if (msg.url_title) body.set('url_title', msg.url_title);
   if (msg.timestamp) body.set('timestamp', String(msg.timestamp));
-  const res = await fetchImpl('https://api.pushover.net/1/messages.json', {
-    method: 'POST',
-    body,
-    signal: AbortSignal.timeout(10_000),
-  });
-  const json = (await res.json().catch(() => ({}))) as { status?: number; errors?: string[] };
+  let res: Response;
+  try {
+    res = await fetchImpl('https://api.pushover.net/1/messages.json', {
+      method: 'POST',
+      body,
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (e) {
+    // 時間切れ・通信エラーは鍵ごと使えない扱い(Pushoverが固まっている時に、他のメールでも同じだけ待たない)
+    throw new PushoverError(`pushover network ${e instanceof Error ? e.name : 'error'}`, 0, true);
+  }
+  let json: PushoverResponse = {};
+  try {
+    json = ((await res.json()) as PushoverResponse | null) ?? {};
+  } catch (e) {
+    // 本文を読む途中で時間切れになった時も、鍵ごと使えない扱い(JSONでないだけなら下で判定する)
+    if (isAbort(e)) throw new PushoverError(`pushover ${res.status} ${(e as Error).name}`, res.status, true);
+  }
   if (!res.ok || json.status !== 1) {
-    throw new Error(`pushover ${res.status} ${(json.errors ?? []).join(',')}`.trim());
+    const tokenLevel = res.status >= 500 || res.status === 429 || saysKeyInvalid(json);
+    throw new PushoverError(`pushover ${res.status} ${(json.errors ?? []).join(',')}`.trim(), res.status, tokenLevel);
   }
 }

@@ -3,7 +3,7 @@ import { runAccount, STALL_THRESHOLD, type GmailPort, type RunDeps } from '../in
 import { GmailApiError, GmailAuthError, GmailNotFoundError, type GmailMessage } from '../inboxAlert/gmail';
 import type { AlertStore, AlertState, NewItem, OpenItem } from '../inboxAlert/store';
 import type { ClassifyResult } from '../inboxAlert/classify';
-import type { PushoverMessage } from '../inboxAlert/pushover';
+import { PushoverError, type PushoverMessage } from '../inboxAlert/pushover';
 import type { AlertAccount } from '../inboxAlert/accounts';
 
 // JST 2026-09-11 12:00
@@ -90,6 +90,7 @@ function makeDeps(over: Partial<RunDeps> & { gmail: GmailPort; store: AlertStore
     },
     push: async (_token, m) => { pushed.push(m); },
     fallbackTokens: [],
+    badTokens: new Set<string>(),
     nowMs: () => NOW,
     deadlineMs: NOW + 45_000,
     dryRun: false,
@@ -272,6 +273,8 @@ describe('runAccount', () => {
     expect(r1).toMatchObject({ notified: 0, pushFailed: 2 });
     expect(items.get('human')!.notifiedAt).toBeNull();
 
+    // 次のcron呼び出し(使えない鍵の一覧は呼び出しごとに作り直す)
+    deps.badTokens.clear();
     failing = false;
     const r2 = await runAccount(account, deps);
     expect(r2.notified).toBe(1);
@@ -336,7 +339,7 @@ describe('runAccount', () => {
       fallbackTokens: ['po', 'po-nitro'],
       push: async (token) => {
         calls.push(token);
-        if (token === 'po') throw new Error('pushover timeout');
+        if (token === 'po') throw new PushoverError('pushover network TimeoutError', 0, true);
       },
     });
     const r = await runAccount(account, deps);
@@ -363,6 +366,104 @@ describe('runAccount', () => {
     expect(r.notified).toBe(0);
     expect(items.get('a')!.notifiedAt).toBeNull();
     expect(items.get('b')!.notifiedAt).toBeNull();
+  });
+
+  it('鍵と関係ない4xx(そのメールだけの失敗)では、その鍵を使えない扱いにしない', async () => {
+    const { store } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const { gmail } = fakeGmail([msg('a'), msg('b')]);
+    const calls: string[] = [];
+    const { deps } = makeDeps({
+      gmail,
+      store,
+      fallbackTokens: ['po', 'po-nitro'],
+      push: async (token, m) => {
+        calls.push(`${token}:${m.title.replace(/^.*件名/, '')}`);
+        if (token === 'po' && m.title.endsWith('件名a')) throw new PushoverError('pushover 400 message is too long', 400, false);
+      },
+    });
+    const r = await runAccount(account, deps);
+    expect(calls).toEqual(['po:a', 'po-nitro:a', 'po:b']);
+    expect(r).toMatchObject({ notified: 2, pushFailed: 1, pushFallback: 1 });
+    expect(deps.badTokens.has('po')).toBe(false);
+  });
+
+  it('使えない鍵は、同じcron呼び出しの他のアカウントでも試さない(自分の鍵なら送れなかったことに数える)', async () => {
+    const badTokens = new Set<string>();
+    const fallbackTokens = ['po', 'po-nitro', 'po-taro'];
+    const calls: string[] = [];
+    const push: RunDeps['push'] = async (token) => {
+      calls.push(token);
+      if (token !== 'po-taro') throw new PushoverError('pushover network TimeoutError', 0, true);
+    };
+    const boom = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const r1 = await runAccount(
+      account,
+      makeDeps({ gmail: fakeGmail([msg('a')]).gmail, store: boom.store, push, fallbackTokens, badTokens }).deps,
+    );
+    const nitroAccount: AlertAccount = { key: 'nitroash', label: 'NITRO ASH', refreshToken: 'rt-na', pushoverToken: 'po-nitro' };
+    const nitro = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const r2 = await runAccount(
+      nitroAccount,
+      makeDeps({ gmail: fakeGmail([msg('b')]).gmail, store: nitro.store, push, fallbackTokens, badTokens }).deps,
+    );
+    expect(calls).toEqual(['po', 'po-nitro', 'po-taro', 'po-taro']);
+    expect(r1).toMatchObject({ notified: 1, pushFailed: 1, pushFallback: 1 });
+    expect(r2).toMatchObject({ notified: 1, pushFailed: 1, pushFallback: 1 });
+    expect(nitro.state.pushFailedAt).toBe(new Date(NOW).toISOString());
+  });
+
+  it('再送も自分の鍵で送れなければ他の鍵で〔表示名〕つきで届け、通知済みにする', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    await store.insertItem({ ...storedNow('pending', NOW - 60_000), notified: false }, 'x');
+    const { gmail } = fakeGmail([msg('pending', { subject: '見積の件' })]);
+    const sent: { token: string; title: string }[] = [];
+    const { deps } = makeDeps({
+      gmail,
+      store,
+      fallbackTokens: ['po', 'po-nitro'],
+      push: async (token, m) => {
+        if (token === 'po') throw new PushoverError('pushover 400 application token is invalid', 400, true);
+        sent.push({ token, title: m.title });
+      },
+    });
+    const r = await runAccount(account, deps);
+    expect(sent).toEqual([{ token: 'po-nitro', title: '〔BOOM〕【新規の問い合わせ】見積の件' }]);
+    expect(r).toMatchObject({ fresh: 0, notified: 1, pushFailed: 1, pushFallback: 1 });
+    expect(items.get('pending')!.notifiedAt).not.toBeNull();
+  });
+
+  it('ドライランでは、他の鍵があっても通知も警報もPushoverを呼ばない', async () => {
+    const { store } = memoryStore({ lastCheckedMs: NOW - 300_000, lastSuccessAt: new Date(NOW - 40 * 60_000).toISOString() });
+    const { gmail } = fakeGmail([msg('human')]);
+    const calls: string[] = [];
+    const { deps } = makeDeps({
+      gmail,
+      store,
+      dryRun: true,
+      fallbackTokens: ['po', 'po-nitro'],
+      push: async (token) => {
+        calls.push(token);
+      },
+    });
+    const r = await runAccount(account, deps);
+    expect(calls).toEqual([]);
+    expect(r).toMatchObject({ notified: 0, pushFailed: 0, pushFallback: 0 });
+  });
+
+  it('同じ回に自分の鍵で送れた時と送れなかった時の両方があれば、送信失敗の記録を残す', async () => {
+    const { store, state } = memoryStore({ lastCheckedMs: NOW - 300_000, pushFailedAt: new Date(NOW - 600_000).toISOString() });
+    const { gmail } = fakeGmail([msg('a'), msg('b')]);
+    const { deps } = makeDeps({
+      gmail,
+      store,
+      fallbackTokens: ['po', 'po-nitro'],
+      push: async (token, m) => {
+        if (token === 'po' && m.title.endsWith('件名b')) throw new PushoverError('pushover 400 message is too long', 400, false);
+      },
+    });
+    const r = await runAccount(account, deps);
+    expect(r).toMatchObject({ notified: 2, pushFailed: 1, pushFallback: 1 });
+    expect(state.pushFailedAt).toBe(new Date(NOW).toISOString());
   });
 
   it('自分の鍵が壊れていても、止まっている警報は他の鍵で届ける', async () => {
@@ -517,6 +618,8 @@ describe('runAccount', () => {
     });
     await runAccount(account, deps);
     expect(state.stallAlerted).toBe(false);
+    // 次のcron呼び出し(使えない鍵の一覧は呼び出しごとに作り直す)
+    deps.badTokens.clear();
     failing = false;
     await runAccount(account, deps);
     expect(titles).toEqual([STALL_TITLE]);

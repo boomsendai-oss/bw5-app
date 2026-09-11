@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displaySender, gmailLink, buildNowMessage, sendPushover } from '../inboxAlert/pushover';
+import { displaySender, gmailLink, buildNowMessage, sendPushover, PushoverError } from '../inboxAlert/pushover';
 import { charLength } from '../inboxAlert/format';
 
 const base = {
@@ -96,5 +96,40 @@ describe('sendPushover', () => {
   it('HTTP 200 でも status が 1 でなければ例外にする', async () => {
     const { fake } = capture({ status: 0 }, 200);
     await expect(sendPushover('a', 'u', { title: 't', message: 'm' }, fake)).rejects.toThrow('pushover 200');
+  });
+
+  const failure = (fake: typeof fetch) => sendPushover('a', 'u', { title: 't', message: 'm' }, fake).catch((e: unknown) => e);
+
+  it('鍵が無効な4xx(token/user が invalid・エラー文が鍵を指す)は、鍵ごと使えない失敗にする', async () => {
+    const token = await failure(capture({ token: 'invalid', errors: ['application token is invalid'], status: 0 }, 400).fake);
+    expect(token).toBeInstanceOf(PushoverError);
+    expect(token).toMatchObject({ status: 400, tokenLevel: true });
+    const user = await failure(
+      capture({ user: 'invalid', errors: ['user identifier is not a valid user, group, or subscribed user key'], status: 0 }, 400).fake,
+    );
+    expect(user).toMatchObject({ status: 400, tokenLevel: true });
+    const byMessage = await failure(capture({ errors: ['user key is invalid'], status: 0 }, 400).fake);
+    expect(byMessage).toMatchObject({ status: 400, tokenLevel: true });
+  });
+
+  it('5xx・429・通信エラー・時間切れは、鍵ごと使えない失敗にする', async () => {
+    expect(await failure(capture({ status: 0 }, 500).fake)).toMatchObject({ status: 500, tokenLevel: true });
+    expect(await failure(capture({ status: 0, errors: ['too many requests'] }, 429).fake)).toMatchObject({ status: 429, tokenLevel: true });
+    const network = (async () => {
+      throw new TypeError('fetch failed');
+    }) as typeof fetch;
+    const network_ = await failure(network);
+    expect(network_).toBeInstanceOf(PushoverError);
+    expect(network_).toMatchObject({ status: 0, tokenLevel: true });
+    const timeout = (async () => {
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    }) as typeof fetch;
+    expect(await failure(timeout)).toMatchObject({ status: 0, tokenLevel: true });
+  });
+
+  it('鍵と関係ない4xxは、そのメールだけの失敗にする(他のメールではその鍵を使い続ける)', async () => {
+    const e = await failure(capture({ errors: ['message cannot be blank'], status: 0 }, 400).fake);
+    expect(e).toBeInstanceOf(PushoverError);
+    expect(e).toMatchObject({ status: 400, tokenLevel: false });
   });
 });
