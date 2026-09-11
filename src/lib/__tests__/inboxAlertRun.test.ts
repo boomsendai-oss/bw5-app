@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runAccount, STALL_THRESHOLD, type GmailPort, type RunDeps } from '../inboxAlert/run';
-import { GmailAuthError, GmailNotFoundError, type GmailMessage } from '../inboxAlert/gmail';
+import { GmailApiError, GmailAuthError, GmailNotFoundError, type GmailMessage } from '../inboxAlert/gmail';
 import type { AlertStore, AlertState, NewItem, OpenItem } from '../inboxAlert/store';
 import type { ClassifyResult } from '../inboxAlert/classify';
 import type { PushoverMessage } from '../inboxAlert/pushover';
@@ -8,6 +8,8 @@ import type { AlertAccount } from '../inboxAlert/accounts';
 
 // JST 2026-09-11 12:00
 const NOW = Date.UTC(2026, 8, 11, 3, 0);
+const OVERLAP_SEC = 60 * 60;
+const STALL_TITLE = '【受信箱アラート】BOOMの監視が止まっています';
 const account: AlertAccount = { key: 'boom', label: 'BOOM', refreshToken: 'rt', pushoverToken: 'po' };
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64url');
 
@@ -111,7 +113,7 @@ describe('runAccount', () => {
     expect(pushed).toEqual([]);
     expect([...items.values()].map((i) => i.readMode)).toEqual(['baseline', 'baseline']);
     expect(state.lastCheckedMs).toBe(NOW);
-    expect(listedAfter).toEqual([Math.floor(NOW / 1000) - 600]);
+    expect(listedAfter).toEqual([Math.floor(NOW / 1000) - OVERLAP_SEC]);
   });
 
   it('2回目以降: 宣伝は件数だけ、人のメールはAI判定して鳴らす。記録済みは飛ばす', async () => {
@@ -131,7 +133,7 @@ describe('runAccount', () => {
     expect(pushed[0].url).toBe('https://mail.google.com/mail/u/?authuser=boom.sendai%40gmail.com#all/t-human');
     expect(items.get('promo')!.tier).toBe('count');
     expect(items.get('human')!.notifiedAt).not.toBeNull();
-    expect(listedAfter).toEqual([Math.floor((NOW - 300_000) / 1000) - 600]);
+    expect(listedAfter).toEqual([Math.floor((NOW - 300_000) / 1000) - OVERLAP_SEC]);
   });
 
   it('ドライランでは通知を送らず、ドライランの印をつけて記録する', async () => {
@@ -165,6 +167,29 @@ describe('runAccount', () => {
     expect(state.lastCheckedMs).toBe(NOW + 300_000);
   });
 
+  it('通知ありの時は、過去分の判定日数が渡されても過去分を判定しない', async () => {
+    const { store, items } = memoryStore();
+    const { gmail, listedAfter } = fakeGmail([msg('old')]);
+    const { deps, classified } = makeDeps({ gmail, store, backfillDays: 30 });
+    await runAccount(account, deps);
+    expect(listedAfter).toEqual([Math.floor(NOW / 1000) - OVERLAP_SEC]);
+    expect(classified).toEqual([]);
+    expect(items.get('old')!.readMode).toBe('baseline');
+  });
+
+  it('朝のまとめ行きの判定は鳴らさない', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const { gmail } = fakeGmail([msg('notice')]);
+    const { deps, pushed } = makeDeps({
+      gmail,
+      store,
+      classify: async () => ({ tier: 'digest', kind: 'automation_failure', summary: '', aiFailed: false, inputTokens: 1, outputTokens: 1 }),
+    });
+    await runAccount(account, deps);
+    expect(pushed).toEqual([]);
+    expect(items.get('notice')!.tier).toBe('digest');
+  });
+
   it('返信済みの未対応を閉じる', async () => {
     const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
     await store.insertItem(storedNow('q', NOW - 3_600_000), 'x');
@@ -175,6 +200,56 @@ describe('runAccount', () => {
     const r = await runAccount(account, deps);
     expect(r.resolved).toBe(1);
     expect(items.get('q')!.resolved).toBe('replied');
+  });
+
+  it('受信トレイを通らなかったメールは、INBOXラベルが無くてもアーカイブ扱いで閉じない', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    await store.insertItem({ ...storedNow('filtered', NOW - 60_000), inInbox: false }, 'x');
+    const { gmail } = fakeGmail([], {
+      thread: async () => [{ id: 'filtered', threadId: 't-filtered', labelIds: ['Label_1'], internalDate: String(NOW - 60_000) }],
+    });
+    const { deps } = makeDeps({ gmail, store });
+    await runAccount(account, deps);
+    expect(items.get('filtered')!.resolved).toBeNull();
+  });
+
+  it('通知の送信に失敗したら、次の回に再送する', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const { gmail } = fakeGmail([msg('human')]);
+    let failing = true;
+    const pushed: PushoverMessage[] = [];
+    const { deps } = makeDeps({
+      gmail,
+      store,
+      push: async (_t, m) => {
+        if (failing) throw new Error('pushover 500');
+        pushed.push(m);
+      },
+    });
+    const r1 = await runAccount(account, deps);
+    expect(r1).toMatchObject({ notified: 0, pushFailed: 2 });
+    expect(items.get('human')!.notifiedAt).toBeNull();
+
+    failing = false;
+    const r2 = await runAccount(account, deps);
+    expect(r2.notified).toBe(1);
+    expect(pushed).toHaveLength(1);
+    expect(items.get('human')!.notifiedAt).not.toBeNull();
+  });
+
+  it('通知を送れないまま削除されたメールは、再送せずに未対応から外す', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    await store.insertItem({ ...storedNow('lost', NOW - 60_000), notified: false }, 'x');
+    const { gmail } = fakeGmail([], {
+      meta: async () => {
+        throw new GmailNotFoundError('gmail 404 /messages/lost');
+      },
+      thread: async () => [{ id: 'lost', threadId: 't-lost', labelIds: ['INBOX'], internalDate: String(NOW - 60_000) }],
+    });
+    const { deps, pushed } = makeDeps({ gmail, store });
+    await runAccount(account, deps);
+    expect(pushed).toEqual([]);
+    expect(items.get('lost')!.resolved).toBe('archived');
   });
 
   it('一覧を取った後に消えたメールは飛ばして、残りを処理する', async () => {
@@ -194,6 +269,58 @@ describe('runAccount', () => {
     expect(items.has('human')).toBe(true);
   });
 
+  it('1通だけGmail側で失敗し続けても新しいメールは通知し、前回確認時刻は進めない', async () => {
+    const { store, state, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const base = fakeGmail([msg('poison'), msg('human', { subject: '体験レッスンの相談' })]);
+    const gmail: GmailPort = {
+      ...base.gmail,
+      full: async (t, id) => {
+        if (id === 'poison') throw new GmailApiError('gmail 500 /messages/poison');
+        return base.gmail.full(t, id);
+      },
+    };
+    const { deps, pushed } = makeDeps({ gmail, store });
+    const r = await runAccount(account, deps);
+    expect(pushed.map((m) => m.title)).toEqual(['【新規の問い合わせ】体験レッスンの相談']);
+    expect(items.has('poison')).toBe(false);
+    expect(r).toMatchObject({ complete: false, error: 'gmail 500 /messages/poison' });
+    expect(state.lastCheckedMs).toBe(NOW - 300_000);
+    expect(state.consecutiveErrors).toBe(1);
+  });
+
+  it('締め切りを過ぎてから呼ばれたら、何も触らず次回に回す', async () => {
+    const { store, state } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const calls: string[] = [];
+    const { gmail } = fakeGmail([], {
+      accessToken: async () => {
+        calls.push('token');
+        return 'at';
+      },
+    });
+    const { deps } = makeDeps({ gmail, store, deadlineMs: NOW - 1 });
+    const r = await runAccount(account, deps);
+    expect(r).toMatchObject({ complete: false, error: 'skipped: deadline' });
+    expect(calls).toEqual([]);
+    expect(state.lastCheckedMs).toBe(NOW - 300_000);
+  });
+
+  it('DBまで落ちていても例外を外に投げない(他のアカウントの処理を止めない)', async () => {
+    const { store } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const broken: AlertStore = {
+      ...store,
+      knownIds: async () => {
+        throw new Error('db down');
+      },
+      saveError: async () => {
+        throw new Error('db down');
+      },
+    };
+    const { gmail } = fakeGmail([msg('human')]);
+    const { deps } = makeDeps({ gmail, store: broken });
+    const r = await runAccount(account, deps);
+    expect(r.error).toBe('db down / store: db down');
+  });
+
   it('Gmailの連携が切れたら、その日1回だけ知らせる', async () => {
     const { store, state } = memoryStore({ lastCheckedMs: NOW - 300_000 });
     const { gmail } = fakeGmail([], { accessToken: async () => { throw new GmailAuthError('invalid_grant'); } });
@@ -210,7 +337,52 @@ describe('runAccount', () => {
     const { gmail } = fakeGmail([], { listSince: async () => { throw new Error('gmail 500 /messages'); } });
     const { deps, pushed } = makeDeps({ gmail, store });
     for (let i = 0; i < STALL_THRESHOLD + 2; i++) await runAccount(account, deps);
-    expect(pushed.map((m) => m.title)).toEqual(['【受信箱アラート】BOOMの監視が止まっています']);
+    expect(pushed.map((m) => m.title)).toEqual([STALL_TITLE]);
     expect(state.stallAlerted).toBe(true);
+  });
+
+  it('ドライラン中に積もったエラーは、本番に切り替えた後の警報を黙らせない', async () => {
+    const { store, state } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const { gmail } = fakeGmail([], { listSince: async () => { throw new Error('gmail 500 /messages'); } });
+    const dry = makeDeps({ gmail, store, dryRun: true });
+    for (let i = 0; i < STALL_THRESHOLD; i++) await runAccount(account, dry.deps);
+    expect(state.stallAlerted).toBe(false);
+    const live = makeDeps({ gmail, store });
+    await runAccount(account, live.deps);
+    expect(live.pushed.map((m) => m.title)).toEqual([STALL_TITLE]);
+  });
+
+  it('最後の成功から30分以上たっていたら知らせる。送れなかった時は印をつけず、次の回にまた送る', async () => {
+    const { store, state } = memoryStore({
+      lastCheckedMs: NOW - 3_600_000,
+      lastSuccessAt: new Date(NOW - 40 * 60_000).toISOString(),
+    });
+    const { gmail } = fakeGmail([], { listSince: async () => { throw new Error('gmail hung'); } });
+    let failing = true;
+    const titles: string[] = [];
+    const { deps } = makeDeps({
+      gmail,
+      store,
+      push: async (_t, m) => {
+        if (failing) throw new Error('pushover down');
+        titles.push(m.title);
+      },
+    });
+    await runAccount(account, deps);
+    expect(state.stallAlerted).toBe(false);
+    failing = false;
+    await runAccount(account, deps);
+    expect(titles).toEqual([STALL_TITLE]);
+    expect(state.stallAlerted).toBe(true);
+    await runAccount(account, deps);
+    expect(titles).toHaveLength(1);
+  });
+
+  it('成功したら、止まっている印と連携切れの日付を戻す', async () => {
+    const { store, state } = memoryStore({ lastCheckedMs: NOW - 300_000, stallAlerted: true, tokenAlertDate: '2026-09-11' });
+    const { gmail } = fakeGmail([]);
+    const { deps } = makeDeps({ gmail, store });
+    await runAccount(account, deps);
+    expect(state).toMatchObject({ stallAlerted: false, tokenAlertDate: '' });
   });
 });
