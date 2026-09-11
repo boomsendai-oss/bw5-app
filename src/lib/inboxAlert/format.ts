@@ -40,3 +40,10 @@ export function receivedLabel(receivedMs: number, nowMs: number): string {
   if (diff === 1) return `昨日${jstHm(receivedMs)}`;
   return jstMd(receivedMs);
 }
+
+const URL_PATTERN = /https?:\/\/[\x21-\x7E]+|www\.[\x21-\x7E]+/gi;
+
+/** 送り主が自由に書ける文字列(件名・差出人名)のURLを [URL] にする(通知経由の誘導を防ぐ) */
+export function stripUrls(s: string): string {
+  return s.replace(URL_PATTERN, '[URL]');
+}

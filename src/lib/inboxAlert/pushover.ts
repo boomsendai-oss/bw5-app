@@ -2,7 +2,7 @@
 // 優先度は通常(0)固定=おやすみモード中は鳴らさない(2026-09-11 TARO確認)。
 // 件名と差出人名は送り主が自由に書けるので、URLは消す(通知経由の誘導を防ぐ。電話番号は正当な件名を壊しやすいので残す)。
 import type { Kind } from './classify';
-import { truncateChars } from './format';
+import { stripUrls, truncateChars } from './format';
 
 export const KIND_TITLE: Record<Kind, string> = {
   new_inquiry: '【新規の問い合わせ】',
@@ -21,9 +21,6 @@ export type PushoverMessage = {
   /** 通知に表示する時刻(秒)。再送でも「いつ届いたメールか」が分かるよう、受信時刻を入れる */
   timestamp?: number;
 };
-
-const URL_PATTERN = /https?:\/\/[\x21-\x7E]+|www\.[\x21-\x7E]+/gi;
-const stripUrls = (s: string) => s.replace(URL_PATTERN, '[URL]');
 
 /** From ヘッダーの表示名。無ければドメインだけ(お客さんのメールアドレスをロック画面に出さないため) */
 export function displaySender(from: string): string {

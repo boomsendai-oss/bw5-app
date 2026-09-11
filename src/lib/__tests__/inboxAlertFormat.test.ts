@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { truncateChars, charLength, jstMd, jstHm, receivedLabel } from '../inboxAlert/format';
+import { truncateChars, charLength, jstMd, jstHm, receivedLabel, stripUrls } from '../inboxAlert/format';
 
 // JST 2026-09-12 08:00 = UTC 2026-09-11 23:00
 const NOW = Date.UTC(2026, 8, 11, 23, 0);
@@ -16,6 +16,9 @@ describe('truncateChars', () => {
   });
   it('絵文字を途中で切らない', () => {
     expect(truncateChars('👍👍👍', 2)).toBe('👍…');
+  });
+  it('URLを[URL]にし、直後の日本語は残す', () => {
+    expect(stripUrls('確認 https://x.jp/a、今日まで')).toBe('確認 [URL]、今日まで');
   });
 });
 
