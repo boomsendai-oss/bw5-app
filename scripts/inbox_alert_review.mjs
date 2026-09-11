@@ -56,12 +56,17 @@ async function localToken(account) {
   }
 }
 
-/** 差出人は表示名だけ出す。表示名が無い(またはアドレスそのもの)ならドメインだけ(お客さんのアドレスを画面に出さない) */
+/**
+ * 差出人は表示名だけ出す。表示名が無い(またはアドレスそのもの)ならドメインだけ(お客さんのアドレスを画面に出さない)。
+ * ドメインは山括弧の中の本当のアドレスから取る(表示名に書かれた偽のアドレスに惑わされない)
+ */
 function senderLabel(fromHeader) {
-  const raw = fromHeader ?? '';
-  const name = raw.replace(/\s*<[^>]*>\s*/, '').replace(/"/g, '').trim();
+  const raw = (fromHeader ?? '').trim();
+  const angle = raw.match(/<([^<>]*)>$/);
+  const name = (angle ? raw.slice(0, angle.index) : raw.includes('@') ? '' : raw).replace(/"/g, '').trim();
   if (name && !name.includes('@')) return name;
-  const domain = raw.match(/@([^>\s,;]+)/)?.[1];
+  const address = angle ? angle[1] : raw;
+  const domain = address.match(/@([^>\s,;"]+)/)?.[1];
   return domain ? `(${domain})` : '';
 }
 
