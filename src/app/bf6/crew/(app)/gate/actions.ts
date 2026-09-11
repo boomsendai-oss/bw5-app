@@ -1,7 +1,6 @@
 'use server';
 
 // 観覧のお客さんの入場受付。/bf6/crew 配下(クルーPIN or 本部ログインで認証済み)。
-import { revalidatePath } from 'next/cache';
 import { isCrewAuthorized } from '@/lib/bf6CrewDb';
 import { collectBf6Cash } from '@/lib/bf6CashDb';
 import { addBf6GateHanded } from '@/lib/bf6GateDb';
@@ -14,8 +13,9 @@ export async function crewGateCollect(orderId: number, by: string): Promise<Resu
   if (!Number.isInteger(orderId) || orderId <= 0) return { ok: false, error: '申込が特定できません' };
   const r = await collectBf6Cash(orderId, by || '入場受付');
   if (!r.ok) return { ok: false, error: r.error };
-  // ⚠️ 表示中の /bf6/crew/gate は revalidate しない(開いている明細と並べ替えがぶつかる・集金画面で実証済)
-  revalidatePath('/bf6/crew');
+  // ⚠️ revalidatePath は呼ばない。受け取り直後に明細が「受け取る→渡す」に切り替わる最中に
+  //    ルーターの再描画が重なり、React が removeChild で落ちて操作できなくなる(本番実機で再現・2026-09-11)。
+  //    メニューは動的ページでクライアントに残らないので、戻れば最新の数が出る。
   return { ok: true };
 }
 
@@ -28,7 +28,5 @@ export async function crewGateHand(
   if (!(await isCrewAuthorized())) return { ok: false, error: 'ログインが切れています' };
   if (!Number.isInteger(orderId) || orderId <= 0) return { ok: false, error: '申込が特定できません' };
   if (!Number.isInteger(delta) || delta === 0) return { ok: false, error: '枚数が正しくありません' };
-  const r = await addBf6GateHanded(orderId, delta, by);
-  if (r.ok) revalidatePath('/bf6/crew');
-  return r;
+  return addBf6GateHanded(orderId, delta, by);
 }

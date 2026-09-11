@@ -32,7 +32,6 @@ export async function receptionCollectCash(orderId: number): Promise<void> {
   // 集金画面・入場受付と同じ処理を通す(誰が受け取ったかの控えを残し、全画面に共有する)
   await collectBf6Cash(orderId, '受付スタッフ');
   revalidateBoth();
-  revalidatePath('/bf6/crew');
 }
 
 /** 締切後にスロットを用意する。再実行しても既存分は消さない。 */
