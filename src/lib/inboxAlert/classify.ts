@@ -23,9 +23,9 @@ export const MODEL = 'claude-opus-5';
 export const FALLBACK_MODEL = 'claude-opus-4-8';
 const BODY_LIMIT: Record<AiReadMode, number> = { ai_light: 500, ai_full: 3000 };
 
-/** AIが使えない時でも、これに当たる自動送信メールは朝まで待たせずに鳴らす */
+/** AIが使えない時でも、これに当たる自動送信メールは朝まで待たせずに鳴らす(「よろしくお願いします」「お問い合わせはこちら」のような定型句では鳴らさない) */
 const ACTION_HINT =
-  /失敗|エラー|停止|未払|残高不足|期限|至急|緊急|ご対応|お願いします|返信|メッセージが届|お問い合わせ|failed|declined|suspend|past due|overdue|action required|credit balance/i;
+  /失敗|エラー|停止|未払|残高不足|期限|至急|緊急|ご対応|ご返信ください|返信をお願い|ご連絡ください|メッセージが届|お問い合わせが届|failed|declined|suspend|past due|overdue|action required|credit balance/i;
 
 export const OUTPUT_SCHEMA = {
   type: 'object',
@@ -38,10 +38,12 @@ export const OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
+/** メール由来の文字列の < > を全角にし、<mail> の区切りを偽装できないようにする(入れ子や大文字でも効く) */
+const neutralize = (s: string) => s.replace(/</g, '＜').replace(/>/g, '＞');
+const oneLine = (s: string) => neutralize(s).replace(/\s+/g, ' ').trim();
 
 export function buildUserPrompt(mail: MailForAi, mode: AiReadMode): string {
-  const body = truncateChars(mail.body, BODY_LIMIT[mode]).replace(/<\/?mail>/gi, '');
+  const body = neutralize(truncateChars(mail.body, BODY_LIMIT[mode]));
   return [
     `受信アカウント: ${mail.accountLabel}`,
     `受信日時(UTC): ${mail.receivedIso}`,
@@ -55,13 +57,13 @@ export function buildUserPrompt(mail: MailForAi, mode: AiReadMode): string {
   ].join('\n');
 }
 
-/** 要約からURL・メールアドレス・電話番号を消す(日付は残す) */
+/** 要約からURL・メールアドレス・電話番号を消す(日付・金額・注文番号は残す) */
 export function scrubSummary(s: string): string {
   return s
     .normalize('NFKC')
-    .replace(/https?:\/\/\S+|www\.\S+/gi, '[URL]')
+    .replace(/https?:\/\/[\x21-\x7E]+|www\.[\x21-\x7E]+/gi, '[URL]')
     .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[メール]')
-    .replace(/\+81[\d\- ]{9,13}|0\d{1,4}-\d{1,4}-\d{3,4}|0\d{9,10}/g, '[番号]');
+    .replace(/(?<![\w-])(?:\+81[\d\- ]{9,13}|0\d{1,4}-\d{1,4}-\d{3,4}|0\d{9,10})(?![\w-])/g, '[番号]');
 }
 
 export function parseClassification(text: string): Classification | null {
