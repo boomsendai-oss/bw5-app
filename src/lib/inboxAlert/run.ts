@@ -362,8 +362,12 @@ async function resendUnnotified(
         receivedMs: item.receivedMs,
       }),
     );
-    // どの鍵でも送れない時は、残りも送れないので次回に回す
-    if (outcome === 'failed') return;
+    if (outcome === 'failed') {
+      // 全部の鍵が「鍵ごと使えない」なら、残りも送れないので次回に回す(Pushoverを呼ばずに済ませる)
+      if (allTokensBad(account, deps)) return;
+      // このメール1通だけがどの鍵でも受け付けられなかった(鍵と関係ない4xx)。後ろのメールは送り続ける
+      continue;
+    }
     await deps.store.markNotified(account.key, item.messageId, isoNow(deps));
     summary.notified++;
   }
@@ -434,6 +438,11 @@ async function pushWithFallback(account: AlertAccount, msg: PushoverMessage, dep
     }
   }
   return 'failed';
+}
+
+/** 自分の鍵も他のアカウントの鍵も、このcron呼び出しで全部「鍵ごと使えない」になったか */
+function allTokensBad(account: AlertAccount, deps: RunDeps): boolean {
+  return [account.pushoverToken, ...deps.fallbackTokens].every((t) => deps.badTokens.has(t));
 }
 
 /** 鍵ごと使えない失敗か。種類の分からない例外は、固まった鍵を待ち続けないよう鍵ごと使えない扱いにする */

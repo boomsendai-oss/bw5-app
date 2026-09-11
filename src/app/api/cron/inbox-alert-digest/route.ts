@@ -162,7 +162,8 @@ export async function POST(req: NextRequest) {
   });
   const subjectFailed = open.length + undigested.length - fetched.size;
 
-  // まとめを届けたPushoverの鍵の持ち主(BOOM以外の鍵で届いた時は pushFallback=true)。鍵そのものはレスポンスに出さない
+  // まとめを届けたPushoverの鍵の持ち主。BOOM自身の鍵以外で届いた時は pushFallback=true
+  // (BOOMの鍵が未設定で他のアカウントの鍵で届いた時も true)。鍵そのものはレスポンスに出さない
   let sentVia: AccountKey | null = null;
   let pushFallback = false;
   if (!dryRun) {
@@ -186,7 +187,7 @@ export async function POST(req: NextRequest) {
       accounts.find((a) => a.key === 'boom' && a.pushoverToken === usedToken) ??
       accounts.find((a) => a.pushoverToken === usedToken);
     sentVia = owner?.key ?? null;
-    pushFallback = usedToken !== tokens[0];
+    pushFallback = owner?.key !== 'boom';
     // 自分の鍵でまとめを届けられたアカウントは、送信失敗の印を消す(一時的な失敗で「要確認」が毎朝残り続けないため)
     for (const { account: a, state: s } of states) {
       if (a.pushoverToken !== usedToken || !s.pushFailedAt) continue;

@@ -412,6 +412,29 @@ describe('runAccount', () => {
     expect(nitro.state.pushFailedAt).toBe(new Date(NOW).toISOString());
   });
 
+  it('再送で1通がどの鍵でも受け付けられなくても(鍵と関係ない4xx)、後ろのメールは同じ回に送る', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    await store.insertItem({ ...storedNow('first', NOW - 120_000), notified: false }, 'x');
+    await store.insertItem({ ...storedNow('second', NOW - 60_000), notified: false }, 'x');
+    const { gmail } = fakeGmail([msg('first'), msg('second')]);
+    const calls: string[] = [];
+    const { deps } = makeDeps({
+      gmail,
+      store,
+      fallbackTokens: ['po', 'po-nitro'],
+      push: async (token, m) => {
+        calls.push(`${token}:${m.title.replace(/^.*件名/, '')}`);
+        if (m.title.endsWith('件名first')) throw new PushoverError('pushover 400 message is too long', 400, false);
+      },
+    });
+    const r = await runAccount(account, deps);
+    expect(calls).toEqual(['po:first', 'po-nitro:first', 'po:second']);
+    expect(r).toMatchObject({ fresh: 0, notified: 1 });
+    expect(items.get('first')!.notifiedAt).toBeNull();
+    expect(items.get('second')!.notifiedAt).not.toBeNull();
+    expect(deps.badTokens.size).toBe(0);
+  });
+
   it('再送も自分の鍵で送れなければ他の鍵で〔表示名〕つきで届け、通知済みにする', async () => {
     const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
     await store.insertItem({ ...storedNow('pending', NOW - 60_000), notified: false }, 'x');
