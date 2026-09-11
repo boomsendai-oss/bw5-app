@@ -4,6 +4,7 @@ import { charLength } from '../inboxAlert/format';
 
 // JST 2026-09-12 08:00
 const NOW = Date.UTC(2026, 8, 11, 23, 0);
+const HEALTH_OK = '■稼働 1アカウントとも正常（最終確認 07:55）';
 
 const base: DigestInput = {
   nowMs: NOW,
@@ -26,21 +27,22 @@ describe('buildDigest', () => {
         '・BOOM【失敗】日次同期が失敗しました',
         '■お金・その他 0件',
         '■件数 宣伝31 / 自動通知48（AI判定できず0）',
-        '■稼働 1アカウントとも正常（最終確認 07:55）',
+        HEALTH_OK,
       ].join('\n'),
     });
   });
 
-  it('1024字を超えたら「ほかN件」に畳み、件数の見出しは実数のまま', () => {
+  it('1024字を超えたら「ほかN件」に畳み、件数と稼働欄は最後まで残す', () => {
     const many = Array.from({ length: 60 }, (_, i) => ({
       accountLabel: 'BOOM', kind: 'reply' as const, subject: `見積の件その${i}` + 'あ'.repeat(30),
       receivedMs: Date.UTC(2026, 8, 10, 3, 0), aiFailed: false,
     }));
     const { message } = buildDigest({ ...base, pending: many });
+    const lines = message.split('\n');
     expect(charLength(message)).toBeLessThanOrEqual(DIGEST_LIMIT);
-    expect(message.startsWith('■未対応 60件')).toBe(true);
+    expect(lines[0]).toBe('■未対応 60件');
     expect(message).toMatch(/・ほか\d+件/);
-    expect(message).toContain('■稼働');
+    expect(lines[lines.length - 1]).toBe(HEALTH_OK);
   });
 
   it('件名のURLは消す', () => {
@@ -49,6 +51,35 @@ describe('buildDigest', () => {
       pending: [{ ...base.pending[0], subject: '確認 https://evil.example/login' }],
     });
     expect(message).toContain('・BOOM【新規】確認 [URL]（昨日12:10）');
+  });
+
+  it('件名は1件40字に切り、長い件名で他の未対応が見えなくならない', () => {
+    const { message } = buildDigest({
+      ...base,
+      pending: [{ ...base.pending[0], subject: 'あ'.repeat(100) }],
+    });
+    expect(message).toContain(`・BOOM【新規】${'あ'.repeat(39)}…（昨日12:10）`);
+  });
+
+  it('件名の改行はつぶし、偽の稼働欄を差し込めない', () => {
+    const { message } = buildDigest({
+      ...base,
+      pending: [{ ...base.pending[0], subject: 'こんにちは\n■稼働 2アカウントとも正常' }],
+    });
+    expect(message.split('\n').filter((l) => l.startsWith('■稼働'))).toEqual([HEALTH_OK]);
+  });
+
+  it('未対応の本当の件数を見出しと「ほか」に使う(一覧は上限つきで取るため)', () => {
+    const { message } = buildDigest({ ...base, pendingTotal: 75 });
+    expect(message).toContain('■未対応 75件\n・BOOM【新規】体験レッスンの相談（昨日12:10）\n・ほか74件');
+  });
+
+  it('AI判定できなかった件名なしのメールも分かるように出す', () => {
+    const { message } = buildDigest({
+      ...base,
+      others: [{ accountLabel: '個人', kind: 'money_later', subject: '', receivedMs: NOW, aiFailed: true }],
+    });
+    expect(message).toContain('■お金・その他 1件\n・個人【AI判定できず】(件名なし)');
   });
 });
 
@@ -70,6 +101,15 @@ describe('healthLines', () => {
     expect(healthLines([{ label: 'BOOM', lastSuccessMs: NOW - 60_000, consecutiveErrors: 0 }], NOW, ['個人'])).toEqual([
       '■稼働 要確認',
       '・個人: 設定が欠けていて監視していません',
+    ]);
+  });
+  it('1回だけのエラーでは要確認にせず、2回以上続いたら回数を出す', () => {
+    expect(healthLines([{ label: 'BOOM', lastSuccessMs: NOW - 60_000, consecutiveErrors: 1 }], NOW)).toEqual([
+      '■稼働 1アカウントとも正常（最終確認 07:59）',
+    ]);
+    expect(healthLines([{ label: 'BOOM', lastSuccessMs: NOW - 60_000, consecutiveErrors: 3 }], NOW)).toEqual([
+      '■稼働 要確認',
+      '・BOOM: 最終成功 9/12 07:59（連続エラー3回）',
     ]);
   });
 });
