@@ -14,24 +14,31 @@ export type AlertAccount = {
 export type GmailClient = { clientId: string; clientSecret: string };
 
 type Env = Record<string, string | undefined>;
+type AccountDef = { key: AccountKey; label: string; envSuffix: string };
 
-const DEFS: { key: AccountKey; label: string; envSuffix: string }[] = [
+const DEFS: AccountDef[] = [
   { key: 'boom', label: 'BOOM', envSuffix: 'BOOM' },
   { key: 'nitroash', label: 'NITRO ASH', envSuffix: 'NITROASH' },
   { key: 'taro', label: '個人', envSuffix: 'TARO' },
 ];
 
-/** 鍵とPushoverトークンが両方そろったアカウントだけ返す(未設定のアカウントは静かに外す) */
+function credentialsOf(def: AccountDef, env: Env): { refreshToken: string; pushoverToken: string } | null {
+  const refreshToken = env[`GMAIL_ALERT_REFRESH_TOKEN_${def.envSuffix}`];
+  const pushoverToken = env[`PUSHOVER_TOKEN_${def.envSuffix}`];
+  return refreshToken && pushoverToken ? { refreshToken, pushoverToken } : null;
+}
+
+/** 鍵とPushoverトークンが両方そろったアカウントだけ返す */
 export function loadAccounts(env: Env = process.env): AlertAccount[] {
-  const out: AlertAccount[] = [];
-  for (const d of DEFS) {
-    const refreshToken = env[`GMAIL_ALERT_REFRESH_TOKEN_${d.envSuffix}`];
-    const pushoverToken = env[`PUSHOVER_TOKEN_${d.envSuffix}`];
-    if (refreshToken && pushoverToken) {
-      out.push({ key: d.key, label: d.label, refreshToken, pushoverToken });
-    }
-  }
-  return out;
+  return DEFS.flatMap((d) => {
+    const credentials = credentialsOf(d, env);
+    return credentials ? [{ key: d.key, label: d.label, ...credentials }] : [];
+  });
+}
+
+/** 設定が欠けていて監視できないアカウントの表示名。黙って外さず、朝のまとめと入口のレスポンスで知らせる */
+export function missingAccountLabels(env: Env = process.env): string[] {
+  return DEFS.filter((d) => !credentialsOf(d, env)).map((d) => d.label);
 }
 
 export function loadGmailClient(env: Env = process.env): GmailClient | null {
@@ -49,8 +56,12 @@ export function isDryRun(env: Env = process.env): boolean {
   return env.INBOX_ALERT_DRY_RUN === '1';
 }
 
-/** 初回だけ過去N日ぶんを判定する(事前テスト用)。0なら過去分は判定しない */
+/**
+ * 初回だけ過去N日ぶんを判定する(事前テスト用)。0なら過去分は判定しない。
+ * ドライラン中だけ有効(フラグの設定ミスで、通知ありのまま過去分を一斉に鳴らさないため)。
+ */
 export function backfillDays(env: Env = process.env): number {
+  if (!isDryRun(env)) return 0;
   const n = Number(env.INBOX_ALERT_BACKFILL_DAYS ?? '0');
   return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 30) : 0;
 }
