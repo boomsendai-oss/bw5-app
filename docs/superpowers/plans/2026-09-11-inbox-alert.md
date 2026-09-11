@@ -24,6 +24,7 @@
 - （Task 7 コードレビューで追加）通知に Pushover の `timestamp`（メールの受信時刻・秒）を付ける（最大24時間後の再送でも「いつ届いたメールか」が分かるように）。差出人は表示名、無ければ設計書どおり**ドメインだけ**（お客さんのアドレスをロック画面に出さない）、空なら `(不明)`。件名と差出人名のURLは `[URL]` に置き換える
 - （Task 8 で追加）URLの置き換え `stripUrls` を `format.ts` に移し、通知と朝のまとめの件名で共有する
 - （Task 8 コードレビューで追加）朝のまとめの件名は改行をつぶしてURLを消し、1件40字に切る（偽の「■稼働 正常」行の差し込みと、長い件名で他の未対応が見えなくなるのを防ぐ）。未対応の見出しは本当の件数（`countOpenAll`・一覧は60件まで）を使う。稼働欄は連続エラー2回以上で「要確認」にし回数を添える（1回の一時エラーで毎朝要確認にしない）。件数と稼働欄は字数が足りなくても必ず残す
+- （Task 9 コードレビューで追加）未対応の再確認（`listOpen`）は古い順でなく毎回ばらばら（`ORDER BY RANDOM()`）に20件取る（古い順だと21件目以降が永久に再確認されず、返信済みでも朝のまとめに残り続けるため）。メールの記録は `INSERT OR IGNORE` をやめ `ON CONFLICT DO NOTHING`（必須の値が欠けた時に黙って捨てない）。連続エラーの記録は1文の upsert＋`RETURNING`。60日の削除でドライランの未対応行も消す
 
 ---
 
@@ -1784,6 +1785,15 @@ git commit -m "feat(inbox-alert): cronの鍵チェックとDB層
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
+
+- [ ] **Step 8（コードレビュー後の追加）: 再確認の偏り・取りこぼし・連続エラーの記録**
+
+  - `listOpen` は `ORDER BY RANDOM() LIMIT ?`（未対応が20件を超えても、全件がいずれ再確認される）
+  - `insertItem` は `INSERT INTO … VALUES (…) ON CONFLICT(account, message_id) DO NOTHING`（重複だけ無視し、NOT NULL 違反はエラーにする）
+  - `saveError` は `INSERT INTO inbox_alert_state (account, last_error, consecutive_errors) VALUES (?, ?, 1) ON CONFLICT(account) DO UPDATE SET last_error = excluded.last_error, consecutive_errors = consecutive_errors + 1 RETURNING consecutive_errors` の1文
+  - `purgeBefore` の条件は `NOT (tier = 'now' AND resolved_at IS NULL AND dry_run = 0)`
+  - 使い捨てのSQLiteで、upsertの回数・重複の無視とNOT NULL違反のエラー・ばらばら取得・削除条件を確かめる
+  - Commit: `fix(inbox-alert): 未対応の再確認を毎回ばらばらに取り、取りこぼしを黙って捨てないようにする`
 
 ---
 
