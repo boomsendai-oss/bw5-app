@@ -6,6 +6,9 @@ import {
   loadPushoverUser,
   isDryRun,
   backfillDays,
+  pushoverTokensInFallbackOrder,
+  type AccountKey,
+  type AlertAccount,
 } from '../inboxAlert/accounts';
 
 describe('loadAccounts / missingAccountLabels', () => {
@@ -59,5 +62,21 @@ describe('設定の読み込み', () => {
   });
   it('ドライランでなければ過去分は判定しない', () => {
     expect(backfillDays({ INBOX_ALERT_BACKFILL_DAYS: '30' })).toBe(0);
+  });
+});
+
+describe('pushoverTokensInFallbackOrder', () => {
+  const acc = (key: AccountKey, pushoverToken: string): AlertAccount => ({ key, label: key, refreshToken: 'rt', pushoverToken });
+  it('BOOMの鍵を先頭に、残りは並び順のまま返す', () => {
+    expect(pushoverTokensInFallbackOrder([acc('taro', 'po-taro'), acc('nitroash', 'po-na'), acc('boom', 'po-boom')]))
+      .toEqual(['po-boom', 'po-taro', 'po-na']);
+  });
+  it('同じ鍵を使い回しているアカウントがあっても1回だけ返す', () => {
+    expect(pushoverTokensInFallbackOrder([acc('nitroash', 'po-x'), acc('taro', 'po-x')])).toEqual(['po-x']);
+    expect(pushoverTokensInFallbackOrder([acc('taro', 'po-taro'), acc('boom', 'po-taro'), acc('nitroash', 'po-na')]))
+      .toEqual(['po-taro', 'po-na']);
+  });
+  it('アカウントが無ければ空', () => {
+    expect(pushoverTokensInFallbackOrder([])).toEqual([]);
   });
 });

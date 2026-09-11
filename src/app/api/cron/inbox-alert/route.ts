@@ -9,6 +9,7 @@ import {
   loadGmailClient,
   loadPushoverUser,
   missingAccountLabels,
+  pushoverTokensInFallbackOrder,
 } from '@/lib/inboxAlert/accounts';
 import { cronAuthorized } from '@/lib/inboxAlert/cronAuth';
 import { buildLiveDeps } from '@/lib/inboxAlert/live';
@@ -47,10 +48,7 @@ export async function POST(req: NextRequest) {
   }
 
   // あるアカウントのPushoverの鍵が壊れていても通知を落とさないよう、他のアカウントの鍵(BOOMを先頭)で代わりに送る
-  const fallbackTokens = [
-    ...accounts.filter((a) => a.key === 'boom'),
-    ...accounts.filter((a) => a.key !== 'boom'),
-  ].map((a) => a.pushoverToken);
+  const fallbackTokens = pushoverTokensInFallbackOrder(accounts);
 
   const deps = buildLiveDeps({
     client,

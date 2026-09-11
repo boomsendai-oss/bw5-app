@@ -41,6 +41,15 @@ export function missingAccountLabels(env: Env = process.env): string[] {
   return DEFS.filter((d) => !credentialsOf(d, env)).map((d) => d.label);
 }
 
+/**
+ * Pushoverの鍵を試す順番。BOOMの鍵を先頭に、残りは並び順のまま・重複なし
+ * (自分の鍵で送れなかった通知の代わりの送り先と、朝のまとめの送り先に使う)
+ */
+export function pushoverTokensInFallbackOrder(accounts: AlertAccount[]): string[] {
+  const ordered = [...accounts.filter((a) => a.key === 'boom'), ...accounts.filter((a) => a.key !== 'boom')];
+  return [...new Set(ordered.map((a) => a.pushoverToken))];
+}
+
 export function loadGmailClient(env: Env = process.env): GmailClient | null {
   const clientId = env.GMAIL_ALERT_CLIENT_ID;
   const clientSecret = env.GMAIL_ALERT_CLIENT_SECRET;
