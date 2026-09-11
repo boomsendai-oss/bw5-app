@@ -5,6 +5,7 @@
 // 扱うのは抽選と「支払い済みかどうかの確認」だけで、個人情報の読み書きはしない。
 import { checkInBf6, claimBf6Slot, listBf6Slots } from '@/lib/bf6DrawDb';
 import { isBf6OrderPaid } from '@/lib/bf6CashDb';
+import { autoReflectIfStarted } from '@/lib/bf6ScreenDb';
 import { phaseForDivision } from '@/lib/bf6Kiosk';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 
@@ -36,9 +37,11 @@ export async function kioskDraw(
   );
   if (!r) return { error: '空き枠がありません。スタッフにお声がけください。' };
 
-  // 番号だけ出しても出場者には分からないので、トーナメント表ごと返す
   const phase = phaseForDivision(division);
   if (phase !== 'bracket') return r;
+  // トーナメントが始まった後に遅れて引いた人は、その人の試合がまだなら自動で対戦に戻す
+  await autoReflectIfStarted(division as Bf6DrawDivision);
+  // 番号だけ出しても出場者には分からないので、トーナメント表ごと返す
   const slots = await listBf6Slots(division as Bf6DrawDivision, phase);
   const holders: Record<number, string> = {};
   for (const s of slots) if (s.dancerName) holders[s.slotNo] = s.dancerName;

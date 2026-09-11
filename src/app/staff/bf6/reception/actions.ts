@@ -5,6 +5,7 @@
 import { revalidatePath } from 'next/cache';
 import { checkInBf6, claimBf6Slot, seedBf6Slots } from '@/lib/bf6DrawDb';
 import { collectBf6Cash } from '@/lib/bf6CashDb';
+import { autoReflectIfStarted } from '@/lib/bf6ScreenDb';
 import type { Bf6DrawDivision, Bf6DrawPhase } from '@/lib/bf6Draw';
 
 /** 同じ画面が /staff と /bf6/crew の2箇所にあるので、両方を作り直す。 */
@@ -22,6 +23,8 @@ export async function receptionDraw(
 ): Promise<{ slotNo: number; block?: 'A' | 'B'; alreadyDrawn: boolean } | { error: string }> {
   await checkInBf6(itemId);
   const r = await claimBf6Slot(division, phase, itemId);
+  // トーナメントが始まった後に遅れて引いた人は、その人の試合がまだなら自動で対戦に戻す
+  if (r && phase === 'bracket') await autoReflectIfStarted(division);
   revalidateBoth();
   if (!r) return { error: '空き枠がありません' };
   return r;

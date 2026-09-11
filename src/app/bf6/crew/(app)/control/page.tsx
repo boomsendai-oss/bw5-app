@@ -5,11 +5,12 @@
 import { ControlClient } from '@/app/staff/bf6/control/ControlClient';
 import {
   getBf6ScreenState,
-  listBf6Matches,
+  listBf6ScreenMatches,
   listBf6SlotNames,
   findNextMatch,
   countBf6Undrawn,
 } from '@/lib/bf6ScreenDb';
+import { nextPendingMatch } from '@/lib/bf6Bracket';
 import CrewHeader from '../CrewHeader';
 
 export const dynamic = 'force-dynamic';
@@ -17,12 +18,13 @@ export const dynamic = 'force-dynamic';
 export default async function CrewControlPage() {
   const state = await getBf6ScreenState();
   // 直列に待つとDB往復ぶん遅い(最初のタップが重い・TARO実機 2026-09-10)
-  const [matches, names, draw] = await Promise.all([
-    listBf6Matches(state.division),
+  const [{ matches, pending }, names, draw] = await Promise.all([
+    listBf6ScreenMatches(state.division),
     listBf6SlotNames(state.division),
     countBf6Undrawn(state.division),
   ]);
-  const next = findNextMatch(state.division, matches);
+  // 開始前は「両方がくじを引いた試合」を次の試合として出す。VSを出した時点でトーナメントが作られる
+  const next = pending ? nextPendingMatch(matches) : findNextMatch(state.division, matches);
 
   return (
     <div>
@@ -34,6 +36,7 @@ export default async function CrewControlPage() {
           slots={Object.fromEntries(names)}
           nextMatch={next}
           draw={draw}
+          bracketPending={pending}
           allowReset={false} // 本番中の押し間違いを防ぐため、クルー画面にはリセットを出さない(TARO 2026-09-11)
         />
       </div>

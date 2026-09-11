@@ -4,19 +4,21 @@
 // iPad1台でHDMIに出すとミラーリングになり操作UIまで映るため、2台構成が前提。
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { ControlClient } from './ControlClient';
-import { getBf6ScreenState, listBf6Matches, listBf6SlotNames, findNextMatch, countBf6Undrawn } from '@/lib/bf6ScreenDb';
+import { getBf6ScreenState, listBf6ScreenMatches, listBf6SlotNames, findNextMatch, countBf6Undrawn } from '@/lib/bf6ScreenDb';
+import { nextPendingMatch } from '@/lib/bf6Bracket';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StaffBf6ControlPage() {
   const state = await getBf6ScreenState();
   // 直列に待つとDB往復ぶん遅い(最初のタップが重い・TARO実機 2026-09-10)
-  const [matches, names, draw] = await Promise.all([
-    listBf6Matches(state.division),
+  const [{ matches, pending }, names, draw] = await Promise.all([
+    listBf6ScreenMatches(state.division),
     listBf6SlotNames(state.division),
     countBf6Undrawn(state.division),
   ]);
-  const next = findNextMatch(state.division, matches);
+  // 開始前は「両方がくじを引いた試合」を次の試合として出す。VSを出した時点でトーナメントが作られる
+  const next = pending ? nextPendingMatch(matches) : findNextMatch(state.division, matches);
 
   return (
     <div>
@@ -33,6 +35,7 @@ export default async function StaffBf6ControlPage() {
           slots={Object.fromEntries(names)}
           nextMatch={next}
           draw={draw}
+          bracketPending={pending}
           allowReset={true} // 本部画面だけリセットを出す(開発・テスト用)
         />
       </div>

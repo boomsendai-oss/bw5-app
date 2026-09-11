@@ -161,3 +161,11 @@ export function undrawnSlotCount(slotCount: number, holders: Set<number>): numbe
   for (let s = 1; s <= slotCount; s += 1) if (!holders.has(s)) n += 1;
   return n;
 }
+
+/**
+ * 受付中(まだトーナメントが始まっていない)の「次の試合」。
+ * 両方がくじを引き終わった、いちばん若い試合。不戦勝はまだ決めない。
+ */
+export function nextPendingMatch(matches: Match[]): Match | null {
+  return matches.find((m) => m.slotA !== null && m.slotB !== null && m.winnerSlot === null) ?? null;
+}

@@ -98,6 +98,9 @@ export async function getBf6AppRevenue(): Promise<AppRevenue> {
   ).catch(() => []);
   const byStatus = new Map(orders.map((r) => [String(r.payment_status), Number(r.amt ?? 0)]));
 
+  // 当日券は申込を作らず入場受付で記録している(2026-09-11)
+  const walkin = await getAll('SELECT COALESCE(SUM(amount), 0) AS amt FROM bf_walkin_sale').catch(() => []);
+
   return {
     entry: by.get('entry') ?? 0,
     ticketAdult: by.get('ticket_adult') ?? 0,
@@ -105,6 +108,7 @@ export async function getBf6AppRevenue(): Promise<AppRevenue> {
     stream: by.get('stream') ?? 0,
     paid: byStatus.get('paid') ?? 0,
     cashDue: byStatus.get('cash_due') ?? 0,
+    walkin: Number(walkin[0]?.amt ?? 0),
   };
 }
 
@@ -116,6 +120,9 @@ export type Bf6Counts = {
   ticketChild: number;
   stream: number;
   waitlist: number;
+  /** 当日券で入った人数 */
+  walkinAdult: number;
+  walkinChild: number;
 };
 
 export async function getBf6Counts(): Promise<Bf6Counts> {
@@ -140,6 +147,10 @@ export async function getBf6Counts(): Promise<Bf6Counts> {
     "SELECT COUNT(*) AS n FROM bf_waitlist WHERE status IN ('waiting','offered')"
   ).catch(() => []);
 
+  const walk = await getAll(
+    'SELECT COALESCE(SUM(adult), 0) AS a, COALESCE(SUM(child), 0) AS c FROM bf_walkin_sale'
+  ).catch(() => []);
+
   const cap = await getAll("SELECT value FROM bf_settings WHERE key = 'capacity'").catch(() => []);
   let capacity = { beginner: 16, kids: 32, general: 32 };
   try {
@@ -154,6 +165,8 @@ export async function getBf6Counts(): Promise<Bf6Counts> {
     ticketChild: q.get('ticket_child') ?? 0,
     stream: q.get('stream') ?? 0,
     waitlist: Number(wl[0]?.n ?? 0),
+    walkinAdult: Number(walk[0]?.a ?? 0),
+    walkinChild: Number(walk[0]?.c ?? 0),
   };
 }
 

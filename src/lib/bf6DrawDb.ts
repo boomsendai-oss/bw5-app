@@ -7,6 +7,7 @@
 import { getAll, getOne, execute } from './db';
 import { nowUtcIso } from './dateJst';
 import { slotCountFor, slotsToAdd, blockOfSlot, type Bf6DrawDivision, type Bf6DrawPhase } from './bf6Draw';
+import { autoReflectIfStarted } from './bf6ScreenDb';
 
 /** 部門・フェーズのスロットを用意する。既にある分は消さない(再実行しても安全)。 */
 export async function seedBf6Slots(
@@ -164,6 +165,12 @@ export async function releaseBf6EntrySlots(
     }));
     slots += Number(d.rowsAffected ?? 0);
     checkins += Number(c.rowsAffected ?? 0);
+  }
+  // 始まった後のキャンセルは、その人の試合がまだなら相手を不戦勝にする(自動反映)
+  if (slots > 0) {
+    for (const d of ['beginner', 'kids', 'general'] as const) {
+      await autoReflectIfStarted(d).catch(() => undefined);
+    }
   }
   return { slots, checkins };
 }

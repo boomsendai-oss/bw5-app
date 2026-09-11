@@ -38,7 +38,7 @@ type M = {
 };
 
 /** 不戦勝(相手がいない)は、いる側が勝ち。 */
-function effectiveWinner(m: M): number | null {
+function byeAwareWinner(m: M): number | null {
   if (m.slotA !== null && m.slotB === null) return m.slotA;
   if (m.slotB !== null && m.slotA === null) return m.slotB;
   return m.winnerSlot;
@@ -55,8 +55,15 @@ function cellFor(m: M, slot: number | null, lost: Set<number>): BracketCell {
  * 段を上から順に返す(先頭が最上段=優勝、末尾が最下段=1回戦)。
  * 試合がまだ無いラウンドは、枠だけを空で用意する。
  */
-export function buildBracketRows(division: Bf6DrawDivision, matches: M[]): BracketRow[] {
+export function buildBracketRows(
+  division: Bf6DrawDivision,
+  matches: M[],
+  opts: { pending?: boolean } = {}
+): BracketRow[] {
   const rounds = roundsFor(division);
+  // 受付中(トーナメント開始前)は、まだ引いていない枠を不戦勝として扱わない。
+  // 扱うと、先に引いた人が上の段へ勝ち上がって見える(2026-09-11)。
+  const effectiveWinner = opts.pending ? (m: M) => m.winnerSlot : byeAwareWinner;
   // 負けた人の枠。これ以外の名前入りの枠は「まだ勝ち残っている」= オレンジで出す。
   // 上の段に上がった人が白のままだと目立たない(TARO実機 2026-09-10)。
   const lost = new Set<number>();

@@ -4,7 +4,14 @@ import { nowUtcIso } from './dateJst';
 import { getBf6Settings } from './bf6Db';
 import { buildBreakdownByOrder, normalizeCollector } from './bf6Cash';
 import { toOrderLine } from './bf6CashDb';
-import { buildGateSearchText, clampHanded, type GateOrder } from './bf6Gate';
+import {
+  buildGateSearchText,
+  clampHanded,
+  gateSortKey,
+  walkinAmount,
+  type GateOrder,
+  type WalkinSale,
+} from './bf6Gate';
 
 /** 観覧チケットがある確定済みの申込(エントリーと同時購入を含む)。 */
 export async function listBf6GateOrders(): Promise<GateOrder[]> {
@@ -60,6 +67,7 @@ export async function listBf6GateOrders(): Promise<GateOrder[]> {
       breakdown: paid ? [] : (breakdown.get(id) ?? []),
       handed: handed.get(id) ?? 0,
       searchText: buildGateSearchText({ buyerName, people: a.people, kana: a.kana, phone: String(o.phone ?? '') }),
+      sortKey: gateSortKey({ buyerName, kana: a.kana }),
     });
   }
   return out;
@@ -93,4 +101,38 @@ export async function addBf6GateHanded(orderId: number, delta: number, by: strin
     [orderId, next, normalizeCollector(by), nowUtcIso()]
   );
   return { ok: true, handed: next };
+}
+
+// ───────── 当日券 ─────────
+
+export async function listBf6WalkinSales(): Promise<WalkinSale[]> {
+  const rows = await getAll(
+    'SELECT id, adult, child, amount, sold_by, created_at FROM bf_walkin_sale ORDER BY id DESC'
+  ).catch(() => []);
+  return rows.map((r) => ({
+    id: Number(r.id),
+    adult: Number(r.adult ?? 0),
+    child: Number(r.child ?? 0),
+    amount: Number(r.amount ?? 0),
+    soldBy: String(r.sold_by ?? ''),
+    createdAt: String(r.created_at ?? ''),
+  }));
+}
+
+/** 当日券を売った記録を残す。金額は画面から受け取らず、料金設定からサーバで計算する。 */
+export async function addBf6WalkinSale(adult: number, child: number, by: string): Promise<WalkinSale> {
+  const settings = await getBf6Settings();
+  const amount = walkinAmount({ adult, child }, settings.pricing);
+  const soldBy = normalizeCollector(by);
+  const createdAt = nowUtcIso();
+  const r = await execute(
+    'INSERT INTO bf_walkin_sale (adult, child, amount, sold_by, created_at) VALUES (?, ?, ?, ?, ?)',
+    [adult, child, amount, soldBy, createdAt]
+  );
+  return { id: Number(r.lastInsertRowid), adult, child, amount, soldBy, createdAt };
+}
+
+/** 押し間違いの取り消し。 */
+export async function deleteBf6WalkinSale(id: number): Promise<void> {
+  await execute('DELETE FROM bf_walkin_sale WHERE id = ?', [id]);
 }

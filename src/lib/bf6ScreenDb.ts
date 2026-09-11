@@ -7,7 +7,18 @@
 //   操作側 … /staff/bf6/control
 import { getAll, getOne, execute } from './db';
 import { nowUtcIso } from './dateJst';
-import { roundsFor, advanceRound, isRoundComplete, nextUndecided, planBracketReflect, undrawnSlotCount, type Match, type Round } from './bf6Bracket';
+import {
+  roundsFor,
+  advanceRound,
+  applyByes,
+  isRoundComplete,
+  nextUndecided,
+  planBracketReflect,
+  seedRound1,
+  undrawnSlotCount,
+  type Match,
+  type Round,
+} from './bf6Bracket';
 import type { Bf6DrawDivision } from './bf6Draw';
 
 export type ScreenMode = 'logo' | 'bracket' | 'vs';
@@ -115,6 +126,50 @@ export async function reflectBf6Bracket(division: Bf6DrawDivision): Promise<Refl
   // 不戦勝だけで埋まったラウンドは、操作を待たずに次を作る(VSを出さない・TARO 2026-09-10)
   await advanceWhileComplete(division, roundsFor(division)[0]);
   return { ok: true, changed: plan.changed, undrawn };
+}
+
+/**
+ * LEDと操作卓に出す試合。くじ引きの結果は自動で反映する(ボタンを押さない・TARO 2026-09-11)。
+ *
+ * - トーナメント開始前(試合がまだ保存されていない): くじ引きの結果から1回戦を組み立てて返す。
+ *   pending=true のあいだは、まだ引いていない枠を不戦勝として扱わない
+ *   (扱うと、先に引いた人が上の段へ勝ち上がって見えてしまう)。
+ * - 開始後: 保存されている試合をそのまま返す。
+ */
+export async function listBf6ScreenMatches(
+  division: Bf6DrawDivision
+): Promise<{ matches: Match[]; pending: boolean }> {
+  const stored = await listBf6Matches(division);
+  if (stored.length > 0) return { matches: stored, pending: false };
+  const slots = await getAll(
+    "SELECT slot_no, item_id FROM bf_draw WHERE division = ? AND phase = 'bracket'",
+    [division]
+  ).catch(() => []);
+  if (slots.length === 0) return { matches: [], pending: true };
+  const holders = new Set(slots.filter((r) => r.item_id !== null).map((r) => Number(r.slot_no)));
+  return { matches: applyByes(seedRound1(division, slots.length), holders), pending: true };
+}
+
+/**
+ * トーナメントを始める操作(VSを出す・勝者を押す)の直前に呼ぶ。まだ試合が無ければ作る。
+ * この時点でまだ引いていない枠は不戦勝になる(来ていない人を待たない)。
+ */
+export async function ensureBf6Bracket(division: Bf6DrawDivision): Promise<void> {
+  const stored = await listBf6Matches(division);
+  if (stored.length === 0) await reflectBf6Bracket(division);
+}
+
+/**
+ * くじ引き・キャンセルの後に呼ぶ。トーナメントが始まっていれば今のくじ引き状態に合わせ直す。
+ * 遅れて来た人が引いたら、その人の試合がまだなら不戦勝が対戦に戻る。
+ * 始まる前は何もしない(表示は listBf6ScreenMatches がくじ引きから組み立てる)。
+ * 決着した試合にぶつかる場合は何も変えない(reflect が止める)。
+ */
+export async function autoReflectIfStarted(division: Bf6DrawDivision): Promise<void> {
+  const stored = await listBf6Matches(division);
+  if (stored.length === 0) return;
+  const r = await reflectBf6Bracket(division);
+  if (!r.ok) console.error('[bf6] auto reflect skipped:', division, r.reason);
 }
 
 /** 操作卓で「反映すると不戦勝になる枠」を先に見せるための数。 */

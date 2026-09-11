@@ -28,6 +28,8 @@ export type AppRevenue = {
   paid: number;
   /** 当日現金(未回収)の注文合計 */
   cashDue: number;
+  /** 当日券(予約なし・入場受付でその場の現金)。受け取り済みなので回収済みに入る。手数料は掛けない */
+  walkin?: number;
 };
 
 export type EventFinance = {
@@ -45,7 +47,8 @@ export function summarizeEventFinance({
   app: AppRevenue;
   ledger: LedgerRow[];
 }): EventFinance {
-  const appRevenue = app.entry + app.ticketAdult + app.ticketChild + app.stream;
+  const walkin = app.walkin ?? 0;
+  const appRevenue = app.entry + app.ticketAdult + app.ticketChild + app.stream + walkin;
 
   const incomes = ledger.filter((r) => r.kind === 'income');
   const costs = ledger.filter((r) => r.kind === 'cost');
@@ -63,8 +66,8 @@ export function summarizeEventFinance({
 
   return {
     revenue: { app: appRevenue, offline, total },
-    // 回収済み = カード入金 + 受け取り済みのアプリ外入金
-    collected: app.paid + offlineCollected,
+    // 回収済み = カード入金 + 当日券(その場で現金) + 受け取り済みのアプリ外入金
+    collected: app.paid + walkin + offlineCollected,
     // 未回収 = 当日現金 + まだ受け取っていないアプリ外入金
     receivable: app.cashDue + offlineReceivable,
     cost: {

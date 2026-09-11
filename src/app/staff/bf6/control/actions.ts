@@ -3,7 +3,15 @@
 // LED演出の操作。/staff/bf6/control と /bf6/crew/control の両方から呼ばれる。
 // どちらの経路も proxy + layout で認証済み(規約4.5)。
 import { revalidatePath } from 'next/cache';
-import { setBf6ScreenState, setBf6Winner, reflectBf6Bracket, type ReflectResult, type ScreenMode } from '@/lib/bf6ScreenDb';
+import {
+  ensureBf6Bracket,
+  getBf6ScreenState,
+  reflectBf6Bracket,
+  setBf6ScreenState,
+  setBf6Winner,
+  type ReflectResult,
+  type ScreenMode,
+} from '@/lib/bf6ScreenDb';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 import type { Round } from '@/lib/bf6Bracket';
 
@@ -21,6 +29,9 @@ export async function controlSetMode(mode: ScreenMode, division?: Bf6DrawDivisio
 
 /** VS画面を出す。試合を指定しなければ「次の試合」が映る。 */
 export async function controlShowVs(round: Round | null, matchNo: number | null): Promise<void> {
+  // 最初のVSでトーナメントを作る。まだ引いていない枠はここで不戦勝になる(自動反映・TARO 2026-09-11)
+  const { division } = await getBf6ScreenState();
+  await ensureBf6Bracket(division);
   await setBf6ScreenState({ mode: 'vs', round, matchNo });
   revalidateBoth();
 }
@@ -31,6 +42,7 @@ export async function controlSetWinner(
   matchNo: number,
   winnerSlot: number
 ): Promise<void> {
+  await ensureBf6Bracket(division);
   await setBf6Winner(division, round, matchNo, winnerSlot);
   // 勝者確定後はトーナメント表に戻す。次のVSへは操作する人がワンタップで進める
   // (MCの間合いに合わせるため自動遷移にしない・TARO 2026-08-21)
@@ -38,7 +50,7 @@ export async function controlSetWinner(
   revalidateBoth();
 }
 
-/** くじ引きの結果をトーナメントに反映する。試合前なら何度押してもよい(TARO 2026-09-11)。 */
+/** 手動の反映。通常は自動で反映されるので使わない(自動で反映されないときの逃げ道)。 */
 export async function controlReflectBracket(division: Bf6DrawDivision): Promise<ReflectResult> {
   const r = await reflectBf6Bracket(division);
   revalidateBoth();

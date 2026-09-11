@@ -5,6 +5,7 @@
 // 当日現金でまだ払っていなければ、その場で受け取ってから渡す。
 // 家族がばらばらに来ることがあるので、渡した数は申込ごとに枚数で持つ。
 import type { CashLine } from './bf6Cash';
+import { calcTicketUnitPrice, type Bf6Pricing } from './bf6';
 
 export type GateOrder = {
   orderId: number;
@@ -26,6 +27,8 @@ export type GateOrder = {
    * 表示には使わない。
    */
   searchText: string;
+  /** 名前順の並びの鍵。出場者のフリガナがあればその読み(ひらがな)、無ければ申込者の名前 */
+  sortKey: string;
 };
 
 export function ticketCount(o: Pick<GateOrder, 'adult' | 'child'>): number {
@@ -86,16 +89,81 @@ export function matchesGateQuery(o: GateOrder, q: string): boolean {
   return o.searchText.includes(k);
 }
 
-/** まだ渡し終わっていない申込を先に。同じ状態どうしは名前順。 */
+/**
+ * 名前順の鍵。申込者の名前は漢字しか持っていないので、そのまま並べても読みの順にならない。
+ * 出場者のフリガナ(親子で名字が同じ)があれば、それをひらがなにして使う(TARO 2026-09-11「名前でソート」)。
+ */
+export function gateSortKey(p: { buyerName: string; kana: string[] }): string {
+  const k = p.kana.find((x) => x.trim());
+  return normalize(k ?? p.buyerName);
+}
+
+const HAS_READING = /^[ぁ-ゖー]/;
+
+/** 名前(読み)の順。読みの無い漢字だけの行は、読みのある行の後ろにまとめる。 */
 export function sortGateOrders(rows: GateOrder[]): GateOrder[] {
   return [...rows].sort((a, b) => {
-    const ad = a.handed >= ticketCount(a) ? 1 : 0;
-    const bd = b.handed >= ticketCount(b) ? 1 : 0;
-    if (ad !== bd) return ad - bd;
-    return a.buyerName.localeCompare(b.buyerName, 'ja');
+    const ar = HAS_READING.test(a.sortKey) ? 0 : 1;
+    const br = HAS_READING.test(b.sortKey) ? 0 : 1;
+    if (ar !== br) return ar - br;
+    return a.sortKey.localeCompare(b.sortKey, 'ja');
   });
+}
+
+export type GateTab = 'todo' | 'done' | 'all';
+
+/** まだ入場していない = 全員ぶん渡し終わっていない。渡し終わると「まだ」から消える(TARO 2026-09-11)。 */
+export function filterGateTab(rows: GateOrder[], tab: GateTab): GateOrder[] {
+  if (tab === 'all') return rows;
+  return rows.filter((r) => (r.handed >= ticketCount(r)) === (tab === 'done'));
+}
+
+export function gateTabCounts(rows: GateOrder[]): Record<GateTab, number> {
+  const done = filterGateTab(rows, 'done').length;
+  return { todo: rows.length - done, done, all: rows.length };
 }
 
 export function clampHanded(n: number, tickets: number): number {
   return Math.max(0, Math.min(tickets, Math.trunc(n)));
+}
+
+// ───────── 当日券(予約なしで来たお客さん) ─────────
+// 入場受付の画面の中で、その場の現金で売って数える(TARO 2026-09-11)。
+
+export type WalkinSale = {
+  id: number;
+  adult: number;
+  child: number;
+  amount: number;
+  soldBy: string;
+  createdAt: string;
+};
+
+/** 1回で売れる上限。押し間違いで桁が増えるのを防ぐ。 */
+export const WALKIN_MAX_PER_SALE = 20;
+
+/** 大人は当日料金、小学生は小学生料金。 */
+export function walkinAmount(q: { adult: number; child: number }, pricing: Bf6Pricing): number {
+  return (
+    q.adult * calcTicketUnitPrice('ticket_adult', 'onsite', pricing) +
+    q.child * calcTicketUnitPrice('ticket_child', 'onsite', pricing)
+  );
+}
+
+/** 問題があればエラー文、無ければ null。 */
+export function validateWalkin(q: { adult: number; child: number }): string | null {
+  for (const n of [q.adult, q.child]) {
+    if (!Number.isInteger(n) || n < 0 || n > WALKIN_MAX_PER_SALE) {
+      return `枚数は0〜${WALKIN_MAX_PER_SALE}枚で指定してください`;
+    }
+  }
+  if (q.adult + q.child === 0) return '1枚以上にしてください';
+  return null;
+}
+
+export function walkinTotals(sales: WalkinSale[]): { sales: number; adult: number; child: number; amount: number } {
+  return sales.reduce(
+    (t, s) => ({ sales: t.sales + 1, adult: t.adult + s.adult, child: t.child + s.child, amount: t.amount + s.amount }),
+    { sales: 0, adult: 0, child: 0, amount: 0 }
+  );
 }

@@ -19,6 +19,8 @@ type Payload = {
   matches: Match[];
   slots: Record<string, Slot>;
   nextMatch: Match | null;
+  /** トーナメント開始前(くじ引きの結果をそのまま映している) */
+  pending?: boolean;
 };
 
 const DIV_LABEL: Record<string, string> = { beginner: 'ビギナー', kids: '小中学生', general: '一般' };
@@ -229,7 +231,7 @@ export function ScreenClient() {
   }
 
   // 縦型トーナメント表(下から上へ)
-  const rows = buildBracketRows(state.division as Bf6DrawDivision, matches);
+  const rows = buildBracketRows(state.division as Bf6DrawDivision, matches, { pending: data.pending });
   return (
     <Stage>
       <div className="flex h-full w-full flex-col px-[2.5vw] py-[2vh]">

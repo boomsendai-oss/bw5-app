@@ -23,7 +23,7 @@ const MODES: { key: ScreenMode; label: string }[] = [
 const ROUND_LABEL: Record<string, string> = { r16: 'ベスト16', qf: 'ベスト8', sf: '準決勝', f: '決勝' };
 
 export function ControlClient({
-  initialState, matches, slots, nextMatch, draw, allowReset,
+  initialState, matches, slots, nextMatch, draw, allowReset, bracketPending,
 }: {
   initialState: ScreenState;
   matches: Match[];
@@ -33,6 +33,8 @@ export function ControlClient({
   draw: { slots: number; undrawn: number };
   /** リセットを出すか。本番中の押し間違いを防ぐため、クルー画面では出さない */
   allowReset: boolean;
+  /** トーナメント開始前(くじ引きの結果をそのまま出している)。ボタン処理中の pending とは別物 */
+  bracketPending: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -71,7 +73,7 @@ export function ControlClient({
         <p className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800 ring-1 ring-amber-300">
           VSモードですが、この部門のトーナメントがまだありません。
           映す試合が無いときLEDにはロゴが出ます(観客に崩れた画面を見せないため)。
-          下の「くじ引きの結果を反映する」を押してください。
+          最初のVSを出すと自動でトーナメントが作られます。
         </p>
       )}
 
@@ -160,8 +162,8 @@ export function ControlClient({
         ) : (
           <div className="text-center">
             <p className="text-sm font-bold text-neutral-500">
-              {matches.length === 0
-                ? 'トーナメントがまだありません。下の「くじ引きの結果を反映する」を押してください'
+              {bracketPending
+                ? 'まだ対戦がそろっていません。くじを引くと自動で表に入ります'
                 : 'この部門は全試合終了しました'}
             </p>
           </div>
@@ -202,37 +204,40 @@ export function ControlClient({
         </details>
       )}
 
-      {/* くじ引きの結果を反映する。試合前なら何度押してもよい(TARO 2026-09-11) */}
+      {/* くじ引きの結果は自動で反映する。ボタンは押さない(TARO 2026-09-11) */}
       <div className="rounded-2xl border border-sand-300 bg-white p-4">
-        <p className="text-sm font-black text-navy-900">くじ引きの結果をトーナメントに反映</p>
-        <p className="mt-1 text-xs leading-relaxed text-neutral-500">
-          {draw.slots === 0
-            ? 'この部門のトーナメント枠はまだありません。'
-            : draw.undrawn === 0
-              ? `${draw.slots}枠すべて引き終わっています。`
-              : `${draw.slots}枠のうち、まだ引いていない枠が ${draw.undrawn}枠あります。反映するとその相手は不戦勝で上がります。`}
-          あとから引いた人がいても、その人の試合がまだならもう一度押せば対戦に戻ります。
+        <p className="text-sm font-black text-navy-900">
+          くじ引きの結果 <span className="ml-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] text-brand-700">自動で反映</span>
         </p>
-        <button
-          disabled={pending || draw.slots === 0}
-          onClick={() => {
-            if (
-              draw.undrawn > 0 &&
-              !confirm(`まだ引いていない枠が ${draw.undrawn}枠あります。その相手は不戦勝になります。反映しますか?`)
-            ) {
-              return;
+        <p className="mt-1 text-xs leading-relaxed text-neutral-500">
+          {bracketPending
+            ? 'トーナメント開始前です。くじを引くたびにLEDの表へ自動で名前が入ります。最初のVS画面を出した時点で、まだ引いていない枠は不戦勝になります。'
+            : '開始後に遅れて誰かがくじを引いても、その人の試合がまだなら自動で対戦に戻ります。'}
+        </p>
+        <p className="mt-2 text-xs font-bold tabular-nums text-navy-800">
+          {draw.slots === 0
+            ? 'この部門のトーナメント枠はまだありません'
+            : draw.undrawn === 0
+              ? `${draw.slots}枠すべて引き終わっています`
+              : `${draw.slots}枠のうち、まだ引いていない枠 ${draw.undrawn}枠`}
+        </p>
+        <details className="mt-3">
+          <summary className="cursor-pointer text-[11px] font-bold text-neutral-400">自動で反映されないとき</summary>
+          <button
+            disabled={pending || bracketPending || draw.slots === 0}
+            onClick={() =>
+              run(async () => {
+                const r = await controlReflectBracket(s.division);
+                if (!r.ok) setMsg(r.reason);
+                else if (r.changed === 0) setMsg('変わったところはありません');
+                else setMsg(`${r.changed}試合を反映しました`);
+              })
             }
-            run(async () => {
-              const r = await controlReflectBracket(s.division);
-              if (!r.ok) setMsg(r.reason);
-              else if (r.changed === 0) setMsg('変わったところはありません');
-              else setMsg(`${r.changed}試合を反映しました`);
-            });
-          }}
-          className="mt-3 w-full rounded-xl bg-navy-900 py-4 font-black text-white disabled:opacity-50"
-        >
-          くじ引きの結果を反映する
-        </button>
+            className="mt-2 w-full rounded-xl border border-navy-900 py-2.5 text-xs font-black text-navy-900 disabled:opacity-40"
+          >
+            今すぐ反映する(開始後のみ)
+          </button>
+        </details>
         {msg && <p className="mt-3 text-xs font-bold text-brand-700">{msg}</p>}
       </div>
 
