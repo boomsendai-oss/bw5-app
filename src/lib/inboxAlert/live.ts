@@ -16,6 +16,8 @@ import { dbStore } from './store';
 export function buildLiveDeps(opts: {
   client: GmailClient;
   pushoverUser: string;
+  /** 全アカウントのPushoverの鍵(BOOMを先頭)。自分の鍵で送れなかった時に順に試す */
+  fallbackTokens: string[];
   deadlineMs: number;
   dryRun: boolean;
   backfillDays: number;
@@ -32,6 +34,7 @@ export function buildLiveDeps(opts: {
     store: dbStore,
     classify: (mail, mode) => classifyMail(mail, mode),
     push: (appToken, msg) => sendPushover(appToken, opts.pushoverUser, msg),
+    fallbackTokens: opts.fallbackTokens,
     nowMs: () => Date.now(),
     deadlineMs: opts.deadlineMs,
     dryRun: opts.dryRun,

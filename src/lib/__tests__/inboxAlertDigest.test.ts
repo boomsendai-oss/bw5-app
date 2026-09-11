@@ -103,6 +103,12 @@ describe('healthLines', () => {
       '・個人: 設定が欠けていて監視していません',
     ]);
   });
+  it('Pushoverの鍵で送れていないアカウントは、動いていても要確認にして鍵の確認を促す', () => {
+    expect(healthLines([{ label: 'BOOM', lastSuccessMs: NOW - 60_000, consecutiveErrors: 0, pushFailing: true }], NOW)).toEqual([
+      '■稼働 要確認',
+      '・BOOM: 最終成功 9/12 07:59（通知の送信に失敗・Pushoverの鍵を確認）',
+    ]);
+  });
   it('1回だけのエラーでは要確認にせず、2回以上続いたら回数を出す', () => {
     expect(healthLines([{ label: 'BOOM', lastSuccessMs: NOW - 60_000, consecutiveErrors: 1 }], NOW)).toEqual([
       '■稼働 1アカウントとも正常（最終確認 07:59）',

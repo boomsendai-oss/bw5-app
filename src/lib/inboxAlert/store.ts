@@ -10,6 +10,8 @@ export type AlertState = {
   consecutiveErrors: number;
   tokenAlertDate: string;
   stallAlerted: boolean;
+  /** 自分のPushoverの鍵で送れなかった最後の回の時刻。自分の鍵で送れたら空に戻す(朝のまとめで鍵の壊れに気づくため) */
+  pushFailedAt: string;
 };
 
 export type NewItem = {
@@ -46,6 +48,7 @@ export interface AlertStore {
   saveError(account: AccountKey, message: string): Promise<number>;
   setTokenAlertDate(account: AccountKey, date: string): Promise<void>;
   setStallAlerted(account: AccountKey, on: boolean): Promise<void>;
+  setPushFailedAt(account: AccountKey, iso: string): Promise<void>;
   knownIds(account: AccountKey, ids: string[]): Promise<Set<string>>;
   insertItem(item: NewItem, nowIso: string): Promise<void>;
   listUnnotified(account: AccountKey, sinceIso: string, limit: number): Promise<OpenItem[]>;
@@ -60,6 +63,7 @@ export const EMPTY_STATE: AlertState = {
   consecutiveErrors: 0,
   tokenAlertDate: '',
   stallAlerted: false,
+  pushFailedAt: '',
 };
 
 async function ensureState(account: AccountKey): Promise<void> {
@@ -90,6 +94,7 @@ export const dbStore: AlertStore = {
       consecutiveErrors: Number(r.consecutive_errors),
       tokenAlertDate: String(r.token_alert_date),
       stallAlerted: Number(r.stall_alerted) === 1,
+      pushFailedAt: String(r.push_failed_at ?? ''),
     };
   },
 
@@ -120,6 +125,11 @@ export const dbStore: AlertStore = {
   async setStallAlerted(account, on) {
     await ensureState(account);
     await execute('UPDATE inbox_alert_state SET stall_alerted = ? WHERE account = ?', [on ? 1 : 0, account]);
+  },
+
+  async setPushFailedAt(account, iso) {
+    await ensureState(account);
+    await execute('UPDATE inbox_alert_state SET push_failed_at = ? WHERE account = ?', [iso, account]);
   },
 
   async knownIds(account, ids) {

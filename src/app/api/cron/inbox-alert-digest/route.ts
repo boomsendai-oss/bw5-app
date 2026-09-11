@@ -1,7 +1,7 @@
 // POST /api/cron/inbox-alert-digest — 受信箱アラートの朝のまとめ(boom-cron が毎朝8:00に叩き、8:10に予備で再度叩く)。
 // JSTの同じ日に送信済みなら何もしない(予備の発火や手動の確認で二重に送らず、翌朝のまとめも消さない)。
 // 未対応の件名はGmailから取り直す(DBに件名を持たないため)。Gmailの上限と60秒の上限を守り、少しずつ・締め切りつきで取る。
-// まとめは「BOOM」のPushoverアプリから送る。レスポンスに件名・差出人は入れない。
+// まとめは「BOOM」のPushoverアプリから送る(送れなければ他のアカウントのアプリから)。レスポンスに件名・差出人は入れない。
 // 認証: x-cron-secret(CRON_SECRET_CF) または Authorization: Bearer(CRON_SECRET)。
 import { NextRequest, NextResponse } from 'next/server';
 import { todayJst } from '@/lib/dateJst';
@@ -148,6 +148,7 @@ export async function POST(req: NextRequest) {
         label: a.label,
         lastSuccessMs: s.lastSuccessAt ? Date.parse(s.lastSuccessAt) : null,
         consecutiveErrors: s.consecutiveErrors,
+        pushFailing: Boolean(s.pushFailedAt),
       };
     }),
   );
@@ -165,8 +166,23 @@ export async function POST(req: NextRequest) {
   const subjectFailed = open.length + undigested.length - fetched.size;
 
   if (!dryRun) {
-    const sender = byKey.get('boom') ?? accounts[0];
-    await sendPushover(sender.pushoverToken, pushoverUser, digest);
+    // BOOMの鍵から順に試す(1つの鍵が壊れていても、まとめ自体は届ける)。全部だめなら例外で500にし、8:10の予備に任せる
+    const senderTokens = [
+      ...accounts.filter((a) => a.key === 'boom'),
+      ...accounts.filter((a) => a.key !== 'boom'),
+    ].map((a) => a.pushoverToken);
+    let lastError: unknown = null;
+    let delivered = false;
+    for (const token of new Set(senderTokens)) {
+      try {
+        await sendPushover(token, pushoverUser, digest);
+        delivered = true;
+        break;
+      } catch (e) {
+        lastError = e;
+      }
+    }
+    if (!delivered) throw lastError;
     // 送れたら真っ先に印をつける(この後の書き込みで落ちても、8:10の予備で同じまとめを二重に送らない)
     await setLastDigestAt(nowIso);
     // 件名を取れなかった分は「まとめに載せた」扱いにせず、翌朝もう一度載せる

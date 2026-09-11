@@ -17,7 +17,7 @@ type StoredItem = NewItem & { notifiedAt: string | null; resolved: string | null
 
 function memoryStore(initial: Partial<AlertState> = {}) {
   const state: AlertState = {
-    lastCheckedMs: 0, lastSuccessAt: '', consecutiveErrors: 0, tokenAlertDate: '', stallAlerted: false, ...initial,
+    lastCheckedMs: 0, lastSuccessAt: '', consecutiveErrors: 0, tokenAlertDate: '', stallAlerted: false, pushFailedAt: '', ...initial,
   };
   const items = new Map<string, StoredItem>();
   const toOpen = (i: StoredItem): OpenItem => ({
@@ -30,6 +30,7 @@ function memoryStore(initial: Partial<AlertState> = {}) {
     saveError: async () => ++state.consecutiveErrors,
     setTokenAlertDate: async (_a, date) => { state.tokenAlertDate = date; },
     setStallAlerted: async (_a, on) => { state.stallAlerted = on; },
+    setPushFailedAt: async (_a, iso) => { state.pushFailedAt = iso; },
     knownIds: async (_a, ids) => new Set(ids.filter((id) => items.has(id))),
     insertItem: async (item, nowIso) => {
       if (!items.has(item.messageId)) items.set(item.messageId, { ...item, notifiedAt: item.notified ? nowIso : null, resolved: null });
@@ -88,6 +89,7 @@ function makeDeps(over: Partial<RunDeps> & { gmail: GmailPort; store: AlertStore
       return { tier: 'now', kind: 'new_inquiry', summary: '体験の相談', aiFailed: false, inputTokens: 10, outputTokens: 2 };
     },
     push: async (_token, m) => { pushed.push(m); },
+    fallbackTokens: [],
     nowMs: () => NOW,
     deadlineMs: NOW + 45_000,
     dryRun: false,
@@ -235,6 +237,72 @@ describe('runAccount', () => {
     expect(r2.notified).toBe(1);
     expect(pushed).toHaveLength(1);
     expect(items.get('human')!.notifiedAt).not.toBeNull();
+  });
+
+  it('自分のPushoverの鍵で送れなければ他のアカウントの鍵で届け、鍵の失敗を記録する', async () => {
+    const { store, state, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const { gmail } = fakeGmail([msg('human', { subject: '体験レッスンの相談' })]);
+    const sent: { token: string; title: string }[] = [];
+    const { deps } = makeDeps({
+      gmail,
+      store,
+      fallbackTokens: ['po', 'po-nitro', 'po-taro'],
+      push: async (token, m) => {
+        if (token === 'po') throw new Error('pushover 400 application token is invalid');
+        sent.push({ token, title: m.title });
+      },
+    });
+    const r = await runAccount(account, deps);
+    expect(sent).toEqual([{ token: 'po-nitro', title: '〔BOOM〕【新規の問い合わせ】体験レッスンの相談' }]);
+    expect(r).toMatchObject({ notified: 1, pushFailed: 1, pushFallback: 1 });
+    expect(items.get('human')!.notifiedAt).not.toBeNull();
+    expect(state.pushFailedAt).toBe(new Date(NOW).toISOString());
+  });
+
+  it('自分の鍵で送れた回があれば、鍵の失敗の記録を消す', async () => {
+    const { store, state } = memoryStore({ lastCheckedMs: NOW - 300_000, pushFailedAt: new Date(NOW - 600_000).toISOString() });
+    const { gmail } = fakeGmail([msg('human')]);
+    const { deps, pushed } = makeDeps({ gmail, store, fallbackTokens: ['po', 'po-nitro'] });
+    const r = await runAccount(account, deps);
+    expect(pushed).toHaveLength(1);
+    expect(r).toMatchObject({ notified: 1, pushFailed: 0, pushFallback: 0 });
+    expect(state.pushFailedAt).toBe('');
+  });
+
+  it('自分の鍵も他の鍵も全部だめなら、通知済みにせず次の回に再送する', async () => {
+    const { store, state, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const { gmail } = fakeGmail([msg('human')]);
+    const { deps } = makeDeps({
+      gmail,
+      store,
+      fallbackTokens: ['po', 'po-nitro'],
+      push: async () => {
+        throw new Error('pushover down');
+      },
+    });
+    const r = await runAccount(account, deps);
+    expect(r).toMatchObject({ notified: 0, pushFallback: 0 });
+    expect(items.get('human')!.notifiedAt).toBeNull();
+    expect(state.pushFailedAt).toBe(new Date(NOW).toISOString());
+  });
+
+  it('自分の鍵が壊れていても、止まっている警報は他の鍵で届ける', async () => {
+    const { store, state } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const { gmail } = fakeGmail([], { listSince: async () => { throw new Error('gmail 500 /messages'); } });
+    const sent: { token: string; title: string }[] = [];
+    const { deps } = makeDeps({
+      gmail,
+      store,
+      fallbackTokens: ['po', 'po-nitro'],
+      push: async (token, m) => {
+        if (token === 'po') throw new Error('pushover 400 application token is invalid');
+        sent.push({ token, title: m.title });
+      },
+    });
+    for (let i = 0; i < STALL_THRESHOLD; i++) await runAccount(account, deps);
+    expect(sent).toEqual([{ token: 'po-nitro', title: `〔BOOM〕${STALL_TITLE}` }]);
+    expect(state.stallAlerted).toBe(true);
+    expect(state.pushFailedAt).toBe(new Date(NOW).toISOString());
   });
 
   it('通知を送れないまま削除されたメールは、再送せずに未対応から外す', async () => {

@@ -6,7 +6,13 @@ import type { Kind } from './classify';
 import { charLength, jstHm, jstMd, receivedLabel, stripUrls, truncateChars } from './format';
 
 export type DigestItem = { accountLabel: string; kind: Kind; subject: string; receivedMs: number; aiFailed: boolean };
-export type DigestHealth = { label: string; lastSuccessMs: number | null; consecutiveErrors: number };
+export type DigestHealth = {
+  label: string;
+  lastSuccessMs: number | null;
+  consecutiveErrors: number;
+  /** 自分のPushoverの鍵で通知を送れていない(他のアカウントの鍵で代わりに届けている・届いていない) */
+  pushFailing?: boolean;
+};
 export type DigestInput = {
   nowMs: number;
   pending: DigestItem[];
@@ -25,6 +31,7 @@ const SUBJECT_MAX = 40;
 const STALE_MS = 30 * 60 * 1000;
 /** 1回だけの一時的なエラーでは「要確認」にしない(止まった時の警報は run.ts で連続6回) */
 const ERROR_ALERT_MIN = 2;
+const PUSH_FAILING_NOTE = '（通知の送信に失敗・Pushoverの鍵を確認）';
 
 const SHORT_KIND: Record<Kind, string> = {
   new_inquiry: '【新規】',
@@ -60,7 +67,11 @@ export function healthLines(health: DigestHealth[], nowMs: number, missing: stri
   const missingLines = missing.map((label) => `・${label}: 設定が欠けていて監視していません`);
   if (health.length === 0) return ['■稼働 監視中のアカウントがありません', ...missingLines];
   const bad = health.filter(
-    (h) => h.lastSuccessMs === null || nowMs - h.lastSuccessMs > STALE_MS || h.consecutiveErrors >= ERROR_ALERT_MIN,
+    (h) =>
+      h.lastSuccessMs === null ||
+      nowMs - h.lastSuccessMs > STALE_MS ||
+      h.consecutiveErrors >= ERROR_ALERT_MIN ||
+      Boolean(h.pushFailing),
   );
   if (bad.length === 0 && missing.length === 0) {
     const oldest = Math.min(...health.map((h) => h.lastSuccessMs as number));
@@ -69,9 +80,10 @@ export function healthLines(health: DigestHealth[], nowMs: number, missing: stri
   return [
     '■稼働 要確認',
     ...bad.map((h) => {
-      if (h.lastSuccessMs === null) return `・${h.label}: まだ一度も成功していません`;
+      const push = h.pushFailing ? PUSH_FAILING_NOTE : '';
+      if (h.lastSuccessMs === null) return `・${h.label}: まだ一度も成功していません${push}`;
       const errors = h.consecutiveErrors > 0 ? `（連続エラー${h.consecutiveErrors}回）` : '';
-      return `・${h.label}: 最終成功 ${jstMd(h.lastSuccessMs)} ${jstHm(h.lastSuccessMs)}${errors}`;
+      return `・${h.label}: 最終成功 ${jstMd(h.lastSuccessMs)} ${jstHm(h.lastSuccessMs)}${errors}${push}`;
     }),
     ...missingLines,
   ];

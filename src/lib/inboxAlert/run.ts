@@ -34,6 +34,8 @@ export type RunDeps = {
   store: AlertStore;
   classify: (mail: MailForAi, mode: AiReadMode) => Promise<ClassifyResult>;
   push: (appToken: string, msg: PushoverMessage) => Promise<void>;
+  /** 全アカウントのPushoverの鍵(BOOMを先頭)。自分の鍵で送れなかった時に順に試す(自分の鍵は飛ばす) */
+  fallbackTokens: string[];
   nowMs: () => number;
   /** この時刻を過ぎたら新しいメールの処理を始めない */
   deadlineMs: number;
@@ -46,8 +48,10 @@ export type RunSummary = {
   fresh: number;
   processed: number;
   notified: number;
-  /** Pushoverに送れなかった回数(鍵の設定ミスなどに気づくため) */
+  /** 自分のPushoverの鍵で送れなかった回数(鍵の設定ミスなどに気づくため) */
   pushFailed: number;
+  /** 自分の鍵で送れず、他のアカウントの鍵で代わりに届けた回数(notified にも含む) */
+  pushFallback: number;
   resolved: number;
   aiFailed: number;
   inputTokens: number;
@@ -69,6 +73,13 @@ export const STALL_MS = 30 * 60 * 1000;
 const STALL_TITLE = (account: AlertAccount) => `【受信箱アラート】${account.label}の監視が止まっています`;
 const isoNow = (deps: RunDeps) => new Date(deps.nowMs()).toISOString();
 
+/** own = 自分の鍵で届いた / fallback = 他のアカウントの鍵で届いた / failed = どの鍵でも届かなかった */
+type PushOutcome = 'own' | 'fallback' | 'failed';
+/** この回の通知の送信(自分の鍵で送れたか・送れなかったかを数えながら送る) */
+type Deliver = (msg: PushoverMessage) => Promise<PushOutcome>;
+/** この回に自分の鍵で1回でも送れた・送れなかったか(push_failed_at の記録用) */
+type OwnPush = { ok: boolean; failed: boolean };
+
 /** 1通のGmail側の一時的な失敗。そのメールだけ次回に回し、新しいメールの処理は続ける */
 function isRetryableGmailError(e: unknown): boolean {
   return e instanceof GmailApiError || (e instanceof Error && e.name === 'TimeoutError');
@@ -76,7 +87,7 @@ function isRetryableGmailError(e: unknown): boolean {
 
 export async function runAccount(account: AlertAccount, deps: RunDeps): Promise<RunSummary> {
   const summary: RunSummary = {
-    account: account.key, fresh: 0, processed: 0, notified: 0, pushFailed: 0, resolved: 0, aiFailed: 0,
+    account: account.key, fresh: 0, processed: 0, notified: 0, pushFailed: 0, pushFallback: 0, resolved: 0, aiFailed: 0,
     inputTokens: 0, outputTokens: 0, complete: false,
   };
   const startMs = deps.nowMs();
@@ -87,10 +98,22 @@ export async function runAccount(account: AlertAccount, deps: RunDeps): Promise<
   let state: AlertState | null = null;
   // この回に「止まっています」を送った・既に送ってあるか(時間と回数の両方で二重に送らないため)
   let stallAlerted = false;
+  const ownPush: OwnPush = { ok: false, failed: false };
+  const deliver: Deliver = async (msg) => {
+    const outcome = await pushWithFallback(account, msg, deps);
+    if (outcome === 'own') {
+      ownPush.ok = true;
+    } else {
+      ownPush.failed = true;
+      summary.pushFailed++;
+    }
+    if (outcome === 'fallback') summary.pushFallback++;
+    return outcome;
+  };
 
   try {
     state = await deps.store.getState(account.key);
-    stallAlerted = state.stallAlerted || (await alertIfStalledByTime(account, state, startMs, deps));
+    stallAlerted = state.stallAlerted || (await alertIfStalledByTime(account, state, startMs, deps, deliver));
 
     const token = await deps.gmail.accessToken(account.refreshToken);
     const email = await deps.gmail.profileEmail(token);
@@ -115,7 +138,7 @@ export async function runAccount(account: AlertAccount, deps: RunDeps): Promise<
         break;
       }
       try {
-        const outcome = await processMessage(account, ref, token, email, baseline, deps, summary);
+        const outcome = await processMessage(account, ref, token, email, baseline, deps, summary, deliver);
         if (outcome === 'deferred') {
           outOfTime = true;
           break;
@@ -137,7 +160,7 @@ export async function runAccount(account: AlertAccount, deps: RunDeps): Promise<
     if (!outOfTime && !deps.dryRun) {
       // 先に返信済み・アーカイブ済みを閉じてから、送れなかった通知を再送する(返信済みのメールを鳴らさない)
       await bestEffort(summary, () => resolveOpen(account, token, deps, summary));
-      await bestEffort(summary, () => resendUnnotified(account, token, email, deps, summary));
+      await bestEffort(summary, () => resendUnnotified(account, token, email, deps, summary, deliver));
     }
 
     summary.complete = complete;
@@ -146,49 +169,64 @@ export async function runAccount(account: AlertAccount, deps: RunDeps): Promise<
     await deps.store.saveSuccess(account.key, complete ? startMs : state.lastCheckedMs, isoNow(deps));
     if (stallAlerted) await deps.store.setStallAlerted(account.key, false);
     if (state.tokenAlertDate) await deps.store.setTokenAlertDate(account.key, '');
+    const prevPushFailedAt = state.pushFailedAt;
+    await bestEffort(summary, () => recordPushHealth(account, prevPushFailedAt, ownPush, deps));
     return summary;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     summary.error = message;
+    let current: AlertState | null = state;
     try {
       const errors = await deps.store.saveError(account.key, message);
-      const current = state ?? (await deps.store.getState(account.key));
+      current ??= await deps.store.getState(account.key);
       if (e instanceof GmailAuthError) {
         const today = todayJst(new Date(deps.nowMs()));
         const sent =
           current.tokenAlertDate !== today &&
-          (await safePush(account, {
+          (await safePush({
             title: `【受信箱アラート】${account.label}のGmail連携が切れました`,
             message: 'Claudeに「受信箱アラートの連携が切れた」と伝えてください。Googleに再ログインすれば直ります。',
-          }, deps));
+          }, deps, deliver));
         if (sent) await deps.store.setTokenAlertDate(account.key, today);
       } else {
         const sent =
           errors >= STALL_THRESHOLD &&
           !current.stallAlerted &&
           !stallAlerted &&
-          (await safePush(account, {
+          (await safePush({
             title: STALL_TITLE(account),
             message: `約30分エラーが続いています: ${truncateChars(message, 200)}`,
-          }, deps));
+          }, deps, deliver));
         if (sent) await deps.store.setStallAlerted(account.key, true);
       }
     } catch (storeError) {
       // DBまで落ちている時は記録も警報もできない(朝のまとめが届かないことで気づく)。例外は外に投げない
       summary.error = `${message} / store: ${storeError instanceof Error ? storeError.message : String(storeError)}`;
     }
+    try {
+      // エラーの回でも、それまでに送った通知・警報で鍵が失敗していれば記録する
+      await recordPushHealth(account, current?.pushFailedAt ?? '', ownPush, deps);
+    } catch {
+      // 記録できなくても次の回にまた記録する。例外は外に投げない
+    }
     return summary;
   }
 }
 
 /** 最後の成功から30分以上たっていたら知らせる。送れた時だけ印をつけ、true を返す */
-async function alertIfStalledByTime(account: AlertAccount, state: AlertState, nowMs: number, deps: RunDeps): Promise<boolean> {
+async function alertIfStalledByTime(
+  account: AlertAccount,
+  state: AlertState,
+  nowMs: number,
+  deps: RunDeps,
+  deliver: Deliver,
+): Promise<boolean> {
   if (!state.lastSuccessAt || state.stallAlerted) return false;
   if (nowMs - Date.parse(state.lastSuccessAt) <= STALL_MS) return false;
-  const sent = await safePush(account, {
+  const sent = await safePush({
     title: STALL_TITLE(account),
     message: '30分以上、処理が最後まで終わっていません',
-  }, deps);
+  }, deps, deliver);
   if (sent) await deps.store.setStallAlerted(account.key, true);
   return sent;
 }
@@ -201,6 +239,7 @@ async function processMessage(
   baseline: boolean,
   deps: RunDeps,
   summary: RunSummary,
+  deliver: Deliver,
 ): Promise<'done' | 'deferred'> {
   const meta = await deps.gmail.meta(token, ref.id);
   const headers = headerMap(meta.payload);
@@ -247,24 +286,21 @@ async function processMessage(
 
   let notified = false;
   if (result.tier === 'now' && !deps.dryRun) {
-    try {
-      await deps.push(
-        account.pushoverToken,
-        buildNowMessage({
-          subject,
-          from,
-          summary: result.summary,
-          kind: result.kind,
-          aiFailed: result.aiFailed,
-          link: gmailLink(email, ref.threadId),
-          receivedMs: common.receivedMs,
-        }),
-      );
+    const outcome = await deliver(
+      buildNowMessage({
+        subject,
+        from,
+        summary: result.summary,
+        kind: result.kind,
+        aiFailed: result.aiFailed,
+        link: gmailLink(email, ref.threadId),
+        receivedMs: common.receivedMs,
+      }),
+    );
+    // どの鍵でも送れなかった通知は notified_at を空で残し、次回に再送する
+    if (outcome !== 'failed') {
       notified = true;
       summary.notified++;
-    } catch {
-      // 送れなかった通知は notified_at を空で残し、次回に再送する
-      summary.pushFailed++;
     }
   }
 
@@ -285,7 +321,14 @@ async function processMessage(
   return 'done';
 }
 
-async function resendUnnotified(account: AlertAccount, token: string, email: string, deps: RunDeps, summary: RunSummary): Promise<void> {
+async function resendUnnotified(
+  account: AlertAccount,
+  token: string,
+  email: string,
+  deps: RunDeps,
+  summary: RunSummary,
+  deliver: Deliver,
+): Promise<void> {
   const since = new Date(deps.nowMs() - RESEND_WINDOW_MS).toISOString();
   const items = await deps.store.listUnnotified(account.key, since, RESEND_LIMIT);
   for (const item of items) {
@@ -303,23 +346,19 @@ async function resendUnnotified(account: AlertAccount, token: string, email: str
       continue;
     }
     const h = headerMap(meta.payload);
-    try {
-      await deps.push(
-        account.pushoverToken,
-        buildNowMessage({
-          subject: h['subject'] ?? '',
-          from: h['from'] ?? '',
-          summary: '',
-          kind: item.kind,
-          aiFailed: item.aiFailed,
-          link: gmailLink(email, item.threadId),
-          receivedMs: item.receivedMs,
-        }),
-      );
-    } catch {
-      summary.pushFailed++;
-      return;
-    }
+    const outcome = await deliver(
+      buildNowMessage({
+        subject: h['subject'] ?? '',
+        from: h['from'] ?? '',
+        summary: '',
+        kind: item.kind,
+        aiFailed: item.aiFailed,
+        link: gmailLink(email, item.threadId),
+        receivedMs: item.receivedMs,
+      }),
+    );
+    // どの鍵でも送れない時は、残りも送れないので次回に回す
+    if (outcome === 'failed') return;
     await deps.store.markNotified(account.key, item.messageId, isoNow(deps));
     summary.notified++;
   }
@@ -355,13 +394,45 @@ async function bestEffort(summary: RunSummary, fn: () => Promise<void>): Promise
   }
 }
 
-/** 警報の送信。ドライラン中は送らない。送れたら true(送れなかった時は印をつけず、次回また判定する) */
-async function safePush(account: AlertAccount, msg: PushoverMessage, deps: RunDeps): Promise<boolean> {
+/** 警報の送信。ドライラン中は送らない。届いたら true(他の鍵で届いた時も含む。届かなかった時は印をつけず、次回また判定する) */
+async function safePush(msg: PushoverMessage, deps: RunDeps, deliver: Deliver): Promise<boolean> {
   if (deps.dryRun) return false;
+  return (await deliver(msg)) !== 'failed';
+}
+
+/**
+ * 通知の送信。まず自分のアカウントの鍵で送り、だめなら他のアカウントの鍵(BOOMを先頭)で順に試す。
+ * 1つの鍵の設定ミスで、そのアカウントの通知も「止まっています」の警報も黙って届かなくなるのを防ぐ。
+ * 他の鍵で送る時は、どのアカウントのメールか分かるよう件名の頭に〔表示名〕をつける。例外は投げない
+ */
+async function pushWithFallback(account: AlertAccount, msg: PushoverMessage, deps: RunDeps): Promise<PushOutcome> {
   try {
     await deps.push(account.pushoverToken, msg);
-    return true;
+    return 'own';
   } catch {
-    return false;
+    // 自分の鍵で送れなかった。他のアカウントの鍵で試す
+  }
+  const fallbackMsg: PushoverMessage = { ...msg, title: truncateChars(`〔${account.label}〕${msg.title}`, 250) };
+  for (const token of new Set(deps.fallbackTokens)) {
+    if (token === account.pushoverToken) continue;
+    try {
+      await deps.push(token, fallbackMsg);
+      return 'fallback';
+    } catch {
+      // 次の鍵を試す
+    }
+  }
+  return 'failed';
+}
+
+/**
+ * この回に自分の鍵で送れなかったら時刻を記録し、送れたら記録を消す(朝のまとめで鍵の壊れに気づくため)。
+ * 同じ回に送れた時と送れなかった時の両方があれば、失敗を残す
+ */
+async function recordPushHealth(account: AlertAccount, prevPushFailedAt: string, ownPush: OwnPush, deps: RunDeps): Promise<void> {
+  if (ownPush.failed) {
+    await deps.store.setPushFailedAt(account.key, isoNow(deps));
+  } else if (ownPush.ok && prevPushFailedAt) {
+    await deps.store.setPushFailedAt(account.key, '');
   }
 }

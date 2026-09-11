@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS inbox_alert_state (
   last_error TEXT NOT NULL DEFAULT '',
   consecutive_errors INTEGER NOT NULL DEFAULT 0,
   token_alert_date TEXT NOT NULL DEFAULT '',
-  stall_alerted INTEGER NOT NULL DEFAULT 0
+  stall_alerted INTEGER NOT NULL DEFAULT 0,
+  push_failed_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS inbox_alert_items (

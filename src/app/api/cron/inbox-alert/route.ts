@@ -46,9 +46,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // あるアカウントのPushoverの鍵が壊れていても通知を落とさないよう、他のアカウントの鍵(BOOMを先頭)で代わりに送る
+  const fallbackTokens = [
+    ...accounts.filter((a) => a.key === 'boom'),
+    ...accounts.filter((a) => a.key !== 'boom'),
+  ].map((a) => a.pushoverToken);
+
   const deps = buildLiveDeps({
     client,
     pushoverUser,
+    fallbackTokens,
     deadlineMs: Date.now() + BUDGET_MS,
     dryRun: isDryRun(),
     backfillDays: backfillDays(),
@@ -65,7 +72,7 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       // runAccount は例外を投げない作りだが、万一でも残りのアカウントの処理を止めない
       results.push({
-        account: account.key, fresh: 0, processed: 0, notified: 0, pushFailed: 0, resolved: 0,
+        account: account.key, fresh: 0, processed: 0, notified: 0, pushFailed: 0, pushFallback: 0, resolved: 0,
         aiFailed: 0, inputTokens: 0, outputTokens: 0, complete: false,
         error: e instanceof Error ? e.message : String(e),
       });
