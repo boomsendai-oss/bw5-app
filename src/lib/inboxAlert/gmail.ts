@@ -13,6 +13,9 @@ export class GmailAuthError extends Error {}
 /** メールやスレッドが見つからない(削除済みなど) */
 export class GmailNotFoundError extends Error {}
 
+/** Gmail側の一時的な失敗(500・429など)。そのメールは次回に回す */
+export class GmailApiError extends Error {}
+
 export type GmailPart = {
   mimeType?: string;
   filename?: string;
@@ -57,7 +60,7 @@ async function gmailGet<T>(token: string, path: string, fetchImpl: FetchLike): P
   });
   if (res.status === 401) throw new GmailAuthError('unauthorized');
   if (res.status === 404) throw new GmailNotFoundError(`gmail 404 ${path.split('?')[0]}`);
-  if (!res.ok) throw new Error(`gmail ${res.status} ${path.split('?')[0]}`);
+  if (!res.ok) throw new GmailApiError(`gmail ${res.status} ${path.split('?')[0]}`);
   return (await res.json()) as T;
 }
 

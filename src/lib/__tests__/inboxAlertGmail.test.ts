@@ -10,6 +10,7 @@ import {
   listMessageRefsSince,
   GmailAuthError,
   GmailNotFoundError,
+  GmailApiError,
   type GmailMessage,
 } from '../inboxAlert/gmail';
 
@@ -129,6 +130,7 @@ describe('Gmail API ラッパー', () => {
   it('スレッドが見つからなければ null、それ以外のエラーは例外', async () => {
     await expect(getThreadMessages('tok', 't', status(404))).resolves.toBeNull();
     await expect(getThreadMessages('tok', 't', status(500))).rejects.toThrow('gmail 500');
+    await expect(getThreadMessages('tok', 't', status(500))).rejects.toBeInstanceOf(GmailApiError);
   });
   it('メールが見つからなければ GmailNotFoundError、401 は GmailAuthError', async () => {
     await expect(getMessageMeta('tok', 'm', status(404))).rejects.toBeInstanceOf(GmailNotFoundError);
