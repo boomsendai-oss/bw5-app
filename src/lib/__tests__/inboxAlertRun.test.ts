@@ -204,15 +204,27 @@ describe('runAccount', () => {
     expect(items.get('q')!.resolved).toBe('replied');
   });
 
-  it('受信トレイを通らなかったメールは、INBOXラベルが無くてもアーカイブ扱いで閉じない', async () => {
+  it('受信トレイを通らなかったメールは、INBOXラベルが無くても未読のうちはアーカイブ扱いで閉じない', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    await store.insertItem({ ...storedNow('filtered', NOW - 60_000), inInbox: false }, 'x');
+    const { gmail } = fakeGmail([], {
+      thread: async () => [{ id: 'filtered', threadId: 't-filtered', labelIds: ['Label_1', 'UNREAD'], internalDate: String(NOW - 60_000) }],
+    });
+    const { deps } = makeDeps({ gmail, store });
+    await runAccount(account, deps);
+    expect(items.get('filtered')!.resolved).toBeNull();
+  });
+
+  it('受信トレイを通らなかったメールは、読んだら閉じる', async () => {
     const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
     await store.insertItem({ ...storedNow('filtered', NOW - 60_000), inInbox: false }, 'x');
     const { gmail } = fakeGmail([], {
       thread: async () => [{ id: 'filtered', threadId: 't-filtered', labelIds: ['Label_1'], internalDate: String(NOW - 60_000) }],
     });
     const { deps } = makeDeps({ gmail, store });
-    await runAccount(account, deps);
-    expect(items.get('filtered')!.resolved).toBeNull();
+    const r = await runAccount(account, deps);
+    expect(r.resolved).toBe(1);
+    expect(items.get('filtered')!.resolved).toBe('archived');
   });
 
   it('通知の送信に失敗したら、次の回に再送する', async () => {

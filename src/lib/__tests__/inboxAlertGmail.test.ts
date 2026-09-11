@@ -85,7 +85,14 @@ describe('threadResolution', () => {
     expect(threadResolution([{ ...target, labelIds: [] }], 'a', true)).toBe('archived');
   });
   it('受信時に受信トレイに無かったメールはアーカイブ判定しない', () => {
-    expect(threadResolution([{ ...target, labelIds: [] }], 'a', false)).toBeNull();
+    expect(threadResolution([{ ...target, labelIds: ['UNREAD'] }], 'a', false)).toBeNull();
+  });
+  it('受信トレイを通らなかったメールは、読んだら閉じる', () => {
+    expect(threadResolution([{ ...target, labelIds: [] }], 'a', false)).toBe('archived');
+  });
+  it('ゴミ箱に入れたら閉じる', () => {
+    expect(threadResolution([{ ...target, labelIds: ['TRASH', 'INBOX'] }], 'a', true)).toBe('archived');
+    expect(threadResolution([{ ...target, labelIds: ['TRASH', 'UNREAD'] }], 'a', false)).toBe('archived');
   });
   it('スレッドが消えていればアーカイブ扱い', () => {
     expect(threadResolution(null, 'a', true)).toBe('archived');

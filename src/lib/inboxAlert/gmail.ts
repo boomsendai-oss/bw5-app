@@ -152,8 +152,13 @@ export function extractBodyText(msg: GmailMessage): string {
 }
 
 /**
- * 未対応の再確認。返信済みなら 'replied'、アーカイブ済み(または削除)なら 'archived'、まだなら null。
- * checkArchive=false は「受信時に受信トレイに無かった」メール用(フィルタで受信トレイを通らないものを誤って閉じない)。
+ * 未対応の再確認。返信済みなら 'replied'、対応済み扱いで閉じるなら 'archived'、まだなら null。
+ * - 返信(対象より新しい送信済み)があれば、何より先に 'replied'
+ * - ゴミ箱に入れた(TRASH)・メールやスレッドが消えた時は、受信トレイを通ったかに関係なく 'archived'
+ * - checkArchive=true(受信時に受信トレイにあった): INBOXラベルが外れたら 'archived'
+ * - checkArchive=false(受信時に受信トレイに無かった): フィルタで受信トレイを通らない・届いてすぐ読んでアーカイブした等。
+ *   INBOXラベルでは判定できないので、未読(UNREAD)が外れたら読んだとみなして 'archived'
+ *   (返信で閉じるしかないと、返信不要の「対応してください」系が朝のまとめに永久に残るため)
  */
 export function threadResolution(messages: GmailMessage[] | null, messageId: string, checkArchive: boolean): 'replied' | 'archived' | null {
   if (messages === null) return 'archived';
@@ -164,6 +169,8 @@ export function threadResolution(messages: GmailMessage[] | null, messageId: str
     (m) => m.id !== messageId && (m.labelIds ?? []).includes('SENT') && Number(m.internalDate ?? 0) > receivedAt,
   );
   if (replied) return 'replied';
-  if (checkArchive && !(target.labelIds ?? []).includes('INBOX')) return 'archived';
-  return null;
+  const labels = target.labelIds ?? [];
+  if (labels.includes('TRASH')) return 'archived';
+  if (checkArchive) return labels.includes('INBOX') ? null : 'archived';
+  return labels.includes('UNREAD') ? null : 'archived';
 }
