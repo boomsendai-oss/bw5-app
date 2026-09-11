@@ -7,6 +7,7 @@ import { checkInBf6, claimBf6Slot, seedBf6Slots } from '@/lib/bf6DrawDb';
 import { collectBf6Cash } from '@/lib/bf6CashDb';
 import { autoReflectIfStarted } from '@/lib/bf6ScreenDb';
 import type { Bf6DrawDivision, Bf6DrawPhase } from '@/lib/bf6Draw';
+import { drawPhaseFor } from '@/lib/bf6Reception';
 
 /** 同じ画面が /staff と /bf6/crew の2箇所にあるので、両方を作り直す。 */
 function revalidateBoth(): void {
@@ -21,10 +22,13 @@ export async function receptionDraw(
   division: Bf6DrawDivision,
   phase: Bf6DrawPhase
 ): Promise<{ slotNo: number; block?: 'A' | 'B'; alreadyDrawn: boolean } | { error: string }> {
+  // ⚠️ 受付時(①)の画面でもビギナーはトーナメント位置を引く。画面のフェーズをそのまま使うと
+  //    ビギナーにはブロックの枠が無く「空き枠がありません」になっていた(2026-09-11)。
+  const drawPhase = drawPhaseFor(division, phase);
   await checkInBf6(itemId);
-  const r = await claimBf6Slot(division, phase, itemId);
+  const r = await claimBf6Slot(division, drawPhase, itemId);
   // トーナメントが始まった後に遅れて引いた人は、その人の試合がまだなら自動で対戦に戻す
-  if (r && phase === 'bracket') await autoReflectIfStarted(division);
+  if (r && drawPhase === 'bracket') await autoReflectIfStarted(division);
   revalidateBoth();
   if (!r) return { error: '空き枠がありません' };
   return r;

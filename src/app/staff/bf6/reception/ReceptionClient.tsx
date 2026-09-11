@@ -1,13 +1,20 @@
 'use client';
 
-// 当日の受付端末(iPad想定)。3〜4台で同時に使う。
-// 設計方針: 迷わせない。検索して名前を押す → 部門ボタンを押す → 結果が大きく出る。
+// 当日の受付端末(iPad・スタッフのスマホ)。3〜4台で同時に使う。
+// 設計方針: 迷わせない。タブで部門を選ぶ → 名前を押す → その部門のくじを引く → 結果が大きく出る。
+//
+// 部門のタブ(TARO 2026-09-11): 全部門が1つの一覧に混ざっていると、名前を押してから部門を選ぶ手間があり
+// 押し間違いも起きる。タブの部門の人だけを並べ、明細にはその部門のくじのボタンだけを出す。
+// 選んだタブはURL(?d=)に残すので、「このiPadは小中担当」のように端末ごとに固定できる。
+//
+// ⚠️ 色の指定が無い文字は白く溶ける(body の既定色が白)。文字には必ず色を付ける。
 import PhotoCapture from './PhotoCapture';
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { receptionCollectCash, receptionDraw } from './actions';
 import type { ReceptionEntrant } from '@/lib/bf6DrawDb';
 import type { Bf6DrawDivision, Bf6DrawPhase } from '@/lib/bf6Draw';
+import { divisionsForPhase, drawFor, entrantsInDivision, receptionTabs } from '@/lib/bf6Reception';
 
 const DIV_LABEL: Record<string, string> = { beginner: 'ビギナー', kids: '小中学生', general: '一般' };
 const yen = (n: number) => `¥${n.toLocaleString()}`;
@@ -18,30 +25,45 @@ export function ReceptionClient({
   entrants,
   phase,
   photoItemIds,
+  initialDivision,
 }: {
   entrants: ReceptionEntrant[];
   phase: Bf6DrawPhase;
   photoItemIds: number[];
+  /** URLの ?d= で開いたときの部門 */
+  initialDivision?: string;
 }) {
   const router = useRouter();
   const photoSet = useMemo(() => new Set(photoItemIds), [photoItemIds]);
+  const divisions = divisionsForPhase(phase);
+  const [division, setDivision] = useState(
+    initialDivision && divisions.includes(initialDivision) ? initialDivision : divisions[0]
+  );
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<ReceptionEntrant | null>(null);
   const [drawn, setDrawn] = useState<Drawn | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  // 選んだタブをURLに残す(再読み込みしても同じ部門のまま)。サーバの再取得はしない
+  useEffect(() => {
+    const u = new URL(window.location.href);
+    if (u.searchParams.get('d') === division) return;
+    u.searchParams.set('d', division);
+    window.history.replaceState(null, '', u.toString());
+  }, [division]);
+
+  const tabs = receptionTabs(entrants, phase);
+  const inDivision = useMemo(() => entrantsInDivision(entrants, division), [entrants, division]);
   const list = useMemo(() => {
     const k = q.trim().toLowerCase();
-    if (!k) return entrants;
-    return entrants.filter(
+    if (!k) return inDivision;
+    return inDivision.filter(
       (e) => e.dancerName.toLowerCase().includes(k) || e.performerName.toLowerCase().includes(k)
     );
-  }, [entrants, q]);
+  }, [inDivision, q]);
 
-  const done = entrants.filter((e) => e.checkedIn).length;
-
-  function draw(e: ReceptionEntrant, division: string) {
+  function draw(e: ReceptionEntrant) {
     setErr(null);
     start(async () => {
       const r = await receptionDraw(e.itemId, division as Bf6DrawDivision, phase);
@@ -70,8 +92,8 @@ export function ReceptionClient({
           </>
         )}
         <button
-          onClick={() => { setDrawn(null); setSel(null); setQ(''); }}
-          className="mt-12 w-full max-w-sm rounded-2xl bg-brand-600 py-5 text-xl font-black"
+          onClick={() => { setDrawn(null); setSel(null); setQ(''); router.refresh(); }}
+          className="mt-12 w-full max-w-sm rounded-2xl bg-brand-600 py-5 text-xl font-black text-white"
         >
           次の人へ
         </button>
@@ -79,15 +101,17 @@ export function ReceptionClient({
     );
   }
 
-  // 選択中の人の部門選択
+  // 選んだ人: タブの部門のくじだけを出す
   if (sel) {
+    const already = drawFor(sel, division, phase);
+    const others = sel.divisions.filter((d) => d !== division);
     return (
-      <div className="fixed inset-0 z-50 flex flex-col bg-white p-5">
-        <button onClick={() => { setSel(null); setErr(null); }} className="self-start text-sm font-bold text-brand-600">
+      <div className="fixed inset-0 z-50 flex flex-col bg-white p-5 text-navy-900">
+        <button onClick={() => { setSel(null); setErr(null); }} className="self-start text-sm font-bold text-brand-700">
           ← 戻る
         </button>
         <p className="mt-4 text-3xl font-black text-navy-900">{sel.dancerName}</p>
-        <p className="text-sm text-neutral-500">{sel.performerName}</p>
+        <p className="text-sm text-neutral-600">{sel.performerName}</p>
 
         {sel.amountDue > 0 && (
           <div className="mt-4 rounded-2xl border-2 border-red-500 bg-red-50 p-4">
@@ -104,95 +128,101 @@ export function ReceptionClient({
 
         {err && <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{err}</p>}
 
-        <p className="mt-6 text-sm font-bold text-neutral-500">くじを引く部門を選ぶ</p>
-        <div className="mt-2 space-y-3">
-          {sel.divisions.map((d) => {
-            const already = sel.draws.find((x) => x.division === d && x.phase === phase);
-            return (
-              <button
-                key={d}
-                onClick={() => draw(sel, d)}
-                disabled={pending}
-                className={`w-full rounded-2xl py-6 text-xl font-black disabled:opacity-50 ${
-                  already ? 'bg-neutral-200 text-neutral-500' : 'bg-brand-600 text-white'
-                }`}
-              >
-                {DIV_LABEL[d]}部門
-                {already && (
-                  <span className="ml-2 text-base">
-                    済み({already.block ?? `${already.slotNo}番`})
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <button
+          onClick={() => draw(sel)}
+          disabled={pending || already !== null}
+          className={`mt-6 w-full rounded-2xl py-7 text-2xl font-black disabled:opacity-60 ${
+            already ? 'bg-neutral-200 text-neutral-600' : 'bg-brand-600 text-white'
+          }`}
+        >
+          {already
+            ? `${DIV_LABEL[division]}部門 引き済み(${already.block ?? `${already.slotNo}番`})`
+            : `${DIV_LABEL[division]}部門のくじを引く`}
+        </button>
+        {others.length > 0 && (
+          <p className="mt-3 text-sm font-bold text-neutral-600">
+            この人は {others.map((d) => `${DIV_LABEL[d]}部門`).join('・')} にも出ます。そちらのタブで引いてください
+          </p>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 text-navy-900">
+      <div className={`grid gap-2 ${divisions.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        {tabs.map((t) => (
+          <button
+            key={t.division}
+            onClick={() => { setDivision(t.division); setQ(''); }}
+            className={`rounded-xl py-3 text-sm font-black leading-tight tabular-nums transition active:scale-95 ${
+              division === t.division ? 'bg-navy-900 text-white' : 'bg-sand-100 text-navy-800'
+            }`}
+          >
+            {t.label}
+            <span className="block text-base">
+              {t.drawn} / {t.total}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <div className="flex items-center gap-3">
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="ダンサーネーム / 本名で検索"
+          placeholder={`${DIV_LABEL[division]}部門の中で探す(ダンサーネーム / 本名)`}
           className="h-14 flex-1 rounded-2xl border border-sand-300 bg-white px-4 text-lg text-navy-900 placeholder:text-neutral-500"
         />
-        <span className="whitespace-nowrap text-sm font-bold text-neutral-500">
-          受付 {done}/{entrants.length}
-        </span>
       </div>
 
       <div className="space-y-2">
-        {list.map((e) => (
-          <div
-            key={e.itemId}
-            className={`rounded-2xl border ${
-              e.checkedIn ? 'border-sand-200 bg-sand-50' : 'border-sand-300 bg-white'
-            }`}
-          >
-          <button
-            onClick={() => { setSel(e); setErr(null); }}
-            className="flex w-full items-center justify-between p-4 text-left"
-          >
-            <span>
-              <span className="text-lg font-black text-navy-900">{e.dancerName}</span>
-              <span className="ml-2 text-xs text-neutral-500">{e.performerName}</span>
-              <span className="mt-0.5 block text-xs text-neutral-500">
-                {e.divisions.map((d) => DIV_LABEL[d]).join(' / ')}
-                {e.amountDue > 0 && <span className="ml-2 font-bold text-red-600">現金 {yen(e.amountDue)}</span>}
-              </span>
-            </span>
-            <span className="text-right text-xs font-bold">
-              {/* ⚠️ phase だけで絞ると他部門の抽選結果を拾う。ビギナーのbracket枠が
-                     小中のくじ引き②の画面に出た(TARO実機 2026-09-10)。部門も見る。 */}
-              {e.draws.filter((x) => x.phase === phase && e.divisions.includes(x.division)).length > 0 ? (
-                <span className="text-brand-600">
-                  {e.draws
-                    .filter((x) => x.phase === phase && e.divisions.includes(x.division))
-                    .map((x) => x.block ?? `${x.slotNo}番`)
-                    .join(' / ')}
+        {list.map((e) => {
+          const d = drawFor(e, division, phase);
+          const others = e.divisions.filter((x) => x !== division);
+          return (
+            <div
+              key={e.itemId}
+              className={`rounded-2xl border ${d ? 'border-sand-200 bg-sand-50' : 'border-sand-300 bg-white'}`}
+            >
+              <button
+                onClick={() => { setSel(e); setErr(null); }}
+                className="flex w-full items-center justify-between p-4 text-left"
+              >
+                <span>
+                  <span className="text-lg font-black text-navy-900">{e.dancerName}</span>
+                  <span className="ml-2 text-xs text-neutral-600">{e.performerName}</span>
+                  <span className="mt-0.5 block text-xs text-neutral-600">
+                    {others.length > 0 && <>{others.map((x) => DIV_LABEL[x]).join('・')}部門にも出場</>}
+                    {e.amountDue > 0 && <span className="ml-2 font-bold text-red-700">現金 {yen(e.amountDue)}</span>}
+                  </span>
                 </span>
-              ) : e.checkedIn ? (
-                <span className="text-neutral-400">受付済</span>
-              ) : (
-                <span className="text-neutral-300">未</span>
-              )}
-            </span>
-          </button>
-          <div className="border-t border-sand-100 px-4 py-2">
-            <PhotoCapture
-              itemId={e.itemId}
-              dancerName={e.dancerName}
-              hasPhoto={photoSet.has(e.itemId)}
-              onDone={() => router.refresh()}
-            />
-          </div>
-          </div>
-        ))}
-        {list.length === 0 && <p className="p-6 text-center text-sm text-neutral-400">該当なし</p>}
+                <span className="text-right text-sm font-black">
+                  {d ? (
+                    <span className="text-brand-700">{d.block ?? `${d.slotNo}番`}</span>
+                  ) : e.checkedIn ? (
+                    <span className="text-neutral-600">受付済</span>
+                  ) : (
+                    <span className="text-neutral-500">未</span>
+                  )}
+                </span>
+              </button>
+              <div className="border-t border-sand-100 px-4 py-2">
+                <PhotoCapture
+                  itemId={e.itemId}
+                  dancerName={e.dancerName}
+                  hasPhoto={photoSet.has(e.itemId)}
+                  onDone={() => router.refresh()}
+                />
+              </div>
+            </div>
+          );
+        })}
+        {list.length === 0 && (
+          <p className="p-6 text-center text-sm text-neutral-600">
+            {inDivision.length === 0 ? `${DIV_LABEL[division]}部門の対象者はいません` : '該当なし'}
+          </p>
+        )}
       </div>
     </div>
   );

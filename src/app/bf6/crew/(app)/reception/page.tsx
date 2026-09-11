@@ -18,9 +18,10 @@ export const dynamic = 'force-dynamic';
 export default async function CrewReceptionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ phase?: string }>;
+  searchParams: Promise<{ phase?: string; d?: string }>;
 }) {
-  const { phase: raw } = await searchParams;
+  // d = 開いておく部門のタブ(端末ごとに担当部門を固定できる)
+  const { phase: raw, d } = await searchParams;
   const phase: Bf6DrawPhase = raw === 'bracket' ? 'bracket' : 'block';
   const [entrants, photoIds, qualifiers] = await Promise.all([
     listBf6ReceptionEntrants(),
@@ -92,7 +93,7 @@ export default async function CrewReceptionPage({
           </div>
         )}
         <SlotSeeder phase={phase} />
-        <ReceptionClient entrants={forPhase} phase={phase} photoItemIds={[...photoIds]} />
+        <ReceptionClient entrants={forPhase} phase={phase} photoItemIds={[...photoIds]} initialDivision={d} />
       </div>
     </div>
   );
