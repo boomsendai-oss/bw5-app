@@ -210,7 +210,7 @@ export function ControlClient({
             ? 'この部門のトーナメント枠はまだありません。'
             : draw.undrawn === 0
               ? `${draw.slots}枠すべて引き終わっています。`
-              : `${draw.slots}枠のうち、まだ引いていない枠が ${draw.undrawn} つあります。反映するとその相手は不戦勝で上がります。`}
+              : `${draw.slots}枠のうち、まだ引いていない枠が ${draw.undrawn}枠あります。反映するとその相手は不戦勝で上がります。`}
           あとから引いた人がいても、その人の試合がまだならもう一度押せば対戦に戻ります。
         </p>
         <button
@@ -218,7 +218,7 @@ export function ControlClient({
           onClick={() => {
             if (
               draw.undrawn > 0 &&
-              !confirm(`まだ引いていない枠が ${draw.undrawn} つあります。その相手は不戦勝になります。反映しますか?`)
+              !confirm(`まだ引いていない枠が ${draw.undrawn}枠あります。その相手は不戦勝になります。反映しますか?`)
             ) {
               return;
             }
