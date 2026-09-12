@@ -3103,7 +3103,7 @@ NODE_OPTIONS=--max-old-space-size=8192 npm run build 2>&1 | tail -15
 環境変数が無くてビルドが落ちた時だけ、main チェックアウトの `.env.local` を worktree に写してから再実行する（`.env*` は Git に入らない）: `cp ~/BOOM/BW5_2026/bw5-app/.env.local .`
 Expected: テスト全件PASS・tscエラー0・`next build` 成功（ルート一覧に `/api/cron/inbox-alert` と `/api/cron/inbox-alert-digest` が出る）
 
-- [ ] **Step 2: Pushover の準備（TARO）**
+- [x] **Step 2: Pushover の準備（TARO）**
 
 前提（Claude が先に行う）: worktree（`~/BOOM/BW5_2026/bw5-app-inbox-alert`）で Vercel のリンク情報を写す（`.vercel` は Git に入らない。無いと登録スクリプトが最初に止まる）:
 ```bash
@@ -3129,7 +3129,7 @@ node scripts/inbox_alert_setup.mjs set PUSHOVER_TOKEN_NITROASH
 node scripts/inbox_alert_setup.mjs set PUSHOVER_TOKEN_TARO
 ```
 
-- [ ] **Step 3: Gmail の読み取り専用の鍵（Claude が実行 → TARO がブラウザでログイン）**
+- [x] **Step 3: Gmail の読み取り専用の鍵（Claude が実行 → TARO がブラウザでログイン）**
 
 Claude が1本ずつ実行する。ブラウザが開いたら TARO が該当アカウントでログインし、「Googleはこのアプリを確認していません」→「詳細」→「移動」→「許可」。
 
@@ -3144,7 +3144,7 @@ node scripts/inbox_alert_setup.mjs gmail taro --expect <個人Gmailのアドレ�
 ```
 Expected: 各行で「登録しました: …（production）」。「別のアカウント」と出たら登録されていないので、正しいアカウントでやり直す。「読み取り専用以外の権限が含まれています」で止まった場合（boom は同じOAuthクライアントに以前 `gmail.modify` を許可しているので起きうる）は、同じアカウントでやり直しても変わらない。TARO が GCP コンソールのプロジェクト `gmail-mcp-504722` で「APIとサービス」→「認証情報」→「認証情報を作成」→「OAuth クライアント ID」→種類「デスクトップ アプリ」で新しく作り（Claude が画面を案内する）、**作成直後のダイアログで JSON をダウンロード**して `~/.gmail-alert-oauth.keys.json` に置く（シークレットは後から表示できないことがある・Git に入れない）→ `client --keys ~/.gmail-alert-oauth.keys.json` と、3アカウントとも `gmail … --keys ~/.gmail-alert-oauth.keys.json` でやり直す（鍵とクライアントは組で使うので、3アカウントとも新しいクライアントに揃える。各行に出る「client_id 末尾」が `client` の行と同じであることを見比べる）。
 
-- [ ] **Step 4: ドライランの設定と登録内容の確認（Claude）**
+- [x] **Step 4: ドライランの設定と登録内容の確認（Claude）**
 
 ```bash
 printf 1 | npx --yes vercel@53.1.0 env add INBOX_ALERT_DRY_RUN production --force -y
@@ -3153,7 +3153,7 @@ npx --yes vercel@53.1.0 env ls production 2>&1 | grep -E "GMAIL_ALERT|PUSHOVER|I
 ```
 Expected（名前だけ・13行）: `ANTHROPIC_API_KEY` `CRON_SECRET_CF` `GMAIL_ALERT_CLIENT_ID` `GMAIL_ALERT_CLIENT_SECRET` `GMAIL_ALERT_REFRESH_TOKEN_BOOM` `GMAIL_ALERT_REFRESH_TOKEN_NITROASH` `GMAIL_ALERT_REFRESH_TOKEN_TARO` `INBOX_ALERT_BACKFILL_DAYS` `INBOX_ALERT_DRY_RUN` `PUSHOVER_TOKEN_BOOM` `PUSHOVER_TOKEN_NITROASH` `PUSHOVER_TOKEN_TARO` `PUSHOVER_USER_KEY`
 
-- [ ] **Step 5: 本番DBに2テーブルを追加（Claude）**
+- [x] **Step 5: 本番DBに2テーブルを追加（Claude）**
 
 まず接続先が本番（libsql）であることを確かめる（`TURSO_DATABASE_URL` が読めないと `migrate.mjs` は黙ってローカルのファイルDBに適用するため）:
 ```bash
@@ -3172,7 +3172,7 @@ node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local scripts/migrat
 ```
 Expected: `適用: 20260911_inbox_alert.sql (3 statements)` と `apply 完了`
 
-- [ ] **Step 6: アプリを本番に反映（Claude）**
+- [x] **Step 6: アプリを本番に反映（Claude）**
 
 ```bash
 git fetch origin && git rebase origin/main && git log --oneline origin/main..HEAD
@@ -3195,7 +3195,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST https://bw5-app.vercel.app/api/
 ```
 Expected: `401` と `401`（404なら反映待ち）
 
-- [ ] **Step 7: Worker を反映（Claude）**
+- [x] **Step 7: Worker を反映（Claude）**
 
 デプロイ前に `npx wrangler whoami` で 表示されたアカウントが BOOM 側（boom.sendai@gmail.com でログインしたもの）であることを確かめる（NITRO ASH の Cloudflare は別アカウント）。他のセッションが古いチェックアウトから boom-cron を deploy すると受信箱の仕事が消えるので、以後 boom-cron の deploy は origin/main を取り込んでから行う（デプロイ直後に STATE.md に書く。下記）。
 
