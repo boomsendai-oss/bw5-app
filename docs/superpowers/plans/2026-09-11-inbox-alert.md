@@ -3092,7 +3092,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ⚠️ ここからは本番に触る。**TARO の作業**と **Claude の作業**を分けて書く。鍵の値はチャットに出さない。`git add -A` は使わない。
 
-- [ ] **Step 1: 全体の確認（Claude）**
+- [x] **Step 1: 全体の確認（Claude）**
 
 Run:
 ```bash
@@ -3111,7 +3111,7 @@ mkdir -p .vercel && cp ~/BOOM/BW5_2026/bw5-app/.vercel/project.json .vercel/
 ```
 
 
-1. iPhone に Pushover を入れてアカウントを作る（30日無料・その後 $4.99 買い切り）
+1. iPhone に Pushover を入れてアカウントを作る（30日無料・その後 $4.99 買い切り）**→ 2026-09-12 完了（boom.sendai のアドレスで作成・端末名 iphone・無料期間はこの日から30日）**
 2. pushover.net にログインし、ダッシュボードの **User Key** を確認
 3. 「Create an Application/API Token」を3回: 名前 `BOOM` / `NITRO ASH` / `個人`。アイコン（72×72のPNG）は BOOM ならカラーロゴ（`~/BOOM/ロゴ・ブランド素材/公式ロゴ_透過3種/`）を使う
 4. アプリの Terminal パネルで `cd ~/BOOM/BW5_2026/bw5-app-inbox-alert` してから4回実行し、それぞれの値を貼り付ける（画面には出ない）:
@@ -3215,7 +3215,7 @@ git -C ~/BOOM/boom-events-hub pull --rebase
 ```
 次に `~/BOOM/boom-events-hub/STATE.md` の「## 更新ログ」の先頭に1行追加する（`XX`・`YY` は `date` で確かめる）:
 ```
-- 2026-09-XX **boom-cron に受信箱アラートの枠を追加（ドライラン中）**: boom-cron の deploy は必ず origin/main を取り込んでから行う（古いチェックアウトから deploy すると受信箱の5分おき・朝8:00の枠が消える）。Pushover導入日 2026-09-YY（無料30日の起点）。本番開始は後日この欄に記録
+- 2026-09-XX **boom-cron に受信箱アラートの枠を追加（ドライラン中）**: boom-cron の deploy は必ず origin/main を取り込んでから行う（古いチェックアウトから deploy すると受信箱の5分おき・朝8:00の枠が消える）。Pushover導入日 2026-09-12（無料30日の起点）。本番開始は後日この欄に記録
 ```
 ```bash
 git -C ~/BOOM/boom-events-hub add STATE.md
@@ -3318,7 +3318,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 git -C ~/BOOM/boom-events-hub push
 ```
 
-Pushover の30日無料期間が切れると通知も朝のまとめも届かなくなるので、Step 7 で STATE.md に記録した Pushover 導入日＋25日（日付は `date` コマンドで確かめる。すでに過ぎていたら即日 TARO に伝える）に「Pushover の購入（iPhone用 $4.99）」を知らせる一回限りの予定タスクを、TARO に確認してから作る。
+Pushover の30日無料期間が切れると通知も朝のまとめも届かなくなるので、2026-10-07（火・Pushover導入日 2026-09-12 の25日後。`date` で確認済み）に「Pushover の購入（iPhone用 $4.99）」を知らせる一回限りの予定タスクを、TARO に確認してから作る。
 
 - [ ] **Step 13: 1週間後の確認（Claude＋TARO）**
 
