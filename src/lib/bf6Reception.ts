@@ -48,3 +48,13 @@ export function receptionTabs(rows: ReceptionRow[], screenPhase: Bf6DrawPhase): 
     };
   });
 }
+
+/**
+ * 当日渡すリストバンドの呼び方。
+ * 小中・一般は予選ブロックごとに「小中A」「一般B」、ビギナーは「ビギナー」と書かれたものを配る(TARO 2026-09-12)。
+ */
+const BAND: Record<string, string> = { beginner: 'ビギナー', kids: '小中', general: '一般' };
+
+export function wristbandLabel(division: string, block?: 'A' | 'B'): string {
+  return `${BAND[division] ?? division}${block ?? ''}`;
+}

@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation';
 import { receptionCollectCash, receptionDraw } from './actions';
 import type { ReceptionEntrant } from '@/lib/bf6DrawDb';
 import type { Bf6DrawDivision, Bf6DrawPhase } from '@/lib/bf6Draw';
-import { divisionsForPhase, drawFor, entrantsInDivision, receptionTabs } from '@/lib/bf6Reception';
+import { divisionsForPhase, drawFor, entrantsInDivision, receptionTabs, wristbandLabel } from '@/lib/bf6Reception';
 import { matchesAny } from '@/lib/bf6ListUi';
 
 const DIV_LABEL: Record<string, string> = { beginner: 'ビギナー', kids: '小中学生', general: '一般' };
@@ -90,9 +90,17 @@ export function ReceptionClient({
             <p className="text-xl font-bold text-sand-200">番</p>
           </>
         )}
+        {/* 渡すリストバンドをスタッフにも出す(ビギナーは「ビギナー」・TARO 2026-09-12) */}
+        <div className="mt-10 w-full max-w-sm rounded-2xl border border-sand-300/40 bg-white/10 px-5 py-4">
+          <p className="text-sm font-bold text-sand-200">渡すリストバンド</p>
+          <p className="mt-1 text-3xl font-black text-white">
+            {wristbandLabel(drawn.division, drawn.block)}
+          </p>
+        </div>
+
         <button
           onClick={() => { setDrawn(null); setSel(null); setQ(''); router.refresh(); }}
-          className="mt-12 w-full max-w-sm rounded-2xl bg-brand-600 py-5 text-xl font-black text-white"
+          className="mt-8 w-full max-w-sm rounded-2xl bg-brand-600 py-5 text-xl font-black text-white"
         >
           次の人へ
         </button>

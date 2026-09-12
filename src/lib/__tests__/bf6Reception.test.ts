@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { divisionsForPhase, entrantsInDivision, drawFor, drawPhaseFor, receptionTabs, type ReceptionRow } from '../bf6Reception';
+import { divisionsForPhase, entrantsInDivision, drawFor, drawPhaseFor, receptionTabs, wristbandLabel, type ReceptionRow } from '../bf6Reception';
 
 // 受付・くじ引きの画面を部門のタブで切り替える(TARO 2026-09-11)。
 // 全部門が1つの一覧に混ざっていると、名前を押してから部門を選ぶ手間があり、押し間違いも起きる。
@@ -67,5 +67,19 @@ describe('実際に引くくじの種類', () => {
   });
   it('予選後: ベスト8の位置', () => {
     expect(drawPhaseFor('kids', 'bracket')).toBe('bracket');
+  });
+});
+
+describe('渡すリストバンドの呼び方', () => {
+  // 小中・一般は予選ブロックごとに「小中A」「一般B」、ビギナーは「ビギナー」と書かれたものを渡す(TARO 2026-09-12)
+  it('小中・一般はブロックの文字まで入れる', () => {
+    expect(wristbandLabel('kids', 'A')).toBe('小中A');
+    expect(wristbandLabel('general', 'B')).toBe('一般B');
+  });
+  it('ビギナーはブロックが無いので「ビギナー」', () => {
+    expect(wristbandLabel('beginner', undefined)).toBe('ビギナー');
+  });
+  it('ブロックが決まっていない小中は部門名だけ', () => {
+    expect(wristbandLabel('kids', undefined)).toBe('小中');
   });
 });

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { kioskDraw, kioskIsPaid } from './actions';
 import { needsPhotoGuide, nextKioskStep, phaseForDivision, remainingDivisions } from '@/lib/bf6Kiosk';
+import { wristbandLabel } from '@/lib/bf6Reception';
 import KioskBracket from './KioskBracket';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 import type { KioskEntrant } from '@/lib/bf6Kiosk';
@@ -22,8 +23,6 @@ const DIV = [
   { key: 'general', label: '一般部門', note: '年齢制限なし', color: 'from-red-500 to-red-700' },
 ];
 const DIV_LABEL: Record<string, string> = Object.fromEntries(DIV.map((d) => [d.key, d.label]));
-// リストバンドの表記。当日は「小中A」「一般B」と書かれたバンドを配る(TARO 2026-09-09)
-const BAND_LABEL: Record<string, string> = { kids: '小中', general: '一般', beginner: 'ビギナー' };
 
 export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
   const [screen, setScreen] = useState<Screen>('home');
@@ -424,19 +423,18 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
             />
           ) : null}
 
-          {result.block && (
-            <div className="mt-7 w-full max-w-md rounded-2xl border border-orange-500/40 bg-orange-500/5 p-5 text-center">
-              <p className="text-[2.6vh] font-black text-orange-300">
-                「{BAND_LABEL[division]}{result.block}」のリストバンド
-              </p>
-              <p className="mt-2 text-[2vh] leading-relaxed text-white/70">
-                受付で受け取って、腕につけておいてください。
-              </p>
-              {rest.length === 0 && needsPhotoGuide(sel.divisions) && (
-                <p className="mt-3 text-[1.8vh] text-orange-200/80">このあとビギナー部門の写真撮影があります</p>
-              )}
-            </div>
-          )}
+          {/* ビギナーにも「ビギナー」と書かれたリストバンドを渡す(TARO 2026-09-12) */}
+          <div className="mt-7 w-full max-w-md rounded-2xl border border-orange-500/40 bg-orange-500/5 p-5 text-center">
+            <p className="text-[2.6vh] font-black text-orange-300">
+              「{wristbandLabel(division, result.block)}」のリストバンド
+            </p>
+            <p className="mt-2 text-[2vh] leading-relaxed text-white/70">
+              受付で受け取って、腕につけておいてください。
+            </p>
+            {rest.length === 0 && needsPhotoGuide(sel.divisions) && (
+              <p className="mt-3 text-[1.8vh] text-orange-200/80">このあとビギナー部門の写真撮影があります</p>
+            )}
+          </div>
 
           <button
             onClick={() => setScreen('done')}
