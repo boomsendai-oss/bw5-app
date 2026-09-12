@@ -300,8 +300,10 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
       {screen === 'pay' && sel && (
         <Center>
           <p className="text-[2.4vh] font-bold text-white/70">{sel.dancerName} さん</p>
+          {/* 観覧チケットを含む人もいるので「エントリー費」とは言わない。
+              細い画面で途中で折れないよう短くする(実機の見え方・2026-09-11) */}
           <p className="mt-6 text-[3vh] font-black leading-relaxed">
-            お近くのスタッフに声をかけて<br />エントリー費をお支払いください
+            お近くのスタッフに<br />お支払いください
           </p>
           <p className="mt-6 text-[5vh] font-black text-orange-400">¥{sel.amountDue.toLocaleString()}</p>
           {sel.breakdown.length > 0 && (
