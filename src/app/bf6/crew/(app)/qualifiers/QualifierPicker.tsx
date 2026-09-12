@@ -6,6 +6,7 @@ import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { QUALIFIER_COUNT, qualifiersReady, toggleQualifier } from '@/lib/bf6Qualifier';
 import { crewSetQualifier } from './actions';
+import { matchesAny } from '@/lib/bf6ListUi';
 
 export type Candidate = { itemId: number; dancerName: string; block: 'A' | 'B' | null };
 
@@ -22,6 +23,8 @@ export default function QualifierPicker({
 }) {
   const [selected, setSelected] = useState<Set<number>>(new Set(initialSelected));
   const [err, setErr] = useState<string | null>(null);
+  // MCが読み上げた名前をその場で探す。26人を目で追うのは当日きつい(2026-09-11)
+  const [q, setQ] = useState('');
   const [pending, start] = useTransition();
 
   const ready = qualifiersReady(selected.size);
@@ -43,7 +46,8 @@ export default function QualifierPicker({
     });
   };
 
-  const byBlock = (b: 'A' | 'B' | null) => candidates.filter((c) => c.block === b);
+  const shown = candidates.filter((c) => matchesAny([c.dancerName], q));
+  const byBlock = (b: 'A' | 'B' | null) => shown.filter((c) => c.block === b);
 
   return (
     <div className="space-y-4">
@@ -72,6 +76,17 @@ export default function QualifierPicker({
       </div>
 
       {err && <p className="rounded-lg bg-red-600 px-3 py-2 text-sm font-bold text-white">{err}</p>}
+
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="名前で探す"
+        className="w-full rounded-2xl border border-sand-300 bg-white px-4 py-3 text-base text-navy-900 placeholder:text-neutral-500"
+        inputMode="search"
+      />
+      {q.trim() && shown.length === 0 && (
+        <p className="text-center text-sm font-bold text-neutral-600">見つかりません</p>
+      )}
 
       {(['A', 'B', null] as const).map((b) =>
         byBlock(b).length === 0 ? null : (

@@ -4,6 +4,7 @@
 // 係の名前は端末に覚えさせる(毎回打たせない)。
 import { useEffect, useState, useTransition } from 'react';
 import { cashTotals, sortCashOrders, type CashOrder } from '@/lib/bf6Cash';
+import { doneTabCounts, filterDoneTab, matchesAny, type DoneTab } from '@/lib/bf6ListUi';
 import { crewRecordCash, crewUndoCash } from './actions';
 
 const YEN = (n: number) => `¥${n.toLocaleString()}`;
@@ -12,6 +13,8 @@ const NAME_STORE = 'bf6_cash_collector';
 export default function CashList({ orders }: { orders: CashOrder[] }) {
   const [rows, setRows] = useState(orders);
   const [who, setWho] = useState('');
+  const [tab, setTab] = useState<DoneTab>('todo');
+  const [q, setQ] = useState('');
   const [open, setOpen] = useState<CashOrder | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -37,7 +40,11 @@ export default function CashList({ orders }: { orders: CashOrder[] }) {
   };
 
   const t = cashTotals(rows);
-  const sorted = sortCashOrders(rows);
+  const isCollected = (o: CashOrder) => o.collected !== null;
+  const counts = doneTabCounts(rows, isCollected);
+  const sorted = sortCashOrders(
+    filterDoneTab(rows, isCollected, tab).filter((o) => matchesAny([o.buyerName, ...o.people], q))
+  );
 
   const record = (o: CashOrder, amount: number) => {
     setErr(null);
@@ -99,9 +106,41 @@ export default function CashList({ orders }: { orders: CashOrder[] }) {
 
       {err && <p className="rounded-lg bg-red-600 px-3 py-2 text-sm font-bold text-white">{err}</p>}
 
+      {/* 入場受付・写真撮影と同じ形のタブ(TARO 2026-09-11) */}
+      <div className="grid grid-cols-3 gap-2">
+        {([
+          { key: 'todo' as DoneTab, label: '未集金' },
+          { key: 'done' as DoneTab, label: '集金済み' },
+          { key: 'all' as DoneTab, label: '全員' },
+        ]).map((x) => (
+          <button
+            key={x.key}
+            onClick={() => setTab(x.key)}
+            className={`rounded-xl py-3 text-sm font-black leading-tight tabular-nums transition active:scale-95 ${
+              tab === x.key ? 'bg-navy-900 text-white' : 'bg-sand-100 text-navy-800'
+            }`}
+          >
+            {x.label}
+            <span className="block text-base">{counts[x.key]}</span>
+          </button>
+        ))}
+      </div>
+
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="名前で探す(申込者・出場者)"
+        className="w-full rounded-2xl border border-sand-300 bg-white px-4 py-3 text-base text-navy-900 placeholder:text-neutral-500"
+        inputMode="search"
+      />
+
       {sorted.length === 0 && (
-        <p className="rounded-2xl border border-sand-200 bg-white p-6 text-center text-sm text-neutral-500">
-          当日現金の人はいません
+        <p className="rounded-2xl border border-sand-200 bg-white p-6 text-center text-sm text-neutral-600">
+          {rows.length === 0
+            ? '当日現金の人はいません'
+            : tab === 'todo'
+              ? '全員から受け取り済みです'
+              : '該当する人がいません'}
         </p>
       )}
 

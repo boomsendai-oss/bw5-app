@@ -34,6 +34,16 @@ export default async function CrewPhotoPage({
     listBf6Qualifiers(),
   ]);
 
+  // 部門タブに出す「撮影済み / 対象人数」。開く前にどこが残っているか分かるようにする
+  const targetsOf = (d: Div) =>
+    entrants.filter((e) =>
+      d === 'beginner' ? e.divisions.includes('beginner') : (qualifiers[d]?.has(e.itemId) ?? false)
+    );
+  const tabCounts = TABS.map((t) => {
+    const list = targetsOf(t.key);
+    return { key: t.key, label: t.label, total: list.length, done: list.filter((e) => photoIds.has(e.itemId)).length };
+  });
+
   // その部門で「撮るべき人」。小中・一般は予選通過者(くじ引き②を待たずに撮り始められる)
   const target = entrants.filter((e) =>
     division === 'beginner'
@@ -62,18 +72,19 @@ export default async function CrewPhotoPage({
 
   return (
     <div>
-      <CrewHeader title="写真撮影" description="VS画面に出す顔写真" />
+      <CrewHeader title="写真撮影" description="VS画面に出す顔写真。数字は 撮影済み / 撮る人数" />
       <div className="mx-auto max-w-2xl p-4">
         <div className="mb-4 flex gap-2">
-          {TABS.map((t) => (
+          {tabCounts.map((t) => (
             <Link
               key={t.key}
               href={`/bf6/crew/photo?division=${t.key}`}
-              className={`flex-1 rounded-xl py-3 text-center text-sm font-black transition active:scale-95 ${
-                t.key === division ? 'bg-brand-600 text-white' : 'bg-sand-100 text-neutral-600'
+              className={`flex-1 rounded-xl py-3 text-center text-sm font-black leading-tight tabular-nums transition active:scale-95 ${
+                t.key === division ? 'bg-navy-900 text-white' : 'bg-sand-100 text-navy-800'
               }`}
             >
               {t.label}
+              <span className="block text-base">{t.total === 0 ? '—' : `${t.done} / ${t.total}`}</span>
             </Link>
           ))}
         </div>

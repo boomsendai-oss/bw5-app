@@ -190,7 +190,7 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
         setSel({ ...sel, amountDue: 0, paymentStatus: 'paid' });
         setScreen('draw');
       } else {
-        setPayWaitNote('まだ受け取りの記録がありません。集金係のスタッフに声をかけてください');
+        setPayWaitNote('まだ記録されていません。近くのスタッフに声をかけてください');
       }
     } finally {
       setBusy(false);
@@ -282,7 +282,16 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
                 </button>
               );
             })}
-            {list.length === 0 && <p className="py-10 text-center text-white/40">該当なし</p>}
+            {list.length === 0 && (
+              <div className="py-10 text-center">
+                <p className="text-[2.2vh] font-bold text-white/70">この部門にお名前がありません</p>
+                <p className="mt-2 text-[1.8vh] leading-relaxed text-white/50">
+                  部門を選び間違えているかもしれません。左上の「戻る」で選び直してください。
+                  <br />
+                  それでも見つからないときはスタッフにお声がけください。
+                </p>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -313,11 +322,11 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
             </ul>
           )}
           <p className="mt-8 text-[2vh] font-bold text-white/70">
-            集金係が受け取りを記録すると、自動で次に進みます
+            スタッフが受け取りを記録すると、自動で次に進みます
           </p>
           <div className="mt-4 flex items-center gap-3 text-[1.8vh] text-white/50">
             <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-orange-400" />
-            受け取りを待っています
+            スタッフの記録を待っています
           </div>
           {payWaitNote && <p className="mt-4 text-[1.8vh] font-bold text-orange-300">{payWaitNote}</p>}
           <button
@@ -325,7 +334,7 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
             onClick={checkPaidNow}
             className="mt-6 w-full max-w-md rounded-2xl border border-white/20 py-4 text-[2vh] font-bold text-white/80 disabled:opacity-50"
           >
-            {busy ? '…' : '進まないときはこちら'}
+            {busy ? '確認中…' : '支払い済みか確認する'}
           </button>
           <button onClick={() => setScreen('name')} className="mt-3 text-[1.8vh] text-white/40 underline">
             戻る

@@ -15,6 +15,7 @@ import { receptionCollectCash, receptionDraw } from './actions';
 import type { ReceptionEntrant } from '@/lib/bf6DrawDb';
 import type { Bf6DrawDivision, Bf6DrawPhase } from '@/lib/bf6Draw';
 import { divisionsForPhase, drawFor, entrantsInDivision, receptionTabs } from '@/lib/bf6Reception';
+import { matchesAny } from '@/lib/bf6ListUi';
 
 const DIV_LABEL: Record<string, string> = { beginner: 'ビギナー', kids: '小中学生', general: '一般' };
 const yen = (n: number) => `¥${n.toLocaleString()}`;
@@ -55,13 +56,11 @@ export function ReceptionClient({
 
   const tabs = receptionTabs(entrants, phase);
   const inDivision = useMemo(() => entrantsInDivision(entrants, division), [entrants, division]);
-  const list = useMemo(() => {
-    const k = q.trim().toLowerCase();
-    if (!k) return inDivision;
-    return inDivision.filter(
-      (e) => e.dancerName.toLowerCase().includes(k) || e.performerName.toLowerCase().includes(k)
-    );
-  }, [inDivision, q]);
+  // カタカナ・ひらがな・全角のどれで打っても当たるようにする(当日は急いで打つ)
+  const list = useMemo(
+    () => inDivision.filter((e) => matchesAny([e.dancerName, e.performerName], q)),
+    [inDivision, q]
+  );
 
   function draw(e: ReceptionEntrant) {
     setErr(null);
@@ -161,7 +160,7 @@ export function ReceptionClient({
           >
             {t.label}
             <span className="block text-base">
-              {t.drawn} / {t.total}
+              くじ {t.drawn}/{t.total}
             </span>
           </button>
         ))}
@@ -171,7 +170,7 @@ export function ReceptionClient({
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder={`${DIV_LABEL[division]}部門の中で探す(ダンサーネーム / 本名)`}
+          placeholder="名前で探す(ダンサーネーム・本名)"
           className="h-14 flex-1 rounded-2xl border border-sand-300 bg-white px-4 text-lg text-navy-900 placeholder:text-neutral-500"
         />
       </div>
@@ -201,9 +200,9 @@ export function ReceptionClient({
                   {d ? (
                     <span className="text-brand-700">{d.block ?? `${d.slotNo}番`}</span>
                   ) : e.checkedIn ? (
-                    <span className="text-neutral-600">受付済</span>
+                    <span className="text-neutral-600">受付済・くじまだ</span>
                   ) : (
-                    <span className="text-neutral-500">未</span>
+                    <span className="text-neutral-600">未受付</span>
                   )}
                 </span>
               </button>

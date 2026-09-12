@@ -5,6 +5,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import PhotoCapture from '@/app/staff/bf6/reception/PhotoCapture';
+import { doneTabCounts, filterDoneTab, matchesAny, type DoneTab } from '@/lib/bf6ListUi';
 
 const DIV_LABEL: Record<string, string> = { beginner: 'ビギナー', kids: '小中学生', general: '一般' };
 
@@ -20,16 +21,15 @@ export type PhotoRow = {
 export default function PhotoList({ rows, division }: { rows: PhotoRow[]; division: string }) {
   const router = useRouter();
   const [q, setQ] = useState('');
-  const [onlyTodo, setOnlyTodo] = useState(true);
+  const [tab, setTab] = useState<DoneTab>('todo');
 
-  const list = useMemo(() => {
-    const k = q.trim().toLowerCase();
-    return rows
-      .filter((r) => (onlyTodo ? !r.hasPhoto : true))
-      .filter((r) => (k ? r.dancerName.toLowerCase().includes(k) : true));
-  }, [rows, q, onlyTodo]);
-
-  const done = rows.filter((r) => r.hasPhoto).length;
+  const hasPhoto = (r: PhotoRow) => r.hasPhoto;
+  const counts = doneTabCounts(rows, hasPhoto);
+  const list = useMemo(
+    () => filterDoneTab(rows, hasPhoto, tab).filter((r) => matchesAny([r.dancerName], q)),
+    [rows, q, tab]
+  );
+  const done = counts.done;
 
   return (
     <div className="space-y-3">
@@ -45,30 +45,28 @@ export default function PhotoList({ rows, division }: { rows: PhotoRow[]; divisi
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="ダンサーネームで検索"
+        placeholder="名前で探す"
         className="w-full rounded-xl border border-sand-300 bg-white px-4 py-3 text-base text-navy-900 outline-none placeholder:text-neutral-500 focus:border-brand-500"
       />
 
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-bold text-neutral-500">表示</span>
-        <div className="flex flex-1 overflow-hidden rounded-xl border border-sand-300 bg-white">
-          {(
-            [
-              { key: true, label: `まだの人 (${rows.length - done})` },
-              { key: false, label: `全員 (${rows.length})` },
-            ] as const
-          ).map((o) => (
-            <button
-              key={String(o.key)}
-              onClick={() => setOnlyTodo(o.key)}
-              className={`flex-1 py-2.5 text-sm font-black transition active:scale-95 ${
-                onlyTodo === o.key ? 'bg-brand-600 text-white' : 'text-neutral-600'
-              }`}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
+      {/* 入場受付と同じ形のタブ。画面ごとに表現が違うと現場で迷う(TARO 2026-09-11) */}
+      <div className="grid grid-cols-3 gap-2">
+        {([
+          { key: 'todo' as DoneTab, label: '未撮影' },
+          { key: 'done' as DoneTab, label: '撮影済み' },
+          { key: 'all' as DoneTab, label: '全員' },
+        ]).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`rounded-xl py-3 text-sm font-black leading-tight tabular-nums transition active:scale-95 ${
+              tab === t.key ? 'bg-navy-900 text-white' : 'bg-sand-100 text-navy-800'
+            }`}
+          >
+            {t.label}
+            <span className="block text-base">{counts[t.key]}</span>
+          </button>
+        ))}
       </div>
 
       <ul className="space-y-2">
@@ -95,7 +93,7 @@ export default function PhotoList({ rows, division }: { rows: PhotoRow[]; divisi
         ))}
         {list.length === 0 && (
           <li className="rounded-xl bg-sand-100 p-4 text-center text-sm font-bold text-neutral-500">
-            該当する人がいません
+            {tab === 'todo' ? '全員ぶん撮り終わっています' : '該当する人がいません'}
           </li>
         )}
       </ul>
