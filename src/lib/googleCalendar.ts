@@ -349,3 +349,66 @@ export async function syncLessons(months = 3, startYm?: string): Promise<LessonS
   const embedUrl = `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(calendarId)}&ctz=Asia%2FTokyo`;
   return { calendarId, created, updated, kept, deleted, total: lessons.length, embedUrl };
 }
+
+export type PrimaryCalendarEvent = {
+  /** JSTの日付 YYYY-MM-DD */
+  date: string;
+  /** JSTの開始時刻 HH:mm (終日予定は null) */
+  from: string | null;
+  /** JSTの終了時刻 HH:mm (終日予定は null) */
+  to: string | null;
+  title: string;
+  location: string | null;
+};
+
+/** Google の dateTime を JST の日付・時刻文字列に割る */
+function toJst(iso: string): { date: string; time: string } {
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date(iso));
+  const [date, time] = parts.split(' ');
+  return { date, time: time.slice(0, 5) };
+}
+
+/**
+ * boom.sendai のプライマリカレンダー(人が編集するレッスン予定の正本)を読む。読み取り専用。
+ *
+ * singleEvents: true で Google 側に繰り返しを展開させている。これが重要で、
+ * 「毎週土曜ガールズ入門」というルールと「10/3だけWAACK入門」という例外を
+ * 突き合わせた結果を Google が返してくれる。自前で展開すると、まさに
+ * 週替わりの書き換えを取り違えて誤ったクラスで体験を受け付ける事故になる。
+ */
+export async function listPrimaryLessonEvents(
+  timeMinIso: string,
+  timeMaxIso: string,
+): Promise<{ calendarId: string; events: PrimaryCalendarEvent[] }> {
+  const cal = await getCalendarClient();
+  const events: PrimaryCalendarEvent[] = [];
+  let pageToken: string | undefined;
+  do {
+    const res = await cal.events.list({
+      calendarId: 'primary',
+      timeMin: timeMinIso,
+      timeMax: timeMaxIso,
+      singleEvents: true,
+      orderBy: 'startTime',
+      maxResults: 2500,
+      pageToken,
+    });
+    for (const ev of res.data.items ?? []) {
+      if (ev.status === 'cancelled') continue;
+      if (!ev.summary) continue;
+      if (ev.start?.dateTime) {
+        const s = toJst(ev.start.dateTime);
+        const e = ev.end?.dateTime ? toJst(ev.end.dateTime) : null;
+        events.push({ date: s.date, from: s.time, to: e?.time ?? null, title: ev.summary, location: ev.location ?? null });
+      } else if (ev.start?.date) {
+        events.push({ date: ev.start.date, from: null, to: null, title: ev.summary, location: ev.location ?? null });
+      }
+    }
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return { calendarId: 'primary', events };
+}
