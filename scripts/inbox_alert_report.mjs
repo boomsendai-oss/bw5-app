@@ -4,8 +4,9 @@
 // 書き出したファイルは Git に入れない・見終わったら消す(リポジトリの中には書けないようにしてある)。
 //
 // 使い方(本番DBの接続情報は bw5-app 本体の .env.production.local を絶対パスで読む):
-//   node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local scripts/inbox_alert_report.mjs [--out <パス>]
+//   node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local scripts/inbox_alert_report.mjs [--out <パス>] [--concurrency <1〜16>]
 //       既定の書き出し先は ~/Desktop/受信箱アラート_判定結果_<YYYY-MM-DD>.md
+//       件名の取り直しはGmailの回数制限(403)に当たるので、同時4件・403/429は間隔を空けて最大4回まで取り直す
 //   node scripts/inbox_alert_report.mjs --login-taro --expect <個人のメールアドレス>
 //       個人アカウントの件名を取れるようにする(読み取り専用でログインし、鍵を ~/.gmail-alert-local/taro.json に0600で保存する)
 import { createClient } from '@libsql/client';
@@ -33,7 +34,8 @@ import {
 } from './lib/inbox_alert_view.mjs';
 
 const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const FETCH_CONCURRENCY = 8;
+/** Gmailの回数制限(403)に当たりにくい既定。--concurrency で1〜16に変えられる */
+const FETCH_CONCURRENCY = 4;
 const SUBJECT_MAX = 80;
 const DOMAIN_ROWS = 40;
 /** 「費用を下げる候補」に出す最低件数(たまたま1〜2通読んだだけの差出人は出さない) */
@@ -42,10 +44,11 @@ const COST_MIN = 5;
 function usage() {
   console.error([
     '使い方:',
-    '  node --env-file=<bw5-app の .env.production.local> scripts/inbox_alert_report.mjs [--out <パス>]',
+    '  node --env-file=<bw5-app の .env.production.local> scripts/inbox_alert_report.mjs [--out <パス>] [--concurrency <1〜16>]',
     '  node scripts/inbox_alert_report.mjs --login-taro --expect <個人のメールアドレス>',
     '',
     '  --out: 書き出し先(既定 ~/Desktop/受信箱アラート_判定結果_<日付>.md)。リポジトリの中には書けません',
+    `  --concurrency: 件名を同時に取る数(既定 ${FETCH_CONCURRENCY})。増やすとGmailの回数制限(403)に当たりやすくなります`,
   ].join('\n'));
   process.exit(2);
 }
@@ -80,6 +83,9 @@ const cell = (s) => clip(oneLine(s)).replace(/\|/g, '\\|');
 const args = process.argv.slice(2);
 const outOption = takeOption(args, '--out');
 const expect = takeOption(args, '--expect');
+const concurrencyOption = takeOption(args, '--concurrency');
+const concurrency = concurrencyOption === undefined ? FETCH_CONCURRENCY : Number(concurrencyOption);
+if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16) usage();
 const loginTaro = args.includes('--login-taro');
 if (loginTaro) args.splice(args.indexOf('--login-taro'), 1);
 if (args.length > 0) usage();
@@ -119,9 +125,20 @@ if (rows.length === 0) {
 const tokens = {};
 for (const account of ACCOUNTS) tokens[account] = await localToken(account);
 
-process.stderr.write(`件名を取り直します: ${rows.length}件\n`);
+/** アクセストークンの期限切れ(401)で取り直す。同じアカウントで一斉に取り直さないよう1本にまとめる */
+const refreshing = {};
+function refreshAccountToken(account) {
+  refreshing[account] ??= localToken(account).then((next) => {
+    if (next.token) tokens[account] = next;
+    delete refreshing[account];
+    return next.token ?? null;
+  });
+  return refreshing[account];
+}
+
+process.stderr.write(`件名を取り直します: ${rows.length}件（同時${concurrency}件）\n`);
 let done = 0;
-const enriched = await mapLimit(rows, FETCH_CONCURRENCY, async (row) => {
+const enriched = await mapLimit(rows, concurrency, async (row) => {
   const auth = tokens[row.account] ?? { token: null, reason: '(取得失敗: 不明なアカウント)' };
   const base = {
     account: String(row.account),
@@ -135,11 +152,15 @@ const enriched = await mapLimit(rows, FETCH_CONCURRENCY, async (row) => {
     subject: null,
     from: '',
     failReason: null,
+    failKind: null,
   };
   try {
-    if (!auth.token) return { ...base, failReason: auth.reason };
-    const got = await fetchSubjectFrom(auth.token, row.message_id);
-    return got.ok ? { ...base, subject: got.subject, from: got.from } : { ...base, failReason: got.reason };
+    if (!auth.token) return { ...base, failReason: auth.reason, failKind: '鍵なし' };
+    const got = await fetchSubjectFrom(auth.token, row.message_id, {
+      onUnauthorized: () => refreshAccountToken(row.account),
+    });
+    if (got.ok) return { ...base, subject: got.subject, from: got.from };
+    return { ...base, failReason: got.reason, failKind: got.status > 0 ? String(got.status) : '通信エラー' };
   } finally {
     done += 1;
     if (done % 100 === 0) process.stderr.write(`  ${done}/${rows.length}件\n`);
@@ -295,4 +316,10 @@ console.log(`書き出しました: ${outPath}（${statSync(outPath).size.toLoca
 console.log(`  ドライランの行: ${rows.length}件（件名が取れた ${known.length} / 取れなかった ${unknown.length}）`);
 console.log(`  すぐ鳴らす(now): ${nowRows.length} / 朝のまとめ(digest): ${digestRows.length} / 件数だけ(count): ${countRows.length}`);
 console.log(`  差出人ドメイン: ${domains.length} / 見逃し候補: ${missRows.length}件 / 費用を下げる候補: ${costDomains.length}ドメイン`);
+if (unknown.length > 0) {
+  const kinds = new Map();
+  for (const r of unknown) kinds.set(r.failKind ?? '不明', (kinds.get(r.failKind ?? '不明') ?? 0) + 1);
+  const summary = [...kinds.entries()].sort((a, b) => b[1] - a[1]).map(([kind, n]) => `${kind} x${n}`).join(' / ');
+  console.log(`  取得できなかった: ${summary}`);
+}
 console.log('  ※ 件名と差出人が入っています。Gitに入れず、見終わったら削除してください');

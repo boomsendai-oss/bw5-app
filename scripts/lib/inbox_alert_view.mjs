@@ -80,22 +80,70 @@ export async function localToken(account) {
   }
 }
 
-/** 1通の件名と差出人をGmailから取り直す。取れない時は理由を返し、呼び出し側は次の行に進む */
-export async function fetchSubjectFrom(token, messageId) {
-  let r;
-  try {
-    r = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
-      { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) },
-    );
-  } catch (e) {
-    // 1件の通信エラーで全体を止めない
-    return { ok: false, reason: `(取得失敗: 通信エラー ${e.message})` };
+/** Gmailの回数制限(短時間に投げすぎ)。権限の問題ではないので、間隔を空けて取り直す */
+const RETRY_STATUS = new Set([403, 429]);
+const MAX_RETRIES = 4;
+const BASE_BACKOFF_MS = 1_000;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** 1秒・2秒・4秒・8秒(それぞれ±25%。同時に投げた分が同じ時刻に戻ってこないよう散らす) */
+function backoffMs(attempt) {
+  return Math.round(BASE_BACKOFF_MS * 2 ** attempt * (0.75 + Math.random() * 0.5));
+}
+
+/** Retry-After があればそれに従う(秒数でも日時でも) */
+function retryAfterMs(res) {
+  const raw = res.headers.get('retry-after');
+  if (!raw) return null;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1_000);
+  const at = Date.parse(raw);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : null;
+}
+
+/**
+ * 1通の件名と差出人をGmailから取り直す。取れない時は理由とHTTPの番号を返し、呼び出し側は次の行に進む。
+ * 403・429(回数制限)は間隔を空けて最大4回まで取り直す。401(アクセストークンの期限切れ)は
+ * onUnauthorized が新しいトークンを返せば1度だけ取り直す。404(消えたメール)はそのまま返す
+ */
+export async function fetchSubjectFrom(token, messageId, opts = {}) {
+  const { retries = MAX_RETRIES, onUnauthorized = null } = opts;
+  let accessToken = token;
+  let refreshed = false;
+  let attempt = 0;
+  for (;;) {
+    let r;
+    try {
+      r = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
+        { headers: { authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(15_000) },
+      );
+    } catch (e) {
+      // 1件の通信エラーで全体を止めない
+      return { ok: false, status: 0, reason: `(取得失敗: 通信エラー ${e.message})` };
+    }
+    if (r.ok) {
+      const m = await r.json().catch(() => ({}));
+      const h = Object.fromEntries((m.payload?.headers ?? []).map((x) => [x.name.toLowerCase(), x.value]));
+      return { ok: true, status: 200, subject: h.subject ?? '(件名なし)', from: h.from ?? '' };
+    }
+    if (r.status === 401 && !refreshed && onUnauthorized) {
+      // 長い一覧の途中でアクセストークンの期限が切れた。取り直して同じ行をもう一度(回数には数えない)
+      refreshed = true;
+      const next = await onUnauthorized();
+      if (next) {
+        accessToken = next;
+        continue;
+      }
+    }
+    if (RETRY_STATUS.has(r.status) && attempt < retries) {
+      await sleep(retryAfterMs(r) ?? backoffMs(attempt));
+      attempt += 1;
+      continue;
+    }
+    return { ok: false, status: r.status, reason: `(取得失敗 ${r.status})` };
   }
-  if (!r.ok) return { ok: false, reason: `(取得失敗 ${r.status})` };
-  const m = await r.json().catch(() => ({}));
-  const h = Object.fromEntries((m.payload?.headers ?? []).map((x) => [x.name.toLowerCase(), x.value]));
-  return { ok: true, subject: h.subject ?? '(件名なし)', from: h.from ?? '' };
 }
 
 /**
