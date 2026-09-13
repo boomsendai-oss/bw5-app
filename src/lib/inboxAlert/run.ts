@@ -16,9 +16,10 @@ import {
   type GmailMessage,
   type MessageRef,
 } from './gmail';
-import { decideReadMode } from './prefilter';
+import { decideReadMode, senderDomain } from './prefilter';
 import { buildNowMessage, gmailLink, PushoverError, type PushoverMessage } from './pushover';
-import type { AlertState, AlertStore } from './store';
+import { ruleClassify } from './rules';
+import type { AlertState, AlertStore, NewItem } from './store';
 
 export type GmailPort = {
   accessToken(refreshToken: string): Promise<string>;
@@ -269,6 +270,60 @@ async function processMessage(
   }
 
   const mode = decideReadMode({ labelIds, headers });
+  const subject = headers['subject'] ?? '';
+  const from = headers['from'] ?? '';
+
+  /** 判定が決まった後の共通処理。now なら通知し、結果を記録する(決め打ちルールでもAI判定でも同じ道を通る) */
+  const finish = async (result: ClassifyResult, readMode: NewItem['readMode']): Promise<'done'> => {
+    summary.inputTokens += result.inputTokens;
+    summary.outputTokens += result.outputTokens;
+    if (result.aiFailed) summary.aiFailed++;
+
+    let notified = false;
+    if (result.tier === 'now' && !deps.dryRun) {
+      const outcome = await deliver(
+        buildNowMessage({
+          subject,
+          from,
+          summary: result.summary,
+          kind: result.kind,
+          aiFailed: result.aiFailed,
+          link: gmailLink(email, ref.threadId),
+          receivedMs: common.receivedMs,
+        }),
+      );
+      // どの鍵でも送れなかった通知は notified_at を空で残し、次回に再送する
+      if (outcome !== 'failed') {
+        notified = true;
+        summary.notified++;
+      }
+    }
+
+    await deps.store.insertItem(
+      {
+        ...common,
+        readMode,
+        tier: result.tier,
+        kind: result.kind,
+        aiFailed: result.aiFailed,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        notified,
+      },
+      isoNow(deps),
+    );
+    summary.processed++;
+    return 'done';
+  };
+
+  // 決め打ちルール(体験予約・契約・引き落とし失敗など)に当たるメールは、本文もAIも使わずに決める。
+  // AIに読ませない一覧のドメインより先に見る(銀行の「引き落とし不能」はここで鳴らす)
+  const ruled = ruleClassify(senderDomain(from), subject);
+  if (ruled) {
+    if (deps.nowMs() > deps.deadlineMs) return 'deferred';
+    return finish({ tier: ruled.tier, kind: ruled.kind, summary: '', aiFailed: false, inputTokens: 0, outputTokens: 0 }, 'rule');
+  }
+
   if (mode === 'count_only') {
     await deps.store.insertItem({ ...common, readMode: mode, tier: 'count', kind: 'other' }, isoNow(deps));
     summary.processed++;
@@ -279,51 +334,11 @@ async function processMessage(
   if (deps.nowMs() > deps.deadlineMs) return 'deferred';
 
   const full = await deps.gmail.full(token, ref.id);
-  const subject = headers['subject'] ?? '';
-  const from = headers['from'] ?? '';
   const result = await deps.classify(
     { accountLabel: account.label, from, subject, receivedIso: new Date(common.receivedMs).toISOString(), body: extractBodyText(full) },
     mode,
   );
-  summary.inputTokens += result.inputTokens;
-  summary.outputTokens += result.outputTokens;
-  if (result.aiFailed) summary.aiFailed++;
-
-  let notified = false;
-  if (result.tier === 'now' && !deps.dryRun) {
-    const outcome = await deliver(
-      buildNowMessage({
-        subject,
-        from,
-        summary: result.summary,
-        kind: result.kind,
-        aiFailed: result.aiFailed,
-        link: gmailLink(email, ref.threadId),
-        receivedMs: common.receivedMs,
-      }),
-    );
-    // どの鍵でも送れなかった通知は notified_at を空で残し、次回に再送する
-    if (outcome !== 'failed') {
-      notified = true;
-      summary.notified++;
-    }
-  }
-
-  await deps.store.insertItem(
-    {
-      ...common,
-      readMode: mode,
-      tier: result.tier,
-      kind: result.kind,
-      aiFailed: result.aiFailed,
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
-      notified,
-    },
-    isoNow(deps),
-  );
-  summary.processed++;
-  return 'done';
+  return finish(result, mode);
 }
 
 async function resendUnnotified(

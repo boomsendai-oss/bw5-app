@@ -19,8 +19,8 @@ export type NewItem = {
   messageId: string;
   threadId: string;
   receivedMs: number;
-  /** baseline = 初回に「既読扱い」で記録しただけのメール */
-  readMode: ReadMode | 'baseline';
+  /** baseline = 初回に「既読扱い」で記録しただけのメール / rule = 決め打ちルールで決めたメール(AIを呼んでいない) */
+  readMode: ReadMode | 'baseline' | 'rule';
   tier: Tier;
   kind: Kind;
   aiFailed: boolean;

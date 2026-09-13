@@ -180,6 +180,42 @@ describe('runAccount', () => {
     expect(items.get('old')!.readMode).toBe('baseline');
   });
 
+  it('決め打ちルールに当たるメールは、AIも本文も使わずに鳴らす', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const base = fakeGmail([
+      msg('lstep', { subject: '【BOOM】体験レッスン・見学が入りました', headers: { From: 'Lステップ <noreply@service.linestep.net>' } }),
+    ]);
+    const fullCalls: string[] = [];
+    const gmail: GmailPort = {
+      ...base.gmail,
+      full: async (_t, id) => {
+        fullCalls.push(id);
+        throw new Error('決め打ちルールの時は本文を取らない');
+      },
+    };
+    const { deps, pushed, classified } = makeDeps({ gmail, store });
+    const r = await runAccount(account, deps);
+    expect(classified).toEqual([]);
+    expect(fullCalls).toEqual([]);
+    expect(pushed.map((m) => m.title)).toEqual(['【新規の問い合わせ】【BOOM】体験レッスン・見学が入りました']);
+    expect(r).toMatchObject({ processed: 1, notified: 1, inputTokens: 0, outputTokens: 0, complete: true });
+    expect(items.get('lstep')).toMatchObject({ readMode: 'rule', tier: 'now', kind: 'new_inquiry', inputTokens: 0 });
+    expect(items.get('lstep')!.notifiedAt).not.toBeNull();
+  });
+
+  it('AIに読ませないドメインは件数だけ記録し、引き落とし失敗だけは鳴らす', async () => {
+    const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
+    const bank = (id: string, subject: string) => msg(id, { subject, headers: { From: '住信SBI <info@netbk.co.jp>' } });
+    const { gmail } = fakeGmail([bank('debit', 'デビットカードご利用のお知らせ'), bank('ng', '口座振替不成立のお知らせ')]);
+    const { deps, pushed, classified } = makeDeps({ gmail, store });
+    const r = await runAccount(account, deps);
+    expect(classified).toEqual([]);
+    expect(pushed.map((m) => m.title)).toEqual(['【期限あり】口座振替不成立のお知らせ']);
+    expect(r).toMatchObject({ processed: 2, notified: 1, inputTokens: 0 });
+    expect(items.get('debit')).toMatchObject({ readMode: 'count_only', tier: 'count' });
+    expect(items.get('ng')).toMatchObject({ readMode: 'rule', tier: 'now', kind: 'money_deadline' });
+  });
+
   it('朝のまとめ行きの判定は鳴らさない', async () => {
     const { store, items } = memoryStore({ lastCheckedMs: NOW - 300_000 });
     const { gmail } = fakeGmail([msg('notice')]);

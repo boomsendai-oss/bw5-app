@@ -42,16 +42,27 @@ describe('decideReadMode', () => {
     expect(decideReadMode(meta(['INBOX'], { from: 'a@gmail.com', 'auto-submitted': 'no (manual)' }))).toBe('ai_full');
     expect(decideReadMode(meta(['INBOX'], { from: 'a@gmail.com', 'auto-submitted': '' }))).toBe('ai_full');
   });
-  it('noreply系の差出人・登録済みの自動送信元(サブドメイン含む)は軽く読む', () => {
-    expect(decideReadMode(meta(['INBOX'], { from: 'hacomono <no-reply@em.hacomono.jp>' }))).toBe('ai_light');
+  it('noreply系の差出人・登録済みの自動送信元は軽く読む', () => {
     expect(decideReadMode(meta(['INBOX'], { from: 'no_reply@x.jp' }))).toBe('ai_light');
     expect(decideReadMode(meta(['INBOX'], { from: 'do.not.reply@x.jp' }))).toBe('ai_light');
     expect(decideReadMode(meta(['INBOX'], { from: 'notifications@github.com' }))).toBe('ai_light');
-    expect(decideReadMode(meta(['INBOX'], { from: 'info@bank.gmo-aozora.com' }))).toBe('ai_light');
-    expect(decideReadMode(meta(['INBOX'], { from: 'order@shipping.amazon.co.jp' }))).toBe('ai_light');
   });
   it('似たドメインは登録済みの自動送信元として扱わない', () => {
     expect(decideReadMode(meta(['INBOX'], { from: 'order@notamazon.co.jp' }))).toBe('ai_full');
+  });
+  it('AIに読ませない一覧のドメイン(サブドメイン含む)は件数だけ', () => {
+    expect(decideReadMode(meta(['INBOX'], { from: 'info@bank.gmo-aozora.com' }))).toBe('count_only');
+    expect(decideReadMode(meta(['INBOX'], { from: 'order@shipping.amazon.co.jp' }))).toBe('count_only');
+    expect(decideReadMode(meta(['INBOX'], { from: 'hacomono <no-reply@em.hacomono.jp>' }))).toBe('count_only');
+    expect(decideReadMode(meta(['INBOX'], { from: '"三井住友" <info@netbk.co.jp>' }))).toBe('count_only');
+    // 似ているだけのドメインは読む
+    expect(decideReadMode(meta(['INBOX'], { from: 'info@templatebank.com' }))).toBe('ai_full');
+  });
+  it('必ず全文を読むドメインは、宣伝分類や一斉配信の印があっても全文を読む', () => {
+    expect(decideReadMode(meta(['CATEGORY_PROMOTIONS'], { from: 'no-reply@libecity.com', 'list-unsubscribe': '<x>' }))).toBe('ai_full');
+    expect(decideReadMode(meta(['INBOX'], { from: 'no-reply@form.run', precedence: 'bulk' }))).toBe('ai_full');
+    expect(decideReadMode(meta(['INBOX'], { from: 'info@siip.city.sendai.jp', 'list-unsubscribe': '<x>' }))).toBe('ai_full');
+    expect(decideReadMode(meta(['CATEGORY_PROMOTIONS'], { from: 'no-reply@hacomono.co.jp', 'list-unsubscribe': '<x>' }))).toBe('ai_full');
   });
   it('info@ は人が書くことがあるので全文を読む', () => {
     expect(decideReadMode(meta(['INBOX'], { from: 'UP-T <info@up-t.jp>' }))).toBe('ai_full');

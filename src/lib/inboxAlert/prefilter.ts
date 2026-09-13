@@ -3,6 +3,8 @@
 // 印の無い宣伝分類は、人のメールをGmailが誤分類した可能性があるので読む(見逃すより読みすぎる方をとる)。
 // 自動送信はルールで捨てず、AIに冒頭だけ読ませる
 // (hacomonoの「公式LINEよりメッセージ送付をお願いします」やStripe決済など、気づくべきものが混ざるため)。
+import { isAlwaysFullDomain, isDropDomain } from './rules';
+
 export type ReadMode = 'count_only' | 'ai_light' | 'ai_full';
 
 export type MessageMeta = {
@@ -38,6 +40,11 @@ function isKnownAutomatedDomain(domain: string): boolean {
 export function decideReadMode(meta: MessageMeta): ReadMode {
   const h = meta.headers;
   const from = h['from'] ?? '';
+  const domain = senderDomain(from);
+  // 決め打ちルール(rules.ts)を先に見る。本物の仕事が混ざるドメインは全文を読み、
+  // 取引通知しか来ないドメインはAIに読ませない(件名の合図で鳴らす分は run.ts が先に拾う)
+  if (isAlwaysFullDomain(domain)) return 'ai_full';
+  if (isDropDomain(domain)) return 'count_only';
   const precedence = (h['precedence'] ?? '').trim().toLowerCase();
   const autoSubmitted = (h['auto-submitted'] ?? '').trim().toLowerCase() || 'no';
   const localPart = senderAddress(from).split('@')[0] ?? '';
