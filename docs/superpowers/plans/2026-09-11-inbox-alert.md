@@ -3225,7 +3225,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 git -C ~/BOOM/boom-events-hub push
 ```
 
-- [ ] **Step 8: 過去30日の判定が進むのを見守る（Claude）**
+- [x] **Step 8: 過去30日の判定が進むのを見守る（Claude）**
 
 10分後と、その後1時間おきに実行:
 ```bash
@@ -3233,7 +3233,7 @@ node --env-file=$HOME/BOOM/BW5_2026/bw5-app/.env.production.local scripts/inbox_
 ```
 Expected: 「■ 進み具合」で各アカウントが「判定中」→「完了」になり、件数が増えていく。「AI判定できず」がほぼ0で、トークン数が0より大きいこと（判定の呼び出しが本番APIで弾かれていないか）も見る。1回の実行で使える時間は3アカウント合計20秒なので、過去30日の判定は半日前後かかる見込み。「連続エラー」が増えていたら `npx wrangler tail boom-cron --format pretty` で `[inbox-alert]` の行を見て原因を調べる。**ドライラン中は通知が来ないので、TAROは普段どおりGmailも見る。**
 
-- [ ] **Step 9: 結果を TARO と確認し、判定基準を直す（Claude＋TARO）**
+- [x] **Step 9: 結果を TARO と確認し、判定基準を直す（Claude＋TARO）**
 
 全アカウントが「完了」になったら、**TARO 自身が macOS の「ターミナル」アプリで**（Claude のアプリの Terminal パネルは Claude が読めるので使わない。Claude はこの出力を読まない）次を実行して3つの一覧（すぐ鳴らす／朝のまとめ／見逃し候補）と AI費用を見る（件名・差出人が Claude の会話ログに残らないように）。Claude には件数・AI費用の行と、直したい点（「この差出人は鳴らさなくていい」等）だけを伝えてもらう。**出力をファイルに保存しない。**なお「件数だけ」（宣伝分類かつ一斉配信の印あり）はAIが読まないので一覧に件名が出ない。フォームサービス経由の問い合わせが宣伝に入っていないかは、TARO が Gmail の「プロモーション」タブを一度見て確かめる。
 
@@ -3253,7 +3253,7 @@ await db.execute('DELETE FROM inbox_alert_state');
 console.log('reset done');"
 ```
 
-- [ ] **Step 10: 通知を開始する（Claude・TARO の「始めて」の後）**
+- [x] **Step 10: 通知を開始する（Claude・TARO の「始めて」の後）**
 
 ドライランの行は本番の処理から除外される（`dry_run = 0` で絞っている）うえ「処理済み」として重複を防ぐので、**DBは消さずに**フラグを外して反映し直すだけでよい:
 
@@ -3270,7 +3270,7 @@ git fetch origin && git rebase origin/main && git push origin HEAD:main
 
 **ドライラン期間中に届いたメールは、通知も朝のまとめにも出ない**（ドライランで処理済みの扱いになるため）。通知開始のタイミングで TARO が3つの受信トレイを一度見て、返信が要るものを片付ける。
 
-- [ ] **Step 11: 実機テスト（TARO＋Claude）**
+- [x] **Step 11: 実機テスト（TARO＋Claude）**
 
 1. TARO が別のアドレスから boom.sendai@gmail.com へ、件名「テスト：体験レッスンについて相談したいです」のメールを送る
 2. 10分以内に iPhone の Pushover に「BOOM」アイコンで【新規の問い合わせ】が届くこと
