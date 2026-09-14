@@ -6,7 +6,7 @@
 //
 // 迷わせないことを最優先にする。1画面につき操作は1つ、文字は大きく、戻れるようにする。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { kioskDraw, kioskIsPaid } from './actions';
+import { kioskDraw, kioskIsPaid, kioskMarkPaid } from './actions';
 import { needsPhotoGuide, nextKioskStep, phaseForDivision, remainingDivisions } from '@/lib/bf6Kiosk';
 import { wristbandLabel } from '@/lib/bf6Reception';
 import KioskBracket from './KioskBracket';
@@ -180,16 +180,17 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
     };
   }, [screen, sel]);
 
-  const checkPaidNow = async () => {
+  /** 出場者が自分で「支払いました」を押したとき。待たせると受付が詰まるため(TARO 2026-09-14) */
+  const markPaidSelf = async () => {
     if (!sel) return;
     setBusy(true);
     try {
-      const paid = await kioskIsPaid(sel.orderId).catch(() => false);
-      if (paid) {
+      const r = await kioskMarkPaid(sel.orderId).catch(() => ({ ok: false }));
+      if (r.ok) {
         setSel({ ...sel, amountDue: 0, paymentStatus: 'paid' });
         setScreen('draw');
       } else {
-        setPayWaitNote('まだ記録されていません。近くのスタッフに声をかけてください');
+        setPayWaitNote('記録できませんでした。スタッフに声をかけてください');
       }
     } finally {
       setBusy(false);
@@ -322,21 +323,17 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
               </li>
             </ul>
           )}
-          <p className="mt-8 text-[2vh] font-bold text-white/70">
-            スタッフが受け取りを記録すると、自動で次に進みます
-          </p>
-          <div className="mt-4 flex items-center gap-3 text-[1.8vh] text-white/50">
-            <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-orange-400" />
-            スタッフの記録を待っています
-          </div>
           {payWaitNote && <p className="mt-4 text-[1.8vh] font-bold text-orange-300">{payWaitNote}</p>}
           <button
             disabled={busy}
-            onClick={checkPaidNow}
-            className="mt-6 w-full max-w-md rounded-2xl border border-white/20 py-4 text-[2vh] font-bold text-white/80 disabled:opacity-50"
+            onClick={markPaidSelf}
+            className="mt-8 w-full max-w-md rounded-2xl bg-gradient-to-b from-orange-500 to-orange-700 py-6 text-[2.6vh] font-black disabled:opacity-50"
           >
-            {busy ? '確認中…' : '支払い済みか確認する'}
+            {busy ? '…' : '支払いました'}
           </button>
+          <p className="mt-3 text-[1.7vh] text-white/45">
+            スタッフが先に記録した場合は、自動で次に進みます
+          </p>
           <button onClick={() => setScreen('name')} className="mt-3 text-[1.8vh] text-white/40 underline">
             戻る
           </button>
@@ -436,12 +433,16 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
             )}
           </div>
 
-          <button
-            onClick={() => setScreen('done')}
-            className="mt-10 w-full max-w-md rounded-2xl bg-gradient-to-b from-orange-500 to-orange-700 py-6 text-[2.6vh] font-black"
-          >
-            確認しました
-          </button>
+          {/* iPadではスクロールしないと押せなかった(TARO実機 2026-09-14)。画面下に固定する */}
+          <div className="h-[13vh]" />
+          <div className="fixed inset-x-0 bottom-0 bg-gradient-to-t from-neutral-950 via-neutral-950/95 to-transparent px-5 pb-5 pt-6">
+            <button
+              onClick={() => setScreen('done')}
+              className="mx-auto block w-full max-w-md rounded-2xl bg-gradient-to-b from-orange-500 to-orange-700 py-6 text-[2.6vh] font-black"
+            >
+              確認しました
+            </button>
+          </div>
         </Center>
       )}
 
@@ -462,40 +463,42 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
           )}
 
           {rest.length > 0 ? (
-            <>
-              <p className="mt-8 text-[2.2vh] font-black text-orange-300">
-                次は {rest.map((d) => DIV_LABEL[d]).join('・')} の受付です
-              </p>
-              {rest.map((d) => (
-                <button
-                  key={d}
-                  onClick={() => {
-                    setDivision(d);
-                    setResult(null);
-                    pendingRef.current = null;
-                    setSel({ ...sel, drawnDivisions: [...sel.drawnDivisions, division] });
-                    setScreen('draw');
-                  }}
-                  className="mt-3 w-full max-w-md rounded-2xl bg-gradient-to-b from-orange-500 to-orange-700 py-6 text-[2.4vh] font-black"
-                >
-                  次は {DIV_LABEL[d]} の受付に進む
-                </button>
-              ))}
-              <button onClick={reset} className="mt-4 text-[1.9vh] text-white/40 underline">
-                最初の画面に戻る
-              </button>
-            </>
+            <p className="mt-8 text-[2.2vh] font-black text-orange-300">
+              次は {rest.map((d) => DIV_LABEL[d]).join('・')} の受付です
+            </p>
           ) : (
-            <>
-              <p className="mt-8 text-[2.2vh] text-white/60">以上となります。ありがとうございました。</p>
-              <button
-                onClick={reset}
-                className="mt-6 w-full max-w-md rounded-2xl border border-white/30 py-6 text-[2.4vh] font-bold"
-              >
-                最初の画面に戻る
-              </button>
-            </>
+            <p className="mt-8 text-[2.2vh] text-white/60">以上となります。ありがとうございました。</p>
           )}
+
+          {/* iPadではスクロールしないと押せなかった(TARO実機 2026-09-14)。画面下に固定する */}
+          <div className="h-[18vh]" />
+          <div className="fixed inset-x-0 bottom-0 space-y-2 bg-gradient-to-t from-neutral-950 via-neutral-950/95 to-transparent px-5 pb-5 pt-6">
+            {rest.map((d) => (
+              <button
+                key={d}
+                onClick={() => {
+                  setDivision(d);
+                  setResult(null);
+                  pendingRef.current = null;
+                  setSel({ ...sel, drawnDivisions: [...sel.drawnDivisions, division] });
+                  setScreen('draw');
+                }}
+                className="mx-auto block w-full max-w-md rounded-2xl bg-gradient-to-b from-orange-500 to-orange-700 py-6 text-[2.4vh] font-black"
+              >
+                次は {DIV_LABEL[d]} の受付に進む
+              </button>
+            ))}
+            <button
+              onClick={reset}
+              className={
+                rest.length > 0
+                  ? 'mx-auto block w-full max-w-md py-3 text-[1.9vh] text-white/50 underline'
+                  : 'mx-auto block w-full max-w-md rounded-2xl border border-white/30 py-6 text-[2.4vh] font-bold'
+              }
+            >
+              最初の画面に戻る
+            </button>
+          </div>
         </Center>
       )}
     </div>

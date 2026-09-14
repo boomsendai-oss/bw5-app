@@ -4,7 +4,7 @@
 // 当日ログインさせるのが現実的でない(/api/bf6/photo/* と同じ扱い)。
 // 扱うのは抽選と「支払い済みかどうかの確認」だけで、個人情報の読み書きはしない。
 import { checkInBf6, claimBf6Slot, listBf6Slots } from '@/lib/bf6DrawDb';
-import { isBf6OrderPaid } from '@/lib/bf6CashDb';
+import { collectBf6Cash, isBf6OrderPaid } from '@/lib/bf6CashDb';
 import { autoReflectIfStarted } from '@/lib/bf6ScreenDb';
 import { phaseForDivision } from '@/lib/bf6Kiosk';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
@@ -51,12 +51,22 @@ export async function kioskDraw(
 
 /**
  * 集金係がこの申込の現金を受け取ったか。支払い済みかどうか以外は返さない。
- *
- * ⚠️ 以前はここに「支払い済みにする」公開アクションがあり、出場者本人が払わずに
- *    「支払いを終了しました」を押すだけで通っていた(認証なし・2026-09-11に廃止)。
- *    受け取りの記録は集金係のスマホ(/bf6/crew/cash)でだけ行う。
+ * 集金係がスマホで記録すると、この確認で受付iPadが自動で次に進む。
  */
 export async function kioskIsPaid(orderId: number): Promise<boolean> {
   if (!Number.isInteger(orderId) || orderId <= 0) return false;
   return isBf6OrderPaid(orderId);
+}
+
+/**
+ * 出場者が受付iPadで「支払いました」を押したときの記録。
+ *
+ * ⚠️ ここは認証がない画面なので、押した本人の申告をそのまま信じることになる。
+ *    それでもこの導線を置くのは、集金係が記録するまでiPadの前で待たせると受付が詰まるため(TARO 2026-09-14)。
+ *    お金の突合ができるよう、誰の記録かが分かる名前で残す(集金画面に「受付iPad(本人申告)」と出る)。
+ */
+export async function kioskMarkPaid(orderId: number): Promise<{ ok: boolean }> {
+  if (!Number.isInteger(orderId) || orderId <= 0) return { ok: false };
+  const r = await collectBf6Cash(orderId, '受付iPad(本人申告)');
+  return { ok: r.ok };
 }
