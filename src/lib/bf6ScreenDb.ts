@@ -42,17 +42,24 @@ export async function getBf6ScreenState(): Promise<ScreenState> {
   };
 }
 
-/** rev を必ず増やす。LED側は rev の変化で「更新があった」と判断する。 */
+/**
+ * rev を必ず増やす。LED側は rev の変化で「更新があった」と判断する。
+ *
+ * ⚠️ 行が無ければ作る(UPSERT)。UPDATE だけだと、当日データのリセットで行を消したあとに
+ *    モードを押しても何も保存されず、LEDがロゴのまま動かなくなる(2026-09-14に本番で発生)。
+ */
 export async function setBf6ScreenState(p: Partial<ScreenState>): Promise<void> {
   const cur = await getBf6ScreenState();
   const next = { ...cur, ...p };
   await execute(
-    'UPDATE bf_screen_state SET mode = ?, division = ?, round = ?, match_no = ?, rev = rev + 1, updated_at = ? WHERE id = 1',
+    `INSERT INTO bf_screen_state (id, mode, division, round, match_no, rev, updated_at)
+     VALUES (1, ?, ?, ?, ?, 1, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       mode = excluded.mode, division = excluded.division, round = excluded.round,
+       match_no = excluded.match_no, rev = bf_screen_state.rev + 1, updated_at = excluded.updated_at`,
     [next.mode, next.division, next.round, next.matchNo, nowUtcIso()]
   );
 }
-
-// ───────── トーナメント ─────────
 
 export async function listBf6Matches(division: Bf6DrawDivision): Promise<Match[]> {
   const rows = await getAll(

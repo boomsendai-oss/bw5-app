@@ -2,7 +2,6 @@
 
 // LED演出の操作。/staff/bf6/control と /bf6/crew/control の両方から呼ばれる。
 // どちらの経路も proxy + layout で認証済み(規約4.5)。
-import { revalidatePath } from 'next/cache';
 import {
   ensureBf6Bracket,
   getBf6ScreenState,
@@ -15,16 +14,12 @@ import {
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 import type { Round } from '@/lib/bf6Bracket';
 
-/** 同じ画面が /staff と /bf6/crew の2箇所にあるので、両方を作り直す。 */
-function revalidateBoth(): void {
-  revalidatePath('/staff/bf6/control');
-  revalidatePath('/bf6/crew/control');
-}
-
+// ⚠️ ここでは revalidatePath を呼ばない。操作卓は押すたびに画面が組み替わるので、
+//    ルーターの再描画が重なると React が removeChild で落ちる(当日系で3回起きた同じ事故)。
+//    画面の更新は ControlClient の router.refresh() が行う。
 
 export async function controlSetMode(mode: ScreenMode, division?: Bf6DrawDivision): Promise<void> {
   await setBf6ScreenState(division ? { mode, division } : { mode });
-  revalidateBoth();
 }
 
 /** VS画面を出す。試合を指定しなければ「次の試合」が映る。 */
@@ -33,7 +28,6 @@ export async function controlShowVs(round: Round | null, matchNo: number | null)
   const { division } = await getBf6ScreenState();
   await ensureBf6Bracket(division);
   await setBf6ScreenState({ mode: 'vs', round, matchNo });
-  revalidateBoth();
 }
 
 export async function controlSetWinner(
@@ -47,13 +41,11 @@ export async function controlSetWinner(
   // 勝者確定後はトーナメント表に戻す。次のVSへは操作する人がワンタップで進める
   // (MCの間合いに合わせるため自動遷移にしない・TARO 2026-08-21)
   await setBf6ScreenState({ mode: 'bracket', round: null, matchNo: null });
-  revalidateBoth();
 }
 
 /** 手動の反映。通常は自動で反映されるので使わない(自動で反映されないときの逃げ道)。 */
 export async function controlReflectBracket(division: Bf6DrawDivision): Promise<ReflectResult> {
   const r = await reflectBf6Bracket(division);
-  revalidateBoth();
   return r;
 }
 
@@ -71,6 +63,5 @@ export async function controlResetBracket(
   if (confirmWord !== RESET_WORD) return { ok: false };
   const { resetBf6Bracket } = await import('@/lib/bf6ScreenDb');
   await resetBf6Bracket(division);
-  revalidateBoth();
   return { ok: true };
 }
