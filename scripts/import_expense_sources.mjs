@@ -86,6 +86,9 @@ function addExpenseStat(stats, date, category, amount) {
   stats.expenseByMonth.set(ym, m);
 }
 
+// 表記ゆれ重複の判定に使う(承認番号は決済ごとに一意)
+import { extractApprovalNo } from '../src/lib/expenseRefunds.ts';
+
 // ============================================
 // 書込 (apply=false なら SELECT のみで一切書かない)
 // ============================================
@@ -98,7 +101,25 @@ function makeWriter(c, apply) {
       sql: 'SELECT id FROM bank_transactions WHERE txn_date = ? AND amount = ? AND description = ?',
       args: [date, amount, description],
     });
-    return r.rows.length > 0 ? Number(r.rows[0].id) : null;
+    if (r.rows.length > 0) return Number(r.rows[0].id);
+
+    // 表記ゆれ対策(2026-09-15): 同じ取引でもソースによって店名の書き方が変わる。
+    //   当社CSV「ﾆﾎﾝﾂｳｼﾝｶﾌﾞｼｷｶﾞｲｼﾔ」 vs 別ソース「JAPAN COMMUNICATIONS I」
+    //   当社CSV「有限会社高砂タクシー」 vs 別ソース「TAKASAGOTAXI」
+    // description完全一致だけで判定すると同一取引が2行入り、経費が二重計上される。
+    // 実害: 8月の通信費が¥11,864二重計上(2026-09-15に発見・同種の事故は3回目)。
+    // 承認番号は決済ごとに一意なので、日付・金額・承認番号が揃えば同一取引とみなす。
+    const approvalNo = extractApprovalNo(description);
+    if (approvalNo) {
+      const r2 = await c.execute({
+        sql: `SELECT id FROM bank_transactions
+               WHERE txn_date = ? AND amount = ?
+                 AND replace(replace(description, '：', ':'), ' ', '') LIKE ?`,
+        args: [date, amount, `%承認番号:${approvalNo}%`],
+      });
+      if (r2.rows.length > 0) return Number(r2.rows[0].id);
+    }
+    return null;
   }
 
   /**
@@ -146,6 +167,21 @@ function makeWriter(c, apply) {
       args: [txnId ?? -1, date, amount, description ?? ''],
     });
     if (dup.rows.length > 0) return 'dup';
+
+    // 表記ゆれ対策(2026-09-15): bank_transactions に表記違いの重複行が既に入っていると、
+    // source_ref_id も description も一致せず expenses が二重に作られる。
+    // 承認番号は決済ごとに一意なので、日付・金額・承認番号が揃えば同じ支払いとみなす。
+    const approvalNo = extractApprovalNo(description ?? '');
+    if (approvalNo) {
+      const dup2 = await c.execute({
+        sql: `SELECT id FROM expenses
+               WHERE expense_date = ? AND amount = ?
+                 AND replace(replace(COALESCE(description, ''), '：', ':'), ' ', '') LIKE ?`,
+        args: [date, amount, `%承認番号:${approvalNo}%`],
+      });
+      if (dup2.rows.length > 0) return 'dup';
+    }
+
     if (!apply) return 'inserted';
     await c.execute({
       sql: `INSERT INTO expenses (expense_date, category, subcategory, amount, description, source, source_ref_id)
