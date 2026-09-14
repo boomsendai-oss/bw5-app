@@ -53,6 +53,10 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingRef = useRef<DrawResult | null>(null);
 
+  // この端末で引き終わった人。一覧の並べ替えでも使うので、必ず一覧より前に定義する。
+  // ⚠️ 一覧の useMemo より後ろに置くと、初回描画で「初期化前に使った」となり画面が落ちる(2026-09-14)。
+  const isDrawn = (e: Entrant, div: string) => isDrawnFor(e, div) || doneLocal.has(`${e.itemId}:${div}`);
+
   const inDivision = useMemo(
     () => entrants.filter((e) => e.divisions.includes(division)),
     [entrants, division]
@@ -76,7 +80,6 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
   // ⚠️ 受付中はサーバ主導の再描画を入れられない(進行中の画面が壊れるため)ので、
   //    一覧のdrawnDivisionsは開いたときのまま古くなる。ここで補う。
   //    これが無いと、引いた直後の人がまた選べてしまい「二重に引ける」ように見える。
-  const isDrawn = (e: Entrant, div: string) => isDrawnFor(e, div) || doneLocal.has(`${e.itemId}:${div}`);
 
   const reset = () => {
     setScreen('home');
