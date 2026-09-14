@@ -60,9 +60,19 @@ describe('decideReadMode', () => {
   });
   it('必ず全文を読むドメインは、宣伝分類や一斉配信の印があっても全文を読む', () => {
     expect(decideReadMode(meta(['CATEGORY_PROMOTIONS'], { from: 'no-reply@libecity.com', 'list-unsubscribe': '<x>' }))).toBe('ai_full');
-    expect(decideReadMode(meta(['INBOX'], { from: 'no-reply@form.run', precedence: 'bulk' }))).toBe('ai_full');
-    expect(decideReadMode(meta(['INBOX'], { from: 'info@siip.city.sendai.jp', 'list-unsubscribe': '<x>' }))).toBe('ai_full');
+    expect(decideReadMode(meta(['INBOX'], { from: 'notify@form.run', precedence: 'bulk' }))).toBe('ai_full');
     expect(decideReadMode(meta(['CATEGORY_PROMOTIONS'], { from: 'no-reply@hacomono.co.jp', 'list-unsubscribe': '<x>' }))).toBe('ai_full');
+  });
+  it('止めるアドレスは、同じドメインを全文で読む設定より先に効く', () => {
+    expect(decideReadMode(meta(['INBOX'], { from: 'フォームの案内 <mail@form.run>', 'list-unsubscribe': '<x>' }))).toBe('count_only');
+    expect(decideReadMode(meta(['INBOX'], { from: 'marketing@hacomono.co.jp' }))).toBe('count_only');
+    expect(decideReadMode(meta(['INBOX'], { from: 'e-kigyoudayori@siip.city.sendai.jp' }))).toBe('count_only');
+    // 同じ組織でも担当者のアドレスは読む
+    expect(decideReadMode(meta(['INBOX'], { from: 'yamada@sendaicci.or.jp' }))).toBe('ai_full');
+  });
+  it('件名で止めるのは共有カレンダーだけ(gmail.com は止めない)', () => {
+    expect(decideReadMode(meta(['INBOX'], { from: 'a@gmail.com', subject: '共有カレンダーの更新' }))).toBe('count_only');
+    expect(decideReadMode(meta(['INBOX'], { from: 'a@gmail.com', subject: '体験レッスンの相談' }))).toBe('ai_full');
   });
   it('info@ は人が書くことがあるので全文を読む', () => {
     expect(decideReadMode(meta(['INBOX'], { from: 'UP-T <info@up-t.jp>' }))).toBe('ai_full');

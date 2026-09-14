@@ -16,7 +16,7 @@ import {
   type GmailMessage,
   type MessageRef,
 } from './gmail';
-import { decideReadMode, senderDomain } from './prefilter';
+import { decideReadMode, senderAddress } from './prefilter';
 import { buildNowMessage, gmailLink, PushoverError, type PushoverMessage } from './pushover';
 import { ruleClassify } from './rules';
 import type { AlertState, AlertStore, NewItem } from './store';
@@ -318,7 +318,7 @@ async function processMessage(
 
   // 決め打ちルール(体験予約・契約・引き落とし失敗など)に当たるメールは、本文もAIも使わずに決める。
   // AIに読ませない一覧のドメインより先に見る(銀行の「引き落とし不能」はここで鳴らす)
-  const ruled = ruleClassify(senderDomain(from), subject);
+  const ruled = ruleClassify(senderAddress(from), subject);
   if (ruled) {
     if (deps.nowMs() > deps.deadlineMs) return 'deferred';
     return finish({ tier: ruled.tier, kind: ruled.kind, summary: '', aiFailed: false, inputTokens: 0, outputTokens: 0 }, 'rule');
