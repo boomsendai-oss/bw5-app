@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  QUALIFIER_COUNT,
-  hasQualifierStage,
-  qualifiersReady,
-  toggleQualifier,
-  filterForBracketDraw,
-} from '../bf6Qualifier';
+import { QUALIFIER_COUNT, hasQualifierStage, qualifiersReady, toggleQualifier, filterForBracketDraw, qualifierPickError } from '../bf6Qualifier';
 
 describe('予選がある部門', () => {
   it('小中・一般にはある。ビギナーには無い(受付でトーナメント位置まで決まる)', () => {
@@ -70,5 +64,29 @@ describe('くじ引き②の対象者', () => {
 
   it('誰もチェックされていなければ空', () => {
     expect(filterForBracketDraw(entrants, {})).toEqual([]);
+  });
+});
+
+describe('ブロックごとの上限(予選1回のとき)', () => {
+  // 予選1回ならAブロックから4名・Bブロックから4名で確定する。Aから5人目は選べない方が正しい(TARO 2026-09-14)。
+  // 予選2回のときは2次予選でA/Bが混ざるので、上限を外して合計8名だけを見る。
+  it('同じブロックから5人目は選べない', () => {
+    expect(qualifierPickError(['A', 'A', 'A', 'A'], 'A', true)).toContain('4名');
+  });
+  it('4人目までは選べる', () => {
+    expect(qualifierPickError(['A', 'A', 'A'], 'A', true)).toBeNull();
+  });
+  it('もう片方のブロックは別に数える', () => {
+    expect(qualifierPickError(['A', 'A', 'A', 'A'], 'B', true)).toBeNull();
+  });
+  it('上限を外せば同じブロックから5人目も選べる(2次予選)', () => {
+    expect(qualifierPickError(['A', 'A', 'A', 'A'], 'A', false)).toBeNull();
+  });
+  it('ブロックが未定の人は上限の対象外', () => {
+    expect(qualifierPickError(['A', 'A', 'A', 'A'], null, true)).toBeNull();
+  });
+  it('合計8名を超えることはできない(上限を外しても)', () => {
+    const eight = ['A', 'A', 'A', 'A', 'B', 'B', 'B', 'B'] as ('A' | 'B')[];
+    expect(qualifierPickError(eight, 'B', false)).toContain('8名');
   });
 });

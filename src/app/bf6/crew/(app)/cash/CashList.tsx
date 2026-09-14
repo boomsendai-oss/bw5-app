@@ -1,44 +1,23 @@
 'use client';
 
 // 集金の一覧。タップ→内訳を見て金額を確認→「受け取った」で記録。
-// 係の名前は端末に覚えさせる(毎回打たせない)。
-import { useEffect, useState, useTransition } from 'react';
+// 係の名前は入力させない。当日は係を固定するので、余計な操作はミスのもとになる(TARO 2026-09-14)。
+import { useState, useTransition } from 'react';
 import { cashTotals, sortCashOrders, type CashOrder } from '@/lib/bf6Cash';
 import { doneTabCounts, filterDoneTab, matchesAny, type DoneTab } from '@/lib/bf6ListUi';
 import { crewRecordCash, crewUndoCash } from './actions';
 
 const YEN = (n: number) => `¥${n.toLocaleString()}`;
-const NAME_STORE = 'bf6_cash_collector';
 
 export default function CashList({ orders }: { orders: CashOrder[] }) {
   const [rows, setRows] = useState(orders);
-  const [who, setWho] = useState('');
   const [tab, setTab] = useState<DoneTab>('todo');
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<CashOrder | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  // ⚠️ orders(サーバの値)で rows を上書きし続けない。
-  // 集金するたびにサーバ側が再描画されると、押した直後の状態が巻き戻る。
-  // 最新の状態が要るときはページを開き直す。
-  useEffect(() => {
-    try {
-      setWho(localStorage.getItem(NAME_STORE) ?? '');
-    } catch {
-      /* プライベートモード等では覚えないだけ */
-    }
-  }, []);
-
-  const saveWho = (v: string) => {
-    setWho(v);
-    try {
-      localStorage.setItem(NAME_STORE, v);
-    } catch {
-      /* 覚えられなくても集金はできる */
-    }
-  };
-
+  // ⚠️ orders(サーバの値)で rows を上書きし続けない。押した直後の状態が巻き戻るため。
   const t = cashTotals(rows);
   const isCollected = (o: CashOrder) => o.collected !== null;
   const counts = doneTabCounts(rows, isCollected);
@@ -49,10 +28,10 @@ export default function CashList({ orders }: { orders: CashOrder[] }) {
   const record = (o: CashOrder, amount: number) => {
     setErr(null);
     const at = new Date().toISOString();
-    setRows((rs) => rs.map((r) => (r.orderId === o.orderId ? { ...r, collected: { amount, at, by: who } } : r)));
+    setRows((rs) => rs.map((r) => (r.orderId === o.orderId ? { ...r, collected: { amount, at, by: '' } } : r)));
     setOpen(null);
     start(async () => {
-      const res = await crewRecordCash(o.orderId, amount, who);
+      const res = await crewRecordCash(o.orderId, amount, '');
       if (!res.ok) {
         setErr(res.error);
         setRows((rs) => rs.map((r) => (r.orderId === o.orderId ? { ...r, collected: o.collected } : r)));
@@ -93,15 +72,6 @@ export default function CashList({ orders }: { orders: CashOrder[] }) {
             請求額に足りていない記録が {t.shortOrders} 件あります
           </p>
         )}
-        <label className="mt-3 block">
-          <span className="text-xs font-black text-neutral-500">集金係の名前(記録に残ります)</span>
-          <input
-            value={who}
-            onChange={(e) => saveWho(e.target.value)}
-            placeholder="例: TARO"
-            className="mt-1 w-full rounded-xl border border-sand-300 bg-white px-3 py-2 text-base text-navy-900 placeholder:text-neutral-500"
-          />
-        </label>
       </div>
 
       {err && <p className="rounded-lg bg-red-600 px-3 py-2 text-sm font-bold text-white">{err}</p>}

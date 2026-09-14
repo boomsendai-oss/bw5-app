@@ -8,7 +8,7 @@
 //
 // ⚠️ サーバの値で rows を上書きし続けない(押した直後の状態が巻き戻る)。最新が要るときは開き直す。
 // ⚠️ 色の指定が無い文字は白く溶ける(body の既定色が白)。数字や入力欄には必ず文字色を付ける。
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import {
   clampHanded,
   filterGateTab,
@@ -28,7 +28,6 @@ import {
 import { crewGateCollect, crewGateHand, crewWalkinSell, crewWalkinUndo } from './actions';
 
 const YEN = (n: number) => `¥${n.toLocaleString()}`;
-const NAME_STORE = 'bf6_cash_collector';
 type View = GateTab | 'walkin';
 const LIST_TABS: { key: GateTab; label: string }[] = [
   { key: 'todo', label: '未入場' },
@@ -76,7 +75,6 @@ export default function GateList({
   const [sales, setSales] = useState(walkinSales);
   const [view, setView] = useState<View>('todo');
   const [q, setQ] = useState('');
-  const [who, setWho] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
   const [partial, setPartial] = useState(1);
   const [wAdult, setWAdult] = useState(0);
@@ -84,22 +82,6 @@ export default function GateList({
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, start] = useTransition();
-
-  useEffect(() => {
-    try {
-      setWho(localStorage.getItem(NAME_STORE) ?? '');
-    } catch {
-      /* 覚えられなくても受付はできる */
-    }
-  }, []);
-  const saveWho = (v: string) => {
-    setWho(v);
-    try {
-      localStorage.setItem(NAME_STORE, v);
-    } catch {
-      /* noop */
-    }
-  };
 
   const t = gateTotals(rows);
   const counts = gateTabCounts(rows);
@@ -140,7 +122,7 @@ export default function GateList({
     patch(o.orderId, { handed: optimistic });
     if (delta > 0 && optimistic >= ticketCount(o)) finishRow(o);
     start(async () => {
-      const r = await crewGateHand(o.orderId, delta, who);
+      const r = await crewGateHand(o.orderId, delta, '');
       if (!r.ok) {
         setErr(r.error);
         patch(o.orderId, { handed: o.handed });
@@ -157,14 +139,14 @@ export default function GateList({
     patch(o.orderId, { paid: true, amountDue: 0, ...(handAll ? { handed: ticketCount(o) } : {}) });
     if (handAll && rest > 0) finishRow(o);
     start(async () => {
-      const c = await crewGateCollect(o.orderId, who);
+      const c = await crewGateCollect(o.orderId, '');
       if (!c.ok) {
         setErr(c.error);
         patch(o.orderId, { paid: o.paid, amountDue: o.amountDue, handed: o.handed });
         return;
       }
       if (!handAll || rest === 0) return;
-      const h = await crewGateHand(o.orderId, rest, who);
+      const h = await crewGateHand(o.orderId, rest, '');
       if (!h.ok) {
         setErr(`受け取りは記録しました。リストバンドの記録に失敗しました: ${h.error}`);
         patch(o.orderId, { handed: o.handed });
@@ -179,7 +161,7 @@ export default function GateList({
     const adult = wAdult;
     const child = wChild;
     start(async () => {
-      const r = await crewWalkinSell(adult, child, who);
+      const r = await crewWalkinSell(adult, child, '');
       if (!r.ok) {
         setErr(r.error);
         return;
@@ -220,10 +202,7 @@ export default function GateList({
         <p className="mt-1 text-sm font-bold tabular-nums text-navy-800">
           当日券 {w.adult + w.child}枚 <span className="text-neutral-600">(中学生以上{w.adult}・小学生{w.child}) {YEN(w.amount)}</span>
         </p>
-        <label className="mt-3 block">
-          <span className="text-xs font-black text-neutral-600">受付係の名前(記録に残ります)</span>
-          <input value={who} onChange={(e) => saveWho(e.target.value)} placeholder="例: TARO" className={`mt-1 ${INPUT}`} />
-        </label>
+
       </div>
 
       <div className="grid grid-cols-4 gap-1.5">

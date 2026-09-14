@@ -10,7 +10,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { detectNewWinners, parentMatch, vsAnimKey, type AnimMatch } from '@/lib/bf6ScreenAnim';
 import { buildBracketRows, type BracketCell } from '@/lib/bf6BracketRows';
+import { divisionTheme } from '@/lib/bf6Theme';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
+import type { DivisionTheme } from '@/lib/bf6Theme';
 
 type Match = { round: string; matchNo: number; slotA: number | null; slotB: number | null; winnerSlot: number | null };
 type Slot = { slotNo: number; dancerName: string; rep: string; hasPhoto: boolean; photoAt?: string | null };
@@ -58,6 +60,8 @@ export function ScreenClient() {
   const [flashArrive, setFlashArrive] = useState<Set<string>>(new Set());
   const prevMatchesRef = useRef<AnimMatch[] | null>(null);
   const prevDivisionRef = useRef<string | null>(null);
+  /** 先読みした顔写真。同じものを何度も取りに行かない */
+  const photoPre = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let alive = true;
@@ -76,6 +80,17 @@ export function ScreenClient() {
         prevMatchesRef.current = j.matches;
         prevDivisionRef.current = j.state.division;
         setData(j);
+
+        // ⚠️ 顔写真はVSを出した瞬間に初めて取りに行くと、その人の初回だけ表示が遅れる
+        //    (TARO実機 2026-09-14「写真が出てくるのが一瞬遅れる」)。表示中の部門ぶんを先に読む。
+        for (const s of Object.values(j.slots)) {
+          if (!s.hasPhoto) continue;
+          const key = `${j.state.division}:${s.slotNo}:${s.photoAt ?? ''}`;
+          if (photoPre.current.has(key)) continue;
+          photoPre.current.add(key);
+          const im = new Image();
+          im.src = `/api/bf6/photo/${s.slotNo}?division=${j.state.division}&v=${encodeURIComponent(s.photoAt ?? '')}`;
+        }
 
         if (fresh.length > 0) {
           const winKeys = fresh.map((w) => `${w.round}|${w.matchNo}`);
@@ -232,12 +247,13 @@ export function ScreenClient() {
 
   // 縦型トーナメント表(下から上へ)
   const rows = buildBracketRows(state.division as Bf6DrawDivision, matches, { pending: data.pending });
+  const theme = divisionTheme(state.division);
   return (
     <Stage>
       <div className="flex h-full w-full flex-col px-[2.5vw] py-[2vh]">
         <div className="flex items-start justify-between">
-          <p className="text-[2vw] font-black tracking-[0.4em] text-orange-400">
-            {DIV_LABEL[state.division]}部門 TOURNAMENT
+          <p className={`text-[2.4vw] font-black tracking-[0.4em] ${theme.text}`}>
+            {DIV_LABEL[state.division]}部門
           </p>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/bf6/led-title.png" alt="" className="h-[8vh] w-auto opacity-95" />
@@ -250,7 +266,7 @@ export function ScreenClient() {
             >
               {row.kind === 'champion' ? (
                 <div className="flex justify-center">
-                  <ChampionCard cell={row.cells[0]} slots={slots} />
+                  <ChampionCard cell={row.cells[0]} slots={slots} theme={theme} />
                 </div>
               ) : (
                 <>
@@ -272,6 +288,7 @@ export function ScreenClient() {
                         <PersonCard
                           cell={c}
                           slots={slots}
+                          theme={theme}
                           rowIndex={ri}
                           rowCount={rows.length}
                           mode={
@@ -347,23 +364,25 @@ function Connectors({ count, active }: { count: number; active: Map<number, 'a' 
 }
 
 function PersonCard({
-  cell, slots, mode, compact, rowIndex, rowCount,
+  cell, slots, mode, compact, rowIndex, rowCount, theme,
 }: {
   cell: BracketCell; slots: Record<string, Slot>; mode: 'win' | 'arrive' | null;
-  compact: boolean; rowIndex: number; rowCount: number;
+  compact: boolean; rowIndex: number; rowCount: number; theme: DivisionTheme;
 }) {
   const slot = cell.slotNo ? slots[String(cell.slotNo)] : undefined;
-  const base = 'w-full truncate rounded-[0.4vw] border px-[0.4vw] py-[0.6vh] text-center font-black transition-all duration-500';
+  // ⚠️ 会場のLEDでは1回戦の名前が小さすぎて読めなかった(TARO実機 2026-09-14)。
+  //    1行に収めるのをやめ、2行まで折り返して大きく出す。
+  const base =
+    'flex w-full items-center justify-center rounded-[0.4vw] border px-[0.3vw] py-[0.5vh] text-center font-black leading-[1.05] transition-all duration-500 [overflow-wrap:anywhere] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden';
   // 上の段ほど残っている人が少ない=枠が広いので、文字も大きくする。
   // rowIndex 0 は優勝枠(別描画)なので、1回戦が最大の rowIndex になる。
   const depth = rowCount - 1 - rowIndex; // 1回戦=0、決勝=最大
-  const SIZES = ['text-[0.95vw]', 'text-[1.4vw]', 'text-[2vw]', 'text-[2.8vw]'];
-  const size = SIZES[Math.min(depth, SIZES.length - 1)] ?? (compact ? 'text-[0.95vw]' : 'text-[1.4vw]');
-  // オレンジ=まだ勝ち残っている / グレー+取り消し線=負けた / 破線=空き枠。
-  // 勝ち上がった人が一目で分かることを優先する(TARO実機 2026-09-10)。
+  const SIZES = ['text-[1.7vw]', 'text-[2.4vw]', 'text-[3.2vw]', 'text-[4vw]'];
+  const size = SIZES[Math.min(depth, SIZES.length - 1)] ?? (compact ? 'text-[1.7vw]' : 'text-[2.4vw]');
+  // 部門の色=まだ勝ち残っている / グレー+取り消し線=負けた / 破線=空き枠。
   const look =
     cell.state === 'alive'
-      ? 'border-orange-400/80 bg-orange-500/20 text-orange-100'
+      ? theme.cardAlive
       : cell.state === 'lost'
         ? 'border-white/10 bg-white/[0.03] text-white/25 line-through decoration-white/20'
         : 'border-dashed border-white/10 bg-transparent text-white/20';
@@ -378,16 +397,14 @@ function PersonCard({
   );
 }
 
-function ChampionCard({ cell, slots }: { cell: BracketCell; slots: Record<string, Slot> }) {
+function ChampionCard({ cell, slots, theme }: { cell: BracketCell; slots: Record<string, Slot>; theme: DivisionTheme }) {
   const slot = cell.slotNo ? slots[String(cell.slotNo)] : undefined;
   return (
     <div className="text-center">
-      <p className="text-[1vw] font-black tracking-[0.4em] text-orange-400">WINNER</p>
+      <p className={`text-[1.2vw] font-black tracking-[0.4em] ${theme.text}`}>WINNER</p>
       <p
-        className={`mt-[0.4vh] rounded-[0.5vw] border px-[1.6vw] py-[0.8vh] text-[2.2vw] font-black italic ${
-          slot
-            ? 'bf6-champ border-orange-400 bg-orange-500/25 text-white'
-            : 'border-dashed border-white/15 text-white/20'
+        className={`mt-[0.4vh] rounded-[0.5vw] border px-[1.6vw] py-[0.8vh] text-[3vw] font-black italic ${
+          slot ? `bf6-champ ${theme.champion}` : 'border-dashed border-white/15 text-white/20'
         }`}
       >
         {slot?.dancerName || '—'}
@@ -801,12 +818,19 @@ function ScreenAnimStyles() {
   );
 }
 
+/**
+ * 待機画面。クローム調のロゴだけを中央に置く(TARO 2026-09-14)。
+ * 人物写真と日付の文字は出さない。背景は控えめな絵で、あとで動画に差し替える。
+ * 差し替えるときは public/bf6/led-bg.mp4 を置いて video に変えるだけでよい。
+ */
 function Logo() {
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center">
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/bf6/flyer-hero-v2.jpg" alt="" className="max-h-[70vh] object-contain opacity-90" />
-      <p className="mt-[3vh] text-[2vw] font-black tracking-[0.5em] text-orange-400">2026.9.26 SAT — SSM 9F</p>
+      <img src="/bf6/led-bg.png" alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" />
+      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_50%,transparent_35%,rgba(5,7,12,0.75)_100%)]" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/bf6/led-title.png" alt="BOOMER'S FIGHT!!! vol.6" className="relative w-[62vw] max-w-none" />
     </div>
   );
 }

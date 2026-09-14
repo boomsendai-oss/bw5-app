@@ -6,7 +6,7 @@
 import { checkInBf6, claimBf6Slot, listBf6Slots } from '@/lib/bf6DrawDb';
 import { collectBf6Cash, isBf6OrderPaid } from '@/lib/bf6CashDb';
 import { autoReflectIfStarted } from '@/lib/bf6ScreenDb';
-import { phaseForDivision } from '@/lib/bf6Kiosk';
+import { listBf6Qualifiers } from '@/lib/bf6QualifierDb';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 
 /**
@@ -23,30 +23,34 @@ export async function kioskDraw(
   | {
       slotNo: number;
       block?: 'A' | 'B';
+      /** 引いたくじの種類。'bracket' ならトーナメントの位置 */
+      phase: 'block' | 'bracket';
+      /** すでに引いていた人を押したとき。引き直しはしていない */
+      alreadyDrawn: boolean;
       /** トーナメント表を描くための 枠→名前。引いていない枠は入らない */
       holders?: Record<number, string>;
       slotCount?: number;
     }
   | { error: string }
 > {
-  const r = await claimBf6Slot(
-    division as Bf6DrawDivision,
-    phaseForDivision(division),
-    itemId
-  );
+  // ⚠️ くじの種類は画面から受け取らずサーバで決める。
+  //    予選通過者に登録されていれば、その部門の次は「ベスト8の位置」(くじ引き②・TARO 2026-09-14)。
+  const qualifiers = await listBf6Qualifiers().catch(() => ({}) as Record<string, Set<number>>);
+  const phase: 'block' | 'bracket' =
+    division === 'beginner' || qualifiers[division]?.has(itemId) ? 'bracket' : 'block';
+
+  const r = await claimBf6Slot(division as Bf6DrawDivision, phase, itemId);
   if (!r) return { error: '空き枠がありません。スタッフにお声がけください。' };
   // くじに成功したときだけチェックインを付ける(失敗しても受付済みに見えていた・2026-09-11)
   await checkInBf6(itemId);
-
-  const phase = phaseForDivision(division);
-  if (phase !== 'bracket') return r;
+  if (phase !== 'bracket') return { ...r, phase };
   // トーナメントが始まった後に遅れて引いた人は、その人の試合がまだなら自動で対戦に戻す
   await autoReflectIfStarted(division as Bf6DrawDivision);
   // 番号だけ出しても出場者には分からないので、トーナメント表ごと返す
   const slots = await listBf6Slots(division as Bf6DrawDivision, phase);
   const holders: Record<number, string> = {};
   for (const s of slots) if (s.dancerName) holders[s.slotNo] = s.dancerName;
-  return { ...r, holders, slotCount: slots.length };
+  return { ...r, phase, holders, slotCount: slots.length };
 }
 
 /**

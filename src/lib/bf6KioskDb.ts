@@ -2,6 +2,7 @@
 // 画面に出すのはダンサーネームだけで、本名・連絡先は返さない(端末を出場者が触るため)。
 import { getAll } from '@/lib/db';
 import { getBf6Settings } from '@/lib/bf6Db';
+import { listBf6Qualifiers } from '@/lib/bf6QualifierDb';
 import type { KioskEntrant } from '@/lib/bf6Kiosk';
 
 /** 当日現金の内訳。「¥8,500」だけ出しても何の金額か分からないため(TARO 2026-09-09)。 */
@@ -30,8 +31,10 @@ export async function listKioskEntrants(): Promise<KioskRow[]> {
   ).catch(() => []);
 
   const drawn = await getAll(
-    'SELECT item_id, division FROM bf_draw WHERE item_id IS NOT NULL'
+    'SELECT item_id, division, phase, slot_no FROM bf_draw WHERE item_id IS NOT NULL'
   ).catch(() => []);
+  // 予選通過者に登録されていれば、その部門の次のくじは「ベスト8の位置」になる
+  const qualifiers = await listBf6Qualifiers().catch(() => ({}) as Record<string, Set<number>>);
 
   // 当日現金の注文だけ、明細を注文ごとにまとめる(受付で「何の¥8,500か」を見せる)
   const lines = await getAll(
@@ -69,11 +72,11 @@ export async function listKioskEntrants(): Promise<KioskRow[]> {
     }
     byOrder.set(k, list);
   }
-  const byItem = new Map<number, string[]>();
+  const byItem = new Map<number, { division: string; phase: string; slotNo: number }[]>();
   for (const d of drawn) {
     const k = Number(d.item_id);
     const list = byItem.get(k) ?? [];
-    list.push(String(d.division));
+    list.push({ division: String(d.division), phase: String(d.phase), slotNo: Number(d.slot_no) });
     byItem.set(k, list);
   }
 
@@ -86,6 +89,7 @@ export async function listKioskEntrants(): Promise<KioskRow[]> {
     amountDue: r.payment_status === 'cash_due' ? Number(r.amount_total) : 0,
     orderId: Number(r.order_id),
     breakdown: byOrder.get(Number(r.order_id)) ?? [],
-    drawnDivisions: byItem.get(Number(r.id)) ?? [],
+    draws: byItem.get(Number(r.id)) ?? [],
+    qualifierDivisions: (['kids', 'general'] as const).filter((d) => qualifiers[d]?.has(Number(r.id))),
   }));
 }

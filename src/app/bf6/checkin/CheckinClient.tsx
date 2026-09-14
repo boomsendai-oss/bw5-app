@@ -7,7 +7,13 @@
 // 迷わせないことを最優先にする。1画面につき操作は1つ、文字は大きく、戻れるようにする。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { kioskDraw, kioskIsPaid, kioskMarkPaid } from './actions';
-import { needsPhotoGuide, nextKioskStep, phaseForDivision, remainingDivisions } from '@/lib/bf6Kiosk';
+import {
+  isDrawnFor,
+  needsPhotoGuideAfterDraw,
+  nextKioskStep,
+  phaseForEntrant,
+  remainingDivisions,
+} from '@/lib/bf6Kiosk';
 import { wristbandLabel } from '@/lib/bf6Reception';
 import KioskBracket from './KioskBracket';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
@@ -35,35 +41,42 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
 
   // 抽選演出
   const [rolling, setRolling] = useState(false);
-  const [result, setResult] = useState<{
+  type DrawResult = {
     slotNo: number;
     block?: 'A' | 'B';
+    phase: 'block' | 'bracket';
+    alreadyDrawn: boolean;
     holders?: Record<number, string>;
     slotCount?: number;
-  } | null>(null);
+  };
+  const [result, setResult] = useState<DrawResult | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pendingRef = useRef<{
-    slotNo: number;
-    block?: 'A' | 'B';
-    holders?: Record<number, string>;
-    slotCount?: number;
-  } | null>(null);
+  const pendingRef = useRef<DrawResult | null>(null);
 
   const inDivision = useMemo(
     () => entrants.filter((e) => e.divisions.includes(division)),
     [entrants, division]
   );
+  // 予選通過者が登録されている部門は、その8名だけを出す(くじ引き②・TARO 2026-09-14)
+  const qualifierMode = division !== '' && division !== 'beginner' && inDivision.some((e) => e.qualifierDivisions.includes(division));
   const list = useMemo(() => {
     const k = q.trim().toLowerCase();
-    return k ? inDivision.filter((e) => e.dancerName.toLowerCase().includes(k)) : inDivision;
-  }, [inDivision, q]);
+    const base = qualifierMode ? inDivision.filter((e) => e.qualifierDivisions.includes(division)) : inDivision;
+    const hit = k ? base.filter((e) => e.dancerName.toLowerCase().includes(k)) : base;
+    // ⚠️ 済んだ人が上に溜まると、まだの人を探すのに時間がかかる(TARO実機 2026-09-14)
+    return [...hit].sort((a, b) => {
+      const ad = isDrawn(a, division) ? 1 : 0;
+      const bd = isDrawn(b, division) ? 1 : 0;
+      if (ad !== bd) return ad - bd;
+      return a.dancerName.localeCompare(b.dancerName, 'ja');
+    });
+  }, [inDivision, q, division, qualifierMode, doneLocal]);
 
   // この端末で引き終わった人。
   // ⚠️ 受付中はサーバ主導の再描画を入れられない(進行中の画面が壊れるため)ので、
   //    一覧のdrawnDivisionsは開いたときのまま古くなる。ここで補う。
   //    これが無いと、引いた直後の人がまた選べてしまい「二重に引ける」ように見える。
-  const isDrawn = (e: Entrant, div: string) =>
-    e.drawnDivisions.includes(div) || doneLocal.has(`${e.itemId}:${div}`);
+  const isDrawn = (e: Entrant, div: string) => isDrawnFor(e, div) || doneLocal.has(`${e.itemId}:${div}`);
 
   const reset = () => {
     setScreen('home');
@@ -76,18 +89,29 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
   };
 
   /** 名前を選んだあとの分岐 */
-  const pickName = (e: Entrant) => {
+  const pickName = async (e: Entrant) => {
     setSel(e);
     setError('');
+    const drawnHere = doneLocal.has(`${e.itemId}:${division}`);
     const step = nextKioskStep(
-      { ...e, drawnDivisions: isDrawn(e, division) ? [...e.drawnDivisions, division] : e.drawnDivisions },
+      drawnHere ? { ...e, draws: [...e.draws, { division, phase: phaseForEntrant(e, division) }] } : e,
       division
     );
-    if (step.kind === 'pay') setScreen('pay');
-    else if (step.kind === 'done') {
-      setError('この部門の受付はすでに完了しています。スタッフにお声がけください。');
+    if (step.kind === 'pay') { setScreen('pay'); return; }
+    if (step.kind === 'draw') { setScreen('draw'); return; }
+    // すでに引いている人。引き直しはせず、同じ番号をそのまま出す(TARO実機 2026-09-14)
+    setBusy(true);
+    try {
+      const r = await kioskDraw(e.itemId, division);
+      if ('error' in r) { setError(r.error); setScreen('name'); return; }
+      setResult({ ...r, alreadyDrawn: true });
+      setScreen('result');
+    } catch {
+      setError('通信に失敗しました。もう一度お試しください。');
       setScreen('name');
-    } else setScreen('draw');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const stopSpin = useCallback(() => {
@@ -120,7 +144,7 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
         setError(r.error);
         return;
       }
-      pendingRef.current = r;
+      pendingRef.current = { ...r, alreadyDrawn: false };
     } catch {
       stopSpin();
       setRolling(false);
@@ -201,7 +225,10 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
   const rest = sel
     ? remainingDivisions({
         ...sel,
-        drawnDivisions: sel.divisions.filter((d) => d === division || isDrawn(sel, d)),
+        draws: [
+          ...sel.draws,
+          ...(division ? [{ division, phase: phaseForEntrant(sel, division) }] : []),
+        ],
       })
     : [];
 
@@ -347,7 +374,9 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
             {DIV_LABEL[division]} / {sel.dancerName} さん
           </p>
           <p className="mt-3 text-[2.2vh] font-bold text-orange-400">
-            {phaseForDivision(division) === 'block' ? '予選のブロックを決めます' : 'トーナメントの位置を決めます'}
+            {sel && phaseForEntrant(sel, division) === 'block'
+              ? '予選のブロックを決めます'
+              : 'トーナメントの位置を決めます'}
           </p>
 
           {/* 回っている間は数字を一切出さない(読めると目押しできると思われる) */}
@@ -409,6 +438,11 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
           <p className="mt-2 text-[2.4vh] font-bold">
             {result.block ? `${result.block}ブロック` : `${result.slotNo}番`}
           </p>
+          {result.alreadyDrawn && (
+            <p className="mt-3 text-[2vh] font-bold text-orange-300">
+              すでに引いています。番号は変わりません
+            </p>
+          )}
 
           {/* 番号だけでは伝わらないので、LEDと同じ形の表の中に自分の名前を出す */}
           {result.holders && result.slotCount ? (
@@ -420,7 +454,8 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
             />
           ) : null}
 
-          {/* ビギナーにも「ビギナー」と書かれたリストバンドを渡す(TARO 2026-09-12) */}
+          {/* リストバンドは受付時のくじ引き①だけ。②のときは配布済み(TARO 2026-09-14) */}
+          {(division === 'beginner' || result.phase === 'block') && (
           <div className="mt-7 w-full max-w-md rounded-2xl border border-orange-500/40 bg-orange-500/5 p-5 text-center">
             <p className="text-[2.6vh] font-black text-orange-300">
               「{wristbandLabel(division, result.block)}」のリストバンド
@@ -428,10 +463,11 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
             <p className="mt-2 text-[2vh] leading-relaxed text-white/70">
               受付で受け取って、腕につけておいてください。
             </p>
-            {rest.length === 0 && needsPhotoGuide(sel.divisions) && (
-              <p className="mt-3 text-[1.8vh] text-orange-200/80">このあとビギナー部門の写真撮影があります</p>
+            {rest.length === 0 && needsPhotoGuideAfterDraw(division, result.phase) && (
+              <p className="mt-3 text-[1.8vh] text-orange-200/80">このあと写真撮影があります</p>
             )}
           </div>
+          )}
 
           {/* iPadではスクロールしないと押せなかった(TARO実機 2026-09-14)。画面下に固定する */}
           <div className="h-[13vh]" />
@@ -453,9 +489,9 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
           <p className="mt-3 text-[2.2vh] font-bold text-white/70">{sel.dancerName} さん</p>
 
           {/* 写真の案内は全部門が終わってから出す。途中で出すと次の部門の受付を忘れる(TARO 2026-09-09) */}
-          {rest.length === 0 && needsPhotoGuide(sel.divisions) && (
+          {rest.length === 0 && result && needsPhotoGuideAfterDraw(division, result.phase) && (
             <div className="mt-8 w-full max-w-md rounded-2xl border border-orange-500/60 bg-orange-500/10 px-5 py-6">
-              <p className="text-[2.4vh] font-black text-orange-300">ビギナー部門の写真撮影があります</p>
+              <p className="text-[2.4vh] font-black text-orange-300">写真撮影があります</p>
               <p className="mt-2 text-[1.9vh] leading-relaxed text-white/80">
                 お近くのスタッフに声をかけて、<br />エントリー写真を撮ってもらってください
               </p>
@@ -480,7 +516,7 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
                   setDivision(d);
                   setResult(null);
                   pendingRef.current = null;
-                  setSel({ ...sel, drawnDivisions: [...sel.drawnDivisions, division] });
+                  setSel({ ...sel, draws: [...sel.draws, { division, phase: phaseForEntrant(sel, division) }] });
                   setScreen('draw');
                 }}
                 className="mx-auto block w-full max-w-md rounded-2xl bg-gradient-to-b from-orange-500 to-orange-700 py-6 text-[2.4vh] font-black"

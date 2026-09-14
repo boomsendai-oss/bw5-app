@@ -4,7 +4,13 @@
 // 9人目は入らない(押し間違い防止)。外したいときはもう一度タップ。
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { QUALIFIER_COUNT, qualifiersReady, toggleQualifier } from '@/lib/bf6Qualifier';
+import {
+  QUALIFIER_COUNT,
+  QUALIFIER_PER_BLOCK,
+  qualifierPickError,
+  qualifiersReady,
+  toggleQualifier,
+} from '@/lib/bf6Qualifier';
 import { crewSetQualifier } from './actions';
 import { matchesAny } from '@/lib/bf6ListUi';
 
@@ -25,16 +31,24 @@ export default function QualifierPicker({
   const [err, setErr] = useState<string | null>(null);
   // MCが読み上げた名前をその場で探す。26人を目で追うのは当日きつい(2026-09-11)
   const [q, setQ] = useState('');
+  // 予選1回ならA4名・B4名で確定する。2回やる場合は2次予選でA/Bが混ざるので上限を外す(TARO 2026-09-14)
+  const [perBlock, setPerBlock] = useState(true);
   const [pending, start] = useTransition();
 
   const ready = qualifiersReady(selected.size);
 
+  const blockOf = (itemId: number) => candidates.find((c) => c.itemId === itemId)?.block ?? null;
+  const selectedBlocks = [...selected].map(blockOf);
+
   const tap = (itemId: number) => {
-    const next = toggleQualifier(selected, itemId);
-    if (next.size === selected.size && !selected.has(itemId)) {
-      setErr(`${QUALIFIER_COUNT}名までです。外してから選び直してください`);
-      return;
+    if (!selected.has(itemId)) {
+      const why = qualifierPickError(selectedBlocks, blockOf(itemId), perBlock);
+      if (why) {
+        setErr(why);
+        return;
+      }
     }
+    const next = toggleQualifier(selected, itemId);
     setErr(null);
     setSelected(next); // 先に画面へ反映(押した感触を返す)
     start(async () => {
@@ -60,6 +74,19 @@ export default function QualifierPicker({
           {selected.size}
           <span className="text-base font-bold text-neutral-400"> / {QUALIFIER_COUNT} 名</span>
         </p>
+        <p className="mt-2 text-sm font-bold tabular-nums text-navy-800">
+          Aブロック {selectedBlocks.filter((b) => b === 'A').length}
+          {perBlock ? ` / ${QUALIFIER_PER_BLOCK}` : ''}
+          <span className="mx-2 text-neutral-400">|</span>
+          Bブロック {selectedBlocks.filter((b) => b === 'B').length}
+          {perBlock ? ` / ${QUALIFIER_PER_BLOCK}` : ''}
+        </p>
+        <button
+          onClick={() => { setPerBlock((v) => !v); setErr(null); }}
+          className="mt-2 text-xs font-bold text-neutral-500 underline"
+        >
+          {perBlock ? 'ブロックの上限を外す(予選を2回やる場合)' : 'ブロックの上限を戻す(各4名)'}
+        </button>
         <p className="mt-1 text-xs text-neutral-500">
           {ready
             ? 'そろいました。くじ引き②に進めます。'

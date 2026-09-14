@@ -17,6 +17,31 @@ export function qualifiersReady(count: number): boolean {
   return count === QUALIFIER_COUNT;
 }
 
+/** 予選1回のときの、1ブロックあたりの通過者。A4名・B4名で合計8名。 */
+export const QUALIFIER_PER_BLOCK = 4;
+
+/**
+ * その人を選べるか。選べないときは理由の文、選べるときは null。
+ *
+ * 予選1回: Aブロック4名・Bブロック4名で確定するので、同じブロックの5人目は選ばせない。
+ * 予選2回: 2次予選はA/Bを合体させた1サークルなのでブロックの上限は効かない(perBlock=false)。
+ */
+export function qualifierPickError(
+  selectedBlocks: ('A' | 'B' | null)[],
+  block: 'A' | 'B' | null,
+  perBlock: boolean
+): string | null {
+  if (selectedBlocks.length >= QUALIFIER_COUNT) {
+    return `${QUALIFIER_COUNT}名までです。外してから選び直してください`;
+  }
+  if (!perBlock || block === null) return null;
+  const inBlock = selectedBlocks.filter((b) => b === block).length;
+  if (inBlock >= QUALIFIER_PER_BLOCK) {
+    return `${block}ブロックは${QUALIFIER_PER_BLOCK}名までです。予選を2回やる場合は「ブロックの上限を外す」を押してください`;
+  }
+  return null;
+}
+
 /** 選択の切り替え。9人目は入れない(押し間違い防止)。 */
 export function toggleQualifier(selected: Set<number>, itemId: number): Set<number> {
   const next = new Set(selected);

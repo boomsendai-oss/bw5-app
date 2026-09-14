@@ -57,9 +57,19 @@ export function ReceptionClient({
   const tabs = receptionTabs(entrants, phase);
   const inDivision = useMemo(() => entrantsInDivision(entrants, division), [entrants, division]);
   // カタカナ・ひらがな・全角のどれで打っても当たるようにする(当日は急いで打つ)
+  // ⚠️ 済んだ人が上に溜まると、まだの人を探すのに時間がかかる(TARO実機 2026-09-14)。
+  //    引き終わった人は下に落とす。
   const list = useMemo(
-    () => inDivision.filter((e) => matchesAny([e.dancerName, e.performerName], q)),
-    [inDivision, q]
+    () =>
+      inDivision
+        .filter((e) => matchesAny([e.dancerName, e.performerName], q))
+        .sort((a, b) => {
+          const ad = drawFor(a, division, phase) ? 1 : 0;
+          const bd = drawFor(b, division, phase) ? 1 : 0;
+          if (ad !== bd) return ad - bd;
+          return a.dancerName.localeCompare(b.dancerName, 'ja');
+        }),
+    [inDivision, q, division, phase]
   );
 
   function draw(e: ReceptionEntrant) {
@@ -90,13 +100,15 @@ export function ReceptionClient({
             <p className="text-xl font-bold text-sand-200">番</p>
           </>
         )}
-        {/* 渡すリストバンドをスタッフにも出す(ビギナーは「ビギナー」・TARO 2026-09-12) */}
+        {/* 渡すリストバンドは受付時のくじ引き①だけ。②のときは配布済み(TARO 2026-09-14) */}
+        {phase === 'block' && (
         <div className="mt-10 w-full max-w-sm rounded-2xl border border-sand-300/40 bg-white/10 px-5 py-4">
           <p className="text-sm font-bold text-sand-200">渡すリストバンド</p>
           <p className="mt-1 text-3xl font-black text-white">
             {wristbandLabel(drawn.division, drawn.block)}
           </p>
         </div>
+        )}
 
         <button
           onClick={() => { setDrawn(null); setSel(null); setQ(''); router.refresh(); }}
