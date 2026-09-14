@@ -5,6 +5,7 @@ import { configured, connectionStatus, refreshTokenIfStale } from '@/lib/instagr
 import { findChainMediaList, loadSidecar, checkSchedule } from '@/lib/storyPlan';
 import { notifyTaro } from '@/lib/notify';
 import { evaluateSyncFreshness } from '@/lib/syncWatchdog';
+import { evaluateShiftSyncFreshness } from '@/lib/shiftSyncWatchdog';
 import { findUpcomingReturns, isNotifyWindow, buildReturnNotice } from '@/lib/kyukaiWatch';
 import { listDaySlots } from '@/lib/storyDayPlan';
 import { findOverdueSlots, describeOverdueSlot, hhmmToMinutes } from '@/lib/slotWatch';
@@ -373,6 +374,21 @@ export async function GET(req: NextRequest) {
     }
   } catch (e) {
     console.warn(`同期鮮度チェックに失敗(ストーリー側は継続): ${e instanceof Error ? e.message : e}`);
+  }
+
+  // Lステップ シフト同期のデッドマンスイッチ。
+  // あちらは動きがあった日しかメールを出さないので、止まったことはここで鳴らす。
+  try {
+    const row = await getOne("SELECT value FROM settings WHERE key = 'lstep_shift_sync_last_ok'");
+    const freshness = evaluateShiftSyncFreshness(
+      (row as { value?: string } | null)?.value ?? null,
+      new Date(),
+    );
+    if (freshness.stale && freshness.message) {
+      anomalies.push(freshness.message);
+    }
+  } catch (e) {
+    console.warn(`シフト同期の鮮度チェックに失敗(ストーリー側は継続): ${e instanceof Error ? e.message : e}`);
   }
 
   // (3) 通知
