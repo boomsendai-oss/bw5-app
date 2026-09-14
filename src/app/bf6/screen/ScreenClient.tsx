@@ -155,21 +155,11 @@ export function ScreenClient() {
                画面ごと描き直しになってカクつく(TARO実機 2026-09-10)。揺れは前景だけに掛ける。 */}
         <div key={vsAnimKey(state)} className="relative h-full w-full">
           {/* 背景は動画。暗闇→左右から赤青が突入→中央で衝突→煙が広がって落ち着く。
-              試合ごとに1回だけ再生し、最後のコマで止める(ループさせない)。
-              読み込みや再生に失敗しても、poster の静止画が残るので画面は成立する。 */}
-          <video
-            key={vsAnimKey(state)}
-            className="absolute inset-0 h-full w-full object-cover"
-            src="/bf6/vs-bg.mp4"
-            /* ⚠️ poster に最終フレームを使わないこと。再生前に明るい終わりの絵が出て、
-                  暗転してから再生が始まる不自然な順になる(TARO実機 2026-09-10)。
-                  先頭フレーム(ほぼ真っ黒)なら、そのまま自然に動画へつながる。 */
-            poster="/bf6/vs-bg-first.jpg"
-            autoPlay
-            muted
-            playsInline
-            preload="auto"
-          />
+              試合ごとに1回だけ再生する。5秒で終わるが、そこで固まると急に止まって見えるので
+              終わったあとは最後のコマをゆっくり拡大させ、薄い靄を流す(TARO実機 2026-09-14)。
+              追加で読み込むものは無いので重くならない。 */}
+          <VsBackground animKey={vsAnimKey(state)} />
+
           {/* 名前が乗る下端だけ軽く落とす。中央に暗幕を敷くと動画の鮮やかさが死ぬ。 */}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[26%] bg-[linear-gradient(to_top,rgba(5,7,12,0.62),transparent)]" />
           {/* 衝突の閃光 */}
@@ -814,6 +804,15 @@ function ScreenAnimStyles() {
       .bf6-trace-stem { animation: bf6TraceStem 1.5s cubic-bezier(.3,.1,.2,1) both; }
       .bf6-arrive   { animation: bf6Arrive  2.2s cubic-bezier(.18,1.1,.28,1) both; z-index: 5; position: relative; }
       .bf6-champ    { animation: bf6Champ    2.2s ease-in-out infinite; }
+      /* VS背景が終わったあとの、ごくゆっくりした動き。止まって見えないようにするだけ */
+      @keyframes bf6BgDrift { from { transform: scale(1); } to { transform: scale(1.07); } }
+      .bf6-bgdrift { animation: bf6BgDrift 26s ease-out both; }
+      @keyframes bf6Haze { 0% { opacity: 0; transform: translate3d(-3%,0,0); } 50% { opacity: .5; } 100% { opacity: 0; transform: translate3d(3%,0,0); } }
+      .bf6-haze {
+        background: radial-gradient(60% 45% at 35% 60%, rgba(255,255,255,0.06), transparent 70%),
+                    radial-gradient(50% 40% at 70% 45%, rgba(255,160,80,0.05), transparent 70%);
+        animation: bf6Haze 14s ease-in-out infinite;
+      }
     `}</style>
   );
 }
@@ -832,6 +831,35 @@ function Logo() {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/bf6/led-title.png" alt="BOOMER'S FIGHT!!! vol.6" className="relative w-[62vw] max-w-none" />
     </div>
+  );
+}
+
+/**
+ * VSの背景。5秒の動画を1回再生し、終わったらゆっくり動かし続ける。
+ * ⚠️ 止めたままにすると「ばしゃんと弾けて急にぴたっと止まる」ように見える(TARO実機 2026-09-14)。
+ */
+function VsBackground({ animKey }: { animKey: string }) {
+  const [ended, setEnded] = useState(false);
+  useEffect(() => setEnded(false), [animKey]);
+  return (
+    <>
+      <video
+        key={animKey}
+        className={`absolute inset-0 h-full w-full object-cover ${ended ? 'bf6-bgdrift' : ''}`}
+        src="/bf6/vs-bg.mp4"
+        /* ⚠️ poster に最終フレームを使わないこと。再生前に明るい終わりの絵が出て、
+              暗転してから再生が始まる不自然な順になる(TARO実機 2026-09-10)。
+              先頭フレーム(ほぼ真っ黒)なら、そのまま自然に動画へつながる。 */
+        poster="/bf6/vs-bg-first.jpg"
+        autoPlay
+        muted
+        playsInline
+        preload="auto"
+        onEnded={() => setEnded(true)}
+      />
+      {/* 動画が終わったあとに流す薄い靄。動画の上に重ねるだけで、読み込みは増えない */}
+      {ended && <div className="bf6-haze pointer-events-none absolute inset-0" />}
+    </>
   );
 }
 

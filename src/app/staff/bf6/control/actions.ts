@@ -30,6 +30,17 @@ export async function controlShowVs(round: Round | null, matchNo: number | null)
   await setBf6ScreenState({ mode: 'vs', round, matchNo });
 }
 
+/**
+ * バトルスタート。VS画面から背景(ロゴ)に切り替える。
+ *
+ * 当日の流れ(TARO 2026-09-14): MCが呼び込む間はVSを映す → 「バトルスタート」で背景に変える →
+ * バトル中は背景のまま → ジャッジが上げた方を押す → トーナメント表に戻る。
+ * ⚠️ どの試合をやっているかは消さない。背景に切り替えても勝者のボタンはそのまま押せる。
+ */
+export async function controlBattleStart(): Promise<void> {
+  await setBf6ScreenState({ mode: 'logo' });
+}
+
 export async function controlSetWinner(
   division: Bf6DrawDivision,
   round: Round,

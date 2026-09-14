@@ -5,7 +5,14 @@ import { isByeMatch, isEmptyMatch } from '@/lib/bf6Bracket';
 // LED側には出力用の映像だけが行く(別機器で /bf6/screen を開いているため)。
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { controlReflectBracket, controlResetBracket, controlSetMode, controlSetWinner, controlShowVs } from './actions';
+import {
+  controlBattleStart,
+  controlReflectBracket,
+  controlResetBracket,
+  controlSetMode,
+  controlSetWinner,
+  controlShowVs,
+} from './actions';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 import type { Match, Round } from '@/lib/bf6Bracket';
 import type { ScreenMode, ScreenState, SlotName } from '@/lib/bf6ScreenDb';
@@ -46,12 +53,15 @@ export function ControlClient({
 
   // 勝者を押す対象は「いまLEDに映っている試合」。任意の試合を出しているときに
   // 次の試合の勝者ボタンが出ると押し間違える(TARO実機 2026-09-10)。
+  // いま出している試合。バトル中(背景に切り替えたあと)も覚えたままにする。
   const shown =
-    s.mode === 'vs' && s.round && s.matchNo
+    s.round && s.matchNo
       ? matches.find((m) => m.round === s.round && m.matchNo === s.matchNo) ?? null
       : null;
   const target = shown ?? nextMatch;
   const targetIsShown = shown !== null;
+  const vsNow = s.mode === 'vs' && shown !== null;
+  const battling = s.mode === 'logo' && shown !== null;
 
   return (
     <div className="space-y-5">
@@ -120,7 +130,8 @@ export function ControlClient({
         {target ? (
           <>
             <p className="text-xs font-bold tracking-widest text-brand-600">
-              {targetIsShown ? 'いまLEDに出ている試合' : '次の試合'} — {ROUND_LABEL[target.round] ?? target.round} 第{target.matchNo}試合
+              {battling ? 'バトル中' : targetIsShown ? 'いまLEDに出ている試合' : '次の試合'} —{' '}
+              {ROUND_LABEL[target.round] ?? target.round} 第{target.matchNo}試合
             </p>
             <p className="mt-2 text-center text-lg font-black text-navy-900">
               {name(target.slotA)} <span className="mx-2 text-brand-600">VS</span> {name(target.slotB)}
@@ -133,6 +144,30 @@ export function ControlClient({
               >
                 この試合のVS画面を出す
               </button>
+            )}
+            {/* 呼び込み中はVS、バトル中は背景(TARO 2026-09-14) */}
+            {vsNow && (
+              <button
+                disabled={pending}
+                onClick={() => run(() => controlBattleStart())}
+                className="mt-3 w-full rounded-xl bg-navy-900 py-5 text-lg font-black text-white disabled:opacity-50"
+              >
+                バトルスタート(背景に切り替える)
+              </button>
+            )}
+            {battling && (
+              <div className="mt-3 flex gap-2">
+                <p className="flex-1 rounded-xl bg-navy-900 px-3 py-3 text-center text-sm font-black text-white">
+                  バトル中(LEDは背景)
+                </p>
+                <button
+                  disabled={pending}
+                  onClick={() => run(() => controlShowVs(target.round, target.matchNo))}
+                  className="rounded-xl border border-sand-300 px-4 py-3 text-sm font-bold text-navy-800 disabled:opacity-50"
+                >
+                  VSに戻す
+                </button>
+              </div>
             )}
             {target.winnerSlot && (
               <p className="mt-3 rounded-lg bg-sand-100 px-3 py-2 text-center text-xs font-bold text-neutral-600">
