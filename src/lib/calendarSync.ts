@@ -46,7 +46,7 @@ export type SyncResult = {
  */
 export async function syncCalendarActuals(
   ym: string,
-  opts: { apply: boolean }
+  opts: { apply: boolean; allowNextMonth?: boolean }
 ): Promise<SyncResult> {
   const base: SyncResult = {
     year_month: ym, range: null, applied: false, held: 0, notHeld: 0, extra: 0,
@@ -70,7 +70,14 @@ export async function syncCalendarActuals(
   // 読めない予定(会場未定・代講等)と重なる枠は従来どおり触らないので、
   // 9月の「会場未定」のような日はマスタ予定のまま保留される。
   const limit = monthEnd;
-  if (todayJst < `${ym}-01`) return { ...base, skippedReason: 'まだ対象月が始まっていない(翌月以降は同期しない)' };
+  // 既定では翌月以降を同期しない(日次cronが先走らないようにするため)。
+  // ただし**前払いのスタジオは前月15〜末日に翌月分を払う**ので、
+  // 翌月の会場別金額を出せないと前払い額が決められない(2026-09-15 TARO指摘)。
+  // allowNextMonth を明示したときだけ翌月を許可する(手動実行用)。
+  // 未来日を書いてもHACOMONOの枠が勝手に動かないことは上のコメントのとおり確認済み。
+  if (todayJst < `${ym}-01` && !opts.allowNextMonth) {
+    return { ...base, skippedReason: 'まだ対象月が始まっていない(翌月以降は同期しない。前払い額の算定など明示的に必要なときは allowNextMonth を指定する)' };
+  }
 
   const instructors = (await getAll('SELECT id, name FROM instructors ORDER BY id')) as unknown as NamedRef[];
   const studioRows = (await getAll('SELECT id, name FROM studios ORDER BY id')) as unknown as { id: number; name: string }[];
