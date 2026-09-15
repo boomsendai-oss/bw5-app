@@ -116,7 +116,19 @@ export async function GET(req: NextRequest) {
     lines.push(`【月次締め】${prevYm} の状況`);
     lines.push('');
     lines.push(`給与: ${status.payrollRuns}名 ${yen(status.payrollTotal)}${status.payrollDraft > 0 ? `（うち未確定 ${status.payrollDraft}名）` : '（確定済み）'}`);
-    lines.push(`スタジオ・会場費: ${status.studioRuns}件 ${yen(status.studioTotal)}`);
+    const estTotal = status.estimatedStudio.reduce((a, e) => a + e.amount, 0);
+    lines.push(
+      `スタジオ・会場費: ${status.studioRuns}件 ${yen(status.studioTotal)}` +
+        (estTotal > 0 ? `（実績 ${yen(status.studioTotal - estTotal)} ＋ 推定 ${yen(estTotal)}）` : '（全額カレンダー実績）')
+    );
+    if (estTotal > 0) {
+      lines.push('');
+      lines.push('■ スタジオ代のうち「推定」ぶん（カレンダーの予定が読めずマスタ予定から補完）');
+      for (const e of status.estimatedStudio) {
+        lines.push(`  - ${e.name}: ${yen(e.amount)}（${e.count}件）`);
+      }
+      lines.push('  → 開催するなら金額は正しい。開催しないなら過大。カレンダーに【講師名】と場所を入れると自動で消えます');
+    }
     if (status.awaitingReceipt.length > 0) {
       lines.push('');
       lines.push(`■ 領収書の金額待ち（公共施設）`);

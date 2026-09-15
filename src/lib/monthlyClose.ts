@@ -97,6 +97,7 @@ export type CloseStatus = {
   studioTotal: number;
   /** 実費型で金額が未入力の会場(領収書待ち) */
   awaitingReceipt: string[];
+  estimatedStudio: { name: string; count: number; amount: number }[];
 };
 
 /** 締めの進み具合。催促メールの判断材料。 */
@@ -115,6 +116,20 @@ export async function getCloseStatus(ym: string): Promise<CloseStatus> {
   // ただし payment_type='platform' の会場(スペースマーケット/インスタベース等)は
   // 銀行明細から expenses に自動計上されるため **常に¥0が正しい**。
   // これを催促に含めると毎回鳴って本当の抜けを見落とすので除外する。
+  // カレンダーの予定が読めなかった枠は、マスタ予定から補完して金額に入る。
+  // 実績(lesson_instance)と混ざると、**金額を見ても実績か推定か区別できない**。
+  // 2026-09-15にこれが原因で丸一日ラリーになった(長町が実際2コマなのに4コマ計上・
+  // 10/3に開催しないHOUSEエキスパート¥4,500が計上、等)。分けて出す。
+  const estimated = (await getAll(
+    `SELECT s.name, COUNT(*) AS n, COALESCE(SUM(l.amount),0) AS amt
+       FROM studio_billing_lines l
+       JOIN studio_billing_runs r ON r.id = l.studio_billing_run_id
+       JOIN studios s ON s.id = r.studio_id
+      WHERE r.year_month = ? AND l.source = 'lesson_master_expanded' AND l.amount > 0
+      GROUP BY s.id ORDER BY amt DESC`,
+    [ym]
+  )) as unknown as { name: string; n: number; amt: number }[];
+
   const awaiting = (await getAll(
     `SELECT s.name FROM studio_billing_runs r JOIN studios s ON s.id = r.studio_id
      WHERE r.year_month = ? AND s.pricing_model = 'actual'
@@ -130,5 +145,6 @@ export async function getCloseStatus(ym: string): Promise<CloseStatus> {
     studioRuns: Number(studio[0]?.n ?? 0),
     studioTotal: Number(studio[0]?.amt ?? 0),
     awaitingReceipt: awaiting.map((a) => a.name),
+    estimatedStudio: estimated.map((e) => ({ name: e.name, count: Number(e.n), amount: Number(e.amt) })),
   };
 }
