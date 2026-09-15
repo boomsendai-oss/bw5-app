@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { upsertCastLine } from '@/lib/reelCaption';
+// 投稿枠(火=クラス/金=発表会 の19:00 JST)の規則は lib/reelSlot.ts に一本化(APIと共用)。
+import { nextReelSlotIso, nextReelSlotLocal } from '@/lib/reelSlot';
 
 // リール自動生成 — 下書き入力画面 (WS: リール自動生成)
 // 設計: ~/BOOM/SNS戦略/リール自動生成パイプライン設計_v1.md
@@ -1233,20 +1235,20 @@ function CompactRow({ d, onReset, onMsg }: { d: Draft; onReset: () => void; onMs
   );
 }
 
-/** 次の投稿枠(発表会=金/クラス=火 の19:00 JST)を datetime-local の値で返す */
+/** 次の投稿枠(発表会=金/クラス=火 の19:00 JST)。規則の正本は lib/reelSlot.ts(APIと共用)。 */
 function defaultSlotLocal(stage: boolean): string {
-  const target = stage ? 5 : 2; // 金 or 火
-  const now = new Date();
-  const jst = new Date(now.getTime() + 9 * 3600 * 1000);
-  for (let i = 0; i <= 14; i++) {
-    const d = new Date(jst.getTime() + i * 86400000);
-    if (d.getUTCDay() !== target) continue;
-    const sameDay = i === 0;
-    if (sameDay && jst.getUTCHours() >= 19) continue; // 今日の枠を過ぎていたら次週
-    const p = (n: number) => String(n).padStart(2, '0');
-    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T19:00`;
-  }
-  return '';
+  return nextReelSlotLocal(stage ? 'stage' : 'class');
+}
+
+/**
+ * 次の投稿枠をISO(UTC)で返す。
+ * 「次の火曜19時」のような相対表現はボタンに出さない ―― 今日が火曜でまだ19時前なら
+ * 今日のことなのか来週なのか読み手に判断がつかないため(TARO 2026-09-15: 火曜の昼に
+ * 「次の火曜19時で投稿」を押したら9/22になった)。ボタンには実日付を出し、
+ * 押した時のISOもここから作って「書いてある日時＝入る日時」を保証する。
+ */
+function defaultSlotIso(stage: boolean): string {
+  return nextReelSlotIso(stage ? 'stage' : 'class');
 }
 
 // 投稿待ち: 完成リールを確認→キャプション微調整→投稿予約(手動GO)
@@ -1549,11 +1551,15 @@ function ReviewCard({ draft, onChanged, onMsg, pool = {} }: {
       )}
 
       <div className="border-t border-sand-100 pt-3">
-        <p className="text-[11px] text-navy-500 mb-2">確認できたら投稿予約（ここで初めてInstagramに出ます）</p>
+        <p className="text-[11px] text-navy-500 mb-2">
+          確認できたら投稿予約（ここで初めてInstagramに出ます）・定例枠は{stage ? '金曜' : '火曜'}19時
+        </p>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => schedule()} disabled={busy}
+          {/* ボタンには相対表現でなく実日付を出す。押した瞬間に計算し直した同じ値を送るので、
+              画面を開きっぱなしで19時をまたいでも「表示と違う日」に入ることはない。 */}
+          <button onClick={() => schedule(defaultSlotIso(stage) || undefined)} disabled={busy}
             className="px-4 py-2 text-sm rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50">
-            ▶ 次の{draft.kind === '発表会' || draft.kind === 'stage' ? '金曜' : '火曜'}19時で投稿
+            ▶ {fmtJst(defaultSlotIso(stage))} に投稿
           </button>
           <span className="text-navy-300 text-xs">または</span>
           {/* 好きな日時で予約。空なら次の投稿枠を初期値にしておく(スマホで打ち直す手間を減らす) */}
@@ -1566,7 +1572,8 @@ function ReviewCard({ draft, onChanged, onMsg, pool = {} }: {
           <button onClick={() => {
               const v = dateStr || defaultSlotLocal(stage);
               if (!v) { onMsg('日時を選んでください'); return; }
-              schedule(new Date(v).toISOString());
+              // 入力欄の「19:00」はJSTのつもりで打っている。端末のタイムゾーン任せにしない。
+              schedule(new Date(`${v}:00+09:00`).toISOString());
             }} disabled={busy}
             className="px-3 py-1.5 text-sm rounded-md border border-brand-300 text-brand-700 hover:bg-brand-50 disabled:opacity-50">
             この日時で投稿
