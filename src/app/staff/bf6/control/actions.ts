@@ -49,6 +49,13 @@ export async function controlSetWinner(
 ): Promise<void> {
   await ensureBf6Bracket(division);
   await setBf6Winner(division, round, matchNo, winnerSlot);
+  // ⚠️ 決勝だけはLEDを切り替えない。優勝者は表彰でまとめて発表するため、
+  //    入力した瞬間にトーナメント表(優勝枠)が出てしまうとネタバレになる
+  //    (TARO 2026-09-16「その時点ではLEDには発表にならないようにしてほしい」)。
+  if (round === 'f') {
+    await setBf6ScreenState({ round: null, matchNo: null });
+    return;
+  }
   // 勝者確定後はトーナメント表に戻す。次のVSへは操作する人がワンタップで進める
   // (MCの間合いに合わせるため自動遷移にしない・TARO 2026-08-21)
   await setBf6ScreenState({ mode: 'bracket', round: null, matchNo: null });

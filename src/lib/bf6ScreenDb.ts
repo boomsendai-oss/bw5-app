@@ -20,8 +20,9 @@ import {
   type Round,
 } from './bf6Bracket';
 import type { Bf6DrawDivision } from './bf6Draw';
+import { CHAMPION_ORDER } from './bf6Lineup';
 
-export type ScreenMode = 'logo' | 'bracket' | 'vs';
+export type ScreenMode = 'logo' | 'bracket' | 'vs' | 'champions';
 
 export type ScreenState = {
   mode: ScreenMode;
@@ -271,6 +272,45 @@ export async function listBf6SlotNames(division: Bf6DrawDivision): Promise<Map<n
     });
   }
   return map;
+}
+
+export type Champion = {
+  division: Bf6DrawDivision;
+  label: string;
+  slotNo: number | null;
+  dancerName: string;
+  hasPhoto: boolean;
+  photoAt: string | null;
+};
+
+const DIV_LABEL: Record<string, string> = { beginner: 'ビギナー', kids: '小中学生', general: '一般' };
+
+/**
+ * 3部門の優勝者。左からビギナー・小中学生・一般で返す。
+ *
+ * 当日の運用(TARO 2026-09-16): 決勝が終わるたびに勝者を入れておき、LEDには出さない。
+ * 最後の結果発表でこの3人をまとめて映す。まだ決まっていない部門は名前が空で返る。
+ */
+export async function listBf6Champions(): Promise<Champion[]> {
+  return Promise.all(
+    CHAMPION_ORDER.map(async (division) => {
+      const [matches, names] = await Promise.all([
+        listBf6Matches(division),
+        listBf6SlotNames(division),
+      ]);
+      const finalMatch = matches.find((m) => m.round === 'f');
+      const slotNo = finalMatch?.winnerSlot ?? null;
+      const slot = slotNo === null ? undefined : names.get(slotNo);
+      return {
+        division,
+        label: DIV_LABEL[division] ?? division,
+        slotNo,
+        dancerName: slot?.dancerName ?? '',
+        hasPhoto: slot?.hasPhoto ?? false,
+        photoAt: slot?.photoAt ?? null,
+      };
+    })
+  );
 }
 
 /** トーナメントをリセット(試合結果と組み合わせを消す)。抽選(bf_draw)は消さない。 */

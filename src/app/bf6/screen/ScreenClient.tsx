@@ -16,13 +16,19 @@ import type { DivisionTheme } from '@/lib/bf6Theme';
 
 type Match = { round: string; matchNo: number; slotA: number | null; slotB: number | null; winnerSlot: number | null };
 type Slot = { slotNo: number; dancerName: string; rep: string; genre: string; hasPhoto: boolean; photoAt?: string | null };
+type Champion = {
+  division: string; label: string; slotNo: number | null;
+  dancerName: string; hasPhoto: boolean; photoAt: string | null;
+};
 type Payload = {
-  state: { mode: 'logo' | 'bracket' | 'vs'; division: string; round: string | null; matchNo: number | null; rev: number };
+  state: { mode: 'logo' | 'bracket' | 'vs' | 'champions'; division: string; round: string | null; matchNo: number | null; rev: number };
   matches: Match[];
   slots: Record<string, Slot>;
   nextMatch: Match | null;
   /** トーナメント開始前(くじ引きの結果をそのまま映している) */
   pending?: boolean;
+  /** 優勝者発表のときだけ入る(3部門ぶん) */
+  champions?: Champion[] | null;
 };
 
 const DIV_LABEL: Record<string, string> = { beginner: 'ビギナー', kids: '小中学生', general: '一般' };
@@ -174,6 +180,15 @@ export function ScreenClient() {
   if (!shown) return <Stage dark={dark}><Logo /></Stage>;
   const { state, matches, slots } = shown;
   if (state.mode === 'logo') return <Stage dark={dark}><Logo /></Stage>;
+
+  // 優勝者発表。3部門を横に並べ、左から順に出す(TARO 2026-09-16)
+  if (state.mode === 'champions') {
+    return (
+      <Stage dark={dark}>
+        <Champions rows={shown.champions ?? []} />
+      </Stage>
+    );
+  }
 
   if (state.mode === 'vs') {
     const m = state.round && state.matchNo
@@ -653,6 +668,15 @@ function ScreenAnimStyles() {
         86%     { transform: scale(0.97); }
         100%    { opacity: 1; transform: scale(1); box-shadow: 0 0 1vw rgba(249,115,22,0.5); }
       }
+      /* 優勝者が1人ずつ飛び込む。奥から来て少し跳ねて止まる */
+      @keyframes bf6ChampIn {
+        0%   { opacity: 0; transform: scale(2.6) translateY(-2vh); }
+        55%  { opacity: 1; }
+        72%  { opacity: 1; transform: scale(0.92) translateY(0); }
+        84%  { transform: scale(1.06); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+      .bf6-champ-in { animation: bf6ChampIn 1.1s cubic-bezier(.18,1.1,.28,1) both; }
       @keyframes bf6Champ {
         0%,100% { box-shadow: 0 0 1.6vw rgba(249,115,22,0.45); }
         50%     { box-shadow: 0 0 3.4vw 0.4vw rgba(249,115,22,0.85); }
@@ -760,6 +784,60 @@ function ScreenAnimStyles() {
         animation: bf6Haze 14s ease-in-out infinite;
       }
     `}</style>
+  );
+}
+
+/**
+ * 優勝者発表。画面を3分割し、左からビギナー・小中学生・一般。
+ * ボタン1回で3人が順に飛び込む(TARO 2026-09-16「ボンボンボンと3つ出る」)。
+ * ⚠️ 1人ずつの遅れは CSS の animation-delay で付ける。JSのタイマーで出し分けると
+ *    ポーリングの再描画とぶつかってやり直しになる。
+ */
+function Champions({ rows }: { rows: Champion[] }) {
+  return (
+    <div className="relative flex h-full w-full flex-col overflow-hidden">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/bf6/led-bg.png" alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />
+      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_45%,transparent_30%,rgba(5,7,12,0.85)_100%)]" />
+
+      <div className="relative flex items-start justify-between px-[2.5vw] pt-[2vh]">
+        <p className="bf6-drop text-[2.2vw] font-black tracking-[0.4em] text-amber-300">CHAMPIONS</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/bf6/led-title.png" alt="" className="h-[8vh] w-auto opacity-95" />
+      </div>
+
+      <div className="relative flex flex-1 items-stretch px-[1.5vw] pb-[3vh]">
+        {rows.map((c, i) => {
+          const theme = divisionTheme(c.division);
+          return (
+            <div
+              key={c.division}
+              className="bf6-champ-in flex min-w-0 flex-1 basis-1/3 flex-col items-center justify-end px-[0.8vw]"
+              style={{ animationDelay: `${300 + i * 700}ms` }}
+            >
+              <p className={`text-[1.5vw] font-black tracking-[0.35em] ${theme.text}`}>{c.label}部門</p>
+              <div className="flex h-[52vh] w-full items-end justify-center">
+                {c.hasPhoto && c.slotNo !== null && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`/api/bf6/photo/${c.slotNo}?division=${c.division}&v=${encodeURIComponent(c.photoAt ?? '')}`}
+                    alt=""
+                    className="bf6-cut max-h-full w-auto max-w-full object-contain object-bottom"
+                  />
+                )}
+              </div>
+              <p
+                className="bf6-face bf6-chrome bf6-sheen relative mt-[0.5vh] w-full break-words text-center text-[4.4vw] font-black italic leading-[0.95]"
+                data-text={c.dancerName || '—'}
+              >
+                {c.dancerName || '—'}
+              </p>
+              <p className="mt-[0.6vh] text-[1.3vw] font-black tracking-[0.4em] text-amber-300/90">WINNER</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

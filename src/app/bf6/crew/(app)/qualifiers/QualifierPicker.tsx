@@ -13,6 +13,7 @@ import {
 } from '@/lib/bf6Qualifier';
 import { crewSetQualifier } from './actions';
 import { matchesAny } from '@/lib/bf6ListUi';
+import { arcPositions, lineupForBlock } from '@/lib/bf6Lineup';
 
 export type Candidate = { itemId: number; dancerName: string; block: 'A' | 'B' | null };
 
@@ -33,6 +34,8 @@ export default function QualifierPicker({
   const [q, setQ] = useState('');
   // 予選1回ならA4名・B4名で確定する。2回やる場合は2次予選でA/Bが混ざるので上限を外す(TARO 2026-09-14)
   const [perBlock, setPerBlock] = useState(true);
+  // 並ばせた順に見るか、名前で探すか。当日は並び順が主(TARO 2026-09-16)
+  const [view, setView] = useState<'arc' | 'list'>('arc');
   const [pending, start] = useTransition();
 
   const ready = qualifiersReady(selected.size);
@@ -104,6 +107,90 @@ export default function QualifierPicker({
 
       {err && <p className="rounded-lg bg-red-600 px-3 py-2 text-sm font-bold text-white">{err}</p>}
 
+      <div className="flex gap-2">
+        {([
+          { key: 'arc', label: '並び順(半円)' },
+          { key: 'list', label: '名前で探す' },
+        ] as const).map((v) => (
+          <button
+            key={v.key}
+            onClick={() => setView(v.key)}
+            className={`flex-1 rounded-xl py-2.5 text-sm font-black ${
+              view === v.key ? 'bg-navy-900 text-white' : 'bg-sand-100 text-neutral-700'
+            }`}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'arc' && (
+        <>
+          <p className="text-xs leading-relaxed text-neutral-600">
+            エントリーが早い順に左から並べています。この図のとおりに人を並ばせてください。
+            ジャッジが「左から3番目」と言ったら、同じ位置をタップします。
+          </p>
+          {(['A', 'B'] as const).map((b) => {
+            const line = lineupForBlock(candidates, b);
+            if (line.length === 0) return null;
+            const pos = arcPositions(line.length);
+            return (
+              <section key={b}>
+                <p className="mb-1 text-xs font-black tracking-widest text-neutral-500">
+                  {b}ブロック · {line.length}名
+                </p>
+                <div className="overflow-x-auto rounded-2xl border border-sand-200 bg-white p-2">
+                  <div
+                    className="relative"
+                    style={{ minWidth: `${Math.max(280, line.length * 78)}px`, height: '250px' }}
+                  >
+                    {line.map((c, i) => {
+                      const on = selected.has(c.itemId);
+                      return (
+                        <button
+                          key={c.itemId}
+                          disabled={pending}
+                          onClick={() => tap(c.itemId)}
+                          style={{
+                            left: `${pos[i].leftPct}%`,
+                            top: `${pos[i].topPct}%`,
+                            transform: 'translate(-50%, -50%)',
+                          }}
+                          className={`absolute flex w-[70px] flex-col items-center gap-0.5 rounded-xl border-2 px-1 py-1.5 disabled:opacity-60 ${
+                            on ? 'border-brand-600 bg-brand-600 text-white' : 'border-sand-300 bg-white text-navy-900'
+                          }`}
+                        >
+                          <span
+                            className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-black tabular-nums ${
+                              on ? 'bg-white text-brand-700' : 'bg-sand-100 text-neutral-600'
+                            }`}
+                          >
+                            {i + 1}
+                          </span>
+                          <span className="w-full truncate text-center text-[11px] font-black leading-tight">
+                            {c.dancerName}
+                          </span>
+                          {on && <span className="text-[10px] font-black">通過</span>}
+                        </button>
+                      );
+                    })}
+                    <p className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[11px] font-black tracking-widest text-neutral-400">
+                      ▲ ジャッジ側
+                    </p>
+                  </div>
+                </div>
+              </section>
+            );
+          })}
+          {candidates.every((c) => c.block === null) && (
+            <p className="rounded-xl bg-sand-100 p-3 text-sm font-bold text-neutral-600">
+              まだ誰もA/Bブロックを引いていません。受付のくじ引き①が済むと並び順が出ます。
+            </p>
+          )}
+        </>
+      )}
+
+      {view === 'list' && (
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
@@ -111,11 +198,12 @@ export default function QualifierPicker({
         className="w-full rounded-2xl border border-sand-300 bg-white px-4 py-3 text-base text-navy-900 placeholder:text-neutral-500"
         inputMode="search"
       />
-      {q.trim() && shown.length === 0 && (
+      )}
+      {view === 'list' && q.trim() && shown.length === 0 && (
         <p className="text-center text-sm font-bold text-neutral-600">見つかりません</p>
       )}
 
-      {(['A', 'B', null] as const).map((b) =>
+      {view === 'list' && (['A', 'B', null] as const).map((b) =>
         byBlock(b).length === 0 ? null : (
           <section key={String(b)}>
             <p className="mb-2 text-xs font-black tracking-widest text-neutral-500">
