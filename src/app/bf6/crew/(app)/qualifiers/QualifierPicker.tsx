@@ -142,7 +142,8 @@ export default function QualifierPicker({
                 <div className="overflow-x-auto rounded-2xl border border-sand-200 bg-white p-2">
                   <div
                     className="relative"
-                    style={{ minWidth: `${Math.max(280, line.length * 78)}px`, height: '250px' }}
+                    // 1人当たり74px。iPad横向き(内側約992px)で13名が横スクロール無しで収まる
+                    style={{ minWidth: `${Math.max(280, line.length * 74)}px`, height: '270px' }}
                   >
                     {line.map((c, i) => {
                       const on = selected.has(c.itemId);

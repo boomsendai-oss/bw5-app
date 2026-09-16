@@ -41,7 +41,8 @@ export default async function CrewQualifiersPage({
   return (
     <div>
       <CrewHeader title="予選通過者" description="予選が終わったら、通過した8名をチェック" />
-      <div className="mx-auto max-w-2xl p-4">
+      {/* 並び図を横スクロール無しで見せたいので、この画面だけ幅を広く取る(iPad横向きで13名)。 */}
+      <div className="mx-auto max-w-5xl p-4">
         <div className="mb-4 flex gap-2">
           {TABS.map((t) => (
             <Link
