@@ -13,7 +13,7 @@ import {
 } from '@/lib/bf6Qualifier';
 import { crewSetQualifier } from './actions';
 import { matchesAny } from '@/lib/bf6ListUi';
-import { arcPositions, lineupForBlock } from '@/lib/bf6Lineup';
+import { lineupForBlock } from '@/lib/bf6Lineup';
 
 export type Candidate = { itemId: number; dancerName: string; block: 'A' | 'B' | null };
 
@@ -109,7 +109,7 @@ export default function QualifierPicker({
 
       <div className="flex gap-2">
         {([
-          { key: 'arc', label: '並び順(半円)' },
+          { key: 'arc', label: '並び順' },
           { key: 'list', label: '名前で探す' },
         ] as const).map((v) => (
           <button
@@ -127,59 +127,48 @@ export default function QualifierPicker({
       {view === 'arc' && (
         <>
           <p className="text-xs leading-relaxed text-neutral-600">
-            エントリーが早い順に左から並べています。この図のとおりに人を並ばせてください。
-            ジャッジが「左から3番目」と言ったら、同じ位置をタップします。
+            エントリーが早い順です。この順番で左から並ばせてください。
+            ジャッジが「左から3番目」と言ったら、3番の札をタップします。
           </p>
           {(['A', 'B'] as const).map((b) => {
             const line = lineupForBlock(candidates, b);
             if (line.length === 0) return null;
-            const pos = arcPositions(line.length);
             return (
               <section key={b}>
-                <p className="mb-1 text-xs font-black tracking-widest text-neutral-500">
+                <p className="mb-2 text-xs font-black tracking-widest text-neutral-500">
                   {b}ブロック · {line.length}名
                 </p>
-                <div className="overflow-x-auto rounded-2xl border border-sand-200 bg-white p-2">
-                  <div
-                    className="relative"
-                    // 1人当たり74px。iPad横向き(内側約992px)で13名が横スクロール無しで収まる
-                    style={{ minWidth: `${Math.max(280, line.length * 74)}px`, height: '270px' }}
-                  >
-                    {line.map((c, i) => {
-                      const on = selected.has(c.itemId);
-                      return (
+                {/* ⚠️ 横スクロールも折り返しもさせないこと。当日は一目で全員の並び順が
+                       見えないと意味がない(TARO実機 2026-09-16)。1行に収めるため
+                       1人ぶんの幅が狭くなるので、名前は縦書きにする。 */}
+                <ul className="flex gap-1">
+                  {line.map((c, i) => {
+                    const on = selected.has(c.itemId);
+                    return (
+                      <li key={c.itemId} className="min-w-0 flex-1">
                         <button
-                          key={c.itemId}
                           disabled={pending}
                           onClick={() => tap(c.itemId)}
-                          style={{
-                            left: `${pos[i].leftPct}%`,
-                            top: `${pos[i].topPct}%`,
-                            transform: 'translate(-50%, -50%)',
-                          }}
-                          className={`absolute flex w-[70px] flex-col items-center gap-0.5 rounded-xl border-2 px-1 py-1.5 disabled:opacity-60 ${
+                          className={`flex w-full flex-col items-center gap-1 rounded-lg border-2 px-0.5 py-1.5 disabled:opacity-60 ${
                             on ? 'border-brand-600 bg-brand-600 text-white' : 'border-sand-300 bg-white text-navy-900'
                           }`}
                         >
                           <span
-                            className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-black tabular-nums ${
+                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-black tabular-nums ${
                               on ? 'bg-white text-brand-700' : 'bg-sand-100 text-neutral-600'
                             }`}
                           >
                             {i + 1}
                           </span>
-                          <span className="w-full truncate text-center text-[11px] font-black leading-tight">
+                          <span className="max-h-[88px] overflow-hidden text-[11px] font-black leading-none [text-orientation:mixed] [writing-mode:vertical-rl]">
                             {c.dancerName}
                           </span>
-                          {on && <span className="text-[10px] font-black">通過</span>}
+                          <span className={`text-[10px] font-black leading-none ${on ? '' : 'invisible'}`}>✓</span>
                         </button>
-                      );
-                    })}
-                    <p className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[11px] font-black tracking-widest text-neutral-400">
-                      ▲ ジャッジ側
-                    </p>
-                  </div>
-                </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               </section>
             );
           })}
