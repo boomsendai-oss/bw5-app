@@ -54,7 +54,7 @@ export default async function CrewHomePage() {
           <p className="text-xs font-bold text-neutral-500">バトルエントリー受付</p>
           <Remaining n={reception.remaining} unit="人" />
           <p className="mt-0.5 text-xs font-bold text-neutral-400">
-            {reception.total}人中 {reception.done}人うけつけ済み
+            {reception.total}人中 {reception.done}人受付済み
           </p>
         </div>
 
