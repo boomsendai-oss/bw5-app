@@ -15,8 +15,8 @@ function BackLabel() {
     <>
       <span
         aria-hidden
-        className={`h-3 w-3 shrink-0 rounded-full border-2 border-navy-300 border-t-navy-800 transition-opacity ${
-          pending ? 'animate-spin opacity-100' : 'opacity-0'
+        className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 border-navy-200 border-t-navy-700 transition-opacity ${
+          pending ? 'animate-spin opacity-100' : 'hidden'
         }`}
       />
       <span>{pending ? '戻っています…' : '← 戻る'}</span>
@@ -36,7 +36,7 @@ export default function CrewHeader({
     <header className="border-b border-sand-200 bg-white px-4 py-3">
       <Link
         href="/bf6/crew"
-        className="inline-flex items-center gap-1 rounded-full border border-sand-300 bg-sand-50 px-3 py-1.5 text-sm font-black text-navy-800 active:scale-95 active:bg-sand-200"
+        className="inline-flex items-center gap-1.5 rounded-full border border-sand-300 bg-sand-50 px-3 py-1.5 text-sm font-black text-navy-800 active:scale-95 active:bg-sand-200"
       >
         <BackLabel />
       </Link>

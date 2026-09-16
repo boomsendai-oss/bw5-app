@@ -3,6 +3,7 @@
 // ⚠️ 数字は「あと何人 / あといくら」を主役にする。「39 / 45」のような分数は
 //    当日その場で逆に読まれる(TARO実機 2026-09-16)。
 import Link from 'next/link';
+import { Spinner } from './CrewLink';
 import { CREW_TASKS } from '@/lib/bf6Crew';
 import { listBf6ReceptionEntrants } from '@/lib/bf6DrawDb';
 import { listBf6PhotoItemIds } from '@/lib/bf6PhotoDb';
@@ -122,6 +123,8 @@ export default async function CrewHomePage() {
               <p className="text-lg font-black text-navy-900">{t.title}</p>
               <span className="flex shrink-0 items-center gap-2">
                 <span className="text-xs font-bold text-brand-600">{t.when}</span>
+                {/* 押したことが見た目で分かるようにする(TARO実機 2026-09-16) */}
+                <Spinner />
                 <span className="text-xl font-black text-neutral-300">›</span>
               </span>
             </div>
