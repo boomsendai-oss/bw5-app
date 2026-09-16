@@ -87,5 +87,7 @@ export function sceneKey(s: {
 }): string {
   if (s.mode === 'vs') return `vs|${s.division}|${s.round ?? '-'}|${s.matchNo ?? '-'}`;
   if (s.mode === 'bracket') return `bracket|${s.division}`;
+  // 優勝者発表は3部門を同時に映すので、部門が何であっても1つの場面
+  if (s.mode === 'champions') return 'champions';
   return 'logo';
 }

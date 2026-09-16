@@ -161,6 +161,18 @@ describe('場面キー', () => {
     expect(new Set(keys).size).toBe(3);
   });
 
+  it('優勝者発表はロゴと別の場面(切り替えに暗転を挟む)', async () => {
+    const { sceneKey } = await import('../bf6ScreenAnim');
+    expect(sceneKey(s({ mode: 'champions' }))).not.toBe(sceneKey(s({ mode: 'logo' })));
+  });
+
+  it('優勝者発表は部門が変わっても同じ場面(3部門を同時に映すため)', async () => {
+    const { sceneKey } = await import('../bf6ScreenAnim');
+    expect(sceneKey(s({ mode: 'champions', division: 'kids' }))).toBe(
+      sceneKey(s({ mode: 'champions', division: 'general' }))
+    );
+  });
+
   it('revが増えただけでは場面は変わらない(バトルスタート等で無駄に暗転させない)', async () => {
     const { sceneKey } = await import('../bf6ScreenAnim');
     expect(sceneKey(s({ mode: 'vs', round: 'qf', matchNo: 1, rev: 3 }))).toBe(
