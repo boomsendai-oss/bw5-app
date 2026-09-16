@@ -6,7 +6,6 @@
 //   LED側   … /bf6/screen を全画面表示(1秒ごとに状態をポーリング)
 //   操作側 … /staff/bf6/control
 import { getAll, getOne, execute } from './db';
-import { ledGenre } from './bf6Genre';
 import { nowUtcIso } from './dateJst';
 import {
   roundsFor,
@@ -263,8 +262,9 @@ export async function listBf6SlotNames(division: Bf6DrawDivision): Promise<Map<n
       slotNo: Number(r.slot_no),
       dancerName: r.dancer_name ? String(r.dancer_name) : '',
       rep: r.rep ? String(r.rep) : '',
-      // 申込は自由入力なので綴りがばらばら。LEDに出すときだけ揃える
-      genre: ledGenre(r.genre ? String(r.genre) : ''),
+      // ⚠️ 本人が書いたまま出す。綴りを揃えない（TARO 2026-09-16
+      //    「レペゼンやジャンルは各自が入れたいように入れるものだから勝手にやらないで」）
+      genre: r.genre ? String(r.genre) : '',
       hasPhoto: Number(r.has_photo ?? 0) > 0,
       // 切り抜き係が差し替えたときにLEDが古い画像をキャッシュから出さないよう、URLに混ぜる
       photoAt: r.photo_at ? String(r.photo_at) : null,

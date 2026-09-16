@@ -842,9 +842,10 @@ function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue';
       ) : (
         <p className="relative -mt-[1.5vh] text-[4vw] font-black tracking-[0.3em] text-white/35">不戦勝</p>
       )}
-      {/* 名前の下はジャンル。レペゼンより「何で戦う人か」が伝わる(TARO実機 2026-09-16) */}
+      {/* 名前の下はジャンル。レペゼンより「何で戦う人か」が伝わる(TARO実機 2026-09-16)。
+          ⚠️ 大文字にしたり綴りを揃えたりしない。本人が書いたまま出す。 */}
       {slot?.genre && (
-        <p className="mt-[0.2vh] text-[1.9vw] font-bold uppercase tracking-[0.2em] text-white/60">{slot.genre}</p>
+        <p className="mt-[0.2vh] text-[1.9vw] font-bold tracking-[0.2em] text-white/60">{slot.genre}</p>
       )}
     </div>
   );
