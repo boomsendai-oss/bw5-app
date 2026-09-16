@@ -70,12 +70,23 @@ describe('オンライン配信の案内テンプレート', () => {
 describe('宛先の範囲', () => {
   it('テンプレートごとに宛先の範囲が決まっている', () => {
     for (const t of BF6_BROADCAST_TEMPLATES) {
-      expect(['entrants', 'all']).toContain(t.audience);
+      expect(['entrants', 'all', 'cash_due']).toContain(t.audience);
       expect(t.audienceNote.length).toBeGreaterThan(0);
     }
   });
 
   it('集合時刻の案内はエントリー者だけに送る(観覧客に送ると混乱する)', () => {
     expect(buildBf6Broadcast('call-time-1').audience).toBe('entrants');
+  });
+
+  // ⚠️ 受け取り済みの人に「当日お支払いください」と送ると事故になる
+  it('当日現金の案内は、まだ払っていない人だけに送る', () => {
+    expect(buildBf6Broadcast('cash-due-1').audience).toBe('cash_due');
+  });
+
+  it('当日現金の案内には金額と内訳の差し込みがある(金額を書き忘れない)', () => {
+    const b = buildBf6Broadcast('cash-due-1').body;
+    expect(b).toContain('{{amount}}');
+    expect(b).toContain('{{breakdown}}');
   });
 });

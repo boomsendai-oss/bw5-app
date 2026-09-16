@@ -1,6 +1,6 @@
 // スタッフ: BF6 エントリー者への一斉メール。/staff/* 配下のためproxy認証で保護(規約4.5)。
 import StaffPageHeader from '@/components/StaffPageHeader';
-import { BF6_BROADCAST_TEMPLATES, getBf6BroadcastRecipients, listBf6Broadcasts, listBf6BroadcastFailures } from '@/lib/bf6Broadcast';
+import { BF6_BROADCAST_TEMPLATES, getBf6BroadcastRecipients, getCashDueRecipients, listBf6Broadcasts, listBf6BroadcastFailures, fillBroadcastVars, type Bf6BroadcastAudience } from '@/lib/bf6Broadcast';
 import { SendButton } from './SendButton';
 import { RetryButton } from './RetryButton';
 
@@ -8,14 +8,21 @@ export const dynamic = 'force-dynamic';
 
 export default async function StaffBf6BroadcastPage() {
   // 宛先の範囲はテンプレートごとに違う(当日の段取り=エントリー者だけ / 配信の案内=全員)
-  const [entrants, all, history, failures] = await Promise.all([
+  const [entrants, all, cashDue, history, failures] = await Promise.all([
     getBf6BroadcastRecipients('entrants'),
     getBf6BroadcastRecipients('all'),
+    getCashDueRecipients(),
     listBf6Broadcasts(),
     listBf6BroadcastFailures(),
   ]);
   const failedOf = (key: string) => failures.find((f) => f.key === key)?.failed ?? 0;
-  const countOf = (a: 'entrants' | 'all') => (a === 'all' ? all.length : entrants.length);
+  const countOf = (a: Bf6BroadcastAudience) =>
+    a === 'all' ? all.length : a === 'cash_due' ? cashDue.length : entrants.length;
+  // 差し込みのあるメールは、実際に届く形が分からないと承認できない。1人目の中身で見せる。
+  const previewOf = (t: { body: string; audience: Bf6BroadcastAudience }) =>
+    t.audience === 'cash_due' && cashDue.length > 0
+      ? fillBroadcastVars(t.body, cashDue[0].vars)
+      : t.body;
   const sentKeys = new Set(history.map((h) => h.key));
 
   return (
@@ -32,6 +39,7 @@ export default async function StaffBf6BroadcastPage() {
           <ul className="mt-1 space-y-1 text-xs text-neutral-500">
             <li>エントリー者のみ … {entrants.length} 名</li>
             <li>有効な注文すべて … {all.length} 名</li>
+            <li>当日現金がまだの方 … {cashDue.length} 名</li>
           </ul>
           <p className="mt-2 text-xs text-neutral-500">
             重複は除いています。どちらを使うかはメールごとに決まっていて、下の各項目に書いてあります。
@@ -45,8 +53,13 @@ export default async function StaffBf6BroadcastPage() {
             <p className="mt-2 rounded-lg bg-sand-50 px-3 py-2 text-xs leading-relaxed text-neutral-600">
               宛先 {countOf(t.audience)} 名 — {t.audienceNote}
             </p>
+            {t.audience === 'cash_due' && (
+              <p className="mt-2 text-xs font-bold text-brand-700">
+                金額は人ごとに違います。下は1人目に届く実物です。
+              </p>
+            )}
             <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap rounded-xl bg-sand-50 p-3 text-xs leading-relaxed text-neutral-700">
-              {t.body}
+              {previewOf(t)}
             </pre>
             <div className="mt-4">
               <SendButton templateKey={t.key} count={countOf(t.audience)} alreadySent={sentKeys.has(t.key)} />

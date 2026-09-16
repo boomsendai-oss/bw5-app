@@ -7,6 +7,9 @@
 //  - 宛先は「バトルエントリーを含む有効注文」のメールアドレス(重複除去)。
 //    観覧・配信チケットのみの購入者には送らない(集合13:30は関係がなく、混乱するため)。
 import { getAll, execute } from './db';
+import { buildBreakdownByOrder, type CashLine } from './bf6Cash';
+import { getBf6Settings } from './bf6Db';
+import { toOrderLine } from './bf6CashDb';
 import { sendEmail } from './email';
 import { nowUtcIso } from './dateJst';
 
@@ -16,8 +19,10 @@ import { nowUtcIso } from './dateJst';
  *              観覧・配信のみの購入者に送ると混乱するため。
  *  all      … 有効注文すべて(エントリー+観覧チケット)。会場に来る人みんなに関係する
  *              案内はこちら。配信チケットを既に持っている人は自動で除く。
+ *  cash_due … 支払い方法が「当日現金」でまだ払っていない注文。人ごとに金額が違うので
+ *              本文に金額と内訳を差し込む。すでに受け取った人には送らない。
  */
-export type Bf6BroadcastAudience = 'entrants' | 'all';
+export type Bf6BroadcastAudience = 'entrants' | 'all' | 'cash_due';
 
 export type Bf6BroadcastTemplate = {
   key: string;
@@ -111,6 +116,45 @@ const STREAM_INVITE_BODY = `BOOMER'S FIGHT!!! vol.6 にお申し込みいただ�
 BOOM DANCE SCHOOL
 BOOMER'S FIGHT!!! vol.6`;
 
+const CASH_DUE_BODY = `BOOMER'S FIGHT!!! vol.6 にお申し込みいただき、ありがとうございます。
+
+お支払い方法を「当日現金」でお申し込みいただいた方へ、
+当日のお支払いについてのご案内です。
+
+
+▼ お支払いは 13:30 の受付で、まとめてお願いします
+
+  観覧チケットの分も、バトルエントリーの受付でいっしょにお支払いください。
+  開場(14:30)の入口では、リストバンドをお渡しするだけになります。
+
+  ご家族が別々にお越しになる場合も、お支払いは受付での1回だけです。
+
+
+▼ 当日お支払いいただく金額
+
+{{breakdown}}
+
+  合計 {{amount}}
+
+  おつりのご用意が難しいため、できるだけちょうどの金額でお願いします。
+
+
+▼ 受付
+
+  9月26日(土) 13:30 〜 14:00
+  SSM(仙台スクールオブミュージック&ダンス専門学校) 9階ホール前
+
+  受付では組み合わせ抽選(くじ引き)も行います。
+  14:00 を過ぎると抽選に参加できず、運営側で決定する場合があります。
+
+
+金額に心当たりがない場合や、ご都合が変わった場合は、
+このメールにご返信ください。
+
+
+BOOM DANCE SCHOOL
+BOOMER'S FIGHT!!! vol.6`;
+
 export const BF6_BROADCAST_TEMPLATES: Bf6BroadcastTemplate[] = [
   {
     key: 'call-time-1',
@@ -130,7 +174,62 @@ export const BF6_BROADCAST_TEMPLATES: Bf6BroadcastTemplate[] = [
     audienceNote:
       'エントリー・観覧チケットを問わず有効な注文すべて。配信チケットを既にお持ちの方は自動で除きます。',
   },
+  {
+    key: 'cash-due-1',
+    label: '当日現金の方へ(受付でまとめてお支払い)',
+    subject: "【BOOMER'S FIGHT!!! vol.6】当日のお支払いは13:30の受付でお願いします",
+    body: CASH_DUE_BODY,
+    audience: 'cash_due',
+    audienceNote:
+      '支払い方法が「当日現金」で、まだ受け取っていない注文のみ。人ごとに金額と内訳を差し込みます。すでに受け取った方・事前決済の方には送りません。',
+  },
 ];
+
+const YEN = (n: number) => `¥${n.toLocaleString()}`;
+
+/**
+ * お支払いの内訳をメール本文に入れる形にする。
+ * 金額だけでは何の分か分からないので、集金画面と同じ内訳をそのまま載せる。
+ */
+export function breakdownText(lines: CashLine[]): string {
+  return lines
+    .map((l) => `  ${l.label}${l.qty > 1 ? ` × ${l.qty}` : ''}　${YEN(l.amount)}`)
+    .join('\n');
+}
+
+/**
+ * 本文の {{名前}} を差し替える。
+ * ⚠️ 値の無い差し込みは空にする。{{ }} のままお客に届く事故を防ぐ。
+ */
+export function fillBroadcastVars(body: string, vars: Record<string, string>): string {
+  return body.replace(/\{\{(\w+)\}\}/g, (_m, k: string) => vars[k] ?? '');
+}
+
+export type BroadcastRecipient = { email: string; vars: Record<string, string> };
+
+/**
+ * 当日現金の人への宛先。人ごとに金額が違うので差し込みを作る。
+ * 同じアドレスで複数申し込んでいたら 1通にまとめて合算する
+ * (別々に届くと「どちらを払うのか」と問い合わせになる)。
+ */
+export function buildCashDueRecipients(
+  orders: { id: number; email: string; amountTotal: number }[],
+  breakdown: Map<number, CashLine[]>
+): BroadcastRecipient[] {
+  const byEmail = new Map<string, { total: number; lines: CashLine[] }>();
+  for (const o of orders) {
+    const email = (o.email ?? '').trim();
+    if (!email) continue;
+    const cur = byEmail.get(email) ?? { total: 0, lines: [] };
+    cur.total += o.amountTotal;
+    cur.lines.push(...(breakdown.get(o.id) ?? []));
+    byEmail.set(email, cur);
+  }
+  return [...byEmail.entries()].map(([email, v]) => ({
+    email,
+    vars: { amount: YEN(v.total), breakdown: breakdownText(v.lines) },
+  }));
+}
 
 /** テンプレートを取り出す。未知のキーは投げる(誤送信の防止)。 */
 export function buildBf6Broadcast(key: string): {
@@ -141,6 +240,38 @@ export function buildBf6Broadcast(key: string): {
   const t = BF6_BROADCAST_TEMPLATES.find((x) => x.key === key);
   if (!t) throw new Error(`未知の一斉メールテンプレート: ${key}`);
   return { subject: t.subject, body: t.body, audience: t.audience };
+}
+
+/**
+ * 当日現金でまだ受け取っていない注文の宛先。金額と内訳を人ごとに差し込む。
+ *
+ * ⚠️ payment_status = 'cash_due' だけを見る。受け取り済み(paid)の人に
+ *    「当日お支払いください」と送ると事故になる。
+ */
+export async function getCashDueRecipients(): Promise<BroadcastRecipient[]> {
+  const [orders, lines, settings] = await Promise.all([
+    getAll(
+      `SELECT id, email, amount_total FROM bf_orders
+        WHERE pay_method = 'onsite' AND payment_status = 'cash_due' AND amount_total > 0
+          AND email IS NOT NULL AND email != ''
+        ORDER BY id`
+    ).catch(() => []),
+    getAll(
+      `SELECT i.order_id, i.item_type, i.qty, i.unit_amount, i.divisions, i.dancer_name
+         FROM bf_order_items i JOIN bf_orders o ON o.id = i.order_id
+        WHERE o.pay_method = 'onsite' AND o.payment_status = 'cash_due'
+        ORDER BY i.order_id, i.sort_order`
+    ).catch(() => []),
+    getBf6Settings().catch(() => null),
+  ]);
+  const breakdown = buildBreakdownByOrder(
+    lines.map(toOrderLine),
+    settings?.pricing.entryPerExtraDivision ?? 1500
+  );
+  return buildCashDueRecipients(
+    orders.map((o) => ({ id: Number(o.id), email: String(o.email), amountTotal: Number(o.amount_total ?? 0) })),
+    breakdown
+  );
 }
 
 /**
@@ -214,13 +345,18 @@ export async function sendBf6Broadcast(key: string): Promise<Bf6BroadcastResult>
   if ((ins.rowsAffected ?? 0) === 0) return { sent: 0, failed: 0, alreadySent: true };
   const broadcastId = Number(ins.lastInsertRowid);
 
-  const recipients = await getBf6BroadcastRecipients(audience);
+  // 当日現金だけは人ごとに金額が違うので、差し込み付きの宛先を使う
+  const recipients: BroadcastRecipient[] =
+    audience === 'cash_due'
+      ? await getCashDueRecipients()
+      : (await getBf6BroadcastRecipients(audience)).map((email) => ({ email, vars: {} }));
   let sent = 0;
   let failed = 0;
-  for (const [idx, to] of recipients.entries()) {
+  for (const [idx, r] of recipients.entries()) {
+    const to = r.email;
     if (idx > 0) await wait(SEND_INTERVAL_MS);
     try {
-      await sendEmail({ to, subject, text: body });
+      await sendEmail({ to, subject, text: fillBroadcastVars(body, r.vars) });
       sent += 1;
       await execute(
         'INSERT INTO bf_broadcast_recipient (broadcast_id, email, status, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(broadcast_id, email) DO NOTHING',

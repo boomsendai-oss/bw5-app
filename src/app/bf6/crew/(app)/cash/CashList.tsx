@@ -183,6 +183,14 @@ export default function CashList({ orders }: { orders: CashOrder[] }) {
               <span>合計</span>
               <span className="tabular-nums text-orange-600">{YEN(open.amountDue)}</span>
             </p>
+            {/* 観覧チケットを含む申込は、ここで全額もらう。開場の入口ではお金を扱わない
+                (TARO決定 2026-09-16)。係が「エントリー代だけ?」と迷わないよう明記する。 */}
+            {open.breakdown.some((l) => l.label.includes('観覧')) && !open.collected && (
+              <p className="mt-2 rounded-lg bg-sand-100 px-3 py-2 text-xs font-bold leading-relaxed text-navy-800">
+                観覧チケット代も含んだ金額です。ここで全額受け取ってください。
+                入場のときはリストバンドを渡すだけになります。
+              </p>
+            )}
 
             {open.collected ? (
               <div className="mt-5 space-y-2">
