@@ -115,3 +115,56 @@ describe('勝者が上がる先の枠', () => {
     expect(parentMatch('kids', 'r16', 1)).toBeNull();
   });
 });
+
+// ── 場面の切り替わり判定(クロスフェード用) ──
+// TARO実機 2026-09-16「場面が切り替わる時にふわっとフェードインフェードアウトみたいな方がいい」
+describe('場面キー', () => {
+  const s = (p: Partial<{ mode: string; division: string; round: string | null; matchNo: number | null; rev: number }>) => ({
+    mode: 'logo', division: 'beginner', round: null, matchNo: null, rev: 0, ...p,
+  });
+
+  it('ロゴは部門や試合が変わっても同じ場面(切り替え演出を出さない)', async () => {
+    const { sceneKey } = await import('../bf6ScreenAnim');
+    expect(sceneKey(s({ mode: 'logo', division: 'kids', round: 'qf', matchNo: 3 }))).toBe(
+      sceneKey(s({ mode: 'logo', division: 'general', round: 'f', matchNo: 1 }))
+    );
+  });
+
+  it('トーナメント表は部門が変われば別の場面', async () => {
+    const { sceneKey } = await import('../bf6ScreenAnim');
+    expect(sceneKey(s({ mode: 'bracket', division: 'kids' }))).not.toBe(
+      sceneKey(s({ mode: 'bracket', division: 'general' }))
+    );
+  });
+
+  it('トーナメント表は試合が進んでも同じ場面(勝者演出を邪魔しない)', async () => {
+    const { sceneKey } = await import('../bf6ScreenAnim');
+    expect(sceneKey(s({ mode: 'bracket', division: 'kids', round: 'qf', matchNo: 1 }))).toBe(
+      sceneKey(s({ mode: 'bracket', division: 'kids', round: 'sf', matchNo: 2 }))
+    );
+  });
+
+  it('VSは試合ごとに別の場面', async () => {
+    const { sceneKey } = await import('../bf6ScreenAnim');
+    expect(sceneKey(s({ mode: 'vs', division: 'kids', round: 'qf', matchNo: 1 }))).not.toBe(
+      sceneKey(s({ mode: 'vs', division: 'kids', round: 'qf', matchNo: 2 }))
+    );
+  });
+
+  it('ロゴとトーナメント表とVSは互いに別の場面', async () => {
+    const { sceneKey } = await import('../bf6ScreenAnim');
+    const keys = [
+      sceneKey(s({ mode: 'logo' })),
+      sceneKey(s({ mode: 'bracket' })),
+      sceneKey(s({ mode: 'vs', round: 'qf', matchNo: 1 })),
+    ];
+    expect(new Set(keys).size).toBe(3);
+  });
+
+  it('revが増えただけでは場面は変わらない(バトルスタート等で無駄に暗転させない)', async () => {
+    const { sceneKey } = await import('../bf6ScreenAnim');
+    expect(sceneKey(s({ mode: 'vs', round: 'qf', matchNo: 1, rev: 3 }))).toBe(
+      sceneKey(s({ mode: 'vs', round: 'qf', matchNo: 1, rev: 9 }))
+    );
+  });
+});

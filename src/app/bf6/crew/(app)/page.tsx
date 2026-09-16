@@ -1,26 +1,44 @@
 // BF6 当日オペのメニュー。スタッフはこのURLだけをホーム画面に追加すればよい。
+//
+// ⚠️ 数字は「あと何人 / あといくら」を主役にする。「39 / 45」のような分数は
+//    当日その場で逆に読まれる(TARO実機 2026-09-16)。
 import Link from 'next/link';
 import { CREW_TASKS } from '@/lib/bf6Crew';
 import { listBf6ReceptionEntrants } from '@/lib/bf6DrawDb';
 import { listBf6PhotoItemIds } from '@/lib/bf6PhotoDb';
+import { listBf6Qualifiers } from '@/lib/bf6QualifierDb';
 import { listBf6CashOrders } from '@/lib/bf6CashDb';
 import { cashTotals } from '@/lib/bf6Cash';
 import { listBf6GateOrders } from '@/lib/bf6GateDb';
 import { gateTotals } from '@/lib/bf6Gate';
+import { entryReceptionSummary, photoSummary } from '@/lib/bf6CrewSummary';
 
 export const dynamic = 'force-dynamic';
 
+/** 残っている数を大きく、済んだぶんを小さく添える。 */
+function Remaining({ n, unit }: { n: number; unit: string }) {
+  if (n <= 0) return <p className="mt-0.5 text-2xl font-black text-brand-600">ぜんぶ完了</p>;
+  return (
+    <p className="mt-0.5 text-2xl font-black tabular-nums text-navy-900">
+      <span className="text-base font-bold text-neutral-500">あと </span>
+      {n}
+      <span className="text-base font-bold text-neutral-500"> {unit}</span>
+    </p>
+  );
+}
+
 export default async function CrewHomePage() {
-  const [entrants, photoIds, cashOrders, gateOrders] = await Promise.all([
+  const [entrants, photoIds, qualifiers, cashOrders, gateOrders] = await Promise.all([
     listBf6ReceptionEntrants(),
     listBf6PhotoItemIds(),
+    listBf6Qualifiers(),
     listBf6CashOrders(),
     listBf6GateOrders(),
   ]);
   const cash = cashTotals(cashOrders);
   const gate = gateTotals(gateOrders);
-  const checkedIn = entrants.filter((e) => e.checkedIn).length;
-  const withPhoto = entrants.filter((e) => photoIds.has(e.itemId)).length;
+  const reception = entryReceptionSummary(entrants);
+  const photos = photoSummary(entrants, photoIds, qualifiers);
 
   return (
     <div className="mx-auto max-w-xl p-4">
@@ -30,42 +48,64 @@ export default async function CrewHomePage() {
         <p className="mt-1 text-sm text-neutral-500">2026.9.26(土) SSM 9階ホール</p>
       </header>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-4 space-y-3">
         <div className="rounded-xl border border-sand-200 bg-white p-3">
-          <p className="text-xs font-bold text-neutral-500">チェックイン</p>
-          <p className="mt-0.5 text-2xl font-black text-navy-900">
-            {checkedIn}
-            <span className="text-base font-bold text-neutral-400"> / {entrants.length}</span>
+          <p className="text-xs font-bold text-neutral-500">バトルエントリー受付</p>
+          <Remaining n={reception.remaining} unit="人" />
+          <p className="mt-0.5 text-xs font-bold text-neutral-400">
+            {reception.total}人中 {reception.done}人うけつけ済み
           </p>
         </div>
+
         <div className="rounded-xl border border-sand-200 bg-white p-3">
-          <p className="text-xs font-bold text-neutral-500">写真</p>
-          <p className="mt-0.5 text-2xl font-black text-navy-900">
-            {withPhoto}
-            <span className="text-base font-bold text-neutral-400"> 人ぶん</span>
-          </p>
+          <p className="text-xs font-bold text-neutral-500">写真撮影</p>
+          <div className="mt-1.5 divide-y divide-sand-200">
+            {photos.map((d) => (
+              <div key={d.division} className="flex items-baseline justify-between gap-2 py-1.5">
+                <p className={`text-sm font-black ${d.waiting ? 'text-neutral-400' : 'text-navy-900'}`}>
+                  {d.label}
+                </p>
+                {d.waiting ? (
+                  <p className="text-right text-sm font-bold text-neutral-400">
+                    <span className="tabular-nums">{d.total}</span>人 ・ 予選終わり次第
+                  </p>
+                ) : d.remaining <= 0 ? (
+                  <p className="text-sm font-black text-brand-600">ぜんぶ完了</p>
+                ) : (
+                  <p className="text-right text-lg font-black tabular-nums text-navy-900">
+                    <span className="text-xs font-bold text-neutral-500">あと </span>
+                    {d.remaining}
+                    <span className="text-xs font-bold text-neutral-500">人 / {d.total}人</span>
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
+
         {cash.orders > 0 && (
-          <div className="col-span-2 rounded-xl border border-sand-200 bg-white p-3">
-            <p className="text-xs font-bold text-neutral-500">当日現金</p>
-            <p className="mt-0.5 text-2xl font-black tabular-nums text-navy-900">
-              ¥{cash.collectedYen.toLocaleString()}
-              <span className="text-base font-bold text-neutral-400">
-                {' '}
-                / ¥{cash.dueYen.toLocaleString()}
-              </span>
-              <span className="ml-2 text-sm font-bold text-neutral-400">
-                {cash.collectedOrders} / {cash.orders} 件
-              </span>
+          <div className="rounded-xl border border-sand-200 bg-white p-3">
+            <p className="text-xs font-bold text-neutral-500">当日現金の集金(未集金)</p>
+            {cash.remainingYen <= 0 ? (
+              <p className="mt-0.5 text-2xl font-black text-brand-600">ぜんぶ集金済み</p>
+            ) : (
+              <p className="mt-0.5 text-2xl font-black tabular-nums text-navy-900">
+                <span className="text-base font-bold text-neutral-500">あと </span>
+                ¥{cash.remainingYen.toLocaleString()}
+              </p>
+            )}
+            <p className="mt-0.5 text-xs font-bold text-neutral-400">
+              {cash.orders}件中 {cash.collectedOrders}件 集金済み(合計 ¥{cash.dueYen.toLocaleString()})
             </p>
           </div>
         )}
+
         {gate.tickets > 0 && (
-          <div className="col-span-2 rounded-xl border border-sand-200 bg-white p-3">
-            <p className="text-xs font-bold text-neutral-500">観覧の入場(リストバンド)</p>
-            <p className="mt-0.5 text-2xl font-black tabular-nums text-navy-900">
-              {gate.handed}
-              <span className="text-base font-bold text-neutral-400"> / {gate.tickets} 枚</span>
+          <div className="rounded-xl border border-sand-200 bg-white p-3">
+            <p className="text-xs font-bold text-neutral-500">観覧のお客さんの入場</p>
+            <Remaining n={gate.remainingTickets} unit="人" />
+            <p className="mt-0.5 text-xs font-bold text-neutral-400">
+              {gate.tickets}人中 {gate.handed}人 入場済み
             </p>
           </div>
         )}

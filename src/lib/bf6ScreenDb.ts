@@ -243,11 +243,11 @@ export function findNextMatch(division: Bf6DrawDivision, all: Match[]): Match | 
 
 // ───────── 表示用のデータ ─────────
 
-export type SlotName = { slotNo: number; dancerName: string; rep: string; hasPhoto: boolean; photoAt: string | null };
+export type SlotName = { slotNo: number; dancerName: string; rep: string; genre: string; hasPhoto: boolean; photoAt: string | null };
 
 export async function listBf6SlotNames(division: Bf6DrawDivision): Promise<Map<number, SlotName>> {
   const rows = await getAll(
-    `SELECT d.slot_no, i.id AS item_id, i.dancer_name, i.rep,
+    `SELECT d.slot_no, i.id AS item_id, i.dancer_name, i.rep, i.genre,
             (SELECT COUNT(*) FROM bf_photo p WHERE p.item_id = i.id) AS has_photo,
             (SELECT p.created_at FROM bf_photo p WHERE p.item_id = i.id) AS photo_at
        FROM bf_draw d
@@ -262,6 +262,7 @@ export async function listBf6SlotNames(division: Bf6DrawDivision): Promise<Map<n
       slotNo: Number(r.slot_no),
       dancerName: r.dancer_name ? String(r.dancer_name) : '',
       rep: r.rep ? String(r.rep) : '',
+      genre: r.genre ? String(r.genre) : '',
       hasPhoto: Number(r.has_photo ?? 0) > 0,
       // 切り抜き係が差し替えたときにLEDが古い画像をキャッシュから出さないよう、URLに混ぜる
       photoAt: r.photo_at ? String(r.photo_at) : null,

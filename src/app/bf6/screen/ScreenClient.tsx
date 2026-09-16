@@ -8,14 +8,14 @@
 // ポーリングで同じ状態が返り続けるため、再生の判定は bf6ScreenAnim に寄せている
 // (毎秒アニメが再生され続けるのを防ぐ)。
 import { useEffect, useRef, useState } from 'react';
-import { detectNewWinners, parentMatch, vsAnimKey, type AnimMatch } from '@/lib/bf6ScreenAnim';
+import { detectNewWinners, parentMatch, sceneKey, vsAnimKey, type AnimMatch } from '@/lib/bf6ScreenAnim';
 import { buildBracketRows, type BracketCell } from '@/lib/bf6BracketRows';
 import { divisionTheme } from '@/lib/bf6Theme';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 import type { DivisionTheme } from '@/lib/bf6Theme';
 
 type Match = { round: string; matchNo: number; slotA: number | null; slotB: number | null; winnerSlot: number | null };
-type Slot = { slotNo: number; dancerName: string; rep: string; hasPhoto: boolean; photoAt?: string | null };
+type Slot = { slotNo: number; dancerName: string; rep: string; genre: string; hasPhoto: boolean; photoAt?: string | null };
 type Payload = {
   state: { mode: 'logo' | 'bracket' | 'vs'; division: string; round: string | null; matchNo: number | null; rev: number };
   matches: Match[];
@@ -30,12 +30,15 @@ const ROUND_LABEL: Record<string, string> = { r16: 'BEST 16', qf: 'BEST 8', sf: 
 
 /** 勝者演出を出す時間。会場で見て分かる長さ。 */
 const WIN_FLASH_MS = 3000;
+/** 場面を切り替えるとき、暗くしてから差し替えるまでの時間(TARO実機 2026-09-16) */
+const SCENE_FADE_MS = 260;
 /** 火花。中心から放射する筋。角度と距離を決め打ちして毎フレーム再計算しない。 */
 // 本数は見た目とPCの負荷の妥協点。64本は実機でカクついた(TARO 2026-09-10)
-// 本数と装飾は負荷とのトレードオフ。box-shadow付き64本→28本→16本(にじみ無し)に段階的に削った
-// (TARO実機 2026-09-10・LED出力のPCでカクついたため)
-const SPARKS = Array.from({ length: 16 }, (_, i) => {
-  const a = (i / 16) * 360 + ((i * 47) % 17) - 8;
+// 本数と装飾は負荷とのトレードオフ。box-shadow付き64本→28本→16本(にじみ無し)→10本と段階的に削った
+// (TARO実機 2026-09-10/09-16・LED出力のPCで衝突の瞬間だけ重くなるため)
+const SPARK_COUNT = 10;
+const SPARKS = Array.from({ length: SPARK_COUNT }, (_, i) => {
+  const a = (i / SPARK_COUNT) * 360 + ((i * 47) % 17) - 8;
   const rad = (a * Math.PI) / 180;
   const far = i % 9 === 0;                       // 数本だけ遠くまで飛ぶ
   const dist = (far ? 34 : 12) + ((i * 31) % 30);
@@ -62,6 +65,17 @@ export function ScreenClient() {
   const prevDivisionRef = useRef<string | null>(null);
   /** 先読みした顔写真。同じものを何度も取りに行かない */
   const photoPre = useRef<Set<string>>(new Set());
+  // ⚠️ 実際に映すのは data ではなく shown。場面が変わるときは一度暗くしてから差し替えるため、
+  //    その間だけ古い内容を映し続ける(切り替わる瞬間に新旧が混ざらないよう、状態だけでなく
+  //    試合や名前もまとめて止める)。TARO実機 2026-09-16
+  const [shown, setShown] = useState<Payload | null>(null);
+  const [dark, setDark] = useState(false);
+  const shownRef = useRef<Payload | null>(null);
+  const latestRef = useRef<Payload | null>(null);
+  const fadingRef = useRef(false);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  shownRef.current = shown;
+  latestRef.current = data;
 
   useEffect(() => {
     let alive = true;
@@ -137,19 +151,39 @@ export function ScreenClient() {
     };
   }, []);
 
-  if (!data) return <Stage><Logo /></Stage>;
-  const { state, matches, slots } = data;
-  if (state.mode === 'logo') return <Stage><Logo /></Stage>;
+  // 場面が変わったら暗幕を出し、暗くなりきってから中身を差し替える。
+  // ⚠️ このタイマーを effect のクリーンアップで消さないこと。ポーリングは毎秒 data を
+  //    差し替えるため、クリーンアップに任せると暗転の途中でタイマーが消えて明るくならない。
+  useEffect(() => {
+    if (!data) return;
+    const prev = shownRef.current;
+    if (!prev) { setShown(data); return; }
+    if (fadingRef.current) return;
+    if (sceneKey(data.state) === sceneKey(prev.state)) { setShown(data); return; }
+    fadingRef.current = true;
+    setDark(true);
+    fadeTimer.current = setTimeout(() => {
+      setShown(latestRef.current ?? data);
+      setDark(false);
+      fadingRef.current = false;
+    }, SCENE_FADE_MS);
+  }, [data]);
+
+  useEffect(() => () => { if (fadeTimer.current) clearTimeout(fadeTimer.current); }, []);
+
+  if (!shown) return <Stage dark={dark}><Logo /></Stage>;
+  const { state, matches, slots } = shown;
+  if (state.mode === 'logo') return <Stage dark={dark}><Logo /></Stage>;
 
   if (state.mode === 'vs') {
     const m = state.round && state.matchNo
       ? matches.find((x) => x.round === state.round && x.matchNo === state.matchNo)
-      : data.nextMatch;
-    if (!m) return <Stage><Logo /></Stage>;
+      : shown.nextMatch;
+    if (!m) return <Stage dark={dark}><Logo /></Stage>;
     const a = m.slotA ? slots[String(m.slotA)] : undefined;
     const b = m.slotB ? slots[String(m.slotB)] : undefined;
     return (
-      <Stage plain>
+      <Stage plain dark={dark}>
         {/* key を変えることで、試合が変わったときだけ登場アニメを再生し直す */}
         {/* ⚠️ ここに bf6-shake を付けないこと。動画を含む全体を毎フレーム動かすことになり、
                画面ごと描き直しになってカクつく(TARO実機 2026-09-10)。揺れは前景だけに掛ける。 */}
@@ -209,8 +243,8 @@ export function ScreenClient() {
                   </span>
                 ))}
                 <span className="bf6-core absolute left-0 top-0 block h-[6vw] w-[6vw] rounded-full bg-[radial-gradient(circle,#fff_0%,#fde68a_35%,rgba(249,115,22,0)_70%)]" />
+                {/* 衝撃波は1本だけ。2本重ねると衝突の瞬間が重くなる(TARO実機 2026-09-16) */}
                 <span className="bf6-shock absolute left-0 top-0 block h-[26vw] w-[26vw] rounded-full border-[0.3vw] border-orange-400/80" />
-                <span className="bf6-shock2 absolute left-0 top-0 block h-[26vw] w-[26vw] rounded-full border-[0.16vw] border-white/70" />
               </div>
 
               {/* VSは衝突して離れたあとに割り込む */}
@@ -236,10 +270,10 @@ export function ScreenClient() {
   }
 
   // 縦型トーナメント表(下から上へ)
-  const rows = buildBracketRows(state.division as Bf6DrawDivision, matches, { pending: data.pending });
+  const rows = buildBracketRows(state.division as Bf6DrawDivision, matches, { pending: shown.pending });
   const theme = divisionTheme(state.division);
   return (
-    <Stage>
+    <Stage dark={dark}>
       <div className="flex h-full w-full flex-col px-[2.5vw] py-[2vh]">
         <div className="flex items-start justify-between">
           <p className={`text-[2.4vw] font-black tracking-[0.4em] ${theme.text}`}>
@@ -404,7 +438,7 @@ function ChampionCard({ cell, slots, theme }: { cell: BracketCell; slots: Record
 }
 
 
-function Stage({ children, plain }: { children: React.ReactNode; plain?: boolean }) {
+function Stage({ children, plain, dark }: { children: React.ReactNode; plain?: boolean; dark?: boolean }) {
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#05070c] text-white">
       {/* オレンジの膜はロゴ/表用。背景動画の上に乗せると色が濁るのでVSでは出さない */}
@@ -412,6 +446,12 @@ function Stage({ children, plain }: { children: React.ReactNode; plain?: boolean
         <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_20%,rgba(249,115,22,0.10),transparent_60%)]" />
       )}
       <div className="relative h-full w-full">{children}</div>
+      {/* 場面の切り替え用の暗幕。暗くなりきってから中身を差し替え、そのあとゆっくり明ける。
+          透明度だけを動かすので、切り替えのために新しく読み込むものは無い。 */}
+      <div
+        className="pointer-events-none absolute inset-0 z-[60] bg-[#05070c]"
+        style={{ opacity: dark ? 1 : 0, transition: `opacity ${dark ? SCENE_FADE_MS - 20 : 420}ms ease-in-out` }}
+      />
       <ScreenAnimStyles />
     </div>
   );
@@ -428,7 +468,7 @@ function ScreenAnimStyles() {
         12%  { opacity: 1; }
         40%  { transform: translateX(9vw) skewX(-7deg) scale(0.98); }
         46%  { transform: translateX(13.5vw) skewX(0deg) scale(1.06); } /* 接触 */
-        50%  { transform: translateX(12.4vw) scaleX(0.9) scaleY(1.1); } /* 潰れる */
+        50%  { transform: translateX(12.4vw) scale(1.02); }              /* 受け止める */
         58%  { transform: translateX(-3.5vw) scale(1); }                 /* 弾かれる */
         70%  { transform: translateX(1.6vw); }
         82%  { transform: translateX(-0.6vw); }
@@ -439,7 +479,7 @@ function ScreenAnimStyles() {
         12%  { opacity: 1; }
         40%  { transform: translateX(-9vw) skewX(7deg) scale(0.98); }
         46%  { transform: translateX(-13.5vw) skewX(0deg) scale(1.06); }
-        50%  { transform: translateX(-12.4vw) scaleX(0.9) scaleY(1.1); }
+        50%  { transform: translateX(-12.4vw) scale(1.02); }
         58%  { transform: translateX(3.5vw) scale(1); }
         70%  { transform: translateX(-1.6vw); }
         82%  { transform: translateX(0.6vw); }
@@ -449,7 +489,7 @@ function ScreenAnimStyles() {
       /* ⚠️ ここで filter を使わないこと。.bf6-chrome の drop-shadow(立体感)を
          上書きしてしまい、VSだけ平たく見える。登場は scale と opacity で作る。 */
       @keyframes bf6VsHit {
-        0%, 56% { opacity: 0; transform: translate(-50%,-50%) scale(3.6) rotate(-9deg); }
+        0%, 56% { opacity: 0; transform: translate(-50%,-50%) scale(2.1) rotate(-9deg); }
         72%     { opacity: 1; transform: translate(-50%,-50%) scale(0.86) rotate(0deg); }
         80%     { transform: translate(-50%,-50%) scale(1.12); }
         100%    { opacity: 1; transform: translate(-50%,-50%) scale(1); }
@@ -466,12 +506,6 @@ function ScreenAnimStyles() {
         50%     { opacity: 0.95; }
         70%     { opacity: 0; transform: translate(-50%,-50%) scale(2.2); }
         100%    { opacity: 0; transform: translate(-50%,-50%) scale(2.2); }
-      }
-      @keyframes bf6Shock2 {
-        0%, 46.5% { opacity: 0; transform: translate(-50%,-50%) scale(0.06); }
-        51%       { opacity: 1; }
-        64%       { opacity: 0; transform: translate(-50%,-50%) scale(1.5); }
-        100%      { opacity: 0; transform: translate(-50%,-50%) scale(1.5); }
       }
       /* 火花: 中心から放射しつつ失速し、同時に重力で落ちる。
          明滅を挟むと「燃えている粒」に見える。 */
@@ -492,17 +526,17 @@ function ScreenAnimStyles() {
       /* 衝突の瞬間だけ画面を揺らす */
       @keyframes bf6Shake {
         0%, 45.5% { transform: translate(0,0) rotate(0deg); }
-        46.4%     { transform: translate(-0.9vw, 0.5vw) rotate(-0.35deg); }
-        47.3%     { transform: translate(0.8vw, -0.6vw) rotate(0.3deg); }
-        48.2%     { transform: translate(-0.6vw, -0.35vw) rotate(-0.2deg); }
-        49.1%     { transform: translate(0.45vw, 0.4vw) rotate(0.15deg); }
-        50%       { transform: translate(-0.3vw, -0.2vw) rotate(-0.1deg); }
-        51%       { transform: translate(0.15vw, 0.12vw); }
+        46.4%     { transform: translate(-0.5vw, 0.3vw); }
+        47.3%     { transform: translate(0.45vw, -0.3vw); }
+        48.2%     { transform: translate(-0.3vw, -0.2vw); }
+        49.1%     { transform: translate(0.2vw, 0.2vw); }
+        50%       { transform: translate(-0.12vw, -0.1vw); }
+        51%       { transform: translate(0.06vw, 0.05vw); }
         52%, 100% { transform: translate(0,0) rotate(0deg); }
       }
       @keyframes bf6FlashOut {
         0%, 45.5% { opacity: 0; }
-        47%       { opacity: 0.5; }
+        47%       { opacity: 0.34; }
         53%       { opacity: 0; }
         100%      { opacity: 0; }
       }
@@ -511,93 +545,6 @@ function ScreenAnimStyles() {
       /* 稲妻の明滅。放電は「ほぼ消えている→一瞬強く光る→残光」なので、
          滞在時間の大半を暗くしておき、短い山を2つ作る。層ごとに周期をずらす。 */
 
-      /* ── VS: 名前どうしが中央で正面衝突 → 弾かれる → VSが割り込む(全体3.4秒) ──
-         時間の設計: 0-46% 寄せ / 46-52% 衝突と圧縮 / 52-70% 弾かれる / 70-100% 収まる  */
-      @keyframes bf6InLeft {
-        0%   { opacity: 0; transform: translateX(-64vw) skewX(-10deg) scale(0.94); }
-        12%  { opacity: 1; }
-        40%  { transform: translateX(9vw) skewX(-7deg) scale(0.98); }
-        46%  { transform: translateX(13.5vw) skewX(0deg) scale(1.06); } /* 接触 */
-        50%  { transform: translateX(12.4vw) scaleX(0.9) scaleY(1.1); } /* 潰れる */
-        58%  { transform: translateX(-3.5vw) scale(1); }                 /* 弾かれる */
-        70%  { transform: translateX(1.6vw); }
-        82%  { transform: translateX(-0.6vw); }
-        100% { opacity: 1; transform: translateX(0); }
-      }
-      @keyframes bf6InRight {
-        0%   { opacity: 0; transform: translateX(64vw) skewX(10deg) scale(0.94); }
-        12%  { opacity: 1; }
-        40%  { transform: translateX(-9vw) skewX(7deg) scale(0.98); }
-        46%  { transform: translateX(-13.5vw) skewX(0deg) scale(1.06); }
-        50%  { transform: translateX(-12.4vw) scaleX(0.9) scaleY(1.1); }
-        58%  { transform: translateX(3.5vw) scale(1); }
-        70%  { transform: translateX(-1.6vw); }
-        82%  { transform: translateX(0.6vw); }
-        100% { opacity: 1; transform: translateX(0); }
-      }
-      /* VSは衝突して離れたあと(58%〜)に割り込む */
-      /* ⚠️ ここで filter を使わないこと。.bf6-chrome の drop-shadow(立体感)を
-         上書きしてしまい、VSだけ平たく見える。登場は scale と opacity で作る。 */
-      @keyframes bf6VsHit {
-        0%, 56% { opacity: 0; transform: translate(-50%,-50%) scale(3.6) rotate(-9deg); }
-        72%     { opacity: 1; transform: translate(-50%,-50%) scale(0.86) rotate(0deg); }
-        80%     { transform: translate(-50%,-50%) scale(1.12); }
-        100%    { opacity: 1; transform: translate(-50%,-50%) scale(1); }
-      }
-      /* 衝突の熱源 */
-      @keyframes bf6Core {
-        0%, 45.5% { opacity: 0; transform: translate(-50%,-50%) scale(0.1); }
-        48%       { opacity: 1; transform: translate(-50%,-50%) scale(1.2); }
-        62%       { opacity: 0; transform: translate(-50%,-50%) scale(2.4); }
-        100%      { opacity: 0; }
-      }
-      @keyframes bf6Shock {
-        0%, 46% { opacity: 0; transform: translate(-50%,-50%) scale(0.12); }
-        50%     { opacity: 0.95; }
-        70%     { opacity: 0; transform: translate(-50%,-50%) scale(2.2); }
-        100%    { opacity: 0; transform: translate(-50%,-50%) scale(2.2); }
-      }
-      @keyframes bf6Shock2 {
-        0%, 46.5% { opacity: 0; transform: translate(-50%,-50%) scale(0.06); }
-        51%       { opacity: 1; }
-        64%       { opacity: 0; transform: translate(-50%,-50%) scale(1.5); }
-        100%      { opacity: 0; transform: translate(-50%,-50%) scale(1.5); }
-      }
-      /* 火花: 中心から放射しつつ失速し、同時に重力で落ちる。
-         明滅を挟むと「燃えている粒」に見える。 */
-      @keyframes bf6Spark {
-        0%   { opacity: 0; transform: rotate(var(--rot)) translateX(0) scaleX(0.15); }
-        6%   { opacity: 1; transform: rotate(var(--rot)) translateX(0.8vw) scaleX(1); }
-        34%  { opacity: 1; }
-        46%  { opacity: 0.55; }
-        58%  { opacity: 1; }
-        78%  { opacity: 0.5; }
-        100% { opacity: 0; transform: rotate(var(--rot)) translateX(var(--sx)) scaleX(0.18); }
-      }
-      /* 外側は重力ぶんだけ落とす(放射と分けることで放物線になる) */
-      @keyframes bf6SparkGravity {
-        0%   { transform: translateY(0); }
-        100% { transform: translateY(var(--fall)); }
-      }
-      /* 衝突の瞬間だけ画面を揺らす */
-      @keyframes bf6Shake {
-        0%, 45.5% { transform: translate(0,0) rotate(0deg); }
-        46.4%     { transform: translate(-0.9vw, 0.5vw) rotate(-0.35deg); }
-        47.3%     { transform: translate(0.8vw, -0.6vw) rotate(0.3deg); }
-        48.2%     { transform: translate(-0.6vw, -0.35vw) rotate(-0.2deg); }
-        49.1%     { transform: translate(0.45vw, 0.4vw) rotate(0.15deg); }
-        50%       { transform: translate(-0.3vw, -0.2vw) rotate(-0.1deg); }
-        51%       { transform: translate(0.15vw, 0.12vw); }
-        52%, 100% { transform: translate(0,0) rotate(0deg); }
-      }
-      @keyframes bf6FlashOut {
-        0%, 45.5% { opacity: 0; }
-        47%       { opacity: 0.5; }
-        53%       { opacity: 0; }
-        100%      { opacity: 0; }
-      }
-      @keyframes bf6CornerIn { 0% { opacity:0; } 100% { opacity:1; } }
-      /* ── 背景に常時の動き ── */
       /* 背景: ゆっくり寄りながら流れる。2枚の明滅を入れ替えて放電が絶えない状態にする。 */
       @keyframes bf6BgDrift {
         0%   { transform: scale(1.06) translate3d(-0.6%, -0.4%, 0); }
@@ -791,7 +738,6 @@ function ScreenAnimStyles() {
       .bf6-vs       { animation: bf6VsHit    2.6s cubic-bezier(.2,1.3,.35,1) both; }
       .bf6-core     { animation: bf6Core     2.6s ease-out both; }
       .bf6-shock    { animation: bf6Shock    2.6s ease-out both; }
-      .bf6-shock2   { animation: bf6Shock2   2.6s ease-out both; }
       .bf6-spark    { animation-name: bf6Spark; animation-timing-function: cubic-bezier(.08,.75,.3,1); animation-fill-mode: both; }
       .bf6-spark-g  { animation-name: bf6SparkGravity; animation-timing-function: cubic-bezier(.35,0,.85,1); animation-fill-mode: both; }
       .bf6-shake    { animation: bf6Shake 2.6s linear both; }
@@ -896,7 +842,10 @@ function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue';
       ) : (
         <p className="relative -mt-[1.5vh] text-[4vw] font-black tracking-[0.3em] text-white/35">不戦勝</p>
       )}
-      {slot?.rep && <p className="mt-[0.2vh] text-[1.9vw] font-bold text-white/60">{slot.rep}</p>}
+      {/* 名前の下はジャンル。レペゼンより「何で戦う人か」が伝わる(TARO実機 2026-09-16) */}
+      {slot?.genre && (
+        <p className="mt-[0.2vh] text-[1.9vw] font-bold uppercase tracking-[0.2em] text-white/60">{slot.genre}</p>
+      )}
     </div>
   );
 }

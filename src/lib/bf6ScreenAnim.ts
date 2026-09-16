@@ -70,3 +70,22 @@ export function parentMatch(
   if (i < 0 || i === order.length - 1) return null;
   return { round: order[i + 1], matchNo: Math.ceil(matchNo / 2) };
 }
+
+/**
+ * いま映している「場面」の識別子。これが変わったときだけ暗転→切り替えを挟む。
+ * (TARO実機 2026-09-16「場面が切り替わる時にふわっとフェードインフェードアウトの方がいい」)
+ *
+ * revは混ぜない。バトルスタートのように同じ試合のまま状態だけ変わる操作で
+ * 暗転させてしまうため。逆にトーナメント表では round/matchNo を見ない
+ * (試合が進むたびに暗転すると、勝者が上がっていく演出が消える)。
+ */
+export function sceneKey(s: {
+  mode: string;
+  division: string;
+  round: string | null;
+  matchNo: number | null;
+}): string {
+  if (s.mode === 'vs') return `vs|${s.division}|${s.round ?? '-'}|${s.matchNo ?? '-'}`;
+  if (s.mode === 'bracket') return `bracket|${s.division}`;
+  return 'logo';
+}
