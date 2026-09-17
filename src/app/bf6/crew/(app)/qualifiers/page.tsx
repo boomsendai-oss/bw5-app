@@ -1,4 +1,4 @@
-// クルー: 予選通過者のチェック(小中・一般)。
+// クルー: ブロック予選(小中・一般)。並び順の確認と、通過者のチェックを1画面で行う。
 //
 // くじ引き②(ベスト8)の一覧に部門の全員を出すと押し間違いが起きるため、
 // 先にここで通過した8名を選び、くじ引き②と写真撮影はその8名だけに絞る(TARO 2026-09-09)。
@@ -40,7 +40,7 @@ export default async function CrewQualifiersPage({
 
   return (
     <div>
-      <CrewHeader title="予選通過者" description="予選が終わったら、通過した8名をチェック" />
+      <CrewHeader title="ブロック予選" description="並び順を見ながら並ばせて、通過した8名をチェック" />
       <div className="mx-auto max-w-3xl p-4">
         <div className="mb-4 flex gap-2">
           {TABS.map((t) => (

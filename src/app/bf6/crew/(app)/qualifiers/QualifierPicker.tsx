@@ -127,56 +127,80 @@ export default function QualifierPicker({
       {view === 'arc' && (
         <>
           <p className="text-xs leading-relaxed text-neutral-600">
-            エントリーが早い順です。この順番で左から並ばせてください。
-            ジャッジが「左から3番目」と言ったら、3番の札をタップします。
+            この順番で左から並ばせてください。
+            ジャッジが肩を叩いた人を、予選通過者としてチェックします。
           </p>
-          {(['A', 'B'] as const).map((b) => {
-            const line = lineupForBlock(candidates, b);
-            if (line.length === 0) return null;
-            return (
-              <section key={b}>
-                <p className="mb-2 text-xs font-black tracking-widest text-neutral-500">
-                  {b}ブロック · {line.length}名
+
+          {/* A・Bブロックはジャッジ席を挟んで対面に並ぶ。画面の上下の並びを実際の
+              立ち位置と同じにすることで、どっち向きに並ばせるかが figure を見れば分かる
+              (TARO 2026-09-17)。 */}
+          {(() => {
+            const blocks = (['A', 'B'] as const).map((b) => ({ b, line: lineupForBlock(candidates, b) }));
+            if (blocks.every((x) => x.line.length === 0)) {
+              return (
+                <p className="rounded-xl bg-sand-100 p-3 text-sm font-bold text-neutral-600">
+                  まだ誰もA/Bブロックを引いていません。受付のくじ引き①が済むと並び順が出ます。
                 </p>
-                {/* ⚠️ 横スクロールも折り返しもさせないこと。当日は一目で全員の並び順が
-                       見えないと意味がない(TARO実機 2026-09-16)。1行に収めるため
-                       1人ぶんの幅が狭くなるので、名前は縦書きにする。 */}
-                <ul className="flex gap-1">
-                  {line.map((c, i) => {
-                    const on = selected.has(c.itemId);
-                    return (
-                      <li key={c.itemId} className="min-w-0 flex-1">
-                        <button
-                          disabled={pending}
-                          onClick={() => tap(c.itemId)}
-                          className={`flex w-full flex-col items-center gap-1 rounded-lg border-2 px-0.5 py-1.5 disabled:opacity-60 ${
-                            on ? 'border-brand-600 bg-brand-600 text-white' : 'border-sand-300 bg-white text-navy-900'
-                          }`}
-                        >
-                          <span
-                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-black tabular-nums ${
-                              on ? 'bg-white text-brand-700' : 'bg-sand-100 text-neutral-600'
-                            }`}
-                          >
-                            {i + 1}
-                          </span>
-                          <span className="max-h-[88px] overflow-hidden text-[11px] font-black leading-none [text-orientation:mixed] [writing-mode:vertical-rl]">
-                            {c.dancerName}
-                          </span>
-                          <span className={`text-[10px] font-black leading-none ${on ? '' : 'invisible'}`}>✓</span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
+              );
+            }
+            return (
+              <div className="rounded-2xl border border-sand-200 bg-white p-3">
+                {blocks.map(({ b, line }, bi) => (
+                  <div key={b}>
+                    {bi === 1 && (
+                      <div className="my-3 rounded-xl bg-navy-900 px-3 py-2 text-center text-white">
+                        <p className="text-xs font-black tracking-widest">ジャッジ席</p>
+                        <p className="mt-1 text-lg leading-none" aria-hidden>
+                          🪑 🪑 🪑
+                        </p>
+                        <p className="mt-1 text-[11px] font-bold text-sand-200">
+                          A・Bブロックとも、この列を向いて並ぶ
+                        </p>
+                      </div>
+                    )}
+                    <p className="mb-1.5 text-xs font-black tracking-widest text-neutral-500">
+                      {b}ブロック · {line.length}名
+                    </p>
+                    {line.length === 0 ? (
+                      <p className="mb-1 text-sm font-bold text-neutral-400">まだ誰も引いていません</p>
+                    ) : (
+                      // ⚠️ 横スクロールも折り返しもさせないこと。当日は一目で全員の並び順が
+                      //    見えないと意味がない(TARO実機 2026-09-16)。1行に収めるため
+                      //    1人ぶんの幅が狭くなるので、名前は縦書きにする。
+                      <ul className="flex gap-1">
+                        {line.map((c, i) => {
+                          const on = selected.has(c.itemId);
+                          return (
+                            <li key={c.itemId} className="min-w-0 flex-1">
+                              <button
+                                disabled={pending}
+                                onClick={() => tap(c.itemId)}
+                                className={`flex w-full flex-col items-center gap-1 rounded-lg border-2 px-0.5 py-1.5 disabled:opacity-60 ${
+                                  on ? 'border-brand-600 bg-brand-600 text-white' : 'border-sand-300 bg-white text-navy-900'
+                                }`}
+                              >
+                                <span
+                                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-black tabular-nums ${
+                                    on ? 'bg-white text-brand-700' : 'bg-sand-100 text-neutral-600'
+                                  }`}
+                                >
+                                  {i + 1}
+                                </span>
+                                <span className="max-h-[88px] overflow-hidden text-[11px] font-black leading-none [text-orientation:mixed] [writing-mode:vertical-rl]">
+                                  {c.dancerName}
+                                </span>
+                                <span className={`text-[10px] font-black leading-none ${on ? '' : 'invisible'}`}>✓</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
             );
-          })}
-          {candidates.every((c) => c.block === null) && (
-            <p className="rounded-xl bg-sand-100 p-3 text-sm font-bold text-neutral-600">
-              まだ誰もA/Bブロックを引いていません。受付のくじ引き①が済むと並び順が出ます。
-            </p>
-          )}
+          })()}
         </>
       )}
 
