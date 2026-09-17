@@ -8,6 +8,8 @@
 //   ② 予選終了後(15:55-16:25)
 //        小中・一般 … 予選通過者8名がベスト8トーナメントの位置(1〜8)を引く
 
+import { bracketSizeFor } from './bf6Format';
+
 export type Bf6DrawDivision = 'beginner' | 'kids' | 'general';
 export type Bf6DrawPhase = 'block' | 'bracket';
 
@@ -25,13 +27,13 @@ export function drawUnitsForEntry(itemId: number, divisions: string[]): DrawUnit
 
 /**
  * 用意するスロット数。
- * - ビギナー … 16固定。16人に満たなくても空き枠はBYE(不戦勝)として扱う
- * - 小中/一般の一次予選 … 実エントリー数ぶん(前半A・後半B)
- * - ベスト8トーナメント … 8固定
+ * - 本戦 … その部門の枠数(bf6Format の bracketSize)。埋まらない枠はBYE(不戦勝)
+ * - 予選 … 実エントリー数ぶん(前半A・後半B)
+ * ⚠️ 形を変えるときは bf6Format.ts の BF6_FORMAT だけを書き換える。
  */
 export function slotCountFor(division: Bf6DrawDivision, phase: Bf6DrawPhase, entrantCount: number): number {
-  if (division === 'beginner') return 16;
-  return phase === 'bracket' ? 8 : entrantCount;
+  if (phase === 'bracket') return bracketSizeFor(division);
+  return division === 'beginner' ? bracketSizeFor(division) : entrantCount;
 }
 
 /** 前半をAブロック、後半をBブロックにする。奇数ならAが1人多い。 */

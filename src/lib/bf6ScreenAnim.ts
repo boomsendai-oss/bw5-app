@@ -3,6 +3,9 @@
 // LED画面は1秒ごとに状態を取りに行くため、素直に描くと「勝者が決まった」演出が
 // 毎秒再生されてしまう。前回の状態と比べて“今回はじめて確定した勝者”だけを返す。
 
+import { roundsFor } from './bf6Bracket';
+import type { Bf6DrawDivision } from './bf6Draw';
+
 export type AnimMatch = {
   round: string;
   matchNo: number;
@@ -65,7 +68,7 @@ export function parentMatch(
   round: string,
   matchNo: number
 ): { round: string; matchNo: number } | null {
-  const order = division === 'beginner' ? ['r16', 'qf', 'sf', 'f'] : ['qf', 'sf', 'f'];
+  const order: string[] = roundsFor(division as Bf6DrawDivision);
   const i = order.indexOf(round);
   if (i < 0 || i === order.length - 1) return null;
   return { round: order[i + 1], matchNo: Math.ceil(matchNo / 2) };

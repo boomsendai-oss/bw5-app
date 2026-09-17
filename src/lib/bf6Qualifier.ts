@@ -4,49 +4,57 @@
 // 通過者を先に確定させるのは、くじ引き②の一覧に部門全員を出すと押し間違いが起きるため(TARO 2026-09-09)。
 
 import type { Bf6DrawDivision } from './bf6Draw';
+import { qualifierCountFor, qualifierPerBlockFor } from './bf6Format';
 
-/** ベスト8なので8名。ビギナーは予選が無いので対象外。 */
+/**
+ * 通過者の人数。⚠️ 部門ごとに違う可能性があるので、画面では qualifierCountFor を使う。
+ * この定数は「今の小中・一般は8名」という既定値として残してある。
+ */
 export const QUALIFIER_COUNT = 8;
 
 export function hasQualifierStage(division: string): division is Exclude<Bf6DrawDivision, 'beginner'> {
   return division === 'kids' || division === 'general';
 }
 
-/** 通過者のチェックが「ちょうど8名」で揃っているか。くじ引き②に進める条件。 */
-export function qualifiersReady(count: number): boolean {
-  return count === QUALIFIER_COUNT;
+/** 通過者のチェックが人数ちょうどで揃っているか。くじ引き②に進める条件。 */
+export function qualifiersReadyFor(division: Bf6DrawDivision, count: number): boolean {
+  return count === qualifierCountFor(division);
 }
-
-/** 予選1回のときの、1ブロックあたりの通過者。A4名・B4名で合計8名。 */
-export const QUALIFIER_PER_BLOCK = 4;
 
 /**
  * その人を選べるか。選べないときは理由の文、選べるときは null。
  *
- * 予選1回: Aブロック4名・Bブロック4名で確定するので、同じブロックの5人目は選ばせない。
- * 予選2回: 2次予選はA/Bを合体させた1サークルなのでブロックの上限は効かない(perBlock=false)。
+ * A/Bに分けて予選をやる部門は、片方のブロックから枠の半分より多くは選ばせない
+ * (押し間違いと、片側に偏った通過を防ぐ)。
+ * 1サークルで回す部門・予選を2回やる場合はブロックの上限が無い。
  */
-export function qualifierPickError(
+export function qualifierPickErrorFor(
+  division: Bf6DrawDivision,
   selectedBlocks: ('A' | 'B' | null)[],
-  block: 'A' | 'B' | null,
-  perBlock: boolean
+  block: 'A' | 'B' | null
 ): string | null {
-  if (selectedBlocks.length >= QUALIFIER_COUNT) {
-    return `${QUALIFIER_COUNT}名までです。外してから選び直してください`;
+  const total = qualifierCountFor(division);
+  if (selectedBlocks.length >= total) {
+    return `${total}名までです。外してから選び直してください`;
   }
-  if (!perBlock || block === null) return null;
+  const perBlock = qualifierPerBlockFor(division);
+  if (perBlock === null || block === null) return null;
   const inBlock = selectedBlocks.filter((b) => b === block).length;
-  if (inBlock >= QUALIFIER_PER_BLOCK) {
-    return `${block}ブロックは${QUALIFIER_PER_BLOCK}名までです。予選を2回やる場合は「ブロックの上限を外す」を押してください`;
+  if (inBlock >= perBlock) {
+    return `${block}ブロックは${perBlock}名までです。外してから選び直してください`;
   }
   return null;
 }
 
-/** 選択の切り替え。9人目は入れない(押し間違い防止)。 */
-export function toggleQualifier(selected: Set<number>, itemId: number): Set<number> {
+/** 選択の切り替え。枠を超えては入れない(押し間違い防止)。 */
+export function toggleQualifierFor(
+  division: Bf6DrawDivision,
+  selected: Set<number>,
+  itemId: number
+): Set<number> {
   const next = new Set(selected);
   if (next.has(itemId)) next.delete(itemId);
-  else if (next.size < QUALIFIER_COUNT) next.add(itemId);
+  else if (next.size < qualifierCountFor(division)) next.add(itemId);
   return next;
 }
 

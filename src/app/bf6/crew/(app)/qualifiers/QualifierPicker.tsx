@@ -4,13 +4,9 @@
 // 9人目は入らない(押し間違い防止)。外したいときはもう一度タップ。
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
-import {
-  QUALIFIER_COUNT,
-  QUALIFIER_PER_BLOCK,
-  qualifierPickError,
-  qualifiersReady,
-  toggleQualifier,
-} from '@/lib/bf6Qualifier';
+import { qualifierPickErrorFor, qualifiersReadyFor, toggleQualifierFor } from '@/lib/bf6Qualifier';
+import { qualifierCountFor, qualifierPerBlockFor } from '@/lib/bf6Format';
+import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 import { crewSetQualifier } from './actions';
 import { matchesAny } from '@/lib/bf6ListUi';
 import { lineupForBlock } from '@/lib/bf6Lineup';
@@ -32,28 +28,28 @@ export default function QualifierPicker({
   const [err, setErr] = useState<string | null>(null);
   // MCが読み上げた名前をその場で探す。26人を目で追うのは当日きつい(2026-09-11)
   const [q, setQ] = useState('');
-  // 予選1回で確定したので、各ブロック4名の上限は常にかける(TARO 2026-09-17)。
-  // ⚠️ 予選を2回にする / 一般を1サークルにまとめる場合は、A・Bが混ざるので
-  //    この上限を外せるようにし直すこと(切り替えのUIは当日ノイズなので撤去した)。
-  const perBlock = true;
+  // 人数と上限は部門ごと。⚠️ 形を変えるときは bf6Format.ts の BF6_FORMAT だけを書き換える。
+  const div = division as Bf6DrawDivision;
+  const total = qualifierCountFor(div);
+  const perBlock = qualifierPerBlockFor(div);
   // 並ばせた順に見るか、名前で探すか。当日は並び順が主(TARO 2026-09-16)
   const [view, setView] = useState<'arc' | 'list'>('arc');
   const [pending, start] = useTransition();
 
-  const ready = qualifiersReady(selected.size);
+  const ready = qualifiersReadyFor(div, selected.size);
 
   const blockOf = (itemId: number) => candidates.find((c) => c.itemId === itemId)?.block ?? null;
   const selectedBlocks = [...selected].map(blockOf);
 
   const tap = (itemId: number) => {
     if (!selected.has(itemId)) {
-      const why = qualifierPickError(selectedBlocks, blockOf(itemId), perBlock);
+      const why = qualifierPickErrorFor(div, selectedBlocks, blockOf(itemId));
       if (why) {
         setErr(why);
         return;
       }
     }
-    const next = toggleQualifier(selected, itemId);
+    const next = toggleQualifierFor(div, selected, itemId);
     setErr(null);
     setSelected(next); // 先に画面へ反映(押した感触を返す)
     start(async () => {
@@ -77,19 +73,21 @@ export default function QualifierPicker({
       >
         <p className="text-2xl font-black text-navy-900">
           {selected.size}
-          <span className="text-base font-bold text-neutral-400"> / {QUALIFIER_COUNT} 名</span>
+          <span className="text-base font-bold text-neutral-400"> / {total} 名</span>
         </p>
         <p className="mt-2 text-sm font-bold tabular-nums text-navy-800">
-          Aブロック {selectedBlocks.filter((b) => b === 'A').length} / {QUALIFIER_PER_BLOCK}
+          Aブロック {selectedBlocks.filter((b) => b === 'A').length}
+          {perBlock !== null && ` / ${perBlock}`}
           <span className="mx-2 text-neutral-400">|</span>
-          Bブロック {selectedBlocks.filter((b) => b === 'B').length} / {QUALIFIER_PER_BLOCK}
+          Bブロック {selectedBlocks.filter((b) => b === 'B').length}
+          {perBlock !== null && ` / ${perBlock}`}
         </p>
         {/* ⚠️ くじ引き②への導線は一番下に置く。ここに置くと、まだ選んでいる最中に
                目に入って情報のノイズになる(TARO実機 2026-09-17)。 */}
         <p className="mt-1 text-xs text-neutral-500">
           {ready
             ? 'そろいました。下のボタンからくじ引き②へ進めます。'
-            : `ジャッジが肩を叩いた${QUALIFIER_COUNT}名をタップしてください。`}
+            : `ジャッジが肩を叩いた${total}名をタップしてください。`}
         </p>
       </div>
 
@@ -187,7 +185,7 @@ export default function QualifierPicker({
           href="/bf6/crew/reception?phase=bracket"
           className="block rounded-xl bg-brand-600 py-4 text-center text-base font-black text-white active:scale-[0.98] active:bg-brand-700"
         >
-          {divisionLabel}のくじ引き②(ベスト8)へ
+          {divisionLabel}のくじ引き②(ベスト{total})へ
         </Link>
       )}
 

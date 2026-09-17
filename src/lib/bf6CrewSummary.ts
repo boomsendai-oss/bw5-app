@@ -18,8 +18,11 @@ export function entryReceptionSummary(entrants: SummaryEntrant[]): CountSummary 
   return { total: entrants.length, done, remaining: entrants.length - done };
 }
 
-/** 本戦(ベスト8)の枠数。小中・一般はここまで予選で絞る。 */
-export const BRACKET_SIZE = 8;
+/**
+ * 本戦の枠数は部門ごと。
+ * ⚠️ 形を変えるときは bf6Format.ts の BF6_FORMAT だけを書き換える。
+ */
+import { bracketSizeFor } from './bf6Format';
 
 export type PhotoDivision = 'beginner' | 'kids' | 'general';
 
@@ -52,7 +55,8 @@ export function photoSummary(
     const inDivision = entrants.filter((e) => e.divisions.includes(division));
     const passed = qualifiers[division] ?? new Set<number>();
     // 予選が要らない規模(8名以下)なら、その部門は最初から全員が本戦=撮影対象
-    const needsQualifier = division !== 'beginner' && inDivision.length > BRACKET_SIZE;
+    const size = bracketSizeFor(division);
+    const needsQualifier = division !== 'beginner' && inDivision.length > size;
 
     if (!needsQualifier) {
       const done = inDivision.filter((e) => photoItemIds.has(e.itemId)).length;
@@ -62,8 +66,8 @@ export function photoSummary(
       };
     }
 
-    const waiting = passed.size < BRACKET_SIZE;
-    const target = waiting ? BRACKET_SIZE : passed.size;
+    const waiting = passed.size < size;
+    const target = waiting ? size : passed.size;
     const done = waiting ? 0 : inDivision.filter((e) => passed.has(e.itemId) && photoItemIds.has(e.itemId)).length;
     return { division, label, waiting, total: target, done, remaining: target - done };
   });

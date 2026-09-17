@@ -5,6 +5,7 @@
 // 必ず ①ランダムな空き枠の選択と ②確定 を1本のUPDATEにまとめ、
 // item_id IS NULL の条件を付けて、取れた台だけが rowsAffected=1 になるようにする。
 import { getAll, getOne, execute } from './db';
+import { bracketSizeFor } from './bf6Format';
 import { nowUtcIso } from './dateJst';
 import { slotCountFor, slotsToAdd, blockOfSlot, type Bf6DrawDivision, type Bf6DrawPhase } from './bf6Draw';
 import { autoReflectIfStarted } from './bf6ScreenDb';
@@ -302,7 +303,7 @@ export async function syncBf6Slots(): Promise<
 export async function ensureBf6ReceptionSlots(phase: Bf6DrawPhase): Promise<void> {
   await syncBf6Slots();
   if (phase === 'bracket') {
-    for (const d of ['kids', 'general'] as const) await seedBf6Slots(d, 'bracket', 8);
+    for (const d of ['kids', 'general'] as const) await seedBf6Slots(d, 'bracket', bracketSizeFor(d));
   }
 }
 

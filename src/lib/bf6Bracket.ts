@@ -4,6 +4,7 @@
 // 組み合わせは当日のくじ引きで確定しているため、「次にどの試合をやるか」は
 // 盤面の状態から一意に決まる。操作する人がカードを選ぶ必要はない。
 import type { Bf6DrawDivision } from './bf6Draw';
+import { bracketSizeFor, roundsForSize } from './bf6Format';
 
 export type Round = 'r16' | 'qf' | 'sf' | 'f';
 
@@ -15,9 +16,12 @@ export type Match = {
   winnerSlot: number | null;
 };
 
-/** ベスト16をやるのはビギナー部門だけ。小中・一般は予選で8名に絞るのでベスト8から。 */
+/**
+ * その部門の本戦の段。枠数から決まる(16→ベスト16スタート / 8→ベスト8 / 4→準決勝)。
+ * ⚠️ 形を変えるときは bf6Format.ts の BF6_FORMAT だけを書き換える。
+ */
 export function roundsFor(division: Bf6DrawDivision): Round[] {
-  return division === 'beginner' ? ['r16', 'qf', 'sf', 'f'] : ['qf', 'sf', 'f'];
+  return roundsForSize(bracketSizeFor(division));
 }
 
 export function roundLabel(round: Round): string {
