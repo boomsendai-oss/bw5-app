@@ -5,8 +5,20 @@
 //
 // ⚠️ 件数だけでは足りない。上書き更新(勝者が決まる・集金でpaidになる・写真を撮り直す)は
 //    行が増えないため、件数に加えて「状態を表す値」も混ぜている。
+import { createHash } from 'node:crypto';
 import { getOne } from './db';
 import { pulseToken } from './bf6Pulse';
+
+/**
+ * 合図をハッシュにして中身を読めなくする。
+ *
+ * ⚠️ 必須。/api/bf6/pulse は公開API(受付端末 /bf6/checkin が認証なしで叩く)なので、
+ *    pulseToken をそのまま返すと `cash:.../18500` のように集金額や受付人数が
+ *    誰にでも読めてしまう。変化の検出にはハッシュで足りる。
+ */
+function opaque(token: string): string {
+  return createHash('sha256').update(token).digest('hex').slice(0, 32);
+}
 
 export async function getBf6Pulse(): Promise<string> {
   const row = await getOne(
@@ -28,7 +40,7 @@ export async function getBf6Pulse(): Promise<string> {
 
   // 会場の回線が一瞬切れても画面を壊さない。取れなければ「変化なし」と同じ扱いにする。
   if (!row) return '';
-  return pulseToken({
+  return opaque(pulseToken({
     checkin: row.checkin as number,
     draw: row.draw as number,
     qualifier: row.qualifier as number,
@@ -38,5 +50,5 @@ export async function getBf6Pulse(): Promise<string> {
     cash: row.cash as string,
     paid: row.paid as number,
     screen: row.screen as number | null,
-  });
+  }));
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pulseToken, pulseChanged } from '../bf6Pulse';
+import { pulseToken, pulseChanged, shouldPoll } from '../bf6Pulse';
 
 describe('pulseToken', () => {
   it('同じ中身なら同じ合図になる', () => {
@@ -47,5 +47,25 @@ describe('pulseChanged', () => {
 
   it('前回と違えば作り直す', () => {
     expect(pulseChanged('abc', 'abd')).toBe(true);
+  });
+});
+
+describe('shouldPoll', () => {
+  const base = { enabled: true, hidden: false, inFlight: false };
+
+  it('ふつうの状態では見に行く', () => {
+    expect(shouldPoll(base)).toBe(true);
+  });
+
+  it('画面を伏せている端末は叩かない', () => {
+    expect(shouldPoll({ ...base, hidden: true })).toBe(false);
+  });
+
+  it('前の問い合わせが返っていなければ重ねない(会場のWi-Fiが遅いとき)', () => {
+    expect(shouldPoll({ ...base, inFlight: true })).toBe(false);
+  });
+
+  it('止められている間は見に行かない(くじのルーレットが回っている最中など)', () => {
+    expect(shouldPoll({ ...base, enabled: false })).toBe(false);
   });
 });

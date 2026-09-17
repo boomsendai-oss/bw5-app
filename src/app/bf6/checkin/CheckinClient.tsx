@@ -6,6 +6,8 @@
 //
 // 迷わせないことを最優先にする。1画面につき操作は1つ、文字は大きく、戻れるようにする。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useBf6Pulse } from '@/lib/useBf6Pulse';
 import { kioskDraw, kioskIsPaid, kioskMarkPaid } from './actions';
 import {
   isDrawnFor,
@@ -52,6 +54,13 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
   const [result, setResult] = useState<DrawResult | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingRef = useRef<DrawResult | null>(null);
+
+  // この端末は複数台を並べて同時に使う(TARO 2026-09-17)。他の台で引かれた枠を
+  // 自分の一覧にもすぐ取り込まないと、もう埋まっている人を選ばせてしまう。
+  // ⚠️ ルーレットが回っている最中と、サーバに問い合わせている最中は止める。
+  //    出場者が操作している最中に画面を作り直さないため。
+  const router = useRouter();
+  useBf6Pulse(() => router.refresh(), { enabled: !rolling && !busy });
 
   // この端末で引き終わった人。一覧の並べ替えでも使うので、必ず一覧より前に定義する。
   // ⚠️ 一覧の useMemo より後ろに置くと、初回描画で「初期化前に使った」となり画面が落ちる(2026-09-14)。
