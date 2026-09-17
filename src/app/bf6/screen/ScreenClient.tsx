@@ -294,13 +294,16 @@ export function ScreenClient() {
   const theme = divisionTheme(state.division);
   return (
     <Stage dark={dark}>
-      <div className="flex h-full w-full flex-col px-[2.5vw] py-[2vh]">
-        <div className="flex items-start justify-between">
-          <p className={`text-[2.4vw] font-black tracking-[0.4em] ${theme.text}`}>
+      {/* ⚠️ VS画面と同じ理由でLEDの上2/3に収める。手前にジャッジ3名が座るため
+             下1/3は客席から見えない(TARO 2026-09-17)。表は各段が flex-1 なので
+             高さを絞れば段間が詰まる。文字が潰れないよう札の大きさも下げてある。 */}
+      <div className="flex h-[66.6%] w-full flex-col px-[2.5vw] py-[1.5vh]">
+        <div className="flex shrink-0 items-start justify-between">
+          <p className={`text-[2vw] font-black tracking-[0.4em] ${theme.text}`}>
             {DIV_LABEL[state.division]}部門
           </p>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/bf6/led-title.png" alt="" className="h-[8vh] w-auto opacity-95" />
+          <img src="/bf6/led-title.png" alt="" className="h-[6vh] w-auto opacity-95" />
         </div>
         <div className="mt-[1.5vh] flex flex-1 flex-col">
           {rows.map((row, ri) => (
@@ -347,12 +350,12 @@ export function ScreenClient() {
                       </div>
                     ))}
                   </div>
-                  <p className="mt-[0.5vh] text-center text-[1vw] font-black tracking-[0.3em] text-white/35">
+                  <p className="mt-[0.3vh] text-center text-[0.85vw] font-black tracking-[0.3em] text-white/35">
                     {ROUND_LABEL[row.round ?? ''] ?? row.round}
                   </p>
                 </>
               )}
-              {ri === 0 && <div className="mx-auto h-[1.5vh] w-px bg-white/25" />}
+              {ri === 0 && <div className="mx-auto h-[1vh] w-px bg-white/25" />}
             </div>
           ))}
         </div>
@@ -417,12 +420,12 @@ function PersonCard({
   // ⚠️ 会場のLEDでは1回戦の名前が小さすぎて読めなかった(TARO実機 2026-09-14)。
   //    1行に収めるのをやめ、2行まで折り返して大きく出す。
   const base =
-    'flex w-full items-center justify-center rounded-[0.4vw] border px-[0.3vw] py-[0.5vh] text-center font-black leading-[1.05] transition-all duration-500 [overflow-wrap:anywhere] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden';
+    'flex w-full items-center justify-center rounded-[0.4vw] border px-[0.3vw] py-[0.35vh] text-center font-black leading-[1.05] transition-all duration-500 [overflow-wrap:anywhere] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden';
   // 上の段ほど残っている人が少ない=枠が広いので、文字も大きくする。
   // rowIndex 0 は優勝枠(別描画)なので、1回戦が最大の rowIndex になる。
   const depth = rowCount - 1 - rowIndex; // 1回戦=0、決勝=最大
-  const SIZES = ['text-[1.7vw]', 'text-[2.4vw]', 'text-[3.2vw]', 'text-[4vw]'];
-  const size = SIZES[Math.min(depth, SIZES.length - 1)] ?? (compact ? 'text-[1.7vw]' : 'text-[2.4vw]');
+  const SIZES = ['text-[1.5vw]', 'text-[2vw]', 'text-[2.6vw]', 'text-[3.2vw]'];
+  const size = SIZES[Math.min(depth, SIZES.length - 1)] ?? (compact ? 'text-[1.5vw]' : 'text-[2vw]');
   // 部門の色=まだ勝ち残っている / グレー+取り消し線=負けた / 破線=空き枠。
   const look =
     cell.state === 'alive'
@@ -445,9 +448,9 @@ function ChampionCard({ cell, slots, theme }: { cell: BracketCell; slots: Record
   const slot = cell.slotNo ? slots[String(cell.slotNo)] : undefined;
   return (
     <div className="text-center">
-      <p className={`text-[1.2vw] font-black tracking-[0.4em] ${theme.text}`}>WINNER</p>
+      <p className={`text-[1vw] font-black tracking-[0.4em] ${theme.text}`}>WINNER</p>
       <p
-        className={`mt-[0.4vh] rounded-[0.5vw] border px-[1.6vw] py-[0.8vh] text-[3vw] font-black italic ${
+        className={`mt-[0.3vh] rounded-[0.5vw] border px-[1.6vw] py-[0.6vh] text-[2.4vw] font-black italic ${
           slot ? `bf6-champ ${theme.champion}` : 'border-dashed border-white/15 text-white/20'
         }`}
       >
