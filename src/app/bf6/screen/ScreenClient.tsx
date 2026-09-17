@@ -209,9 +209,10 @@ export function ScreenClient() {
               追加で読み込むものは無いので重くならない。 */}
           <VsBackground animKey={vsAnimKey(state)} />
 
-          {/* 名前が乗る帯だけ軽く落とす。中央に暗幕を敷くと動画の鮮やかさが死ぬ。
-              ⚠️ 前景を上2/3に寄せたので、この帯も名前の位置(2/3の下端)に合わせる。 */}
-          <div className="pointer-events-none absolute inset-x-0 top-[40%] h-[27%] bg-[linear-gradient(to_top,rgba(5,7,12,0.62),transparent)]" />
+          {/* 名前が乗るあたりだけ軽く落とす。中央に暗幕を敷くと動画の鮮やかさが死ぬ。
+              ⚠️ 帯を切って持ち上げると、下端の直線が画面の真ん中に見えてしまう
+                 (TARO実機 2026-09-17)。画面の下まで伸ばし、濃さの山だけ名前に合わせる。 */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[34%] bg-[linear-gradient(to_bottom,rgba(5,7,12,0)_0%,rgba(5,7,12,0.55)_42%,rgba(5,7,12,0.62)_60%,rgba(5,7,12,0.34)_100%)]" />
           {/* 衝突の閃光 */}
           <div className="bf6-flashout pointer-events-none absolute inset-0 bg-white" />
 
@@ -219,7 +220,7 @@ export function ScreenClient() {
                  写真も名前もジャンルも、必ず上から2/3の中に収める。
                  縮小(transform: scale)は使わない。bf6-shake が transform を使うので
                  レイヤーが上がり、1920x1080のLEDで文字がぼやける。高さの配分で詰める。 */}
-          <div className="bf6-shake relative flex h-[66.6%] w-full flex-col">
+          <div className="bf6-shake relative flex h-[72%] w-full flex-col">
             <div className="bf6-drop flex shrink-0 items-start justify-between px-[2.5vw] pt-[2vh]">
               <p className="text-[1.8vw] font-black tracking-[0.35em] text-white/85">
                 {DIV_LABEL[state.division]}部門 / {ROUND_LABEL[m.round] ?? m.round}
@@ -297,7 +298,7 @@ export function ScreenClient() {
       {/* ⚠️ VS画面と同じ理由でLEDの上2/3に収める。手前にジャッジ3名が座るため
              下1/3は客席から見えない(TARO 2026-09-17)。表は各段が flex-1 なので
              高さを絞れば段間が詰まる。文字が潰れないよう札の大きさも下げてある。 */}
-      <div className="flex h-[66.6%] w-full flex-col px-[2.5vw] py-[1.5vh]">
+      <div className="flex h-[72%] w-full flex-col px-[2.5vw] py-[1.5vh]">
         <div className="flex shrink-0 items-start justify-between">
           <p className={`text-[2vw] font-black tracking-[0.4em] ${theme.text}`}>
             {DIV_LABEL[state.division]}部門
@@ -424,8 +425,8 @@ function PersonCard({
   // 上の段ほど残っている人が少ない=枠が広いので、文字も大きくする。
   // rowIndex 0 は優勝枠(別描画)なので、1回戦が最大の rowIndex になる。
   const depth = rowCount - 1 - rowIndex; // 1回戦=0、決勝=最大
-  const SIZES = ['text-[1.5vw]', 'text-[2vw]', 'text-[2.6vw]', 'text-[3.2vw]'];
-  const size = SIZES[Math.min(depth, SIZES.length - 1)] ?? (compact ? 'text-[1.5vw]' : 'text-[2vw]');
+  const SIZES = ['text-[1.6vw]', 'text-[2.2vw]', 'text-[2.9vw]', 'text-[3.6vw]'];
+  const size = SIZES[Math.min(depth, SIZES.length - 1)] ?? (compact ? 'text-[1.6vw]' : 'text-[2.2vw]');
   // 部門の色=まだ勝ち残っている / グレー+取り消し線=負けた / 破線=空き枠。
   const look =
     cell.state === 'alive'
@@ -450,7 +451,7 @@ function ChampionCard({ cell, slots, theme }: { cell: BracketCell; slots: Record
     <div className="text-center">
       <p className={`text-[1vw] font-black tracking-[0.4em] ${theme.text}`}>WINNER</p>
       <p
-        className={`mt-[0.3vh] rounded-[0.5vw] border px-[1.6vw] py-[0.6vh] text-[2.4vw] font-black italic ${
+        className={`mt-[0.3vh] rounded-[0.5vw] border px-[1.6vw] py-[0.6vh] text-[2.7vw] font-black italic ${
           slot ? `bf6-champ ${theme.champion}` : 'border-dashed border-white/15 text-white/20'
         }`}
       >
