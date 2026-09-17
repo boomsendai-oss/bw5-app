@@ -89,7 +89,11 @@ export default function Bf6StreamPage() {
         <Bf6Hero title="STREAMING" subtitle="オンライン配信" />
         <div className="px-4 py-6">
           <Bf6Card>
-            <p className="text-neutral-300">オンライン配信チケットの販売は準備中です。発表をお待ちください!</p>
+            <p className="text-neutral-300">
+              オンライン配信チケットの販売は終了しました。
+              <br />
+              当日は会場でお楽しみください。
+            </p>
           </Bf6Card>
           <p className="mt-6 text-center text-sm">
             <Link href="/bf6" className="font-bold text-red-400 underline">イベントページに戻る</Link>
