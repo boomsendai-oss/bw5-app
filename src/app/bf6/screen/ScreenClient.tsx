@@ -142,12 +142,14 @@ export function ScreenClient() {
       const im = new Image();
       im.src = src;
     }
-    // VSの背景動画も先に取っておく(最初のVSで背景が遅れて出る・TARO実機 2026-09-10)
-    const pre = document.createElement('video');
-    pre.src = '/bf6/vs-bg.mp4';
-    pre.preload = 'auto';
-    pre.muted = true;
-    pre.load();
+    // 背景動画は先に取っておく(最初に出すとき遅れる・TARO実機 2026-09-10)
+    for (const src of ['/bf6/vs-bg.mp4', '/bf6/led-loop.mp4']) {
+      const pre = document.createElement('video');
+      pre.src = src;
+      pre.preload = 'auto';
+      pre.muted = true;
+      pre.load();
+    }
     tick();
     const id = setInterval(tick, 1000);
     return () => {
@@ -787,47 +789,6 @@ function ScreenAnimStyles() {
       @keyframes bf6BgDrift { from { transform: scale(1); } to { transform: scale(1.07); } }
       .bf6-bgdrift { animation: bf6BgDrift 26s ease-out both; }
 
-      /* ロゴ画面の薄いスモーク(TARO 2026-09-17)。
-         ⚠️ filter: blur を毎フレーム掛けないこと。ぼけは放射グラデーションで最初から作り、
-            動かすのは transform と opacity だけにする。LED出力のPCは重い処理でカクつく
-            (火花を64本→10本まで削った経緯と同じ理由)。
-         ⚠️ 3本とも周期をずらすこと。揃えると「同じ絵が伸び縮みしている」と分かってしまう。 */
-      @keyframes bf6SmokeA {
-        0%   { transform: translate3d(-7vw,  3vh, 0) scale(1.05); opacity: .85; }
-        50%  { transform: translate3d( 6vw, -4vh, 0) scale(1.22); opacity: 1;   }
-        100% { transform: translate3d(-7vw,  3vh, 0) scale(1.05); opacity: .85; }
-      }
-      @keyframes bf6SmokeB {
-        0%   { transform: translate3d( 8vw, -2vh, 0) scale(1.18); opacity: 1;   }
-        50%  { transform: translate3d(-5vw,  4vh, 0) scale(1.04); opacity: .7;  }
-        100% { transform: translate3d( 8vw, -2vh, 0) scale(1.18); opacity: 1;   }
-      }
-      @keyframes bf6SmokeC {
-        0%   { transform: translate3d( 2vw,  5vh, 0) scale(1.10); opacity: .6;  }
-        50%  { transform: translate3d(-4vw, -5vh, 0) scale(1.28); opacity: .95; }
-        100% { transform: translate3d( 2vw,  5vh, 0) scale(1.10); opacity: .6;  }
-      }
-      /* ロゴの鈍い反射(TARO 2026-09-17)。ロゴ自身をマスクに使うので、
-         光はロゴの形の中だけを走る。動かすのは transform だけ。
-         ⚠️ 光沢は「たまに」でないと安っぽくなる。9秒に1度、1.6秒かけて通す。 */
-      @keyframes bf6Glint {
-        0%    { transform: translate3d(-60%, 0, 0); }
-        18%   { transform: translate3d( 60%, 0, 0); }
-        100%  { transform: translate3d( 60%, 0, 0); }
-      }
-      /* クロムの中の赤いところがゆらぐ。色は足さず、明るさだけを揺らす。 */
-      @keyframes bf6Ember {
-        0%   { opacity: .28; transform: translate3d(-3%, 1%, 0) scale(1.04); }
-        37%  { opacity: .62; transform: translate3d( 2%,-2%, 0) scale(1.12); }
-        68%  { opacity: .34; transform: translate3d( 3%, 2%, 0) scale(1.06); }
-        100% { opacity: .28; transform: translate3d(-3%, 1%, 0) scale(1.04); }
-      }
-      .bf6-glint { animation: bf6Glint 9s cubic-bezier(.5,0,.5,1) infinite; }
-      .bf6-ember { animation: bf6Ember 6.5s ease-in-out infinite; }
-
-      .bf6-smoke-a { animation: bf6SmokeA 47s ease-in-out infinite; }
-      .bf6-smoke-b { animation: bf6SmokeB 63s ease-in-out infinite; }
-      .bf6-smoke-c { animation: bf6SmokeC 81s ease-in-out infinite; }
       @keyframes bf6Haze { 0% { opacity: 0; transform: translate3d(-3%,0,0); } 50% { opacity: .5; } 100% { opacity: 0; transform: translate3d(3%,0,0); } }
       .bf6-haze {
         background: radial-gradient(60% 45% at 35% 60%, rgba(255,255,255,0.06), transparent 70%),
@@ -897,39 +858,39 @@ function Champions({ rows }: { rows: Champion[] }) {
  * 人物写真と日付の文字は出さない。背景は控えめな絵で、あとで動画に差し替える。
  * 差し替えるときは public/bf6/led-bg.mp4 を置いて video に変えるだけでよい。
  */
-/** ロゴのPNGを型抜きに使う指定。光をロゴの形の中だけに出すため。 */
-const MASK =
-  "[mask-image:url('/bf6/led-title.png')] [mask-size:100%_100%] [mask-repeat:no-repeat] " +
-  "[-webkit-mask-image:url('/bf6/led-title.png')] [-webkit-mask-size:100%_100%] [-webkit-mask-repeat:no-repeat]";
-
 function Logo() {
+  // ⚠️ Chromeはタブが裏に回ると動画を止める。操作卓で別タブに切り替えて戻したとき、
+  //    ロゴが止まったまま固まって見えるのを防ぐ(TARO 2026-09-17の検証で判明)。
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    const resume = () => { if (!document.hidden) void videoRef.current?.play().catch(() => undefined); };
+    document.addEventListener('visibilitychange', resume);
+    return () => document.removeEventListener('visibilitychange', resume);
+  }, []);
   return (
     <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
+      {/* ⚠️ 動画が出ないときの保険。上の動画が再生されればこれは見えない。
+             ここにCSSのアニメは付けないこと(見えない裏で動かすとGPUを食う)。 */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/bf6/led-bg.png" alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" />
-      {/* 薄いスモークがゆっくり流れる。3枚を別々の周期で動かして繰り返しを感じさせない。
-          画面の外まで広げてあるので、端から湧いて出るように見えない。 */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden mix-blend-screen">
-        <div className="bf6-smoke-a absolute -inset-[25%] bg-[radial-gradient(38%_30%_at_28%_42%,rgba(255,236,206,0.11),transparent_70%)]" />
-        <div className="bf6-smoke-b absolute -inset-[25%] bg-[radial-gradient(45%_34%_at_72%_58%,rgba(176,202,255,0.09),transparent_72%)]" />
-        <div className="bf6-smoke-c absolute -inset-[25%] bg-[radial-gradient(55%_40%_at_50%_26%,rgba(255,255,255,0.07),transparent_68%)]" />
-      </div>
       <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_50%,transparent_35%,rgba(5,7,12,0.75)_100%)]" />
-      {/* ロゴは公式素材をそのまま使い、光だけを上に重ねる。
-          ⚠️ ロゴ自体を作り直さないこと(生成すると必ず崩れる)。
-          マスクにロゴのPNGを使うので、反射も揺らぎもロゴの形の中だけに出る。 */}
-      <div className="relative w-[62vw] max-w-none">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/bf6/led-title.png" alt="BOOMER'S FIGHT!!! vol.6" className="block w-full" />
-        {/* クロムの中の赤いところのゆらぎ。色を足すのではなく、元の赤を明るくする。 */}
-        <div className={`${MASK} pointer-events-none absolute inset-0 mix-blend-color-dodge`}>
-          <div className="bf6-ember absolute inset-0 bg-[radial-gradient(60%_120%_at_38%_60%,rgba(190,40,20,0.9),rgba(120,20,10,0.35)_55%,transparent_78%)]" />
-        </div>
-        {/* 鈍い反射がたまに通る */}
-        <div className={`${MASK} pointer-events-none absolute inset-0 overflow-hidden mix-blend-screen`}>
-          <div className="bf6-glint absolute -inset-y-[20%] left-0 w-full bg-[linear-gradient(104deg,transparent_36%,rgba(255,255,255,0)_43%,rgba(255,255,255,0.42)_49%,rgba(255,255,255,0.10)_54%,transparent_62%)]" />
-        </div>
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/bf6/led-title.png" alt="BOOMER'S FIGHT!!! vol.6" className="relative w-[62vw] max-w-none" />
+
+      {/* 待機中のロゴ。煙が流れ、クロムがときどき鈍く光る。継ぎ目が出ないよう
+          末尾を頭に溶かし込んであるので、loop で回しっぱなしにできる(TARO 2026-09-17)。
+          ⚠️ ロゴはこの動画に焼き込まれている。作り直すときは必ず公式素材から。 */}
+      <video
+        ref={videoRef}
+        className="absolute inset-0 h-full w-full object-cover"
+        src="/bf6/led-loop.mp4"
+        poster="/bf6/led-loop-poster.jpg"
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+      />
     </div>
   );
 }
