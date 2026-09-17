@@ -209,21 +209,26 @@ export function ScreenClient() {
               追加で読み込むものは無いので重くならない。 */}
           <VsBackground animKey={vsAnimKey(state)} />
 
-          {/* 名前が乗る下端だけ軽く落とす。中央に暗幕を敷くと動画の鮮やかさが死ぬ。 */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[26%] bg-[linear-gradient(to_top,rgba(5,7,12,0.62),transparent)]" />
+          {/* 名前が乗る帯だけ軽く落とす。中央に暗幕を敷くと動画の鮮やかさが死ぬ。
+              ⚠️ 前景を上2/3に寄せたので、この帯も名前の位置(2/3の下端)に合わせる。 */}
+          <div className="pointer-events-none absolute inset-x-0 top-[40%] h-[27%] bg-[linear-gradient(to_top,rgba(5,7,12,0.62),transparent)]" />
           {/* 衝突の閃光 */}
           <div className="bf6-flashout pointer-events-none absolute inset-0 bg-white" />
 
-          <div className="bf6-shake relative flex h-full w-full flex-col">
-            <div className="bf6-drop flex items-start justify-between px-[2.5vw] pt-[2vh]">
-              <p className="text-[2vw] font-black tracking-[0.35em] text-white/85">
+          {/* ⚠️ LEDの前にジャッジが座るため、下1/3は客席から見えない(TARO 2026-09-17)。
+                 写真も名前もジャンルも、必ず上から2/3の中に収める。
+                 縮小(transform: scale)は使わない。bf6-shake が transform を使うので
+                 レイヤーが上がり、1920x1080のLEDで文字がぼやける。高さの配分で詰める。 */}
+          <div className="bf6-shake relative flex h-[66.6%] w-full flex-col">
+            <div className="bf6-drop flex shrink-0 items-start justify-between px-[2.5vw] pt-[2vh]">
+              <p className="text-[1.8vw] font-black tracking-[0.35em] text-white/85">
                 {DIV_LABEL[state.division]}部門 / {ROUND_LABEL[m.round] ?? m.round}
               </p>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/bf6/led-title.png" alt="" className="h-[8vh] w-auto opacity-95" />
+              <img src="/bf6/led-title.png" alt="" className="h-[6vh] w-auto opacity-95" />
             </div>
 
-            <div className="relative flex flex-1 items-center justify-center px-[1.5vw] pb-[2vh]">
+            <div className="relative flex min-h-0 flex-1 items-stretch justify-center px-[1.5vw] pb-[2vh]">
               {/* 左右は内容量に関係なく必ず半分ずつ(片側が空でもVSが中央からずれない・TARO実機 2026-09-10) */}
               <div className="bf6-in-left w-1/2 min-w-0 shrink-0 grow-0 basis-1/2 overflow-hidden text-center">
                 <Side slot={a} corner="red" division={state.division} />
@@ -267,7 +272,7 @@ export function ScreenClient() {
                 // ⚠️ -translate-x-1/2 を付けないこと。Tailwind v4 では `translate` プロパティになり、
                 //    キーフレーム(bf6VsHit)の transform: translate(-50%,-50%) と二重にかかって
                 //    VSがちょうど自分の幅ぶん左にずれる(TARO実機 2026-09-10・実測で確認)。
-                className="bf6-face bf6-vs bf6-chrome bf6-sheen pointer-events-none absolute left-1/2 top-1/2 z-30 whitespace-nowrap text-[10vw] font-black italic leading-none"
+                className="bf6-face bf6-vs bf6-chrome bf6-sheen pointer-events-none absolute left-1/2 top-1/2 z-30 whitespace-nowrap text-[8vw] font-black italic leading-none"
                 data-text="VS"
               >
                 VS
@@ -895,12 +900,14 @@ function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue';
   //    登場アニメ中にカクつく(TARO実機 2026-09-10・影は不要とTARO判断)。
   //    赤青の色分けは背景動画と RED/BLUE の見出しで足りている。
   return (
-    <div>
-      <p className={`text-[1.6vw] font-black tracking-[0.5em] ${accent}`}>
+    <div className="flex h-full min-h-0 flex-col">
+      <p className={`shrink-0 text-[1.4vw] font-black tracking-[0.5em] ${accent}`}>
         {corner === 'red' ? 'RED' : 'BLUE'}
       </p>
-      {/* 写真の有無で名前の高さがずれないよう、枠は常に確保する */}
-      <div className="flex h-[64vh] items-end justify-center">
+      {/* 写真の有無で名前の高さがずれないよう、枠は常に確保する。
+          ⚠️ 高さは固定しない。RED/名前/ジャンルを引いた残りを写真が受け持つことで、
+             前景が上2/3に収まることを配分で保証する(TARO 2026-09-17)。 */}
+      <div className="flex min-h-0 flex-1 items-end justify-center">
         {slot?.hasPhoto && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -912,18 +919,18 @@ function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue';
       </div>
       {slot?.dancerName ? (
         <p
-          className="bf6-face bf6-chrome bf6-sheen relative -mt-[1.5vh] break-words text-[9vw] font-black italic leading-[0.92]"
+          className="bf6-face bf6-chrome bf6-sheen relative -mt-[1.5vh] shrink-0 break-words text-[7vw] font-black italic leading-[0.92]"
           data-text={slot.dancerName}
         >
           {slot.dancerName}
         </p>
       ) : (
-        <p className="relative -mt-[1.5vh] text-[4vw] font-black tracking-[0.3em] text-white/35">不戦勝</p>
+        <p className="relative -mt-[1.5vh] shrink-0 text-[3.2vw] font-black tracking-[0.3em] text-white/35">不戦勝</p>
       )}
       {/* 名前の下はジャンル。レペゼンより「何で戦う人か」が伝わる(TARO実機 2026-09-16)。
           ⚠️ 大文字にしたり綴りを揃えたりしない。本人が書いたまま出す。 */}
       {slot?.genre && (
-        <p className="mt-[0.2vh] text-[1.9vw] font-bold tracking-[0.2em] text-white/60">{slot.genre}</p>
+        <p className="mt-[0.2vh] shrink-0 text-[1.7vw] font-bold tracking-[0.2em] text-white/60">{slot.genre}</p>
       )}
     </div>
   );
