@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAll, getOne, batch } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { parseCSV, rowsToDicts, parseDateTime } from '@/lib/csvUtil';
+import { planAbsentCancellations, inferWindowFromRows, trialKey } from '@/lib/trialAbsent';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -15,12 +16,17 @@ export const maxDuration = 60;
  *
  * multipart/form-data:
  *   trial_csv : Lstep体験予約CSV (CP932, 1行ヘッダー想定)
+ *   range_from / range_to : (任意) CSVが網羅している予約日の範囲 (YYYY-MM-DD)。
+ *                           無ければCSV内の予約日の最小〜最大で代用。
  *
  * 仕様:
  *   - (lstep_id, reserved_at) で重複判定
  *   - 既存レコードは status_updated_at が新しい場合のみ更新
  *   - lstep_id → member_lstep_links で member_id を解決 (relation='本人' 優先)
  *   - ステータスを「予約済 / 来店確認済 / キャンセル / ノーショー」へ正規化
+ *   - 範囲内でDBにあるのにCSVから消えた予約 (Lstepで削除・日時変更) は
+ *     安全弁(カバレッジ>=90%・消失<=5件)を通れば status='キャンセル' /
+ *     status_source='lstep_absent' に落とす。通らなければ触らず候補として返す。
  */
 
 type TrialStatus = '予約済' | '来店確認済' | 'キャンセル' | 'ノーショー' | 'その他';
@@ -332,6 +338,51 @@ async function handleImport(req: NextRequest) {
     await batch(stmts.slice(i, i + 50));
   }
 
+  // --- 消失検出: 範囲内でDBにあるのにCSVに無い予約 = Lstepで削除/日時変更された ---
+  // (UPSERTだけだと古い予約が「予約済」のまま残り、担当周知・ノーショー候補・CVR分母を汚す)
+  const rangeFromRaw = String(form.get('range_from') ?? '').trim();
+  const rangeToRaw = String(form.get('range_to') ?? '').trim();
+  const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const window =
+    isDate(rangeFromRaw) && isDate(rangeToRaw) && rangeFromRaw <= rangeToRaw
+      ? { from: rangeFromRaw, to: rangeToRaw }
+      : inferWindowFromRows(parsedRows.map((p) => p.reserved_at));
+
+  let absentCanceled = 0;
+  let absentPending: { id: number; lstep_id: string | null; reserved_at: string; lesson_name: string | null }[] = [];
+  let absentCoverage: number | null = null;
+  if (window) {
+    type AbsRow = { id: number; lstep_id: string | null; reserved_at: string; status: string | null; lesson_name: string | null };
+    const inWindow = (await getAll(
+      `SELECT id, lstep_id, reserved_at, status, lesson_name
+         FROM trial_records
+        WHERE lstep_id IS NOT NULL
+          AND date(reserved_at) >= ? AND date(reserved_at) <= ?
+          AND TRIM(COALESCE(status,'')) <> 'キャンセル'`,
+      [window.from, window.to]
+    )) as AbsRow[];
+    const csvKeys = new Set(parsedRows.filter((p) => !!p.lstep_id).map((p) => trialKey(p.lstep_id, p.reserved_at)));
+    const plan = planAbsentCancellations({ dbRows: inWindow, csvKeys });
+    absentCoverage = plan.coverage;
+    if (plan.disappeared.length > 0) {
+      if (plan.canAuto) {
+        const absStmts = plan.disappeared.map((d) => ({
+          sql: `UPDATE trial_records SET status = 'キャンセル', status_source = 'lstep_absent', status_updated_at = ?
+                 WHERE id = ? AND TRIM(COALESCE(status,'')) <> 'キャンセル'`,
+          args: [nowIso, d.id] as (string | number | null)[],
+        }));
+        for (let i = 0; i < absStmts.length; i += 50) {
+          await batch(absStmts.slice(i, i + 50));
+        }
+        absentCanceled = plan.disappeared.length;
+      } else {
+        absentPending = plan.disappeared.map((d) => ({
+          id: d.id, lstep_id: d.lstep_id, reserved_at: d.reserved_at, lesson_name: d.lesson_name,
+        }));
+      }
+    }
+  }
+
   // お客さまカナを lstep_friends.customer_kana に保存 (親名プリセット用。既存値があれば上書き)
   const kanaStmts = Array.from(customerKanaByLid.entries()).map(([lid, kana]) => ({
     sql: `UPDATE lstep_friends SET customer_kana = ? WHERE lstep_id = ?`,
@@ -367,6 +418,11 @@ async function handleImport(req: NextRequest) {
       canceled_in_csv: canceledCount,
       attended_in_csv: attendedCount,
       unmatched_lstep_ids: unmatchedLstepCount,
+      // 消失検出 (Lstepで削除/変更された予約)
+      absent_window: window,
+      absent_coverage: absentCoverage,
+      absent_canceled: absentCanceled,
+      absent_pending: absentPending,
       month: ym,
       month_reserved: Number(monthAgg?.reserved ?? 0),
       month_attended: Number(monthAgg?.attended ?? 0),
