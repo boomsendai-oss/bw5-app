@@ -32,8 +32,10 @@ export default function QualifierPicker({
   const [err, setErr] = useState<string | null>(null);
   // MCが読み上げた名前をその場で探す。26人を目で追うのは当日きつい(2026-09-11)
   const [q, setQ] = useState('');
-  // 予選1回ならA4名・B4名で確定する。2回やる場合は2次予選でA/Bが混ざるので上限を外す(TARO 2026-09-14)
-  const [perBlock, setPerBlock] = useState(true);
+  // 予選1回で確定したので、各ブロック4名の上限は常にかける(TARO 2026-09-17)。
+  // ⚠️ 予選を2回にする / 一般を1サークルにまとめる場合は、A・Bが混ざるので
+  //    この上限を外せるようにし直すこと(切り替えのUIは当日ノイズなので撤去した)。
+  const perBlock = true;
   // 並ばせた順に見るか、名前で探すか。当日は並び順が主(TARO 2026-09-16)
   const [view, setView] = useState<'arc' | 'list'>('arc');
   const [pending, start] = useTransition();
@@ -78,31 +80,17 @@ export default function QualifierPicker({
           <span className="text-base font-bold text-neutral-400"> / {QUALIFIER_COUNT} 名</span>
         </p>
         <p className="mt-2 text-sm font-bold tabular-nums text-navy-800">
-          Aブロック {selectedBlocks.filter((b) => b === 'A').length}
-          {perBlock ? ` / ${QUALIFIER_PER_BLOCK}` : ''}
+          Aブロック {selectedBlocks.filter((b) => b === 'A').length} / {QUALIFIER_PER_BLOCK}
           <span className="mx-2 text-neutral-400">|</span>
-          Bブロック {selectedBlocks.filter((b) => b === 'B').length}
-          {perBlock ? ` / ${QUALIFIER_PER_BLOCK}` : ''}
+          Bブロック {selectedBlocks.filter((b) => b === 'B').length} / {QUALIFIER_PER_BLOCK}
         </p>
-        <button
-          onClick={() => { setPerBlock((v) => !v); setErr(null); }}
-          className="mt-2 text-xs font-bold text-neutral-500 underline"
-        >
-          {perBlock ? 'ブロックの上限を外す(予選を2回やる場合)' : 'ブロックの上限を戻す(各4名)'}
-        </button>
+        {/* ⚠️ くじ引き②への導線は一番下に置く。ここに置くと、まだ選んでいる最中に
+               目に入って情報のノイズになる(TARO実機 2026-09-17)。 */}
         <p className="mt-1 text-xs text-neutral-500">
           {ready
-            ? 'そろいました。くじ引き②に進めます。'
-            : `ジャッジの結果を見ながら、通過した${QUALIFIER_COUNT}名をタップしてください。`}
+            ? 'そろいました。下のボタンからくじ引き②へ進めます。'
+            : `ジャッジが肩を叩いた${QUALIFIER_COUNT}名をタップしてください。`}
         </p>
-        {ready && (
-          <Link
-            href={`/bf6/crew/reception?phase=bracket`}
-            className="mt-3 block rounded-xl bg-brand-600 py-3 text-center text-sm font-black text-white"
-          >
-            {divisionLabel}のくじ引き②(ベスト8)へ
-          </Link>
-        )}
       </div>
 
       {err && <p className="rounded-lg bg-red-600 px-3 py-2 text-sm font-bold text-white">{err}</p>}
@@ -180,19 +168,27 @@ export default function QualifierPicker({
                   </ul>
                 )}
 
-                <div className="mt-3 rounded-xl bg-navy-900 px-3 py-2 text-center text-white">
+                {/* ジャッジ席は横に広がっているものではないので、中央の小さい箱にする
+                    (TARO実機 2026-09-17)。 */}
+                <div className="mx-auto mt-3 w-fit rounded-xl bg-navy-900 px-4 py-2 text-center text-white">
                   <p className="text-xs font-black tracking-widest">ジャッジ席</p>
                   <p className="mt-1 text-lg leading-none" aria-hidden>
                     🪑 🪑 🪑
-                  </p>
-                  <p className="mt-1 text-[11px] font-bold text-sand-200">
-                    {b}ブロックは、この列を向いて並ぶ
                   </p>
                 </div>
               </section>
             );
           })}
         </>
+      )}
+
+      {view === 'arc' && ready && (
+        <Link
+          href="/bf6/crew/reception?phase=bracket"
+          className="block rounded-xl bg-brand-600 py-4 text-center text-base font-black text-white active:scale-[0.98] active:bg-brand-700"
+        >
+          {divisionLabel}のくじ引き②(ベスト8)へ
+        </Link>
       )}
 
       {view === 'list' && (

@@ -16,14 +16,18 @@ import { entryReceptionSummary, photoSummary } from '@/lib/bf6CrewSummary';
 
 export const dynamic = 'force-dynamic';
 
-/** 残っている数を大きく、済んだぶんを小さく添える。 */
+/**
+ * 残っている数を大きく、済んだぶんを小さく添える。
+ * ⚠️ 色で「まだ危ない/もう安全」を伝える。残っていればオレンジ、終わっていれば緑
+ *    (TARO実機 2026-09-17)。数字だけだと当日ぱっと見て判断できない。
+ */
 function Remaining({ n, unit }: { n: number; unit: string }) {
   if (n <= 0) return <p className="mt-0.5 text-2xl font-black text-brand-600">ぜんぶ完了</p>;
   return (
-    <p className="mt-0.5 text-2xl font-black tabular-nums text-navy-900">
-      <span className="text-base font-bold text-neutral-500">あと </span>
+    <p className="mt-0.5 text-2xl font-black tabular-nums text-orange-600">
+      <span className="text-base font-bold text-orange-500">あと </span>
       {n}
-      <span className="text-base font-bold text-neutral-500"> {unit}</span>
+      <span className="text-base font-bold text-orange-500"> {unit}</span>
     </p>
   );
 }
@@ -52,7 +56,7 @@ export default async function CrewHomePage() {
       {/* ⚠️ 「数字を見るところ」と「押すところ」を見た目で分ける。混ざっていると
              どこがボタンか分からない(TARO実機 2026-09-17)。
              数字=白いカード・2列 / メニュー=色の付いたボタン。 */}
-      <p className="mt-5 text-xs font-black tracking-[0.2em] text-neutral-500">いまの数字</p>
+      <p className="mt-5 text-xs font-black tracking-[0.2em] text-neutral-500">進み具合</p>
       <div className="mt-2 grid grid-cols-2 gap-2">
         <div className="rounded-xl border border-sand-200 bg-white p-3">
           <p className="text-[11px] font-bold leading-tight text-neutral-500">バトルエントリー受付</p>
@@ -77,10 +81,10 @@ export default async function CrewHomePage() {
                 ) : d.remaining <= 0 ? (
                   <p className="shrink-0 text-[11px] font-black text-brand-600">完了</p>
                 ) : (
-                  <p className="shrink-0 text-right text-base font-black tabular-nums text-navy-900">
-                    <span className="text-[10px] font-bold text-neutral-500">あと </span>
+                  <p className="shrink-0 text-right text-base font-black tabular-nums text-orange-600">
+                    <span className="text-[10px] font-bold text-orange-500">あと </span>
                     {d.remaining}
-                    <span className="text-[10px] font-bold text-neutral-500">/{d.total}</span>
+                    <span className="text-[10px] font-bold text-orange-500">/{d.total}</span>
                   </p>
                 )}
               </div>
@@ -94,8 +98,8 @@ export default async function CrewHomePage() {
             {cash.remainingYen <= 0 ? (
               <p className="mt-0.5 text-xl font-black text-brand-600">ぜんぶ集金済み</p>
             ) : (
-              <p className="mt-0.5 text-xl font-black tabular-nums text-navy-900">
-                <span className="text-sm font-bold text-neutral-500">あと </span>
+              <p className="mt-0.5 text-xl font-black tabular-nums text-orange-600">
+                <span className="text-sm font-bold text-orange-500">あと </span>
                 ¥{cash.remainingYen.toLocaleString()}
               </p>
             )}
@@ -122,18 +126,22 @@ export default async function CrewHomePage() {
           <Link
             key={t.href}
             href={t.href}
-            className="block rounded-2xl bg-brand-600 p-4 shadow-sm transition active:scale-[0.98] active:bg-brand-700 active:shadow-none"
+            // ⚠️ 塗りつぶしは見づらい(TARO実機 2026-09-17)。白地のまま、太い枠と
+            //    丸い矢印で「押せるもの」だと分かるようにする。
+            className="block rounded-2xl border-2 border-brand-500 bg-white p-4 shadow-sm transition active:scale-[0.98] active:bg-brand-50 active:shadow-none"
           >
             <div className="flex items-center justify-between gap-3">
-              <p className="text-lg font-black text-white">{t.title}</p>
+              <p className="text-lg font-black text-navy-900">{t.title}</p>
               <span className="flex shrink-0 items-center gap-2">
-                <span className="text-xs font-bold text-white/80">{t.when}</span>
+                <span className="text-xs font-bold text-brand-700">{t.when}</span>
                 {/* 押したことが見た目で分かるようにする(TARO実機 2026-09-16) */}
                 <Spinner />
-                <span className="text-xl font-black text-white/70">›</span>
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-600 text-lg font-black leading-none text-white">
+                  ›
+                </span>
               </span>
             </div>
-            <p className="mt-1 text-sm leading-relaxed text-white/85">{t.desc}</p>
+            <p className="mt-1 text-sm leading-relaxed text-neutral-600">{t.desc}</p>
           </Link>
         ))}
       </nav>

@@ -11,14 +11,13 @@ import { useLinkStatus } from 'next/link';
 
 /**
  * Link の中に置く。場所は常に確保しておき、出し入れで位置がずれないようにする。
- * ⚠️ メニューのボタンは色地(brand-600)なので、白い輪で描く。
  */
 export function Spinner() {
   const { pending } = useLinkStatus();
   return (
     <span
       aria-hidden
-      className={`inline-block h-3.5 w-3.5 shrink-0 rounded-full border-2 border-white/40 border-t-white transition-opacity ${
+      className={`inline-block h-3.5 w-3.5 shrink-0 rounded-full border-2 border-brand-200 border-t-brand-700 transition-opacity ${
         pending ? 'animate-spin opacity-100' : 'opacity-0'
       }`}
     />
