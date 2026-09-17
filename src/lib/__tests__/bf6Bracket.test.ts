@@ -21,9 +21,12 @@ describe('ラウンド構成', () => {
   it('ビギナーはベスト16から', () => {
     expect(roundsFor('beginner')).toEqual(['r16', 'qf', 'sf', 'f']);
   });
-  it('小中・一般はベスト8から(予選で8名に絞るため)', () => {
+  it('小中学生はベスト8から(予選で8名に絞るため)', () => {
     expect(roundsFor('kids')).toEqual(['qf', 'sf', 'f']);
-    expect(roundsFor('general')).toEqual(['qf', 'sf', 'f']);
+  });
+  // 一般は11名なので予選でベスト4まで絞る。初戦が準決勝になる(TARO 2026-09-17)
+  it('一般は準決勝から', () => {
+    expect(roundsFor('general')).toEqual(['sf', 'f']);
   });
   it('ラウンド名は日本語で出す', () => {
     expect(roundLabel('r16')).toBe('ベスト16');

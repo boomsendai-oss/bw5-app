@@ -28,7 +28,8 @@ export type Bf6Format = { qualifier: QualifierStyle; bracketSize: BracketSize };
 export const BF6_FORMAT: Record<Bf6DrawDivision, Bf6Format> = {
   beginner: { qualifier: 'none', bracketSize: 16 },
   kids: { qualifier: 'ab', bracketSize: 8 },
-  general: { qualifier: 'ab', bracketSize: 8 },
+  // 一般は11名。A/Bに分ける意味が薄いので1サークルで回し、ベスト4まで絞る(TARO 2026-09-17)
+  general: { qualifier: 'single', bracketSize: 4 },
 };
 
 export function formatFor(division: Bf6DrawDivision): Bf6Format {

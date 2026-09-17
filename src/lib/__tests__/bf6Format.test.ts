@@ -19,8 +19,9 @@ describe('いまの形式(2026-09-17時点)', () => {
     expect(formatFor('kids')).toEqual({ qualifier: 'ab', bracketSize: 8 });
   });
 
-  it('一般はA/B予選のベスト8', () => {
-    expect(formatFor('general')).toEqual({ qualifier: 'ab', bracketSize: 8 });
+  // 11名なのでA/Bに分ける意味が薄い。1サークルで回してベスト4まで絞る(TARO 2026-09-17)
+  it('一般は1サークル予選のベスト4', () => {
+    expect(formatFor('general')).toEqual({ qualifier: 'single', bracketSize: 4 });
   });
 });
 
@@ -65,18 +66,18 @@ describe('予選で送り出す人数', () => {
 describe('ブロックごとの上限', () => {
   it('A/Bに分ける部門は、本戦枠の半分ずつ', () => {
     expect(qualifierPerBlockFor('kids')).toBe(4);
-    expect(qualifierPerBlockFor('general')).toBe(4);
   });
 
   it('A/Bに分けないなら上限なし(nullを返す)', () => {
     expect(qualifierPerBlockFor('beginner')).toBeNull();
+    expect(qualifierPerBlockFor('general')).toBeNull();
   });
 });
 
 describe('A/Bブロックを使うか', () => {
-  it('いまは小中・一般だけが使う', () => {
+  it('いまは小中だけが使う(一般は1サークル)', () => {
     expect(usesBlocks('kids')).toBe(true);
-    expect(usesBlocks('general')).toBe(true);
+    expect(usesBlocks('general')).toBe(false);
     expect(usesBlocks('beginner')).toBe(false);
   });
 });
@@ -109,7 +110,7 @@ describe('形式を変えたときの波及(将来の切り替え)', () => {
   });
 
   it('戻したら元の形に戻っている(テストが他に漏れない)', () => {
-    expect(formatFor('general')).toEqual({ qualifier: 'ab', bracketSize: 8 });
+    expect(formatFor('general')).toEqual({ qualifier: 'single', bracketSize: 4 });
   });
 });
 
