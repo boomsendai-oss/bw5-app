@@ -13,6 +13,7 @@ import { buildBracketRows, type BracketCell } from '@/lib/bf6BracketRows';
 import { divisionTheme } from '@/lib/bf6Theme';
 import type { Bf6DrawDivision } from '@/lib/bf6Draw';
 import type { DivisionTheme } from '@/lib/bf6Theme';
+import { contentTopRatio, headAlignShift, photoFadeStops, VS_HEAD_TARGET, VS_PHOTO_SCALE } from '@/lib/bf6PhotoAlign';
 
 type Match = { round: string; matchNo: number; slotA: number | null; slotB: number | null; winnerSlot: number | null };
 type Slot = { slotNo: number; dancerName: string; rep: string; genre: string; hasPhoto: boolean; photoAt?: string | null };
@@ -109,7 +110,8 @@ export function ScreenClient() {
           if (photoPre.current.has(key)) continue;
           photoPre.current.add(key);
           const im = new Image();
-          im.src = `/api/bf6/photo/${s.slotNo}?division=${j.state.division}&v=${encodeURIComponent(s.photoAt ?? '')}`;
+          im.src = photoUrl(s.slotNo, j.state.division, s.photoAt);
+          measurePhotoTop(im.src);
         }
 
         if (fresh.length > 0) {
@@ -275,7 +277,7 @@ export function ScreenClient() {
                 // ⚠️ -translate-x-1/2 を付けないこと。Tailwind v4 では `translate` プロパティになり、
                 //    キーフレーム(bf6VsHit)の transform: translate(-50%,-50%) と二重にかかって
                 //    VSがちょうど自分の幅ぶん左にずれる(TARO実機 2026-09-10・実測で確認)。
-                className="bf6-face bf6-vs bf6-chrome bf6-sheen pointer-events-none absolute left-1/2 top-1/2 z-30 whitespace-nowrap text-[8vw] font-black italic leading-none"
+                className="bf6-face bf6-vs bf6-chrome bf6-sheen pointer-events-none absolute left-1/2 top-1/2 z-30 whitespace-nowrap text-[9.5vw] font-black italic leading-none"
                 data-text="VS"
               >
                 VS
@@ -924,45 +926,118 @@ function VsBackground({ animKey }: { animKey: string }) {
   );
 }
 
-function Side({ slot, corner, division }: { slot?: Slot; corner: 'red' | 'blue'; division: string }) {
-  const accent = corner === 'red' ? 'text-red-400' : 'text-blue-400';
+/** LEDに出す出場者の写真のURL。先読みと表示で必ず同じ文字列にする(頭頂の測定を使い回すため)。 */
+function photoUrl(slotNo: number, division: string, photoAt?: string | null): string {
+  return `/api/bf6/photo/${slotNo}?division=${division}&v=${encodeURIComponent(photoAt ?? '')}`;
+}
+
+/**
+ * 写真ごとの頭頂の位置(画像の高さに対する割合)。一度測ったら覚えておく。
+ * undefined = まだ測っていない / null = 測れなかった(ずらさない)。
+ */
+const photoTops = new Map<string, number | null>();
+const photoTopWaiters = new Map<string, Array<(v: number | null) => void>>();
+
+/**
+ * 写真の頭頂を測る。ブラウザの中で1回だけ画素を読む(同じドメインから配信しているので読める)。
+ * ⚠️ 毎フレームやる処理ではない。先読みのときに1回だけ。LED出力のPCに負荷をかけない。
+ */
+function measurePhotoTop(src: string): Promise<number | null> {
+  if (photoTops.has(src)) return Promise.resolve(photoTops.get(src) ?? null);
+  return new Promise((resolve) => {
+    const waiting = photoTopWaiters.get(src);
+    if (waiting) { waiting.push(resolve); return; }
+    photoTopWaiters.set(src, [resolve]);
+    const done = (v: number | null) => {
+      photoTops.set(src, v);
+      (photoTopWaiters.get(src) ?? []).forEach((f) => f(v));
+      photoTopWaiters.delete(src);
+    };
+    const im = new Image();
+    im.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = im.naturalWidth;
+        c.height = im.naturalHeight;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return done(null);
+        ctx.drawImage(im, 0, 0);
+        done(contentTopRatio(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height));
+      } catch {
+        done(null);
+      }
+    };
+    im.onerror = () => done(null);
+    im.src = src;
+  });
+}
+
+function usePhotoTop(src: string | null): number | null | undefined {
+  const [top, setTop] = useState<number | null | undefined>(() => (src && photoTops.has(src) ? photoTops.get(src) : undefined));
+  useEffect(() => {
+    if (!src) return;
+    let alive = true;
+    measurePhotoTop(src).then((v) => { if (alive) setTop(v); });
+    return () => { alive = false; };
+  }, [src]);
+  return top;
+}
+
+function Side({ slot, division }: { slot?: Slot; corner: 'red' | 'blue'; division: string }) {
   // 背景を切り抜いた人物を大きく出す。切り抜き前提なので枠も丸マスクも付けない。
   // 写真が無い人は名前だけで成立する(全員ぶん集まらなくても破綻しない)。
   // ⚠️ 切り抜き写真に drop-shadow をかけないこと。大きな画像に効かせると
   //    登場アニメ中にカクつく(TARO実機 2026-09-10・影は不要とTARO判断)。
-  //    赤青の色分けは背景動画と RED/BLUE の見出しで足りている。
+  // RED/BLUE の見出しは外した(TARO 2026-09-18)。赤青は背景動画の色で伝わる。
+  const src = slot?.hasPhoto ? photoUrl(slot.slotNo, division, slot.photoAt) : null;
+  const top = usePhotoTop(src);
+  // 頭頂をそろえる。写真ごとに頭の位置が 18%〜35% とばらつくため(本番の写真で実測)。
+  const shift = headAlignShift(top ?? null, { scale: VS_PHOTO_SCALE, target: VS_HEAD_TARGET });
+  // 下のぼかし。見た目で枠の60%からぼけ始め、97%で消える(2人とも同じ高さで)
+  const fade = photoFadeStops(shift, VS_PHOTO_SCALE, 0.6, 0.97);
+  const mask = `linear-gradient(to bottom, #000 ${(fade.start * 100).toFixed(2)}%, transparent ${(fade.end * 100).toFixed(2)}%)`;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <p className={`shrink-0 text-[1.2vw] font-black tracking-[0.5em] ${accent}`}>
-        {corner === 'red' ? 'RED' : 'BLUE'}
-      </p>
       {/* 写真の有無で名前の高さがずれないよう、枠は常に確保する。
-          ⚠️ 高さは固定しない。RED/名前/ジャンルを引いた残りを写真が受け持つことで、
-             前景が上2/3に収まることを配分で保証する(TARO 2026-09-17)。 */}
-      <div className="flex min-h-0 flex-1 items-end justify-center">
-        {slot?.hasPhoto && (
+          ⚠️ 高さは固定しない。名前/ジャンルを引いた残りを写真が受け持つことで、
+             前景が上72%に収まることを配分で保証する(TARO 2026-09-17)。
+          ⚠️ 写真は1.3倍に拡大するので枠の下へはみ出す。はみ出しは下に向かって
+             ぼかして消す(写真1枚ずつのマスク・photoFadeStops)。切り抜き写真は人物が
+             画像の下端まで続いていて、そのままだと胴体が一直線に切れて見える
+             (本番の4枚すべて下端99.9%まで人物)。 */}
+      <div className="flex min-h-0 flex-1 items-start justify-center">
+        {src && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={`/api/bf6/photo/${slot.slotNo}?division=${division}&v=${encodeURIComponent(slot.photoAt ?? '')}`}
+            src={src}
             alt=""
-            className="bf6-cut max-h-full w-auto max-w-[46vw] object-contain object-bottom"
+            className="bf6-cut max-h-full w-auto max-w-[46vw] origin-top object-contain object-top"
+            style={{
+              transform: `translateY(${(shift * 100).toFixed(2)}%) scale(${VS_PHOTO_SCALE})`,
+              // ⚠️ ぼかしは写真1枚ずつに掛ける(枠全体に掛けると画面を横切る段差が出る)。
+              //    .bf6-cut の固定のぼかしはここで上書きされる。
+              maskImage: mask,
+              WebkitMaskImage: mask,
+              // 頭頂を測り終えるまでは出さない(出してから動くと、頭がずれて見える)
+              opacity: top === undefined ? 0 : 1,
+            }}
           />
         )}
       </div>
       {slot?.dancerName ? (
         <p
-          className="bf6-face bf6-chrome bf6-sheen relative -mt-[4.5vh] shrink-0 break-words text-[8.6vw] font-black italic leading-[0.92]"
+          className="bf6-face bf6-chrome bf6-sheen relative -mt-[14vh] shrink-0 break-words text-[11vw] font-black italic leading-[0.92]"
           data-text={slot.dancerName}
         >
           {slot.dancerName}
         </p>
       ) : (
-        <p className="relative -mt-[4.5vh] shrink-0 text-[3.6vw] font-black tracking-[0.3em] text-white/35">不戦勝</p>
+        <p className="relative -mt-[14vh] shrink-0 text-[3.6vw] font-black tracking-[0.3em] text-white/35">不戦勝</p>
       )}
       {/* 名前の下はジャンル。レペゼンより「何で戦う人か」が伝わる(TARO実機 2026-09-16)。
           ⚠️ 大文字にしたり綴りを揃えたりしない。本人が書いたまま出す。 */}
       {slot?.genre && (
-        <p className="mt-[0.2vh] shrink-0 text-[1.6vw] font-bold tracking-[0.2em] text-white/60">{slot.genre}</p>
+        <p className="mt-[0.2vh] shrink-0 text-[2vw] font-bold tracking-[0.2em] text-white/60">{slot.genre}</p>
       )}
     </div>
   );
