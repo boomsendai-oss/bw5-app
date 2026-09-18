@@ -11,6 +11,29 @@ import { guideRect, type Rect } from '@/lib/bf6PhotoAlign';
 
 type Phase = 'idle' | 'loading' | 'live' | 'working' | 'preview' | 'saving';
 
+/**
+ * 撮影ガイドの人型(viewBox 78x100 = 保存される写真と同じ縦横比)。
+ * 頭は卵形(頭頂側が広く、あごに向かって細い)。楕円だと人の顔に見えない。
+ */
+const GUIDE_HEAD =
+  'M 39 10 C 45.5 10, 49.5 15, 49.5 22 C 49.5 28, 48.5 32, 46 35 C 44 38, 41.5 40, 39 40 ' +
+  'C 36.5 40, 34 38, 32 35 C 29.5 32, 28.5 28, 28.5 22 C 28.5 15, 32.5 10, 39 10 Z';
+/**
+ * 首から肩、腕の外側。実際の人物(KANNA)の写真を偽カメラに流して頭を合わせ、
+ * 肩の位置が合うように決めた(2026-09-18)。首は短く(あごの直下から肩が始まる)、
+ * 肩幅は頭の幅(21)の約2.7倍。細身の服ならこの中に収まり、大きめの服は少しはみ出す。
+ */
+const GUIDE_BODY =
+  'M 33.5 39.5 L 33.5 42 C 33.5 44.5, 30 45.5, 25 46.5 C 18.5 47.8, 13.5 48.8, 12 52 C 11 54.5, 10.8 57, 10.8 62 L 10.5 100 ' +
+  'M 44.5 39.5 L 44.5 42 C 44.5 44.5, 48 45.5, 53 46.5 C 59.5 47.8, 64.5 48.8, 66 52 C 67 54.5, 67.2 57, 67.2 62 L 67.5 100';
+/** 頭頂(10)とあご(40)の目印線。頭の左右に短く出す */
+const GUIDE_TICKS = 'M 23 10 L 30 10 M 48 10 L 55 10 M 23 40 L 30 40 M 48 40 L 55 40';
+/** 下に黒い太線、上に白い点線。明るい壁でも暗い壁でも見える */
+const GUIDE_LAYERS: { stroke: string; width: number; dash?: string }[] = [
+  { stroke: 'rgba(0,0,0,0.55)', width: 5 },
+  { stroke: 'rgba(255,255,255,0.95)', width: 2.5, dash: '9 6' },
+];
+
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any -- MediaPipeは型定義を持たない */
 type Segmenter = any;
 
@@ -269,23 +292,29 @@ export default function PhotoCapture({
               boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)',
             }}
           >
-            {/* 保存される範囲の縦横比(0.78)と同じ viewBox。歪まずにぴったり重なる */}
+            {/* 保存される範囲の縦横比(0.78)と同じ viewBox。歪まずにぴったり重なる。
+                人型の比率は証明写真の撮影ガイドと人体の標準比率に合わせた(TARO 2026-09-18
+                「頭が異様に小さい」)。旧ガイドは肩幅が頭の幅の3.5倍あり、頭が小さく見えていた。
+                  頭 … 写真の高さの30%(頭頂10% → あご40%)。幅はその0.7倍の卵形
+                  首 … 頭の幅の0.5倍・短め(あごの直下から肩が始まる)
+                  肩 … 頭の幅の2.7倍。実際の人物の写真を偽カメラに流して頭を合わせ、肩が合う位置に決めた
+                頭頂とあごの目印線は証明写真の定番。ここに合わせる距離で撮ると、全員の頭の大きさが揃う。 */}
             <svg viewBox="0 0 78 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full" aria-hidden>
-              {[
-                { stroke: 'rgba(0,0,0,0.55)', width: 5, dash: undefined },
-                { stroke: 'rgba(255,255,255,0.95)', width: 2.5, dash: '10 7' },
-              ].map((l, i) => (
-                <g key={i} fill="none" stroke={l.stroke} strokeWidth={l.width} strokeDasharray={l.dash} strokeLinecap="round">
-                  <ellipse cx="39" cy="23" rx="8.5" ry="11" vectorEffect="non-scaling-stroke" />
-                  <path
-                    d="M 5 100 L 6 66 C 7 58, 14 53, 26 50 C 31 48.5, 34 46, 34.5 41 L 34.8 34 M 43.2 34 L 43.5 41 C 44 46, 47 48.5, 52 50 C 64 53, 71 58, 72 66 L 73 100"
-                    vectorEffect="non-scaling-stroke"
-                  />
+              {GUIDE_LAYERS.map((l, i) => (
+                <g key={i} fill="none" stroke={l.stroke} strokeWidth={l.width} strokeDasharray={l.dash} strokeLinecap="round" strokeLinejoin="round">
+                  <path d={GUIDE_HEAD} vectorEffect="non-scaling-stroke" />
+                  <path d={GUIDE_BODY} vectorEffect="non-scaling-stroke" />
+                  {/* ⚠️ 目印線は実線。"none" を明示しないと親の点線を引き継ぐ */}
+                  <path d={GUIDE_TICKS} vectorEffect="non-scaling-stroke" strokeDasharray="none" />
                 </g>
               ))}
+              <g fontSize="2.6" fontWeight="900" fill="#fff" stroke="rgba(0,0,0,0.75)" strokeWidth="0.5" paintOrder="stroke">
+                <text x="56.5" y="10.9">頭のてっぺん</text>
+                <text x="56.5" y="40.9">あご</text>
+              </g>
             </svg>
             <p className="absolute inset-x-0 top-1 text-center text-sm font-black text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">
-              点線に頭と肩を合わせる
+              頭のてっぺんとあごを線に合わせる
             </p>
           </div>
         )}
