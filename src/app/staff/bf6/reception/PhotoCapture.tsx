@@ -7,6 +7,7 @@
 // 外部CDNにも依存しない。
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PHOTO_TARGET_HEIGHT, fillEdgeColors, fitBustFrame, refineMask } from '@/lib/bf6Photo';
+import { guideRect, type Rect } from '@/lib/bf6PhotoAlign';
 
 type Phase = 'idle' | 'loading' | 'live' | 'working' | 'preview' | 'saving';
 
@@ -30,6 +31,9 @@ export default function PhotoCapture({
   const [preview, setPreview] = useState<string>('');
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  // 撮影ガイド(点線の人型)を重ねる位置。保存される範囲(fitBustFrame)と必ず一致させる
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [guide, setGuide] = useState<Rect | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const segRef = useRef<Segmenter>(null);
   const blobRef = useRef<Blob | null>(null);
@@ -42,6 +46,32 @@ export default function PhotoCapture({
   }, []);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
+
+  // 映像の表示位置と大きさが決まったら、保存範囲を画面の座標に写してガイドを置く。
+  // カメラの向き(縦長/横長)や画面の回転で変わるので、そのたびに測り直す。
+  useEffect(() => {
+    if (!open) return;
+    const v = videoRef.current;
+    const stage = stageRef.current;
+    if (!v || !stage) return;
+    const update = () => {
+      const vb = v.getBoundingClientRect();
+      const sb = stage.getBoundingClientRect();
+      const r = guideRect({ width: v.videoWidth, height: v.videoHeight }, { width: vb.width, height: vb.height });
+      setGuide(r ? { left: vb.left - sb.left + r.left, top: vb.top - sb.top + r.top, width: r.width, height: r.height } : null);
+    };
+    update();
+    v.addEventListener('loadedmetadata', update);
+    v.addEventListener('resize', update);
+    const ro = new ResizeObserver(update);
+    ro.observe(v);
+    ro.observe(stage);
+    return () => {
+      v.removeEventListener('loadedmetadata', update);
+      v.removeEventListener('resize', update);
+      ro.disconnect();
+    };
+  }, [open]);
 
   /** カメラを開く。前面/背面はどちらでも撮れるよう指定しすぎない。 */
   const start = useCallback(async () => {
@@ -216,13 +246,49 @@ export default function PhotoCapture({
         </button>
       </div>
 
-      <div className="relative mt-3 flex flex-1 items-center justify-center overflow-hidden">
+      <div ref={stageRef} className="relative mt-3 flex flex-1 items-center justify-center overflow-hidden">
         <video
           ref={videoRef}
           playsInline
           muted
           className={`max-h-full max-w-full ${phase === 'preview' ? 'hidden' : ''}`}
         />
+        {/* 撮影ガイド(TARO 2026-09-18)。点線の人型に頭と肩を合わせて撮ると、
+            全員の頭の大きさと位置がそろう。LEDでは頭頂の高さを自動でそろえるが、
+            大きさは自動では直せない(ポーズが自由なため)ので、撮る時点で揃える。
+            ⚠️ 外側を暗くしてあるのが保存されない範囲。ここから肩がはみ出すと切れる
+               (前に肩が見切れた件の対策も兼ねる)。 */}
+        {phase === 'live' && guide && (
+          <div
+            className="pointer-events-none absolute"
+            style={{
+              left: guide.left,
+              top: guide.top,
+              width: guide.width,
+              height: guide.height,
+              boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)',
+            }}
+          >
+            {/* 保存される範囲の縦横比(0.78)と同じ viewBox。歪まずにぴったり重なる */}
+            <svg viewBox="0 0 78 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full" aria-hidden>
+              {[
+                { stroke: 'rgba(0,0,0,0.55)', width: 5, dash: undefined },
+                { stroke: 'rgba(255,255,255,0.95)', width: 2.5, dash: '10 7' },
+              ].map((l, i) => (
+                <g key={i} fill="none" stroke={l.stroke} strokeWidth={l.width} strokeDasharray={l.dash} strokeLinecap="round">
+                  <ellipse cx="39" cy="23" rx="8.5" ry="11" vectorEffect="non-scaling-stroke" />
+                  <path
+                    d="M 5 100 L 6 66 C 7 58, 14 53, 26 50 C 31 48.5, 34 46, 34.5 41 L 34.8 34 M 43.2 34 L 43.5 41 C 44 46, 47 48.5, 52 50 C 64 53, 71 58, 72 66 L 73 100"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </g>
+              ))}
+            </svg>
+            <p className="absolute inset-x-0 top-1 text-center text-sm font-black text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">
+              点線に頭と肩を合わせる
+            </p>
+          </div>
+        )}
         {phase === 'preview' && preview && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -262,7 +328,7 @@ export default function PhotoCapture({
       </div>
 
       <p className="mt-2 text-center text-xs text-white/60">
-        無地の壁の前で、頭の上と左右に少し余白をあけて撮ってください
+        無地の壁の前で、点線の人型に頭と肩がぴったり収まる距離で撮ってください
       </p>
     </div>
   );
