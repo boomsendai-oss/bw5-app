@@ -5,6 +5,11 @@
  *   node scripts/studio_invoice.mjs 2026-10            全スタジオ
  *   node scripts/studio_invoice.mjs 2026-10 GOAT       名前で絞り込み
  *   node scripts/studio_invoice.mjs 2026-08 AZUMA
+ *   node scripts/studio_invoice.mjs 2026-10 --no-sync   取り直さずDBの値をそのまま出す
+ *
+ * 🔴 既定で毎回 Googleカレンダーを取り直してから計算する(TARO決定 2026-09-18)。
+ *    9/15〜18に「前に取ったカレンダーを使い回して新しく登録された予定を見落とす」
+ *    ずれが3回起きたため。取り直さないと、明細に古い数字が出る。
  *
  * 出どころ: studio_billing_lines(本番Turso)。カレンダー実績＋マスタ展開＋日次バッファ。
  * GOATは大(A)と小(B)を**同じ日付の行にまとめる**(TARO要望 2026-09-15・先方が日単位で
@@ -49,12 +54,35 @@ const GROUPS = [{ label: 'GOAT DANCE STUDIO', match: (n) => n.startsWith('GOAT')
 
 async function main() {
   const ym = process.argv[2];
-  const filter = process.argv[3] ?? '';
+  const filter = (process.argv[3] && !process.argv[3].startsWith('--')) ? process.argv[3] : '';
   if (!ym || !/^\d{4}-\d{2}$/.test(ym)) {
     console.error('使い方: node scripts/studio_invoice.mjs YYYY-MM [スタジオ名の一部]');
     process.exit(1);
   }
   loadEnv();
+
+  // 毎回カレンダーを取り直す(同期→再計算)。--no-sync のときだけ省略
+  if (!process.argv.includes('--no-sync')) {
+    const pw = process.env.ADMIN_PASSWORD;
+    const base = 'https://bw5-app.vercel.app';
+    const headers = { 'x-admin-password': pw, 'content-type': 'application/json' };
+    const sync = await fetch(`${base}/api/staff/calendar-actuals/sync`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ year_month: ym, apply: true, allow_next_month: true }),
+    }).then((r) => r.json()).catch((e) => ({ error: String(e) }));
+    if (sync.error || sync.skippedReason) {
+      console.error(`⚠️ カレンダーの取り直しに失敗: ${sync.error ?? sync.skippedReason}`);
+      console.error('   古い数字が出ている可能性があります。--no-sync を付けていないのにこの表示が出たら要確認。');
+    }
+    await fetch(`${base}/api/staff/studio-billing/calculate`, {
+      method: 'POST', headers, body: JSON.stringify({ year_month: ym }),
+    }).catch(() => {});
+    const now = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ');
+    console.log(`📅 Googleカレンダーを取り直しました（${now} JST・開催${sync.held ?? '?'}件／要確認${(sync.needsReview ?? []).length}件）`);
+  } else {
+    console.log('⚠️ --no-sync: カレンダーを取り直していません（DBの値をそのまま表示）');
+  }
+
   const db = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
   const rows = (
     await db.execute({
