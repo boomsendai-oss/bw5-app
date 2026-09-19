@@ -109,7 +109,7 @@ export default function PhotoCapture({
       // ⚠️ 頼む解像度を端末の向きに合わせる。縦長(1280x1707)を固定で頼んでいたため、
       //    横向きで開いても縦長の映像が届き、横向きの利点(画面を広く使える)が消えていた
       //    (2026-09-19 偽カメラで検証して判明)。
-      const landscape = window.innerWidth > window.innerHeight;
+      const landscape = window.matchMedia('(orientation: landscape)').matches;
       const stream = await navigator.mediaDevices.getUserMedia({
         video: landscape
           ? { width: { ideal: 1707 }, height: { ideal: 1280 }, facingMode: 'environment' }
@@ -127,6 +127,40 @@ export default function PhotoCapture({
       setPhase('idle');
     }
   }, []);
+
+  /**
+   * 端末の向きとカメラ映像の向きが食い違っていたら、カメラを開き直す。
+   *
+   * ⚠️ iPhoneで、縦向きでカメラを開いてから横向きにすると、映像が縦長のまま残った
+   *    (TARO実機 2026-09-19)。カメラは開いたときの向きの解像度で動き続けるため。
+   *    そのままだと保存範囲が画面の上の方だけになり、横向きにした意味がなくなる。
+   * 回転直後は映像の大きさがまだ古いことがあるので、少し待ってから比べる。
+   * iOSが自分で映像を回転させた場合は向きが一致するので、開き直さない。
+   */
+  const phaseRef = useRef<Phase>('idle');
+  phaseRef.current = phase;
+  const reopenIfRotated = useCallback(() => {
+    setTimeout(() => {
+      const v = videoRef.current;
+      if (!v || !streamRef.current || v.videoWidth === 0) return;
+      // 撮影直後の確認画面では開き直さない(撮り直すを押したときに改めて確かめる)
+      if (phaseRef.current !== 'live') return;
+      const screenLandscape = window.matchMedia('(orientation: landscape)').matches;
+      const videoLandscape = v.videoWidth > v.videoHeight;
+      if (screenLandscape !== videoLandscape) {
+        stopCamera();
+        void start();
+      }
+    }, 400);
+  }, [start, stopCamera]);
+
+  useEffect(() => {
+    if (!open) return;
+    const mq = window.matchMedia('(orientation: landscape)');
+    const onChange = () => reopenIfRotated();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [open, reopenIfRotated]);
 
   /** 切り抜きモデルを読み込む(初回だけ時間がかかるので、画面を開いた時点で温める) */
   const loadSegmenter = useCallback(async (): Promise<Segmenter> => {
@@ -275,7 +309,7 @@ export default function PhotoCapture({
   //    (カメラアプリと同じ配置)。縦向きと同じ上下の配置のままだと、スマホ横向き(高さ390px)では
   //    上の名前と下のボタン・説明文に高さを取られ、映像が縦向きより小さくなっていた(2026-09-19 実測)。
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/95 p-4 landscape:flex-row landscape:gap-3 landscape:p-3">
+    <div className="fixed inset-0 z-50 flex flex-col bg-black p-4 landscape:flex-row landscape:gap-3 landscape:p-3">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex items-center justify-between landscape:hidden">
         <p className="text-base font-bold text-white">{dancerName}</p>
@@ -379,7 +413,7 @@ export default function PhotoCapture({
           {phase === 'preview' && (
             <>
               <button
-                onClick={() => { setPhase('live'); setPreview(''); }}
+                onClick={() => { setPhase('live'); setPreview(''); reopenIfRotated(); }}
                 className="flex-1 rounded-xl border border-white/40 py-4 text-lg font-bold text-white landscape:flex-none"
               >
                 撮り直す
