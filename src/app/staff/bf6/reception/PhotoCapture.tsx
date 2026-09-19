@@ -57,7 +57,9 @@ export default function PhotoCapture({
   // 撮影ガイド(点線の人型)を重ねる位置。保存される範囲(fitBustFrame)と必ず一致させる
   const stageRef = useRef<HTMLDivElement>(null);
   const [guide, setGuide] = useState<Rect | null>(null);
-  // カメラの映像が縦長か。縦向きだと保存範囲が画面の上の方だけになり撮りにくいので案内を出す
+  // カメラの映像が縦長か。縦向きだと保存範囲が画面の上の方だけになり撮りにくいので案内を出す。
+  // ⚠️ 写真撮影の担当はクルー画面(スマホ)。受付のiPadにも同じ部品が載っている。
+  //    文言に端末名(iPad/スマホ)を書かないこと。どちらからも開かれる。
   const [portrait, setPortrait] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const segRef = useRef<Segmenter>(null);
@@ -269,16 +271,20 @@ export default function PhotoCapture({
     );
   }
 
+  // ⚠️ 横向きのときは、名前・閉じる・撮影ボタンを右側に縦に並べ、カメラ映像を画面の高さいっぱいに出す
+  //    (カメラアプリと同じ配置)。縦向きと同じ上下の配置のままだと、スマホ横向き(高さ390px)では
+  //    上の名前と下のボタン・説明文に高さを取られ、映像が縦向きより小さくなっていた(2026-09-19 実測)。
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/95 p-4">
-      <div className="flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex flex-col bg-black/95 p-4 landscape:flex-row landscape:gap-3 landscape:p-3">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex items-center justify-between landscape:hidden">
         <p className="text-base font-bold text-white">{dancerName}</p>
         <button onClick={close} className="rounded border border-white/30 px-3 py-1.5 text-sm text-white">
           閉じる
         </button>
       </div>
 
-      <div ref={stageRef} className="relative mt-3 flex flex-1 items-center justify-center overflow-hidden">
+      <div ref={stageRef} className="relative mt-3 flex flex-1 items-center justify-center overflow-hidden landscape:mt-0">
         <video
           ref={videoRef}
           playsInline
@@ -320,19 +326,21 @@ export default function PhotoCapture({
                   <path d={GUIDE_TICKS} vectorEffect="non-scaling-stroke" strokeDasharray="none" />
                 </g>
               ))}
-              <g fontSize="2.6" fontWeight="900" fill="#fff" stroke="rgba(0,0,0,0.75)" strokeWidth="0.5" paintOrder="stroke">
-                <text x="56.5" y="10.9">頭のてっぺん</text>
-                <text x="56.5" y="40.9">あご</text>
+              {/* スマホの小さい画面でも読める大きさ(保存範囲の高さの3.6%) */}
+              <g fontSize="3.6" fontWeight="900" fill="#fff" stroke="rgba(0,0,0,0.75)" strokeWidth="0.7" paintOrder="stroke">
+                <text x="56.5" y="11.2">頭のてっぺん</text>
+                <text x="56.5" y="41.2">あご</text>
               </g>
             </svg>
-            <p className="absolute inset-x-0 top-1 text-center text-sm font-black text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">
+            {/* ⚠️ 上に置くと、小さい画面で頭のてっぺんの線と重なる。胸のあたり(下)に置く */}
+            <p className="absolute inset-x-0 bottom-2 text-center text-sm font-black text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">
               頭のてっぺんとあごを線に合わせる
             </p>
           </div>
         )}
         {phase === 'live' && guide && portrait && (
           <p className="pointer-events-none absolute inset-x-4 bottom-4 rounded-lg bg-black/70 px-3 py-2 text-center text-sm font-bold text-white">
-            iPadを横向きにすると、画面を広く使えて撮りやすくなります
+            横向きにすると、画面を広く使えて撮りやすくなります
           </p>
         )}
         {phase === 'preview' && preview && (
@@ -351,31 +359,42 @@ export default function PhotoCapture({
       </div>
 
       {error && <p className="mt-2 rounded bg-red-600 px-3 py-2 text-sm font-bold text-white">{error}</p>}
-
-      <div className="mt-3 flex gap-3">
-        {phase === 'live' && (
-          <button onClick={shoot} className="flex-1 rounded-xl bg-brand-600 py-4 text-lg font-black text-white">
-            撮影する
-          </button>
-        )}
-        {phase === 'preview' && (
-          <>
-            <button
-              onClick={() => { setPhase('live'); setPreview(''); }}
-              className="flex-1 rounded-xl border border-white/40 py-4 text-lg font-bold text-white"
-            >
-              撮り直す
-            </button>
-            <button onClick={save} className="flex-1 rounded-xl bg-brand-600 py-4 text-lg font-black text-white">
-              これで登録
-            </button>
-          </>
-        )}
       </div>
 
-      <p className="mt-2 text-center text-xs text-white/60">
-        無地の壁の前で、頭のてっぺんとあごが線に合う距離で撮ってください(横向き推奨)
-      </p>
+      <div className="mt-3 flex flex-col gap-2 landscape:mt-0 landscape:w-40 landscape:shrink-0 landscape:justify-between">
+        {/* 横向きのときだけ、名前と閉じるをここ(右上)に出す */}
+        <div className="hidden landscape:flex landscape:flex-col landscape:gap-2">
+          <p className="text-sm font-bold text-white">{dancerName}</p>
+          <button onClick={close} className="rounded border border-white/30 px-3 py-1.5 text-sm text-white">
+            閉じる
+          </button>
+        </div>
+
+        <div className="flex gap-3 landscape:flex-col">
+          {phase === 'live' && (
+            <button onClick={shoot} className="flex-1 rounded-xl bg-brand-600 py-4 text-lg font-black text-white landscape:flex-none landscape:py-6">
+              撮影する
+            </button>
+          )}
+          {phase === 'preview' && (
+            <>
+              <button
+                onClick={() => { setPhase('live'); setPreview(''); }}
+                className="flex-1 rounded-xl border border-white/40 py-4 text-lg font-bold text-white landscape:flex-none"
+              >
+                撮り直す
+              </button>
+              <button onClick={save} className="flex-1 rounded-xl bg-brand-600 py-4 text-lg font-black text-white landscape:flex-none">
+                これで登録
+              </button>
+            </>
+          )}
+        </div>
+
+        <p className="text-center text-xs text-white/60 landscape:hidden">
+          無地の壁の前で、頭のてっぺんとあごが線に合う距離で撮ってください(横向き推奨)
+        </p>
+      </div>
     </div>
   );
 }
