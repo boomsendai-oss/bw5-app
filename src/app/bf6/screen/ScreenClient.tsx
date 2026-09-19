@@ -995,12 +995,14 @@ function Side({ slot, division }: { slot?: Slot; corner: 'red' | 'blue'; divisio
   const shift = headAlignShift(top ?? null, { scale: VS_PHOTO_SCALE, target: VS_HEAD_TARGET });
   // 下のぼかし。見た目で枠の60%からぼけ始め、97%で消える(2人とも同じ高さで)
   const fade = photoFadeStops(shift, VS_PHOTO_SCALE, 0.6, 0.97);
-  // 左右の端もぼかす(TARO実機 2026-09-18)。撮影時に腕が保存範囲の外へ出ると、
-  // 写真の端で腕が切れて縦の直線に見えた。人物が端に触れていなければ端は透明なので、
-  // うまく撮れた写真には何も起きない。下のぼかしと重ねて(intersect)掛ける。
+  // 左右の端もぼかす。写真の端で切れた腕が縦の直線に見えないように(TARO実機 2026-09-18)。
+  // 保存する写真は1.2:1(PHOTO_ASPECT)で、LEDで1人が使える幅とほぼ同じ。なので写真の端を
+  // ぼかすと、内側は画面の中央(VSの裏)で、外側は画面の端で、手がふわっと消える(TARO 2026-09-19 ④案)。
+  // 12% はLED上でおよそ画面幅の6%(約115px)。人物が端に触れていなければ端は透明なので何も起きない。
+  // 下のぼかしと重ねて(intersect)掛ける。
   const mask =
     `linear-gradient(to bottom, #000 ${(fade.start * 100).toFixed(2)}%, transparent ${(fade.end * 100).toFixed(2)}%), ` +
-    'linear-gradient(to right, transparent 0%, #000 9%, #000 91%, transparent 100%)';
+    'linear-gradient(to right, transparent 0%, #000 12%, #000 88%, transparent 100%)';
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* 写真の有無で名前の高さがずれないよう、枠は常に確保する。

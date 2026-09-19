@@ -60,20 +60,21 @@ describe('headAlignShift(頭頂を揃えるための上下のずらし量)', () 
 });
 
 describe('guideRect(撮影ガイドを重ねる位置)', () => {
-  it('縦長のカメラでは、切り出し範囲(上寄せ・中央)をそのまま画面の座標に写す', () => {
+  it('縦向きのカメラでは、切り出し範囲(上寄せ・横いっぱい)をそのまま画面の座標に写す', () => {
     // 1280x1707 の映像が、画面上で 640x853.5 で表示されている
     const r = guideRect({ width: 1280, height: 1707 }, { width: 640, height: 853.5 })!;
     expect(r).not.toBeNull();
     expect(r.top).toBe(0); // 切り出しは上端から
     expect(r.left + r.width / 2).toBeCloseTo(320, 0); // 横は中央
-    expect(r.width / r.height).toBeCloseTo(0.78, 2); // 保存される写真と同じ縦横比
+    expect(r.width / r.height).toBeCloseTo(1.2, 2); // 保存される写真と同じ縦横比
   });
 
-  it('横長のカメラでは、中央の細い縦長の範囲だけが写真になる', () => {
-    const r = guideRect({ width: 1920, height: 1080 }, { width: 960, height: 540 })!;
+  it('横向きのカメラでは、画面のほぼ全体が写真になる(下8%だけ使わない)', () => {
+    const r = guideRect({ width: 1920, height: 1440 }, { width: 960, height: 720 })!;
     expect(r).not.toBeNull();
-    expect(r.width).toBeLessThan(960 / 2);
+    expect(r.height / 720).toBeCloseTo(0.92, 2);
     expect(r.left + r.width / 2).toBeCloseTo(480, 0);
+    expect(r.width / r.height).toBeCloseTo(1.2, 2);
   });
 
   it('映像の大きさがまだ分からないときは null(ガイドを出さない)', () => {

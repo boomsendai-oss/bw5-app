@@ -57,6 +57,8 @@ export default function PhotoCapture({
   // 撮影ガイド(点線の人型)を重ねる位置。保存される範囲(fitBustFrame)と必ず一致させる
   const stageRef = useRef<HTMLDivElement>(null);
   const [guide, setGuide] = useState<Rect | null>(null);
+  // カメラの映像が縦長か。縦向きだと保存範囲が画面の上の方だけになり撮りにくいので案内を出す
+  const [portrait, setPortrait] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const segRef = useRef<Segmenter>(null);
   const blobRef = useRef<Blob | null>(null);
@@ -82,6 +84,7 @@ export default function PhotoCapture({
       const sb = stage.getBoundingClientRect();
       const r = guideRect({ width: v.videoWidth, height: v.videoHeight }, { width: vb.width, height: vb.height });
       setGuide(r ? { left: vb.left - sb.left + r.left, top: vb.top - sb.top + r.top, width: r.width, height: r.height } : null);
+      setPortrait(v.videoWidth > 0 && v.videoWidth < v.videoHeight);
     };
     update();
     v.addEventListener('loadedmetadata', update);
@@ -101,8 +104,14 @@ export default function PhotoCapture({
     setError('');
     setPhase('loading');
     try {
+      // ⚠️ 頼む解像度を端末の向きに合わせる。縦長(1280x1707)を固定で頼んでいたため、
+      //    横向きで開いても縦長の映像が届き、横向きの利点(画面を広く使える)が消えていた
+      //    (2026-09-19 偽カメラで検証して判明)。
+      const landscape = window.innerWidth > window.innerHeight;
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 1707 }, facingMode: 'environment' },
+        video: landscape
+          ? { width: { ideal: 1707 }, height: { ideal: 1280 }, facingMode: 'environment' }
+          : { width: { ideal: 1280 }, height: { ideal: 1707 }, facingMode: 'environment' },
         audio: false,
       });
       streamRef.current = stream;
@@ -299,7 +308,10 @@ export default function PhotoCapture({
                   首 … 頭の幅の0.5倍・短め(あごの直下から肩が始まる)
                   肩 … 頭の幅の2.7倍。実際の人物の写真を偽カメラに流して頭を合わせ、肩が合う位置に決めた
                 頭頂とあごの目印線は証明写真の定番。ここに合わせる距離で撮ると、全員の頭の大きさが揃う。 */}
-            <svg viewBox="0 0 78 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full" aria-hidden>
+            {/* ⚠️ 保存範囲は横長(1.2:1)。人型は 78:100 のまま中央に置く(meet)。
+                   none にすると人型が横に引き伸ばされる。高さはぴったり合うので、
+                   頭頂10%・あご40%の線は保存される写真の高さに対して正しい位置に来る。 */}
+            <svg viewBox="0 0 78 100" preserveAspectRatio="xMidYMid meet" className="absolute inset-0 h-full w-full" aria-hidden>
               {GUIDE_LAYERS.map((l, i) => (
                 <g key={i} fill="none" stroke={l.stroke} strokeWidth={l.width} strokeDasharray={l.dash} strokeLinecap="round" strokeLinejoin="round">
                   <path d={GUIDE_HEAD} vectorEffect="non-scaling-stroke" />
@@ -317,6 +329,11 @@ export default function PhotoCapture({
               頭のてっぺんとあごを線に合わせる
             </p>
           </div>
+        )}
+        {phase === 'live' && guide && portrait && (
+          <p className="pointer-events-none absolute inset-x-4 bottom-4 rounded-lg bg-black/70 px-3 py-2 text-center text-sm font-bold text-white">
+            iPadを横向きにすると、画面を広く使えて撮りやすくなります
+          </p>
         )}
         {phase === 'preview' && preview && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -357,7 +374,7 @@ export default function PhotoCapture({
       </div>
 
       <p className="mt-2 text-center text-xs text-white/60">
-        無地の壁の前で、点線の人型に頭と肩がぴったり収まる距離で撮ってください
+        無地の壁の前で、頭のてっぺんとあごが線に合う距離で撮ってください(横向き推奨)
       </p>
     </div>
   );

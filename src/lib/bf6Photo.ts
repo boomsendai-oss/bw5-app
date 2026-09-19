@@ -31,12 +31,25 @@ export function validatePhotoUpload(input: PhotoUploadInput): PhotoValidation {
 export type Frame = { x: number; y: number; width: number; height: number };
 
 /**
+ * 保存する写真の縦横比(横 / 縦)。
+ *
+ * ⚠️ 以前は 0.78(縦長)固定だった。手を広げたポーズだと撮る時点で腕が切れ、
+ *    LEDでは腕ごと消えていた(TARO 2026-09-19)。LEDのVS画面で1人が使える幅は
+ *    写真の高さの約1.18倍(1920x1080で実測)なので、それを少し超える1.2にした。
+ *    これより広く保存してもLEDには映らない。
+ *    頭の大きさは写真の「高さ」で決まる(撮影ガイドの頭頂・あごの線が高さ基準)ので、
+ *    横を広げても頭の大きさは変わらない。
+ */
+export const PHOTO_ASPECT = 1.2;
+
+/**
  * バストアップの切り出し枠。
  * 顔は写真の上寄りにあるので上端から取り、横は中央に置く。
- * 縦横比は 3:4 に寄せる(LEDの表示枠に合わせるとトリミングが減る)。
+ * 横向きのカメラでは高さの92%を使う。縦向きのカメラは映像自体が縦長で横を
+ * 広げられないので、横幅いっぱいを使い、高さを縦横比に合わせて上から詰める。
  */
 export function fitBustFrame(src: { width: number; height: number }): Frame {
-  const RATIO = 0.78; // width / height
+  const RATIO = PHOTO_ASPECT; // width / height
   let height = Math.min(src.height, Math.round(src.height * 0.92));
   let width = Math.round(height * RATIO);
   if (width > src.width) {

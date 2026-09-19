@@ -43,11 +43,27 @@ describe('バストアップの切り出し枠', () => {
     expect(f.height).toBeLessThan(2000);
   });
 
-  it('切り出し枠は 3:4 に近い縦長になる', () => {
-    const f = fitBustFrame({ width: 1600, height: 1200 });
-    const ratio = f.width / f.height;
-    expect(ratio).toBeGreaterThan(0.6);
-    expect(ratio).toBeLessThan(0.95);
+  it('切り出し枠はLEDで1人が使える幅に合わせた横長(1.2:1)になる', () => {
+    // ⚠️ 0.78:1(縦長)固定だと、手を広げたポーズの腕が撮る時点で切れた(TARO 2026-09-19)。
+    //    LEDで1人が使える幅は写真の高さの約1.18倍(実測)なので、それを少し超える1.2にする。
+    const f = fitBustFrame({ width: 1920, height: 1440 });
+    expect(f.width / f.height).toBeCloseTo(1.2, 2);
+  });
+
+  it('横向きのカメラでは、高さは上から92%まで使い、横は中央から1.2倍ぶん取る', () => {
+    const f = fitBustFrame({ width: 1920, height: 1440 });
+    expect(f.y).toBe(0);
+    expect(f.height).toBe(Math.round(1440 * 0.92));
+    expect(f.x + f.width / 2).toBeCloseTo(960, 0);
+  });
+
+  it('縦向きのカメラでは、横幅いっぱいを使い、高さは1.2:1になるぶんだけ上から取る', () => {
+    // カメラの映像自体が縦長なので、横はこれ以上広げられない。上寄せのまま高さを詰める
+    const f = fitBustFrame({ width: 1280, height: 1707 });
+    expect(f.x).toBe(0);
+    expect(f.width).toBe(1280);
+    expect(f.y).toBe(0);
+    expect(f.width / f.height).toBeCloseTo(1.2, 2);
   });
 
   it('横長の写真でも枠が元画像からはみ出さない', () => {
