@@ -46,6 +46,8 @@ type Draft = {
   cover_photo_idx: number | null;
   collaborators: string | null;
   instructor_handle: string | null;
+  /** 講師欄の全員(「K@TTSU / AOI」「TARO & Ryuki」)を解決したもの。共同投稿はこの中から選ぶ */
+  instructor_handles?: Array<{ name: string; handle: string | null }> | null;
   cast_suggest: {
     source: string;
     known: Array<{ kind: 'member' | 'performer'; id: number; name: string; handle: string }>;
@@ -1262,9 +1264,19 @@ function ReviewCard({ draft, onChanged, onMsg, pool = {} }: {
   // 基本みんなポジティブなのでON前提。紐付けたくない家庭はチェック/チップを外す運用)。
   // 保存前のデフォルトは画面上の初期値として出し、予約時にまとめて保存される。
   // クラスリールは講師の同意が未取得のため従来どおり手動(TARO 2026-08-19)。
+  // 講師欄の全員(2人担当クラス・合同ナンバーを含む)。ハンドル未登録の人は招待できないので除く。
+  const instructorList = (draft.instructor_handles ?? []).filter((i) => i.handle);
+  const allInstructorHandles = instructorList.map((i) => String(i.handle)).slice(0, 3); // Instagram上限3人
   const [collab, setCollab] = useState(
-    draft.collaborators ?? (stage && draft.instructor_handle ? String(draft.instructor_handle) : '')
+    draft.collaborators ?? (stage ? allInstructorHandles.join(' ') : '')
   );
+  const collabList = collab.split(/[\s,]+/).map((h) => h.replace(/^@+/, '').trim()).filter(Boolean);
+  const toggleCollab = (handle: string, on: boolean) => {
+    const next = on
+      ? [...allInstructorHandles.filter((h) => h === handle || collabList.includes(h))]
+      : collabList.filter((h) => h !== handle);
+    setCollab(next.join(' '));
+  };
   const suggestedCast = (draft.cast_suggest?.known ?? []).map((k) => k.handle).join(' ');
   const [cast, setCast] = useState(draft.mention_handles ?? (stage ? suggestedCast : ''));
   const [dateStr, setDateStr] = useState(''); // datetime-local
@@ -1469,20 +1481,33 @@ function ReviewCard({ draft, onChanged, onMsg, pool = {} }: {
         </div>
       </label>
 
-      {/* 共同投稿: 相手は常に担当講師なので、選択は「するか/しないか」だけ(TARO 2026-08-10)。 */}
+      {/* 共同投稿: 相手は担当講師。講師欄が「K@TTSU / AOI」「TARO & Ryuki」のように複数人のときは
+          全員分を出して1人ずつ選べるようにする(TARO 2026-09-21: 多賀城HOUSEはカッツとアオイの2人)。
+          手入力にしないのは誤字で招待が飛ばないのを防ぐため(TARO 2026-08-10)。 */}
       <div className="mb-3">
-        {draft.instructor_handle ? (
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input type="checkbox" checked={collab.trim() !== ''} className="mt-0.5 w-4 h-4 accent-brand-600"
-              onChange={(e) => setCollab(e.target.checked ? String(draft.instructor_handle) : '')} />
-            <span className="text-xs text-navy-700">
-              <b>{draft.instructor}</b> さん（@{draft.instructor_handle}）を共同投稿者にする
-              <span className="block text-[11px] text-navy-400 mt-0.5">
-                先生に招待が届き、承認されると先生の投稿一覧にも並びます。
-                承認されなくても、リールはそのまま投稿されます。
-              </span>
-            </span>
-          </label>
+        {instructorList.length > 0 ? (
+          <>
+            {instructorList.map((ins) => (
+              <label key={String(ins.handle)} className="flex items-start gap-2 cursor-pointer mb-1.5">
+                <input type="checkbox" checked={collabList.includes(String(ins.handle))}
+                  className="mt-0.5 w-4 h-4 accent-brand-600"
+                  onChange={(e) => toggleCollab(String(ins.handle), e.target.checked)} />
+                <span className="text-xs text-navy-700">
+                  <b>{ins.name}</b> さん（@{ins.handle}）を共同投稿者にする
+                </span>
+              </label>
+            ))}
+            <p className="text-[11px] text-navy-400 mt-0.5">
+              先生に招待が届き、承認されると先生の投稿一覧にも並びます。
+              承認されなくても、リールはそのまま投稿されます（Instagramの上限は3人）。
+            </p>
+            {/* 招待できない講師は理由を出す。黙って消すと「なぜ出ないのか」が分からない */}
+            {(draft.instructor_handles ?? []).filter((i) => !i.handle).map((i) => (
+              <p key={i.name} className="text-[11px] text-navy-400 mt-0.5">
+                {i.name} さんは講師マスタにInstagramアカウントが未登録のため招待できません。
+              </p>
+            ))}
+          </>
         ) : (
           <p className="text-[11px] text-navy-400">
             共同投稿には講師のInstagramアカウント登録が必要です（{draft.instructor || '講師未設定'}／講師マスタに未登録）。

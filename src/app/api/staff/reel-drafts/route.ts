@@ -4,6 +4,8 @@ import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { pickLessonForShot, normalizeIgHandle, normalizeJaName, type CastSuggest, type AttendLesson } from '@/lib/castSuggest';
 // 投稿枠(火=クラス/金=発表会 の19:00 JST)の規則は lib/reelSlot.ts に一本化。画面側と必ず同じ計算を使う。
 import { nextReelSlotIso } from '@/lib/reelSlot';
+// 講師欄は複数人のことがある(「K@TTSU / AOI」「TARO & Ryuki」)。共同投稿とキャプションの講師行で共用。
+import { resolveInstructorHandles } from '@/lib/instructorNames';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -96,13 +98,16 @@ async function buildStageCaption(
   mentionHandles?: unknown
 ): Promise<string> {
   const tags = [...BASE_TAGS, ...classTags(className)].join(' ');
+  // 講師は1人とは限らない(多賀城HOUSE=K@TTSU / AOI、GRAFFITI=TARO & Ryuki)。
+  // 全員を「@a & @b」で並べる(2026-08-28のGRAFFITI投稿と同じ書式)。
   let handle = '';
   if (instructor) {
-    const who = instructor.trim().toUpperCase();
     const rows = await getAll('SELECT name, instagram_handle FROM instructors');
-    const hit = rows.find((r) => String(r.name).trim().toUpperCase() === who)
-      ?? rows.find((r) => String(r.name).trim().toUpperCase().includes(who) || who.includes(String(r.name).trim().toUpperCase()));
-    if (hit?.instagram_handle) handle = String(hit.instagram_handle).trim();
+    const resolved = resolveInstructorHandles(
+      instructor,
+      rows.map((r) => ({ name: String(r.name), handle: r.instagram_handle ? String(r.instagram_handle) : null }))
+    );
+    handle = resolved.filter((r) => r.handle).map((r) => `@${r.handle}`).join(' & ');
   }
   // クラスの曜日・時間を入れる(TARO 2026-07-31: 見た人が「いつ行けばいいか」まで分かる方が効く)。
   // 時間はレッスンマスターから引くので、時間割が変われば次の生成から自動で新しくなる。
@@ -117,7 +122,8 @@ async function buildStageCaption(
       : '仙台のダンススクールBOOMの発表会ステージナンバー。',
     slot || handle ? '' : null,
     slot ? `📍${slot}` : null,
-    handle ? `🕺講師：@${handle}` : null,
+    // handle は「@a」または複数人なら「@a & @b」。@ は既に付いているのでここでは足さない
+    handle ? `🕺講師：${handle}` : null,
     cast ? '' : null,
     cast,
     '',
@@ -304,8 +310,19 @@ export async function GET(req: NextRequest) {
   } catch {
     // 候補が出せなくてもカード自体は使える
   }
+  // 共同投稿の相手は「担当講師全員」。講師欄は1人とは限らず、2人担当クラス(多賀城HOUSE=K@TTSU / AOI)や
+  // 合同ナンバー(GRAFFITI=TARO & Ryuki)がある。全員分のハンドルを解決して返し、画面で1人ずつ選べるようにする
+  // (TARO 2026-09-21: カッツとアオイ2人にしたいのに、画面が instructor_handle 1人分しか出せなかった)。
+  const instructorTable = (await getAll('SELECT name, instagram_handle FROM instructors').catch(() => [])).map((i) => ({
+    name: String(i.name),
+    handle: i.instagram_handle ? String(i.instagram_handle) : null,
+  }));
   for (const r of rows) {
     (r as Record<string, unknown>).cast_suggest = castSuggestById[String(r.id)] ?? null;
+    (r as Record<string, unknown>).instructor_handles = resolveInstructorHandles(
+      r.instructor as string | null,
+      instructorTable
+    );
   }
 
   // Mac常駐の生存記録も返す(TARO 2026-08-04)。Macがスリープしていると常駐が止まり、
