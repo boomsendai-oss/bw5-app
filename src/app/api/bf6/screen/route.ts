@@ -2,7 +2,7 @@
 // 当日その場に置く機器にログインさせるのは現実的でなく、返すのは
 // 「いま何を映すか」と出場者のダンサーネームだけで、個人情報は含まない。
 import { NextResponse } from 'next/server';
-import { needsChampions } from '@/lib/bf6ScreenAnim';
+import { hideFinalWinner, needsChampions } from '@/lib/bf6ScreenAnim';
 import { getBf6ScreenState, listBf6ScreenMatches, listBf6SlotNames, listBf6Champions, findNextMatch } from '@/lib/bf6ScreenDb';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +23,8 @@ export async function GET() {
   return NextResponse.json(
     {
       state,
-      matches,
+      // ⚠️ 決勝の勝者はLEDに渡さない(優勝枠に出るとネタバレ)。次の試合の判定は上で本物の値を使う
+      matches: hideFinalWinner(matches),
       pending,
       slots: Object.fromEntries(names),
       nextMatch: next,

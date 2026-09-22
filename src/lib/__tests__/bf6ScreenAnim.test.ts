@@ -219,3 +219,21 @@ describe('記念撮影用の1人カード', () => {
     expect(needsChampions('champion')).toBe(true);
   });
 });
+
+// ── 決勝の結果はLEDに渡さない(ネタバレ防止・TARO 2026-09-16/22) ──
+describe('決勝の勝者を隠す', () => {
+  const m = (round: string, winnerSlot: number | null) => ({ round, matchNo: 1, slotA: 1, slotB: 2, winnerSlot });
+
+  it('決勝の勝者だけ消す(トーナメント表の優勝枠に出ないように)', async () => {
+    const { hideFinalWinner } = await import('../bf6ScreenAnim');
+    const out = hideFinalWinner([m('sf', 1), m('f', 2)]);
+    expect(out.find((x) => x.round === 'f')!.winnerSlot).toBeNull();
+    expect(out.find((x) => x.round === 'sf')!.winnerSlot).toBe(1);
+  });
+
+  it('決勝の対戦カード(誰と誰か)は残す', async () => {
+    const { hideFinalWinner } = await import('../bf6ScreenAnim');
+    const f = hideFinalWinner([m('f', 2)])[0];
+    expect([f.slotA, f.slotB]).toEqual([1, 2]);
+  });
+});

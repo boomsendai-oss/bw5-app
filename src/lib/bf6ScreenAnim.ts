@@ -105,3 +105,13 @@ export function sceneKey(s: {
 export function needsChampions(mode: string): boolean {
   return mode === 'champions' || mode === 'drumroll' || mode === 'champion';
 }
+
+/**
+ * LEDに渡す試合から、決勝の勝者だけを消す。対戦カードは残す。
+ * ⚠️ 優勝者は表彰でまとめて発表する(ドラムロール → 発表)。決勝の勝者を入れたあとに
+ *    トーナメント表を映すと、優勝枠に名前が出てネタバレになる(TARO 2026-09-22 実機確認で判明)。
+ *    勝者の光る演出も、この値の変化から起きるので一緒に止まる。
+ */
+export function hideFinalWinner<T extends { round: string; winnerSlot: number | null }>(matches: T[]): T[] {
+  return matches.map((m) => (m.round === 'f' ? { ...m, winnerSlot: null } : m));
+}
