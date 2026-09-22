@@ -25,7 +25,9 @@ describe('予選の並び順', () => {
 });
 
 describe('優勝者を並べる順番', () => {
-  it('左からビギナー・小中学生・一般', () => {
-    expect(CHAMPION_ORDER).toEqual(['beginner', 'kids', 'general']);
+  it('左からビギナー・一般・小中学生(会場で決勝の2人が並ぶ位置と同じ)', () => {
+    // TARO 2026-09-22: ステージの左にビギナー、真ん中に一般、右に小中学生の決勝2人を並べ、
+    // 間に立ったジャッジが「3・2・1・ジャッジ」で3部門同時に勝者の手を上げる。LEDも同じ並びにする。
+    expect(CHAMPION_ORDER).toEqual(['beginner', 'general', 'kids']);
   });
 });

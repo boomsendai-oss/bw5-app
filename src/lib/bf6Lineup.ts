@@ -20,5 +20,9 @@ export function lineupForBlock(people: LineupPerson[], block: 'A' | 'B'): Lineup
   return people.filter((p) => p.block === block).sort((a, b) => a.itemId - b.itemId);
 }
 
-/** 優勝者発表の並び。左からビギナー・小中学生・一般(TARO 2026-09-16)。 */
-export const CHAMPION_ORDER: Bf6DrawDivision[] = ['beginner', 'kids', 'general'];
+/**
+ * 優勝者発表の並び。左からビギナー・一般・小中学生(TARO 2026-09-22 に変更)。
+ * 会場では決勝の2人ずつをこの並びでステージに立たせ、間のジャッジが3部門同時に勝者の手を上げる。
+ * LEDはその背景になるので、立ち位置と同じ並びにする。
+ */
+export const CHAMPION_ORDER: Bf6DrawDivision[] = ['beginner', 'general', 'kids'];

@@ -185,7 +185,7 @@ export function ScreenClient() {
   const { state, matches, slots } = shown;
   if (state.mode === 'logo') return <Stage dark={dark}><Logo /></Stage>;
 
-  // 優勝者発表。3部門を横に並べ、左から順に出す(TARO 2026-09-16)
+  // 優勝者発表。3部門を横に並べ、同時に出す(TARO 2026-09-22)
   if (state.mode === 'champions') {
     return (
       <Stage dark={dark}>
@@ -690,6 +690,11 @@ function ScreenAnimStyles() {
         100% { opacity: 1; transform: scale(1); }
       }
       .bf6-champ-in { animation: bf6ChampIn 1.1s cubic-bezier(.18,1.1,.28,1) both; }
+      /* 優勝者が出た瞬間に、後ろへ光が広がる。筋はゆっくり回り続ける */
+      @keyframes bf6Victory { 0% { opacity: 0; } 100% { opacity: 1; } }
+      .bf6-victory { animation: bf6Victory 1.4s ease-out .35s both; }
+      @keyframes bf6Rays { to { transform: rotate(360deg); } }
+      .bf6-rays { animation: bf6Rays 90s linear infinite; }
       @keyframes bf6Champ {
         0%,100% { box-shadow: 0 0 1.6vw rgba(249,115,22,0.45); }
         50%     { box-shadow: 0 0 3.4vw 0.4vw rgba(249,115,22,0.85); }
@@ -802,55 +807,112 @@ function ScreenAnimStyles() {
 }
 
 /**
- * 優勝者発表。画面を3分割し、左からビギナー・小中学生・一般。
- * ボタン1回で3人が順に飛び込む(TARO 2026-09-16「ボンボンボンと3つ出る」)。
- * ⚠️ 1人ずつの遅れは CSS の animation-delay で付ける。JSのタイマーで出し分けると
- *    ポーリングの再描画とぶつかってやり直しになる。
+ * 優勝者発表。画面を3分割し、左からビギナー・一般・小中学生(CHAMPION_ORDER)。
+ *
+ * TARO 2026-09-22 の作り直し:
+ * - 3部門は**同時に**出す。会場では決勝の2人ずつがこの並びでLEDの前に立ち、間のジャッジが
+ *   「3・2・1・ジャッジ」で3部門いっせいに勝者の手を上げる。時間差で出すと意味が分からなくなる。
+ * - LEDは主役ではなく「背景の豪華さ」。人物をできるだけ大きく、余白を少なく。
+ * - LEDの前に人が立つので、下は隠れる。写真・名前は上に寄せ、上72%に収める(VSと同じ考え方)。
+ * - 最初は暗く、人物が出た瞬間に後ろへ優勝らしい光が広がる。
+ *
+ * ⚠️ 3人そろって出すため、写真の頭頂を3枚とも測り終えてから出す(1.5秒で見切る)。
+ *    1枚ずつ出すと、写真の読み込みが早い人から出てしまい「同時」にならない。
  */
+const CHAMP_PHOTO_SCALE = 1.25;
+
 function Champions({ rows }: { rows: Champion[] }) {
+  const srcs = rows.map((c) => (c.hasPhoto && c.slotNo !== null ? photoUrl(c.slotNo, c.division, c.photoAt) : null));
+  const key = srcs.join('|');
+  const [readyKey, setReadyKey] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const go = () => { if (alive) setReadyKey(key); };
+    const t = setTimeout(go, 1500);
+    Promise.all(key.split('|').map((s) => (s ? measurePhotoTop(s) : Promise.resolve(null)))).then(go);
+    return () => { alive = false; clearTimeout(t); };
+  }, [key]);
+  const ready = readyKey === key;
+
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden">
+    <div className="relative h-full w-full overflow-hidden">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/bf6/led-bg.png" alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />
-      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_45%,transparent_30%,rgba(5,7,12,0.85)_100%)]" />
-
-      <div className="relative flex items-start justify-between px-[2.5vw] pt-[2vh]">
-        <p className="bf6-drop text-[2.2vw] font-black tracking-[0.4em] text-amber-300">CHAMPIONS</p>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/bf6/led-title.png" alt="" className="h-[8vh] w-auto opacity-95" />
-      </div>
-
-      <div className="relative flex flex-1 items-stretch px-[1.5vw] pb-[3vh]">
-        {rows.map((c, i) => {
-          const theme = divisionTheme(c.division);
-          return (
+      {ready && (
+        <>
+          {/* 優勝の光。人物と同時にふわっと広がり、光の筋がゆっくり回る。
+              ⚠️ translate系のクラスを付けないこと(keyframeのtransformと二重に掛かって位置がずれる)。
+                 位置は left/top の calc で決める。 */}
+          <div className="bf6-victory absolute inset-0 bg-[radial-gradient(55%_60%_at_50%_36%,rgba(251,191,36,0.42)_0%,rgba(234,88,12,0.18)_45%,transparent_75%)]" />
+          <div className="bf6-victory pointer-events-none absolute" style={{ left: 'calc(50% - 75vw)', top: 'calc(36% - 75vw)', width: '150vw', height: '150vw' }}>
             <div
-              key={c.division}
-              className="bf6-champ-in flex min-w-0 flex-1 basis-1/3 flex-col items-center justify-end px-[0.8vw]"
-              style={{ animationDelay: `${300 + i * 700}ms` }}
-            >
-              <p className={`text-[1.5vw] font-black tracking-[0.35em] ${theme.text}`}>{c.label}部門</p>
-              <div className="flex h-[52vh] w-full items-end justify-center">
-                {c.hasPhoto && c.slotNo !== null && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={`/api/bf6/photo/${c.slotNo}?division=${c.division}&v=${encodeURIComponent(c.photoAt ?? '')}`}
-                    alt=""
-                    className="bf6-cut max-h-full w-auto max-w-full object-contain object-bottom"
-                  />
-                )}
-              </div>
-              <p
-                className="bf6-face bf6-chrome bf6-sheen relative mt-[0.5vh] w-full break-words text-center text-[4.4vw] font-black italic leading-[0.95]"
-                data-text={c.dancerName || '—'}
-              >
-                {c.dancerName || '—'}
-              </p>
-              <p className="mt-[0.6vh] text-[1.3vw] font-black tracking-[0.4em] text-amber-300/90">WINNER</p>
-            </div>
-          );
-        })}
+              className="bf6-rays h-full w-full"
+              style={{
+                background: 'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.20) 0deg 5deg, transparent 5deg 15deg)',
+                maskImage: 'radial-gradient(closest-side, #000 8%, rgba(0,0,0,0.55) 32%, transparent 62%)',
+                WebkitMaskImage: 'radial-gradient(closest-side, #000 8%, rgba(0,0,0,0.55) 32%, transparent 62%)',
+              }}
+            />
+          </div>
+        </>
+      )}
+      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_40%,transparent_35%,rgba(5,7,12,0.85)_100%)]" />
+
+      <div className="relative flex items-start justify-between px-[2.5vw] pt-[1.6vh]">
+        <p className="bf6-drop text-[1.8vw] font-black tracking-[0.4em] text-amber-300">CHAMPIONS</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/bf6/led-title.png" alt="" className="h-[6vh] w-auto opacity-95" />
       </div>
+
+      {/* 前景は上72%に収める(LEDの前に人が立つため)。 */}
+      <div className="absolute inset-x-0 top-[7vh] flex h-[65vh]">
+        {rows.map((c, i) => (
+          <ChampionColumn key={c.division} c={c} src={srcs[i]} ready={ready} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ChampionColumn({ c, src, ready }: { c: Champion; src: string | null; ready: boolean }) {
+  const theme = divisionTheme(c.division);
+  const top = usePhotoTop(src);
+  // 頭頂をそろえる(VSと同じ)。写真ごとに頭の位置がばらつくため。
+  const shift = headAlignShift(top ?? null, { scale: CHAMP_PHOTO_SCALE, target: VS_HEAD_TARGET });
+  const fade = photoFadeStops(shift, CHAMP_PHOTO_SCALE, 0.62, 0.96);
+  const mask =
+    `linear-gradient(to bottom, #000 ${(fade.start * 100).toFixed(2)}%, transparent ${(fade.end * 100).toFixed(2)}%), ` +
+    'linear-gradient(to right, transparent 0%, #000 12%, #000 88%, transparent 100%)';
+  return (
+    <div
+      className={`flex min-w-0 flex-1 basis-1/3 flex-col items-center ${ready ? 'bf6-champ-in' : 'opacity-0'}`}
+      style={{ animationDelay: '150ms' }}
+    >
+      <p className={`shrink-0 text-[1.6vw] font-black tracking-[0.35em] ${theme.text}`}>{c.label}部門</p>
+      <div className="relative min-h-0 w-full flex-1">
+        {src && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt=""
+            className="absolute left-0 top-0 h-auto w-full origin-top"
+            style={{
+              transform: `translateY(${(shift * 100).toFixed(2)}%) scale(${CHAMP_PHOTO_SCALE})`,
+              maskImage: mask,
+              WebkitMaskImage: mask,
+              maskComposite: 'intersect',
+              WebkitMaskComposite: 'source-in',
+            }}
+          />
+        )}
+      </div>
+      <p
+        className="bf6-face bf6-chrome bf6-sheen relative -mt-[10vh] w-full shrink-0 break-words px-[0.6vw] text-center text-[5.6vw] font-black italic leading-[0.95]"
+        data-text={c.dancerName || '—'}
+      >
+        {c.dancerName || '—'}
+      </p>
+      <p className="relative mt-[0.4vh] shrink-0 text-[1.5vw] font-black tracking-[0.45em] text-amber-300">WINNER</p>
     </div>
   );
 }
