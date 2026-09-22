@@ -222,6 +222,12 @@ export interface Bf6OrderInput {
   adultTickets: number;
   childTickets: number;
   streamTickets?: number;
+  /**
+   * 配信の注意事項に同意したか。配信チケットを買うときだけ必須。
+   * TARO 2026-09-22: 配信はリアルタイムの臨場感を楽しむもの。バトル映像は後日YouTube・Instagramに
+   * 出ることがあるので「あとでタダで見られたじゃないか」とならないよう、買う前にチェックで了承してもらう。
+   */
+  streamAck?: boolean;
   note?: string;
 }
 
@@ -359,6 +365,9 @@ export function validateBf6Order(input: Bf6OrderInput): ValidatedBf6Order | stri
   }
   if (streamTickets > 0 && input.payMethod !== 'prepaid') {
     return '配信チケットは事前カード決済のみご利用いただけます';
+  }
+  if (streamTickets > 0 && input.streamAck !== true) {
+    return '配信についての注意事項をご確認のうえ、チェックを入れてください';
   }
 
   const rows = Array.isArray(input.entries) ? input.entries : [];

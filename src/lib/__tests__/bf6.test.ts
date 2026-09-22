@@ -382,6 +382,7 @@ describe('配信チケット(streamTickets)の購入対応', () => {
       adultTickets: 0,
       childTickets: 0,
       streamTickets: 2,
+      streamAck: true,
     });
     expect(typeof v).not.toBe('string');
     if (typeof v === 'string') return;
@@ -402,6 +403,24 @@ describe('配信チケット(streamTickets)の購入対応', () => {
       streamTickets: 1,
     });
     expect(typeof v).toBe('string');
+  });
+
+  test('配信の注意事項(後日YouTube等で公開あり)に同意していないと買えない', () => {
+    // TARO 2026-09-22: 配信はリアルタイムの臨場感を楽しむもの。バトル映像は後日
+    // YouTube・Instagramに出ることがあるので、買う前にチェックで了承してもらう
+    const v = validateBf6Order({
+      ...validInput(),
+      entries: [],
+      adultTickets: 0,
+      childTickets: 0,
+      streamTickets: 1,
+    });
+    expect(typeof v).toBe('string');
+    expect(v).toContain('チェック');
+  });
+
+  test('配信チケットを買わない注文には同意を求めない', () => {
+    expect(typeof validateBf6Order(validInput())).not.toBe('string');
   });
 
   test('streamTickets未指定は0扱い(既存フォーム互換)', () => {

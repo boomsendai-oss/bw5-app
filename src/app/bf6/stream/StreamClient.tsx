@@ -20,6 +20,8 @@ export default function StreamClient() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [qty, setQty] = useState(1);
+  // 配信の注意事項への同意(TARO 2026-09-22)。サーバ側 validateBf6Order でも必須にしている
+  const [ack, setAck] = useState(false);
 
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -54,6 +56,7 @@ export default function StreamClient() {
       adultTickets: 0,
       childTickets: 0,
       streamTickets: qty,
+      streamAck: ack,
     });
     if (!res.ok) {
       setSubmitting(false);
@@ -200,11 +203,31 @@ export default function StreamClient() {
           <p className="mt-1 text-5xl font-black text-white">{yen(total)}</p>
         </div>
 
+        <section className="mt-6">
+          <Bf6SectionTitle no="3" title="ご購入前にご確認ください" />
+          <Bf6Card>
+            <ul className="space-y-1.5 text-sm text-neutral-300">
+              <li>・オンライン配信は、当日の会場の臨場感を<span className="font-bold text-white">リアルタイムで</span>楽しんでいただくためのものです</li>
+              <li>・バトルの映像は、後日BOOMの<span className="font-bold text-white">YouTube・Instagramで公開することがあります</span></li>
+            </ul>
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border-2 border-neutral-700 bg-neutral-950 p-3">
+              <input
+                type="checkbox"
+                checked={ack}
+                onChange={(e) => setAck(e.target.checked)}
+                className="mt-0.5 h-5 w-5 shrink-0 accent-red-600"
+              />
+              <span className="text-sm font-bold text-white">上記を理解したうえで購入します</span>
+            </label>
+          </Bf6Card>
+        </section>
+
         {error && <p className="mt-4 rounded-xl bg-red-950/40 p-3 text-sm font-bold text-red-400">{error}</p>}
 
         <button
           onClick={() => {
             if (!buyerName.trim() || !email.trim() || !phone.trim()) { setError('お名前・メールアドレス・電話番号を入力してください'); return; }
+            if (!ack) { setError('「ご購入前にご確認ください」を読んで、チェックを入れてください'); return; }
             setError('');
             setStep('confirm');
             window.scrollTo({ top: 0 });
