@@ -36,8 +36,14 @@ export default function PwaMetaTags() {
 
   useEffect(() => {
     const head = document.head;
+    // ⚠️ React(Next.js のメタデータ)が入れたタグは消さずに無効化する。消すと再描画のときに
+    //    React が removeChild で落ちて画面が固まる(2026-09-23・layout.tsx の起動スクリプトと同じ理由)。
+    //    React は head にある同じ種類のタグを自分のものとして拾うことがあるので、自分で足したタグも消さない。
     const removeTag = (selector: string) => {
-      head.querySelectorAll(selector).forEach((el) => el.remove());
+      head.querySelectorAll(selector).forEach((el) => {
+        if (el.hasAttribute('rel')) el.setAttribute('rel', 'x-pwa-off');
+        else if (el.hasAttribute('name')) el.setAttribute('name', 'x-pwa-off');
+      });
     };
     const setMeta = (name: string, content: string) => {
       let el = head.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;

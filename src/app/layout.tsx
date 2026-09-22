@@ -54,14 +54,23 @@ export default function RootLayout({
                 // 物販ページ(黒×黒Tシャツ等)は黒基調。BW5オレンジのバーが上下に出ると台無しになる
                 var isDark = isBf6 || p.indexOf('/merch') === 0;
                 var d = document, head = d.head;
-                function rm(sel){var ns=head.querySelectorAll(sel);for(var i=0;i<ns.length;i++){ns[i].parentNode.removeChild(ns[i]);}}
+                // ⚠️ head のタグは消さない。rel/name を書き換えて無効にするだけにする(自分で足したタグも同じ)。
+                //    React は起動時に head にある同じ種類のタグを「自分のもの」として拾うことがあり、
+                //    ここで消すと、Server Action のあとの再描画で React がそれを消そうとして removeChild で落ち、
+                //    ボタンが無効のまま画面が固まる(LED操作卓で再現・2026-09-23。受付iPad・集金・入場受付で
+                //    3回起きた「固まる」もこれが原因だった可能性が高い)。
+                function rm(sel){var ns=head.querySelectorAll(sel);for(var i=0;i<ns.length;i++){var n=ns[i];
+                  if(n.hasAttribute('rel'))n.setAttribute('rel','x-pwa-off');if(n.hasAttribute('name'))n.setAttribute('name','x-pwa-off');}}
                 // Next.js が自動注入する manifest を含めて全削除 → 必要なものだけを再注入
                 rm('link[rel="manifest"]');
                 rm('meta[name="apple-mobile-web-app-capable"]');
                 rm('meta[name="mobile-web-app-capable"]');
                 rm('meta[name="apple-mobile-web-app-title"]');
                 rm('link[rel="apple-touch-icon"]');
-                function add(tag, attrs){var e = d.createElement(tag); for(var k in attrs){e.setAttribute(k, attrs[k]);} head.appendChild(e); return e;}
+                // ⚠️ d.title = ... は使わない。<title> の中の文字(React が持っている)を別物に差し替えてしまい、
+                //    再描画で React が古い文字を消そうとして removeChild で落ちる(2026-09-23)。中の文字だけ書き換える
+                function setTitle(t){var el=d.querySelector('title');if(el&&el.firstChild&&el.firstChild.nodeType===3){if(el.firstChild.nodeValue!==t)el.firstChild.nodeValue=t;}else if(d.title!==t){d.title=t;}}
+                function add(tag, attrs){var e = d.createElement(tag); for(var k in attrs){e.setAttribute(k, attrs[k]);} e.setAttribute('data-pwa-boot','1'); head.appendChild(e); return e;}
                 // theme-color もパス別: スタッフ=ネイビー / BF6=黒(イベント配色) / それ以外=BW5オレンジ
                 rm('meta[name="theme-color"]');
                 add('meta', {name: 'theme-color', content: isKiosk ? '#F4EDE5' : isStaff ? '#101040' : isDark ? '#0a0a0a' : '#f27a1a'});
@@ -77,7 +86,7 @@ export default function RootLayout({
                   add('meta', {name: 'mobile-web-app-capable', content: 'yes'});
                   add('meta', {name: 'apple-mobile-web-app-title', content: isCrew ? 'BF6 当日オペ' : 'BF6 受付'});
                   add('link', {rel: 'apple-touch-icon', href: isCrew ? '/images/icon-bf6-crew.png' : '/images/icon-bf6-checkin.png'});
-                  d.title = isCrew ? 'BF6 当日オペ' : 'BF6 受付';
+                  setTitle(isCrew ? 'BF6 当日オペ' : 'BF6 受付');
                 } else if (isKiosk) {
                   // 無人物販kiosk: iPadのホーム画面登録で専用アイコン/名前+全画面(standalone)
                   add('link', {rel: 'manifest', href: '/kiosk-manifest.webmanifest'});
@@ -111,7 +120,7 @@ export default function RootLayout({
                   add('meta', {name: 'apple-mobile-web-app-title', content: title});
                   add('link', {rel: 'apple-touch-icon', href: icon});
                   // ユーザー閲覧中もページタイトルを上書き(iOSがバックエンドから掴むため)
-                  d.title = title;
+                  setTitle(title);
                 }
               } catch(e) { console.error('PWA bootstrap failed:', e); } }
               // 即時実行 (head 解析中)
@@ -124,6 +133,9 @@ export default function RootLayout({
               }
               // load 後にもう一度 (iOS がここで manifest を読み始める前に最終状態を確定)
               window.addEventListener('load', setup);
+              // 起動後にもう一度。React がメタデータを後から差し込むことがあり、上の2回より後に来た分を無効にする
+              // (タグを消さない方式にしたため、後から来た分はここで rel/name を書き換えて止める・2026-09-23)
+              window.addEventListener('load', function(){ setTimeout(setup, 1500); });
             })();`,
           }}
         />
