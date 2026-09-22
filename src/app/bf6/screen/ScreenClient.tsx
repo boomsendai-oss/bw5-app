@@ -22,7 +22,7 @@ type Champion = {
   dancerName: string; hasPhoto: boolean; photoAt: string | null;
 };
 type Payload = {
-  state: { mode: 'logo' | 'bracket' | 'vs' | 'champions'; division: string; round: string | null; matchNo: number | null; rev: number };
+  state: { mode: 'logo' | 'bracket' | 'vs' | 'drumroll' | 'champions'; division: string; round: string | null; matchNo: number | null; rev: number };
   matches: Match[];
   slots: Record<string, Slot>;
   nextMatch: Match | null;
@@ -185,11 +185,11 @@ export function ScreenClient() {
   const { state, matches, slots } = shown;
   if (state.mode === 'logo') return <Stage dark={dark}><Logo /></Stage>;
 
-  // 優勝者発表。3部門を横に並べ、同時に出す(TARO 2026-09-22)
-  if (state.mode === 'champions') {
+  // 優勝者発表。ドラムロール → 発表(カード形式・3部門同時)(TARO 2026-09-22)
+  if (state.mode === 'champions' || state.mode === 'drumroll') {
     return (
       <Stage dark={dark}>
-        <Champions rows={shown.champions ?? []} />
+        <ChampionsScene rows={shown.champions ?? []} reveal={state.mode === 'champions'} />
       </Stage>
     );
   }
@@ -681,20 +681,37 @@ function ScreenAnimStyles() {
         86%     { transform: scale(0.97); }
         100%    { opacity: 1; transform: scale(1); box-shadow: 0 0 1vw rgba(249,115,22,0.5); }
       }
-      /* 優勝者が1人ずつ飛び込む。奥から来て少し跳ねて止まる */
-      @keyframes bf6ChampIn {
-        0%   { opacity: 0; transform: scale(2.6) translateY(-2vh); }
-        55%  { opacity: 1; }
-        72%  { opacity: 1; transform: scale(0.92) translateY(0); }
-        84%  { transform: scale(1.06); }
-        100% { opacity: 1; transform: scale(1); }
+      /* 優勝者発表(カード形式)。ドラムロール中はタイトルが鼓動する */
+      @keyframes bf6Drum { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
+      .bf6-drum { animation: bf6Drum .9s ease-in-out infinite; }
+      @keyframes bf6Hud { from { opacity: 0; } to { opacity: 1; } }
+      .bf6-hud { animation: bf6Hud .6s ease-out .45s both; }
+      /* カードがふわっと出る(下から・ぼかしから・起き上がりながら)。最後に各カードの傾きで止まる */
+      @keyframes bf6CardIn {
+        0%   { opacity: 0; filter: blur(12px); transform: translateY(13vh) rotate(calc(var(--tilt) * 2.5)) rotateX(25deg) scale(.92); }
+        60%  { opacity: 1; }
+        100% { opacity: 1; filter: blur(0); transform: translateY(0) rotate(var(--tilt)) rotateX(0deg) scale(1); }
       }
-      .bf6-champ-in { animation: bf6ChampIn 1.1s cubic-bezier(.18,1.1,.28,1) both; }
-      /* 優勝者が出た瞬間に、後ろへ光が広がる。筋はゆっくり回り続ける */
-      @keyframes bf6Victory { 0% { opacity: 0; } 100% { opacity: 1; } }
-      .bf6-victory { animation: bf6Victory 1.4s ease-out .35s both; }
-      @keyframes bf6Rays { to { transform: rotate(360deg); } }
-      .bf6-rays { animation: bf6Rays 90s linear infinite; }
+      .bf6-card-in { animation: bf6CardIn 1.3s cubic-bezier(.2,.8,.2,1) both; }
+      /* 出たあとも、ゆっくり浮き沈みしながら少し首を振る */
+      @keyframes bf6CardFloat {
+        0%,100% { transform: translateY(-0.4vh) rotateY(-2.5deg); }
+        50%     { transform: translateY(0.4vh) rotateY(2.5deg); }
+      }
+      .bf6-card-float { animation: bf6CardFloat 5.2s ease-in-out infinite; }
+      @keyframes bf6NameIn { from { opacity: 0; transform: scale(1.06); } to { opacity: 1; transform: scale(1); } }
+      .bf6-name-in { animation: bf6NameIn .8s ease-out .6s both; }
+      /* 光の筋。カードの上を左から右へ横切り続ける */
+      @keyframes bf6CardSweep {
+        0%   { transform: translateX(-14vw) skewX(-18deg); }
+        45%  { transform: translateX(34vw) skewX(-18deg); }
+        100% { transform: translateX(34vw) skewX(-18deg); }
+      }
+      .bf6-card-sweep {
+        left: 0;
+        background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,250,235,0.30), rgba(255,255,255,0));
+        animation: bf6CardSweep 4.8s ease-in-out 1.2s infinite both;
+      }
       @keyframes bf6Champ {
         0%,100% { box-shadow: 0 0 1.6vw rgba(249,115,22,0.45); }
         50%     { box-shadow: 0 0 3.4vw 0.4vw rgba(249,115,22,0.85); }
@@ -807,114 +824,147 @@ function ScreenAnimStyles() {
 }
 
 /**
- * 優勝者発表。画面を3分割し、左からビギナー・一般・小中学生(CHAMPION_ORDER)。
+ * 優勝者発表(カード形式)。TARO 2026-09-22 に6案から「ポスター・カード」を選んだ。
  *
- * TARO 2026-09-22 の作り直し:
- * - 3部門は**同時に**出す。会場では決勝の2人ずつがこの並びでLEDの前に立ち、間のジャッジが
- *   「3・2・1・ジャッジ」で3部門いっせいに勝者の手を上げる。時間差で出すと意味が分からなくなる。
- * - LEDは主役ではなく「背景の豪華さ」。人物をできるだけ大きく、余白を少なく。
- * - LEDの前に人が立つので、下は隠れる。写真・名前は上に寄せ、上72%に収める(VSと同じ考え方)。
- * - 最初は暗く、人物が出た瞬間に後ろへ優勝らしい光が広がる。
+ * 流れ: 操作卓で ①ドラムロール → 「TODAY'S / CHAMPION IS…」を出す
+ *       ②「ジャーン」で発表 → 3部門のカードが同時にふわっと出る(会場ではジャッジが同時に手を上げる)
+ * - 並びは左からビギナー・一般・小中学生(CHAMPION_ORDER)。決勝の2人が立つ位置と同じ。
+ * - LEDの前に人が立つので、カードは上72%に収める(下端 約70vh)。
+ * - 出たあとも、カードはゆっくり浮き沈みし、光の筋が横切り続ける(TARO「ずっと続けばかなりいい」)。
+ * - カードの縦書きは「CHAMPION BF6」。番号(No.01…)は付けない(TARO)。
  *
- * ⚠️ 3人そろって出すため、写真の頭頂を3枚とも測り終えてから出す(1.5秒で見切る)。
- *    1枚ずつ出すと、写真の読み込みが早い人から出てしまい「同時」にならない。
+ * ⚠️ ドラムロール → 発表は同じ場面(sceneKey)。暗転を挟まず、この部品の中で切り替える。
+ * ⚠️ 写真の頭頂はドラムロールの間に測り終えておく(発表の瞬間に1枚だけ遅れて出ないように)。
+ *    発表を押したときにまだなら、最大1.5秒だけ待って3枚そろえて出す。
  */
-const CHAMP_PHOTO_SCALE = 1.15;
+const CARD_PHOTO_SCALE = 1.25;
+/** カードの中で頭頂を置く高さ(写真の高さに対する割合)。部門名のすぐ下に頭が来る位置 */
+const CARD_HEAD_TARGET = 0.17;
+/** カードの傾き(度)。左・中・右 */
+const CARD_TILT = [-4.5, 1.5, 4.5];
+/** カード上端の帯と下地のにじみに使う部門の色(CSSの値) */
+const CARD_COLOR: Record<string, string> = { beginner: '#34d399', general: '#f87171', kids: '#fb923c' };
 
-function Champions({ rows }: { rows: Champion[] }) {
+function ChampionsScene({ rows, reveal }: { rows: Champion[]; reveal: boolean }) {
   const srcs = rows.map((c) => (c.hasPhoto && c.slotNo !== null ? photoUrl(c.slotNo, c.division, c.photoAt) : null));
   const key = srcs.join('|');
-  const [readyKey, setReadyKey] = useState<string | null>(null);
+  const [measuredKey, setMeasuredKey] = useState<string | null>(null);
+  const [waited, setWaited] = useState(false);
   useEffect(() => {
     let alive = true;
-    const go = () => { if (alive) setReadyKey(key); };
-    const t = setTimeout(go, 1500);
-    Promise.all(key.split('|').map((s) => (s ? measurePhotoTop(s) : Promise.resolve(null)))).then(go);
-    return () => { alive = false; clearTimeout(t); };
+    Promise.all(key.split('|').map((s) => (s ? measurePhotoTop(s) : Promise.resolve(null)))).then(() => {
+      if (alive) setMeasuredKey(key);
+    });
+    return () => { alive = false; };
   }, [key]);
-  const ready = readyKey === key;
+  useEffect(() => {
+    if (!reveal) return;
+    const t = setTimeout(() => setWaited(true), 1500);
+    return () => clearTimeout(t);
+  }, [reveal]);
+  const shown = reveal && (measuredKey === key || waited);
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className="relative h-full w-full overflow-hidden bg-[#020203]">
+      {/* 背景。ロゴ画面の煙をぼかして落とした暗い下地 */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/bf6/led-bg.png" alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />
-      {ready && (
+      <img
+        src="/bf6/led-loop-poster.jpg"
+        alt=""
+        className="absolute inset-0 h-full w-full scale-[1.15] object-cover opacity-55 [filter:blur(34px)_grayscale(.5)_brightness(.5)]"
+      />
+      <div className="absolute inset-0 bg-[radial-gradient(70%_55%_at_50%_38%,rgba(252,211,77,0.07),transparent_70%),linear-gradient(180deg,rgba(0,0,0,0.25),rgba(0,0,0,0.7))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_40%,transparent_35%,rgba(3,3,6,0.9)_100%)]" />
+
+      {/* ドラムロール中の画面。発表で消える */}
+      <div className={`absolute inset-0 transition-opacity duration-500 ${shown ? 'opacity-0' : 'opacity-100'}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/bf6/led-bg.png" alt="" className="absolute inset-0 h-full w-full object-cover opacity-55" />
+        <div className="absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_36%,rgba(252,211,77,0.10),transparent_70%),radial-gradient(120%_90%_at_50%_40%,transparent_30%,rgba(5,7,12,0.92)_100%)]" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/bf6/led-title.png" alt="" className="absolute left-1/2 top-[6.5vh] h-[9.3vh] w-auto -translate-x-1/2" />
+        <div className="absolute inset-x-0 top-[20vh] flex justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/bf6/todays-title.png" alt="TODAY'S CHAMPION IS…" className="bf6-drum w-[70vw] max-w-none" />
+        </div>
+      </div>
+
+      {shown && (
         <>
-          {/* 優勝の光。人物と同時にふわっと広がり、光の筋がゆっくり回る。
-              ⚠️ translate系のクラスを付けないこと(keyframeのtransformと二重に掛かって位置がずれる)。
-                 位置は left/top の calc で決める。 */}
-          <div className="bf6-victory absolute inset-0 bg-[radial-gradient(55%_60%_at_50%_36%,rgba(251,191,36,0.42)_0%,rgba(234,88,12,0.18)_45%,transparent_75%)]" />
-          <div className="bf6-victory pointer-events-none absolute" style={{ left: 'calc(50% - 75vw)', top: 'calc(36% - 75vw)', width: '150vw', height: '150vw' }}>
-            <div
-              className="bf6-rays h-full w-full"
-              style={{
-                background: 'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.20) 0deg 5deg, transparent 5deg 15deg)',
-                maskImage: 'radial-gradient(closest-side, #000 8%, rgba(0,0,0,0.55) 32%, transparent 62%)',
-                WebkitMaskImage: 'radial-gradient(closest-side, #000 8%, rgba(0,0,0,0.55) 32%, transparent 62%)',
-              }}
-            />
-          </div>
+          <p className="bf6-hud absolute left-[2.5vw] top-[2.4vh] text-[1.8vw] font-black tracking-[0.4em] text-amber-300">CHAMPIONS</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/bf6/led-title.png" alt="" className="bf6-hud absolute right-[2.5vw] top-[1.7vh] h-[5.7vh] w-auto" />
         </>
       )}
-      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_40%,transparent_35%,rgba(5,7,12,0.85)_100%)]" />
 
-      <div className="relative flex items-start justify-between px-[2.5vw] pt-[1.6vh]">
-        <p className="bf6-drop text-[1.8vw] font-black tracking-[0.4em] text-amber-300">CHAMPIONS</p>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/bf6/led-title.png" alt="" className="h-[6vh] w-auto opacity-95" />
-      </div>
-
-      {/* 前景は上72%に収める(LEDの前に人が立つため)。 */}
-      <div className="absolute inset-x-0 top-0 flex h-[72vh]">
-        {rows.map((c, i) => (
-          <ChampionColumn key={c.division} c={c} src={srcs[i]} ready={ready} />
-        ))}
-      </div>
+      {rows.map((c, i) => (
+        <ChampionPosterCard key={c.division} c={c} src={srcs[i]} index={i} shown={shown} />
+      ))}
     </div>
   );
 }
 
-function ChampionColumn({ c, src, ready }: { c: Champion; src: string | null; ready: boolean }) {
+function ChampionPosterCard({ c, src, index, shown }: { c: Champion; src: string | null; index: number; shown: boolean }) {
   const theme = divisionTheme(c.division);
+  const color = CARD_COLOR[c.division] ?? '#fb923c';
   const top = usePhotoTop(src);
-  // 頭頂をそろえる(VSと同じ)。写真ごとに頭の位置がばらつくため。
-  const shift = headAlignShift(top ?? null, { scale: CHAMP_PHOTO_SCALE, target: VS_HEAD_TARGET });
-  // 下のぼかし。写真の枠(10vh〜66vh)に対して 78% からぼけ始め、画面の72%あたりで消える。
-  // ⚠️ 写真の下端ちょうど(100%)で消えるようにすると、下端に細い線が残る(9/22 実画面で確認)。手前で消しきる。
-  const f = photoFadeStops(shift, CHAMP_PHOTO_SCALE, 0.78, 1.1);
-  const end = Math.min(f.end, 0.985);
-  const start = Math.min(f.start, end - 0.2);
-  const mask =
-    `linear-gradient(to bottom, #000 ${(start * 100).toFixed(2)}%, transparent ${(end * 100).toFixed(2)}%), ` +
-    'linear-gradient(to right, transparent 0%, #000 12%, #000 88%, transparent 100%)';
+  const shift = headAlignShift(top ?? null, { scale: CARD_PHOTO_SCALE, target: CARD_HEAD_TARGET });
+  const centerVw = [16.667, 50, 83.333][index] ?? 50;
+  if (!shown) return null;
   return (
-    <div className={`relative h-full min-w-0 flex-1 basis-1/3 ${ready ? 'bf6-champ-in' : 'opacity-0'}`} style={{ animationDelay: '150ms' }}>
-      <p className={`absolute inset-x-0 top-[6.5vh] text-center text-[1.6vw] font-black tracking-[0.35em] ${theme.text}`}>{c.label}部門</p>
-      {/* 写真は列より少し広く取り、隣と重なるぶんは左右のぼかしで溶かす */}
-      <div className="absolute -inset-x-[4%] top-[10vh] flex h-[56vh] justify-center">
-        {src && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={src}
-            alt=""
-            className="h-full w-auto max-w-none origin-top"
-            style={{
-              transform: `translateY(${(shift * 100).toFixed(2)}%) scale(${CHAMP_PHOTO_SCALE})`,
-              maskImage: mask,
-              WebkitMaskImage: mask,
-              maskComposite: 'intersect',
-              WebkitMaskComposite: 'source-in',
-            }}
+    <div
+      className="bf6-card-in absolute top-[9.6vh] h-[60.2vh] w-[28.125vw]"
+      style={{
+        left: `${centerVw - 14.0625}vw`,
+        perspective: '1400px',
+        ['--tilt' as string]: `${CARD_TILT[index] ?? 0}deg`,
+      }}
+    >
+      <div className="bf6-card-float relative h-full w-full" style={{ animationDelay: `${-index * 1.7}s` }}>
+        <div
+          className="relative h-full w-full overflow-hidden rounded-md"
+          style={{ boxShadow: '0 4vh 8vh rgba(0,0,0,0.75), 0 0 0 1px rgba(235,240,248,0.35)' }}
+        >
+          <div
+            className="absolute inset-0"
+            style={{ background: `radial-gradient(90% 45% at 50% 0%, ${color}33, transparent 70%), linear-gradient(165deg, #171a21 0%, #08090c 58%, #0e0f13 100%)` }}
           />
-        )}
+          <p className="absolute left-[1.15vw] top-[5.7vh] whitespace-nowrap text-[2.4vw] font-black italic leading-none tracking-[0.08em] text-transparent [-webkit-text-stroke:1.2px_rgba(252,211,77,0.75)] [writing-mode:vertical-rl]">
+            CHAMPION BF6
+          </p>
+          <p className="absolute right-[1.04vw] top-[8.3vh] whitespace-nowrap text-[0.68vw] font-bold tracking-[0.5em] text-[rgba(220,228,240,0.55)] [writing-mode:vertical-rl]">
+            BOOMER&apos;S FIGHT!!! VOL.6
+          </p>
+          {/* 写真。頭頂をそろえ、下と左右をぼかして溶かす */}
+          <div className="absolute inset-0 [mask-composite:intersect] [mask-image:linear-gradient(to_bottom,#000_0%,#000_58%,transparent_90%),linear-gradient(to_right,transparent_0,#000_8%,#000_92%,transparent_100%)] [-webkit-mask-composite:source-in] [-webkit-mask-image:linear-gradient(to_bottom,#000_0%,#000_58%,transparent_90%),linear-gradient(to_right,transparent_0,#000_8%,#000_92%,transparent_100%)]">
+            {src && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={src}
+                alt=""
+                className="absolute left-0 top-0 h-auto w-full origin-top"
+                style={{ transform: `translateY(${(shift * 100).toFixed(2)}%) scale(${CARD_PHOTO_SCALE})` }}
+              />
+            )}
+          </div>
+          <div className="absolute inset-[1.1vh] rounded-sm border border-[rgba(252,211,77,0.55)]" />
+          <div className="absolute inset-x-0 top-0 h-[0.46vh]" style={{ background: color }} />
+          <p className={`absolute inset-x-0 top-[2.4vh] whitespace-nowrap text-center text-[1.56vw] font-black tracking-[0.3em] ${theme.text}`}>
+            {c.label}部門
+          </p>
+          <p
+            className="bf6-name-in bf6-face bf6-chrome bf6-sheen absolute inset-x-0 top-[77.8%] break-words px-[0.6vw] text-center text-[5.2vw] font-black italic leading-none"
+            data-text={c.dancerName || '—'}
+          >
+            {c.dancerName || '—'}
+          </p>
+          <p className="bf6-name-in absolute inset-x-0 top-[92%] text-center text-[1.15vw] font-black tracking-[0.5em] text-amber-300">
+            WINNER
+          </p>
+          {/* 光の筋。ずっと横切り続ける */}
+          <div className="bf6-card-sweep pointer-events-none absolute -top-[30%] h-[160%] w-[11.5vw] mix-blend-screen" style={{ animationDelay: `${0.35 * index}s` }} />
+        </div>
       </div>
-      <p
-        className="bf6-face bf6-chrome bf6-sheen absolute inset-x-0 bottom-[4.2vh] break-words px-[0.6vw] text-center text-[5.2vw] font-black italic leading-[0.95]"
-        data-text={c.dancerName || '—'}
-      >
-        {c.dancerName || '—'}
-      </p>
-      <p className="absolute inset-x-0 bottom-[0.8vh] text-center text-[1.5vw] font-black tracking-[0.45em] text-amber-300">WINNER</p>
     </div>
   );
 }

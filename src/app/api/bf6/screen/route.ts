@@ -2,6 +2,7 @@
 // 当日その場に置く機器にログインさせるのは現実的でなく、返すのは
 // 「いま何を映すか」と出場者のダンサーネームだけで、個人情報は含まない。
 import { NextResponse } from 'next/server';
+import { needsChampions } from '@/lib/bf6ScreenAnim';
 import { getBf6ScreenState, listBf6ScreenMatches, listBf6SlotNames, listBf6Champions, findNextMatch } from '@/lib/bf6ScreenDb';
 
 export const dynamic = 'force-dynamic';
@@ -16,8 +17,8 @@ export async function GET() {
   ]);
   // 開始前はVSを出さない(最初のVSを出す操作で試合が作られてから映す)
   const next = pending ? null : findNextMatch(state.division, matches);
-  // 優勝者は発表のときだけ取りに行く。毎秒のポーリングを重くしないため
-  const champions = state.mode === 'champions' ? await listBf6Champions() : null;
+  // 優勝者は発表(とその前のドラムロール)のときだけ取りに行く。毎秒のポーリングを重くしないため
+  const champions = needsChampions(state.mode) ? await listBf6Champions() : null;
 
   return NextResponse.json(
     {

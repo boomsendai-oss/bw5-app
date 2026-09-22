@@ -90,7 +90,16 @@ export function sceneKey(s: {
 }): string {
   if (s.mode === 'vs') return `vs|${s.division}|${s.round ?? '-'}|${s.matchNo ?? '-'}`;
   if (s.mode === 'bracket') return `bracket|${s.division}`;
-  // 優勝者発表は3部門を同時に映すので、部門が何であっても1つの場面
-  if (s.mode === 'champions') return 'champions';
+  // 優勝者発表は3部門を同時に映すので、部門が何であっても1つの場面。
+  // ドラムロール → 発表 も同じ場面にする(暗転を挟むと「ジャーン」の瞬間に遅れる・TARO 2026-09-22)
+  if (s.mode === 'champions' || s.mode === 'drumroll') return 'champions';
   return 'logo';
+}
+
+/**
+ * 画面に優勝者のデータを渡すか。発表の前のドラムロール中から渡し、写真を先に読み込ませる
+ * (発表の瞬間に写真だけ遅れて出るのを防ぐ)。名前はドラムロール画面には描かない。
+ */
+export function needsChampions(mode: string): boolean {
+  return mode === 'champions' || mode === 'drumroll';
 }

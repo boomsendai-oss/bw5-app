@@ -180,3 +180,26 @@ describe('場面キー', () => {
     );
   });
 });
+
+// ── 優勝者発表: ドラムロール → 発表(TARO 2026-09-22) ──
+describe('ドラムロール画面', () => {
+  const s = (mode: string) => ({ mode, division: 'kids', round: null, matchNo: null, rev: 0 });
+
+  it('ドラムロールから発表へは暗転させない(ジャーンの瞬間に即座に出すため同じ場面)', async () => {
+    const { sceneKey } = await import('../bf6ScreenAnim');
+    expect(sceneKey(s('drumroll'))).toBe(sceneKey(s('champions')));
+  });
+
+  it('ロゴからドラムロールへは場面が変わる', async () => {
+    const { sceneKey } = await import('../bf6ScreenAnim');
+    expect(sceneKey(s('drumroll'))).not.toBe(sceneKey(s('logo')));
+  });
+
+  it('ドラムロール中も優勝者のデータを渡す(写真を先に読み込んで、発表の瞬間に遅れなく出すため)', async () => {
+    const { needsChampions } = await import('../bf6ScreenAnim');
+    expect(needsChampions('drumroll')).toBe(true);
+    expect(needsChampions('champions')).toBe(true);
+    expect(needsChampions('vs')).toBe(false);
+    expect(needsChampions('logo')).toBe(false);
+  });
+});

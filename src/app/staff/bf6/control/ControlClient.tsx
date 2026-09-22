@@ -30,7 +30,7 @@ const MODES: { key: ScreenMode; label: string }[] = [
 // 優勝者発表はこの3つと並べない。本番中に間違って押すとネタバレになるため
 // 下の別枠に置き、表示名だけここで引けるようにする。
 const MODE_LABEL: Record<string, string> = {
-  logo: 'ロゴ', bracket: 'トーナメント表', vs: 'VS', champions: '優勝者発表',
+  logo: 'ロゴ', bracket: 'トーナメント表', vs: 'VS', drumroll: 'ドラムロール', champions: '優勝者発表',
 };
 const ROUND_LABEL: Record<string, string> = { r16: 'ベスト16', qf: 'ベスト8', sf: '準決勝', f: '決勝' };
 
@@ -135,17 +135,26 @@ export function ControlClient({
       <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
         <p className="text-xs font-black tracking-widest text-amber-800">最後の結果発表</p>
         <p className="mt-1 text-xs leading-relaxed text-amber-900">
-          決勝の勝者を入れてもLEDには出ません。
-          3部門とも入れ終わってから、表彰でこのボタンを押してください。
+          決勝の勝者を入れてもLEDには出ません。3部門とも入れ終わってから、表彰で
+          ①ドラムロールの間に「TODAY&apos;S CHAMPION IS…」を出し、②「ジャーン」で発表を押します(TARO 2026-09-22)。
         </p>
         <button
           disabled={pending}
-          onClick={() => run(() => controlSetMode('champions'))}
+          onClick={() => run(() => controlSetMode('drumroll'))}
           className={`mt-3 w-full rounded-xl py-4 text-base font-black disabled:opacity-50 ${
+            s.mode === 'drumroll' ? 'bg-amber-600 text-white' : 'bg-white text-amber-800 ring-2 ring-amber-500 active:scale-95'
+          }`}
+        >
+          {s.mode === 'drumroll' ? '① ドラムロール画面を映しています' : '① ドラムロール画面を出す'}
+        </button>
+        <button
+          disabled={pending}
+          onClick={() => run(() => controlSetMode('champions'))}
+          className={`mt-2 w-full rounded-xl py-5 text-lg font-black disabled:opacity-50 ${
             s.mode === 'champions' ? 'bg-amber-600 text-white' : 'bg-amber-500 text-white active:scale-95'
           }`}
         >
-          {s.mode === 'champions' ? '優勝者を映しています' : '優勝者を発表する(3部門)'}
+          {s.mode === 'champions' ? '優勝者を映しています' : '② 優勝者を発表する(3部門)'}
         </button>
       </div>
 
