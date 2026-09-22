@@ -203,3 +203,19 @@ describe('ドラムロール画面', () => {
     expect(needsChampions('logo')).toBe(false);
   });
 });
+
+// ── 記念撮影用: 優勝者1人のカードを大きく出す(TARO 2026-09-22) ──
+describe('記念撮影用の1人カード', () => {
+  const s = (mode: string, division: string) => ({ mode, division, round: null, matchNo: null, rev: 0 });
+
+  it('部門ごとに別の場面(切り替えたら暗転して入れ替わる)', async () => {
+    const { sceneKey } = await import('../bf6ScreenAnim');
+    expect(sceneKey(s('champion', 'beginner'))).not.toBe(sceneKey(s('champion', 'kids')));
+    expect(sceneKey(s('champion', 'kids'))).not.toBe(sceneKey(s('champions', 'kids')));
+  });
+
+  it('優勝者のデータを渡す', async () => {
+    const { needsChampions } = await import('../bf6ScreenAnim');
+    expect(needsChampions('champion')).toBe(true);
+  });
+});

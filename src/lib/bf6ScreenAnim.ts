@@ -93,6 +93,8 @@ export function sceneKey(s: {
   // 優勝者発表は3部門を同時に映すので、部門が何であっても1つの場面。
   // ドラムロール → 発表 も同じ場面にする(暗転を挟むと「ジャーン」の瞬間に遅れる・TARO 2026-09-22)
   if (s.mode === 'champions' || s.mode === 'drumroll') return 'champions';
+  // 記念撮影用の1人カード。部門を切り替えたら入れ替わる
+  if (s.mode === 'champion') return `champion|${s.division}`;
   return 'logo';
 }
 
@@ -101,5 +103,5 @@ export function sceneKey(s: {
  * (発表の瞬間に写真だけ遅れて出るのを防ぐ)。名前はドラムロール画面には描かない。
  */
 export function needsChampions(mode: string): boolean {
-  return mode === 'champions' || mode === 'drumroll';
+  return mode === 'champions' || mode === 'drumroll' || mode === 'champion';
 }

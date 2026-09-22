@@ -22,7 +22,7 @@ type Champion = {
   dancerName: string; hasPhoto: boolean; photoAt: string | null;
 };
 type Payload = {
-  state: { mode: 'logo' | 'bracket' | 'vs' | 'drumroll' | 'champions'; division: string; round: string | null; matchNo: number | null; rev: number };
+  state: { mode: 'logo' | 'bracket' | 'vs' | 'drumroll' | 'champions' | 'champion'; division: string; round: string | null; matchNo: number | null; rev: number };
   matches: Match[];
   slots: Record<string, Slot>;
   nextMatch: Match | null;
@@ -186,6 +186,15 @@ export function ScreenClient() {
   if (state.mode === 'logo') return <Stage dark={dark}><Logo /></Stage>;
 
   // 優勝者発表。ドラムロール → 発表(カード形式・3部門同時)(TARO 2026-09-22)
+  // 記念撮影用。優勝者1人のカードを大きく(部門は操作卓で選ぶ)
+  if (state.mode === 'champion') {
+    return (
+      <Stage dark={dark}>
+        <ChampionSolo c={(shown.champions ?? []).find((c) => c.division === state.division)} />
+      </Stage>
+    );
+  }
+
   if (state.mode === 'champions' || state.mode === 'drumroll') {
     return (
       <Stage dark={dark}>
@@ -881,9 +890,8 @@ function ChampionsScene({ rows, reveal }: { rows: Champion[]; reveal: boolean })
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/bf6/led-bg.png" alt="" className="absolute inset-0 h-full w-full object-cover opacity-55" />
         <div className="absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_36%,rgba(252,211,77,0.10),transparent_70%),radial-gradient(120%_90%_at_50%_40%,transparent_30%,rgba(5,7,12,0.92)_100%)]" />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/bf6/led-title.png" alt="" className="absolute left-1/2 top-[6.5vh] h-[9.3vh] w-auto -translate-x-1/2" />
-        <div className="absolute inset-x-0 top-[20vh] flex justify-center">
+        {/* ⚠️ 上にイベントロゴを置かない。TODAY'S のロゴとぶつかる(TARO 2026-09-22) */}
+        <div className="absolute inset-x-0 top-[16vh] flex justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/bf6/todays-title.png" alt="TODAY'S CHAMPION IS…" className="bf6-drum w-[70vw] max-w-none" />
         </div>
@@ -898,29 +906,53 @@ function ChampionsScene({ rows, reveal }: { rows: Champion[]; reveal: boolean })
       )}
 
       {rows.map((c, i) => (
-        <ChampionPosterCard key={c.division} c={c} src={srcs[i]} index={i} shown={shown} />
+        <ChampionPosterCard
+          key={c.division}
+          c={c}
+          src={srcs[i]}
+          shown={shown}
+          centerVw={[16.667, 50, 83.333][i] ?? 50}
+          tilt={CARD_TILT[i] ?? 0}
+          floatDelay={-i * 1.7}
+          sweepDelay={0.35 * i}
+        />
       ))}
     </div>
   );
 }
 
-function ChampionPosterCard({ c, src, index, shown }: { c: Champion; src: string | null; index: number; shown: boolean }) {
+/**
+ * 優勝者1人分のカード。3部門同時の発表と、記念撮影用の1人表示(ChampionSolo)で共用する。
+ * k は大きさの倍率(1 = 3部門並び)。⚠️ 大きくするときに transform: scale を使わないこと
+ * (LEDで文字がにじむ)。寸法そのものに k を掛ける。
+ */
+function ChampionPosterCard({
+  c, src, shown, centerVw, topVh = 9.6, tilt = 0, k = 1, floatDelay = 0, sweepDelay = 0,
+}: {
+  c: Champion; src: string | null; shown: boolean; centerVw: number;
+  topVh?: number; tilt?: number; k?: number; floatDelay?: number; sweepDelay?: number;
+}) {
   const theme = divisionTheme(c.division);
   const color = CARD_COLOR[c.division] ?? '#fb923c';
   const top = usePhotoTop(src);
   const shift = headAlignShift(top ?? null, { scale: CARD_PHOTO_SCALE, target: CARD_HEAD_TARGET });
-  const centerVw = [16.667, 50, 83.333][index] ?? 50;
   if (!shown) return null;
+  const w = 28.125 * k;
+  const v = (n: number) => `${(n * k).toFixed(3)}vw`;
+  const vh = (n: number) => `${(n * k).toFixed(3)}vh`;
   return (
     <div
-      className="bf6-card-in absolute top-[9.6vh] h-[60.2vh] w-[28.125vw]"
+      className="bf6-card-in absolute"
       style={{
-        left: `${centerVw - 14.0625}vw`,
+        left: `${centerVw - w / 2}vw`,
+        top: `${topVh}vh`,
+        width: `${w}vw`,
+        height: vh(60.2),
         perspective: '1400px',
-        ['--tilt' as string]: `${CARD_TILT[index] ?? 0}deg`,
+        ['--tilt' as string]: `${tilt}deg`,
       }}
     >
-      <div className="bf6-card-float relative h-full w-full" style={{ animationDelay: `${-index * 1.7}s` }}>
+      <div className="bf6-card-float relative h-full w-full" style={{ animationDelay: `${floatDelay}s` }}>
         <div
           className="relative h-full w-full overflow-hidden rounded-md"
           style={{ boxShadow: '0 4vh 8vh rgba(0,0,0,0.75), 0 0 0 1px rgba(235,240,248,0.35)' }}
@@ -929,10 +961,16 @@ function ChampionPosterCard({ c, src, index, shown }: { c: Champion; src: string
             className="absolute inset-0"
             style={{ background: `radial-gradient(90% 45% at 50% 0%, ${color}33, transparent 70%), linear-gradient(165deg, #171a21 0%, #08090c 58%, #0e0f13 100%)` }}
           />
-          <p className="absolute left-[1.15vw] top-[5.7vh] whitespace-nowrap text-[2.4vw] font-black italic leading-none tracking-[0.08em] text-transparent [-webkit-text-stroke:1.2px_rgba(252,211,77,0.75)] [writing-mode:vertical-rl]">
+          <p
+            className="absolute whitespace-nowrap font-black italic leading-none tracking-[0.08em] text-transparent [-webkit-text-stroke:1.2px_rgba(252,211,77,0.75)] [writing-mode:vertical-rl]"
+            style={{ left: v(1.15), top: vh(5.7), fontSize: v(2.4) }}
+          >
             CHAMPION BF6
           </p>
-          <p className="absolute right-[1.04vw] top-[8.3vh] whitespace-nowrap text-[0.68vw] font-bold tracking-[0.5em] text-[rgba(220,228,240,0.55)] [writing-mode:vertical-rl]">
+          <p
+            className="absolute whitespace-nowrap font-bold tracking-[0.5em] text-[rgba(220,228,240,0.55)] [writing-mode:vertical-rl]"
+            style={{ right: v(1.04), top: vh(8.3), fontSize: v(0.68) }}
+          >
             BOOMER&apos;S FIGHT!!! VOL.6
           </p>
           {/* 写真。頭頂をそろえ、下と左右をぼかして溶かす */}
@@ -947,24 +985,59 @@ function ChampionPosterCard({ c, src, index, shown }: { c: Champion; src: string
               />
             )}
           </div>
-          <div className="absolute inset-[1.1vh] rounded-sm border border-[rgba(252,211,77,0.55)]" />
-          <div className="absolute inset-x-0 top-0 h-[0.46vh]" style={{ background: color }} />
-          <p className={`absolute inset-x-0 top-[2.4vh] whitespace-nowrap text-center text-[1.56vw] font-black tracking-[0.3em] ${theme.text}`}>
+          <div className="absolute rounded-sm border border-[rgba(252,211,77,0.55)]" style={{ inset: vh(1.1) }} />
+          <div className="absolute inset-x-0 top-0" style={{ height: vh(0.46), background: color }} />
+          <p
+            className={`absolute inset-x-0 whitespace-nowrap text-center font-black tracking-[0.3em] ${theme.text}`}
+            style={{ top: vh(2.4), fontSize: v(1.56) }}
+          >
             {c.label}部門
           </p>
           <p
-            className="bf6-name-in bf6-face bf6-chrome bf6-sheen absolute inset-x-0 top-[77.8%] break-words px-[0.6vw] text-center text-[5.2vw] font-black italic leading-none"
+            className="bf6-name-in bf6-face bf6-chrome bf6-sheen absolute inset-x-0 top-[77.8%] break-words text-center font-black italic leading-none"
+            style={{ fontSize: v(5.2), paddingLeft: v(0.6), paddingRight: v(0.6) }}
             data-text={c.dancerName || '—'}
           >
             {c.dancerName || '—'}
           </p>
-          <p className="bf6-name-in absolute inset-x-0 top-[92%] text-center text-[1.15vw] font-black tracking-[0.5em] text-amber-300">
+          <p
+            className="bf6-name-in absolute inset-x-0 top-[92%] text-center font-black tracking-[0.5em] text-amber-300"
+            style={{ fontSize: v(1.15) }}
+          >
             WINNER
           </p>
           {/* 光の筋。ずっと横切り続ける */}
-          <div className="bf6-card-sweep pointer-events-none absolute -top-[30%] h-[160%] w-[11.5vw] mix-blend-screen" style={{ animationDelay: `${0.35 * index}s` }} />
+          <div
+            className="bf6-card-sweep pointer-events-none absolute -top-[30%] h-[160%] mix-blend-screen"
+            style={{ width: v(11.5), animationDelay: `${sweepDelay}s` }}
+          />
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 記念撮影用。優勝者1人のカードを真ん中に大きく出す(TARO 2026-09-22
+ * 「一人ずつ写真撮るんで、このカードを後ろにバーンと表示できるように」)。
+ * 前に本人が立って写真を撮るので、背景としての見栄えを優先して大きくする。
+ */
+function ChampionSolo({ c }: { c: Champion | undefined }) {
+  const src = c && c.hasPhoto && c.slotNo !== null ? photoUrl(c.slotNo, c.division, c.photoAt) : null;
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-[#020203]">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/bf6/led-loop-poster.jpg"
+        alt=""
+        className="absolute inset-0 h-full w-full scale-[1.15] object-cover opacity-55 [filter:blur(34px)_grayscale(.5)_brightness(.5)]"
+      />
+      <div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_42%,rgba(252,211,77,0.10),transparent_70%),linear-gradient(180deg,rgba(0,0,0,0.2),rgba(0,0,0,0.65))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_40%,transparent_35%,rgba(3,3,6,0.9)_100%)]" />
+      <p className="bf6-hud absolute left-[2.5vw] top-[2.4vh] text-[1.8vw] font-black tracking-[0.4em] text-amber-300">CHAMPION</p>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/bf6/led-title.png" alt="" className="bf6-hud absolute right-[2.5vw] top-[1.7vh] h-[5.7vh] w-auto" />
+      {c && <ChampionPosterCard c={c} src={src} shown centerVw={50} topVh={4} tilt={0} k={1.4} />}
     </div>
   );
 }

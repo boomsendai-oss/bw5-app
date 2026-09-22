@@ -30,7 +30,7 @@ const MODES: { key: ScreenMode; label: string }[] = [
 // 優勝者発表はこの3つと並べない。本番中に間違って押すとネタバレになるため
 // 下の別枠に置き、表示名だけここで引けるようにする。
 const MODE_LABEL: Record<string, string> = {
-  logo: 'ロゴ', bracket: 'トーナメント表', vs: 'VS', drumroll: 'ドラムロール', champions: '優勝者発表',
+  logo: 'ロゴ', bracket: 'トーナメント表', vs: 'VS', drumroll: 'ドラムロール', champions: '優勝者発表', champion: '記念撮影(1人)',
 };
 const ROUND_LABEL: Record<string, string> = { r16: 'ベスト16', qf: 'ベスト8', sf: '準決勝', f: '決勝' };
 
@@ -156,6 +156,22 @@ export function ControlClient({
         >
           {s.mode === 'champions' ? '優勝者を映しています' : '② 優勝者を発表する(3部門)'}
         </button>
+        {/* 記念撮影用(TARO 2026-09-22)。優勝者を1人ずつ撮るとき、その人のカードを後ろに大きく出す */}
+        <p className="mt-4 text-xs font-black tracking-widest text-amber-800">記念撮影(1人ずつ・カードを大きく)</p>
+        <div className="mt-2 flex gap-2">
+          {DIVS.map((d) => (
+            <button
+              key={d.key}
+              disabled={pending}
+              onClick={() => run(() => controlSetMode('champion', d.key))}
+              className={`flex-1 rounded-xl py-3 text-sm font-black disabled:opacity-50 ${
+                s.mode === 'champion' && s.division === d.key ? 'bg-amber-600 text-white' : 'bg-white text-amber-800 ring-1 ring-amber-400'
+              }`}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* 通常運転: 次の試合 → VS表示 → 勝者タップ */}
