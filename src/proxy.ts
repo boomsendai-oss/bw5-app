@@ -32,19 +32,13 @@ export function proxy(req: NextRequest) {
 
   if (pathname === '/staff/events/login' || pathname === '/api/staff/events/login') return NextResponse.next();
 
-  // BF6当日オペ(クルー)は /staff とは別系統のPINで入れる。
-  // 当日だけ手伝うスタッフに管理パスワードを渡すと会員名簿・収支まで見えてしまうため。
-  // ここは cookie の存在確認だけ(edgeではDBに触れない)。実際の検証は layout 側の
-  // isCrewAuthorized() が行う。
-  if (pathname.startsWith('/bf6/crew')) {
-    if (pathname === '/bf6/crew/login') return NextResponse.next();
-    if (req.cookies.get('bf6_crew_auth')?.value) return NextResponse.next();
-    if (req.cookies.get('staff_events_auth')?.value) return NextResponse.next();
-    const url = req.nextUrl.clone();
-    url.pathname = '/bf6/crew/login';
-    url.searchParams.set('next', pathname);
-    return NextResponse.redirect(url);
-  }
+  // ⚠️ 公開(認証なし)。BF6当日オペ(クルー)画面 /bf6/crew は PIN を外した。
+  // 理由: TARO 2026-09-22「当日ここで変な時間を取られるより、なくした方がいい」。
+  //   ClaudeはLED操作卓・集金が誰でも触れる危険を伝えたうえで、TAROが完全になくすと決定。
+  //   (URL /bf6/crew は推測できる。イベント後に戻すなら、この分岐を元の PIN 判定に戻し、
+  //    src/lib/bf6CrewDb.ts の isCrewAuthorized も戻すこと)
+  // ⚠️ ここで return しないと、下の /staff 用の判定に落ちて管理ログインへ飛ばされる。
+  if (pathname.startsWith('/bf6/crew')) return NextResponse.next();
 
   const cookie = req.cookies.get('staff_events_auth')?.value;
   if (cookie) return NextResponse.next();

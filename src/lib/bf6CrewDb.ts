@@ -57,9 +57,12 @@ export async function deleteCrewSession(token: string): Promise<void> {
  * (TAROは普段の管理ログインのままクルー画面も開けたほうが取り回しがよい)。
  */
 export async function isCrewAuthorized(): Promise<boolean> {
-  const { cookies } = await import('next/headers');
-  const store = await cookies();
-  if (await verifyCrewSession(store.get(CREW_COOKIE)?.value ?? '')) return true;
-  const { isAuthorizedServer } = await import('./eventAuth');
-  return isAuthorizedServer();
+  // ⚠️ BF6本番(2026-09-26)向けに PIN を外した(TARO 2026-09-22 の判断・理由は src/proxy.ts)。
+  //    戻すときは下のコメントアウトを元に戻す。
+  return true;
+  // const { cookies } = await import('next/headers');
+  // const store = await cookies();
+  // if (await verifyCrewSession(store.get(CREW_COOKIE)?.value ?? '')) return true;
+  // const { isAuthorizedServer } = await import('./eventAuth');
+  // return isAuthorizedServer();
 }
