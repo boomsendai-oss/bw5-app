@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { heartbeatBf6Stream, loginBf6Stream } from '../actions';
 import { Bf6Card, Bf6Field, Bf6Hero, Bf6Shell, btnPrimaryCls, inputCls } from '../../ui';
+import { streamFullscreenStyle } from '@/lib/bf6StreamFullscreen';
 
 const HEARTBEAT_MS = 20_000;
 
@@ -29,6 +30,56 @@ export default function Bf6StreamWatchPage() {
   const [iframeSrc, setIframeSrc] = useState('');
   const [kicked, setKicked] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 横向き全画面(TARO 2026-09-22「ワンボタンで横の全画面にできるボタンがあった方がいい」)
+  const [full, setFull] = useState(false);
+  const [portrait, setPortrait] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: portrait)');
+    const update = () => setPortrait(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
+  // Androidの戻るボタン等で本物の全画面が解除されたら、こちらの全画面も閉じる
+  useEffect(() => {
+    const onChange = () => {
+      if (!document.fullscreenElement) setFull(false);
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!full) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [full]);
+
+  async function enterFull() {
+    setFull(true);
+    // 使える端末(Android等)では本物の全画面+横向き固定も使う。iPhoneは失敗するので黙って枠を回す方だけ
+    try {
+      await document.documentElement.requestFullscreen?.();
+    } catch { /* iPhone Safari */ }
+    try {
+      await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape');
+    } catch { /* 未対応 */ }
+  }
+
+  async function exitFull() {
+    setFull(false);
+    try {
+      screen.orientation?.unlock?.();
+    } catch { /* 未対応 */ }
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+    } catch { /* 未対応 */ }
+  }
 
   // 前回入力の復元(リロード対応)。ハイドレーション後に非同期で反映
   useEffect(() => {
@@ -97,14 +148,33 @@ export default function Bf6StreamWatchPage() {
                 故障ではありません。そのままお待ちいただくか、開始時刻に再度アクセスしてください。
               </p>
             </div>
-            <div className="overflow-hidden rounded-2xl bg-black ring-1 ring-neutral-700" style={{ aspectRatio: '16 / 9' }}>
+            {/* ⚠️ 全画面の出し入れで iframe を作り直さないこと(再生が最初からやり直しになる)。枠の見た目だけ切り替える */}
+            <div
+              className={full ? '' : 'overflow-hidden rounded-2xl bg-black ring-1 ring-neutral-700'}
+              style={full ? streamFullscreenStyle(portrait) : { aspectRatio: '16 / 9' }}
+            >
               <iframe
                 src={iframeSrc}
                 className="h-full w-full"
                 allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen"
                 allowFullScreen
               />
+              {full && (
+                <button
+                  onClick={exitFull}
+                  aria-label="全画面をやめる"
+                  className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1.5 text-sm font-bold text-white ring-1 ring-white/30"
+                >
+                  ✕ 閉じる
+                </button>
+              )}
             </div>
+            <button
+              onClick={enterFull}
+              className={`mt-3 w-full rounded-2xl py-3 text-base font-black active:scale-[0.99] ${btnPrimaryCls}`}
+            >
+              横向きの全画面で見る
+            </button>
             <p className="mt-3 text-center text-xs text-neutral-400">
               映像が始まらない場合は再生ボタンを押してください。配信開始前は待機画面が表示されます
             </p>
