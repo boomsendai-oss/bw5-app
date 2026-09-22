@@ -5,9 +5,52 @@
 // 背景除去はこの端末のブラウザ内で完結させる(会場に別機材を置かず、
 // 機器間の通信を障害点にしないため)。モデルは自前で配信しているので
 // 外部CDNにも依存しない。
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { PHOTO_TARGET_HEIGHT, fillEdgeColors, fitBustFrame, refineMask } from '@/lib/bf6Photo';
-import { guideRect, type Rect } from '@/lib/bf6PhotoAlign';
+import { guideRect } from '@/lib/bf6PhotoAlign';
+import {
+  containRect,
+  effectiveTurn,
+  flipTurn,
+  motionSign,
+  overlayRotationDeg,
+  physicalSize,
+  portraitLockCrop,
+  turnFromGravity,
+  uprightTransform,
+  type TurnDir,
+} from '@/lib/bf6PhotoRotate';
+
+/** 傾きの符号直し(「↻」)を端末に覚えておくキー。機種ごとに一度直せば済むように */
+const SIGN_FIX_KEY = 'bf6PhotoTurnSignFix';
+
+/** iPhone/iPad か(傾きの符号が逆・許可の確認が要る)。iPadOSはMacのふりをするので指の数でも見る */
+function isIOSLike(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+}
+
+/**
+ * iOS 13以降は傾きセンサーの許可が要る。⚠️ 許可の確認はタップの中でしか出せないので、
+ * 「写真を撮る」を押した瞬間に呼ぶ(awaitせずに。カメラの起動を待たせない)。Androidは不要。
+ */
+function requestMotionPermission(onGranted: () => void) {
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any -- iOSだけにある関数で型に無い */
+  const DME = typeof window !== 'undefined' ? (window as any).DeviceMotionEvent : undefined;
+  if (!DME || typeof DME.requestPermission !== 'function') return;
+  // ⚠️ then の中などに遅らせるとタップの扱いにならず、確認が出ずに拒否される。ここで同期的に呼ぶ
+  try {
+    (DME.requestPermission() as Promise<string>)
+      .then((s) => {
+        if (s === 'granted') onGranted();
+      })
+      .catch(() => {
+        // 拒否・失敗しても撮れる(既定の向き+「↻」で直す)
+      });
+  } catch {
+    // 同上
+  }
+}
 
 type Phase = 'idle' | 'loading' | 'live' | 'working' | 'preview' | 'saving';
 
@@ -54,14 +97,16 @@ export default function PhotoCapture({
   const [preview, setPreview] = useState<string>('');
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  // 撮影ガイド(点線の人型)を重ねる位置。保存される範囲(fitBustFrame)と必ず一致させる
+  // 画面全体(映像と、上に重ねる層の土台)。大きさを測ってガイドの位置を決める
   const stageRef = useRef<HTMLDivElement>(null);
-  const [guide, setGuide] = useState<Rect | null>(null);
+  const [stage, setStage] = useState<{ width: number; height: number } | null>(null);
+  const [videoSize, setVideoSize] = useState<{ width: number; height: number } | null>(null);
   // ⚠️ 写真撮影の担当はクルー画面(スマホ)。受付のiPadにも同じ部品が載っている。
   //    文言に端末名(iPad/スマホ)を書かないこと。どちらからも開かれる。
-  // 画面が縦向きか。縦向きでは撮らせない(TARO 2026-09-22「横でしか撮れないようにしちゃったらいい」)。
-  // 保存する写真は横長(1.2:1)なので、縦持ちだと保存範囲が画面の上の方に小さく収まり、人物が小さく映る。
-  // 文字で「横にして」と言う代わりに、横倒しの人型を先に見せて自然に横へ回してもらう。
+  // 画面が縦向きか。縦向きのときは「仮想の横画面」で撮る(TARO 2026-09-23「回転ロックのまま
+  // 縦持ちでも、横向きのカメラ画面が出るようにする」)。回転ロックONで横に倒すと画面は縦のままなので、
+  // 映像はそのまま・文字とボタンとガイドだけを90°回して、横持ちした人から正しい向きに見せる。
+  // (以前は縦向きだと黒い画面で撮影を止めていたが、回転ロックの人には「真っ黒に見える」だけだった)
   const [screenPortrait, setScreenPortrait] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(orientation: portrait)');
@@ -70,6 +115,54 @@ export default function PhotoCapture({
     mq.addEventListener('change', update);
     return () => mq.removeEventListener('change', update);
   }, []);
+
+  // 横持ちの向き(どちらに倒したか)。傾きセンサー → 取れなければ手動(「↻」)→ 既定
+  const [gravityTurn, setGravityTurn] = useState<TurnDir | null>(null);
+  const [manualTurn, setManualTurn] = useState<TurnDir | null>(null);
+  const [signFix, setSignFix] = useState(false);
+  // iOSで傾きの許可が下りたら、受け取り直す(許可前に付けた受け手に届かない場合に備える)
+  const [motionEpoch, setMotionEpoch] = useState(0);
+  useEffect(() => {
+    try {
+      setSignFix(window.localStorage.getItem(SIGN_FIX_KEY) === '1');
+    } catch {
+      // プライベートモード等で読めなくても、既定のまま撮れる
+    }
+  }, []);
+  useEffect(() => {
+    if (!open) return;
+    const sign = motionSign(isIOSLike());
+    let last = 0;
+    const onMotion = (e: DeviceMotionEvent) => {
+      // 1秒に60回ほど来るので間引く。向きの判定には十分
+      const now = e.timeStamp;
+      if (now - last < 150) return;
+      last = now;
+      const g = e.accelerationIncludingGravity;
+      if (!g) return;
+      setGravityTurn((prev) => turnFromGravity(prev, { x: g.x, y: g.y }, sign));
+    };
+    window.addEventListener('devicemotion', onMotion);
+    return () => window.removeEventListener('devicemotion', onMotion);
+  }, [open, motionEpoch]);
+  const turn = effectiveTurn({ gravity: gravityTurn, signFix, manual: manualTurn });
+  // 縦画面 = 仮想の横画面で撮る。横画面なら回さない(今までどおり)
+  const virtualTurn: TurnDir | null = screenPortrait ? turn : null;
+
+  /** 「↻ 上下が逆のとき」。傾きが取れている機種では符号直しとして覚え、取れない機種では手動の向きを変える */
+  const flipDirection = () => {
+    if (gravityTurn) {
+      const next = !signFix;
+      setSignFix(next);
+      try {
+        window.localStorage.setItem(SIGN_FIX_KEY, next ? '1' : '0');
+      } catch {
+        // 覚えられなくても、この場では切り替わる
+      }
+    } else {
+      setManualTurn(flipTurn(turn));
+    }
+  };
   const streamRef = useRef<MediaStream | null>(null);
   const segRef = useRef<Segmenter>(null);
   const blobRef = useRef<Blob | null>(null);
@@ -83,31 +176,54 @@ export default function PhotoCapture({
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
-  // 映像の表示位置と大きさが決まったら、保存範囲を画面の座標に写してガイドを置く。
-  // カメラの向き(縦長/横長)や画面の回転で変わるので、そのたびに測り直す。
+  // 画面と映像の大きさを測る。カメラの向き(縦長/横長)や画面の回転で変わるので、そのたびに測り直す。
   useEffect(() => {
     if (!open) return;
     const v = videoRef.current;
-    const stage = stageRef.current;
-    if (!v || !stage) return;
+    const el = stageRef.current;
+    if (!v || !el) return;
     const update = () => {
-      const vb = v.getBoundingClientRect();
-      const sb = stage.getBoundingClientRect();
-      const r = guideRect({ width: v.videoWidth, height: v.videoHeight }, { width: vb.width, height: vb.height });
-      setGuide(r ? { left: vb.left - sb.left + r.left, top: vb.top - sb.top + r.top, width: r.width, height: r.height } : null);
+      const sb = el.getBoundingClientRect();
+      setStage({ width: sb.width, height: sb.height });
+      setVideoSize(v.videoWidth > 0 ? { width: v.videoWidth, height: v.videoHeight } : null);
     };
     update();
     v.addEventListener('loadedmetadata', update);
     v.addEventListener('resize', update);
     const ro = new ResizeObserver(update);
-    ro.observe(v);
-    ro.observe(stage);
+    ro.observe(el);
     return () => {
       v.removeEventListener('loadedmetadata', update);
       v.removeEventListener('resize', update);
       ro.disconnect();
     };
   }, [open]);
+
+  // 上に重ねる層(名前・ボタン・ガイド)。横画面では画面そのもの、縦画面では
+  // 縦横を入れ替えた箱を画面の中心で90°回したもの(= 横持ちした人から見た横画面)。
+  // ⚠️ 回転は style で書く。Tailwind v4 の rotate/translate クラスは transform と二重に掛かることがある
+  const layerSize = stage && (virtualTurn ? { width: stage.height, height: stage.width } : stage);
+  const layerStyle: CSSProperties | undefined =
+    stage && virtualTurn
+      ? {
+          left: (stage.width - stage.height) / 2,
+          top: (stage.height - stage.width) / 2,
+          width: stage.height,
+          height: stage.width,
+          transform: `rotate(${overlayRotationDeg(virtualTurn)}deg)`,
+        }
+      : undefined;
+  // 撮影ガイド(点線の人型)を重ねる位置(層の座標)。保存される範囲(fitBustFrame)と必ず一致させる。
+  // 縦画面では、横持ちした人から見た映像の大きさ(縦横を入れ替えたもの)で計算する。
+  // 層の回転と保存時の切り出し(portraitLockCrop)の対応は bf6PhotoRotate のテストで確かめている。
+  const guide = (() => {
+    if (!videoSize || !layerSize) return null;
+    const src = virtualTurn ? physicalSize(videoSize) : videoSize;
+    const shown = containRect(src, layerSize);
+    if (!shown) return null;
+    const r = guideRect(src, { width: shown.width, height: shown.height });
+    return r ? { left: shown.left + r.left, top: shown.top + r.top, width: r.width, height: r.height } : null;
+  })();
 
   /** カメラを開く。前面/背面はどちらでも撮れるよう指定しすぎない。 */
   const start = useCallback(async () => {
@@ -206,15 +322,32 @@ export default function PhotoCapture({
     setError('');
     try {
       // 1. バストアップに切り出す
-      const frame = fitBustFrame({ width: video.videoWidth, height: video.videoHeight });
+      const vsize = { width: video.videoWidth, height: video.videoHeight };
       const h = PHOTO_TARGET_HEIGHT;
-      const w = Math.round((frame.width / frame.height) * h);
       const shot = document.createElement('canvas');
-      shot.width = w;
-      shot.height = h;
-      shot.getContext('2d')!.drawImage(
-        video, frame.x, frame.y, frame.width, frame.height, 0, 0, w, h
-      );
+      let w: number;
+      if (virtualTurn) {
+        // 縦画面(回転ロックで横持ち): 映像の中の縦長の範囲を切り出し、90°戻して横長の正しい向きにする。
+        // ⚠️ 切り抜き(MediaPipe)も元画像(JPEG)も、回し終えた正しい向きの画像に対して行う。
+        //    横倒しのまま渡すと、人物の認識が落ちる・Macの切り抜き係にも横倒しで届く。
+        const { frame, src } = portraitLockCrop(vsize, virtualTurn);
+        w = Math.round((frame.width / frame.height) * h);
+        shot.width = w;
+        shot.height = h;
+        const ctx = shot.getContext('2d')!;
+        const t = uprightTransform(virtualTurn, w, h);
+        ctx.translate(t.tx, t.ty);
+        ctx.rotate(t.angle);
+        ctx.drawImage(video, src.x, src.y, src.width, src.height, 0, 0, h, w);
+      } else {
+        const frame = fitBustFrame(vsize);
+        w = Math.round((frame.width / frame.height) * h);
+        shot.width = w;
+        shot.height = h;
+        shot.getContext('2d')!.drawImage(
+          video, frame.x, frame.y, frame.width, frame.height, 0, 0, w, h
+        );
+      }
 
       // 1'. 元画像をJPEGで保持(Macの切り抜き係が使う。端末内の切り抜きは仮)
       rawRef.current = await new Promise<Blob | null>((resolve) => shot.toBlob((b) => resolve(b), 'image/jpeg', 0.9));
@@ -270,7 +403,7 @@ export default function PhotoCapture({
       setError(e instanceof Error ? e.message : '切り抜きに失敗しました');
       setPhase('live');
     }
-  }, [loadSegmenter]);
+  }, [loadSegmenter, virtualTurn]);
 
   const save = useCallback(async () => {
     if (!blobRef.current) return;
@@ -303,7 +436,12 @@ export default function PhotoCapture({
   if (!open) {
     return (
       <button
-        onClick={() => { setOpen(true); start(); }}
+        onClick={() => {
+          // ⚠️ 傾きの許可(iOS)はこのタップの中で求める。後からでは確認が出せない
+          requestMotionPermission(() => setMotionEpoch((n) => n + 1));
+          setOpen(true);
+          start();
+        }}
         className={`rounded px-2 py-1 text-xs font-bold ${
           hasPhoto ? 'bg-emerald-100 text-emerald-700' : 'border border-sand-300 text-navy-700'
         }`}
@@ -313,26 +451,23 @@ export default function PhotoCapture({
     );
   }
 
-  // ⚠️ 横向きのときは、名前・閉じる・撮影ボタンを右側に縦に並べ、カメラ映像を画面の高さいっぱいに出す
-  //    (カメラアプリと同じ配置)。縦向きと同じ上下の配置のままだと、スマホ横向き(高さ390px)では
-  //    上の名前と下のボタン・説明文に高さを取られ、映像が縦向きより小さくなっていた(2026-09-19 実測)。
+  // 配置(TARO 2026-09-23「横向きの撮影画面はカメラ映像を画面全体・中央に。閉じるは右上、
+  // 撮影するは右下に、映像の上に重ねて置く」)。
+  // ⚠️ 以前は右に操作列(幅10rem)を置いて映像を左に寄せていたため、手を広げると
+  //    左がスマホの枠の外に出ていた。映像は画面いっぱい・中央にし、操作は上に重ねる。
+  //    撮影ボタンは右下の角(ガイドは横の中央にあるので、頭・あごの線にはかからない)。
+  // ⚠️ このアプリは body の文字色が白。ボタン・文字は色を必ず明示する(CLAUDE.md §11)
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black p-4 landscape:flex-row landscape:gap-3 landscape:p-3">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex items-center justify-between landscape:hidden">
-        <p className="text-base font-bold text-white">{dancerName}</p>
-        <button onClick={close} className="rounded border border-white/30 px-3 py-1.5 text-sm text-white">
-          閉じる
-        </button>
-      </div>
+    <div ref={stageRef} className="fixed inset-0 z-50 overflow-hidden bg-black text-white">
+      {/* 映像は画面に対して回さない(縦画面でも)。横持ちした人には、このままで正しい向きに見えている */}
+      <video
+        ref={videoRef}
+        playsInline
+        muted
+        className={`absolute inset-0 h-full w-full object-contain ${phase === 'preview' ? 'hidden' : ''}`}
+      />
 
-      <div ref={stageRef} className="relative mt-3 flex flex-1 items-center justify-center overflow-hidden landscape:mt-0">
-        <video
-          ref={videoRef}
-          playsInline
-          muted
-          className={`max-h-full max-w-full ${phase === 'preview' ? 'hidden' : ''}`}
-        />
+      <div className="absolute inset-0" style={layerStyle} data-testid="photo-layer" data-turn={virtualTurn ?? 'none'}>
         {/* 撮影ガイド(TARO 2026-09-18)。点線の人型に頭と肩を合わせて撮ると、
             全員の頭の大きさと位置がそろう。LEDでは頭頂の高さを自動でそろえるが、
             大きさは自動では直せない(ポーズが自由なため)ので、撮る時点で揃える。
@@ -341,6 +476,7 @@ export default function PhotoCapture({
         {phase === 'live' && guide && (
           <div
             className="pointer-events-none absolute"
+            data-testid="photo-guide"
             style={{
               left: guide.left,
               top: guide.top,
@@ -380,52 +516,54 @@ export default function PhotoCapture({
             </p>
           </div>
         )}
-        {(phase === 'live' || phase === 'loading') && screenPortrait && (
-          // 縦向きのときは撮影できない。横倒しの人型(=横にしたときの見え方)だけを大きく出す
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black" data-testid="rotate-guard">
-            <div className="relative aspect-[1.2/1] w-[78vh] max-w-none -rotate-90">
-              <div className="absolute inset-0 rounded-md border-2 border-white/70" />
-              <svg viewBox="0 0 78 100" preserveAspectRatio="xMidYMid meet" className="absolute inset-0 h-full w-full" aria-hidden>
-                {GUIDE_LAYERS.map((l, i) => (
-                  <g key={i} fill="none" stroke={l.stroke} strokeWidth={l.width} strokeDasharray={l.dash} strokeLinecap="round" strokeLinejoin="round">
-                    <path d={GUIDE_HEAD} vectorEffect="non-scaling-stroke" />
-                    <path d={GUIDE_BODY} vectorEffect="non-scaling-stroke" />
-                  </g>
-                ))}
-              </svg>
-            </div>
+
+        {/* 撮った写真の確認。縦画面でも層ごと回っているので、横持ちした人から正しい向きに見える */}
+        {phase === 'preview' && preview && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={preview}
+              alt=""
+              data-testid="photo-preview"
+              className="max-h-full max-w-full bg-[repeating-conic-gradient(#333_0%_25%,#222_0%_50%)] bg-[length:24px_24px]"
+            />
           </div>
         )}
-        {phase === 'preview' && preview && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={preview}
-            alt=""
-            className="max-h-full max-w-full bg-[repeating-conic-gradient(#333_0%_25%,#222_0%_50%)] bg-[length:24px_24px]"
-          />
-        )}
+
         {(phase === 'loading' || phase === 'working' || phase === 'saving') && (
-          <p className="absolute text-lg font-bold text-white">
+          <p className="absolute inset-0 flex items-center justify-center text-lg font-bold text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.9)]">
             {phase === 'loading' ? 'カメラを起動しています…' : phase === 'working' ? '切り抜いています…' : '保存しています…'}
           </p>
         )}
-      </div>
 
-      {error && <p className="mt-2 rounded bg-red-600 px-3 py-2 text-sm font-bold text-white">{error}</p>}
-      </div>
+        {/* 左上: 名前(ガイドの頭にかからない幅に抑える) */}
+        <p className="absolute left-3 top-3 max-w-[30%] truncate rounded-lg bg-black/60 px-2.5 py-1.5 text-base font-bold text-white">
+          {dancerName}
+        </p>
 
-      <div className="mt-3 flex flex-col gap-2 landscape:mt-0 landscape:w-40 landscape:shrink-0 landscape:justify-between">
-        {/* 横向きのときだけ、名前と閉じるをここ(右上)に出す */}
-        <div className="hidden landscape:flex landscape:flex-col landscape:gap-2">
-          <p className="text-sm font-bold text-white">{dancerName}</p>
-          <button onClick={close} className="rounded border border-white/30 px-3 py-1.5 text-sm text-white">
+        {/* 右上: 閉じる。縦画面(横持ち)のときだけ、上下が逆に見えるとき用の切り替えも出す */}
+        <div className="absolute right-3 top-3 flex items-center gap-2">
+          {virtualTurn && (
+            <button
+              onClick={flipDirection}
+              className="rounded-lg border border-white/40 bg-black/60 px-2.5 py-1.5 text-xs font-bold text-white"
+            >
+              ↻ 上下が逆のとき
+            </button>
+          )}
+          <button onClick={close} className="rounded-lg border border-white/40 bg-black/60 px-3 py-1.5 text-sm font-bold text-white">
             閉じる
           </button>
         </div>
 
-        <div className="flex gap-3 landscape:flex-col">
-          {phase === 'live' && !screenPortrait && (
-            <button onClick={shoot} className="flex-1 rounded-xl bg-brand-600 py-4 text-lg font-black text-white landscape:flex-none landscape:py-6">
+        {error && (
+          <p className="absolute bottom-3 left-3 max-w-[45%] rounded-lg bg-red-600 px-3 py-2 text-sm font-bold text-white">{error}</p>
+        )}
+
+        {/* 右下: 撮影する / 撮り直す・これで登録(親指で押す場所。これで登録をいちばん下の角に) */}
+        <div className="absolute bottom-3 right-3 flex w-36 flex-col gap-2">
+          {phase === 'live' && (
+            <button onClick={shoot} className="rounded-2xl bg-brand-600 py-6 text-xl font-black text-white shadow-lg shadow-black/50">
               撮影する
             </button>
           )}
@@ -433,20 +571,16 @@ export default function PhotoCapture({
             <>
               <button
                 onClick={() => { setPhase('live'); setPreview(''); reopenIfRotated(); }}
-                className="flex-1 rounded-xl border border-white/40 py-4 text-lg font-bold text-white landscape:flex-none"
+                className="rounded-xl border border-white/50 bg-black/60 py-3 text-base font-bold text-white"
               >
                 撮り直す
               </button>
-              <button onClick={save} className="flex-1 rounded-xl bg-brand-600 py-4 text-lg font-black text-white landscape:flex-none">
+              <button onClick={save} className="rounded-2xl bg-brand-600 py-5 text-lg font-black text-white shadow-lg shadow-black/50">
                 これで登録
               </button>
             </>
           )}
         </div>
-
-        <p className="text-center text-xs text-white/60 landscape:hidden">
-          無地の壁の前で、頭のてっぺんとあごが線に合う距離で撮ってください
-        </p>
       </div>
     </div>
   );

@@ -21,8 +21,9 @@ import {
 } from './bf6Bracket';
 import type { Bf6DrawDivision } from './bf6Draw';
 import { CHAMPION_ORDER } from './bf6Lineup';
+import { runnerUpSlot } from './bf6ScreenAnim';
 
-export type ScreenMode = 'logo' | 'bracket' | 'vs' | 'drumroll' | 'champions' | 'champion';
+export type ScreenMode = 'logo' | 'bracket' | 'vs' | 'drumroll' | 'champions' | 'champion' | 'runnerup';
 
 export type ScreenState = {
   mode: ScreenMode;
@@ -244,11 +245,16 @@ export function findNextMatch(division: Bf6DrawDivision, all: Match[]): Match | 
 
 // ───────── 表示用のデータ ─────────
 
-export type SlotName = { slotNo: number; dancerName: string; rep: string; genre: string; hasPhoto: boolean; photoAt: string | null };
+export type SlotName = {
+  slotNo: number; dancerName: string;
+  /** 読み方(エントリー時に本人が入れたフリガナ)。操作卓でMCが読み上げるためだけに使い、LEDには出さない(TARO 2026-09-23) */
+  kana: string;
+  rep: string; genre: string; hasPhoto: boolean; photoAt: string | null;
+};
 
 export async function listBf6SlotNames(division: Bf6DrawDivision): Promise<Map<number, SlotName>> {
   const rows = await getAll(
-    `SELECT d.slot_no, i.id AS item_id, i.dancer_name, i.rep, i.genre,
+    `SELECT d.slot_no, i.id AS item_id, i.dancer_name, i.dancer_kana, i.rep, i.genre,
             (SELECT COUNT(*) FROM bf_photo p WHERE p.item_id = i.id) AS has_photo,
             (SELECT p.created_at FROM bf_photo p WHERE p.item_id = i.id) AS photo_at
        FROM bf_draw d
@@ -262,6 +268,7 @@ export async function listBf6SlotNames(division: Bf6DrawDivision): Promise<Map<n
     map.set(Number(r.slot_no), {
       slotNo: Number(r.slot_no),
       dancerName: r.dancer_name ? String(r.dancer_name) : '',
+      kana: r.dancer_kana ? String(r.dancer_kana).trim() : '',
       rep: r.rep ? String(r.rep) : '',
       // ⚠️ 本人が書いたまま出す。綴りを揃えない（TARO 2026-09-16
       //    「レペゼンやジャンルは各自が入れたいように入れるものだから勝手にやらないで」）
@@ -281,6 +288,8 @@ export type Champion = {
   dancerName: string;
   hasPhoto: boolean;
   photoAt: string | null;
+  /** 準優勝(決勝で負けた人)。記念撮影で銀のカードを出す(TARO 2026-09-23)。決勝が終わるまでは null */
+  runnerUp: { slotNo: number; dancerName: string; hasPhoto: boolean; photoAt: string | null } | null;
 };
 
 const DIV_LABEL: Record<string, string> = { beginner: 'ビギナー', kids: '小中学生', general: '一般' };
@@ -301,6 +310,8 @@ export async function listBf6Champions(): Promise<Champion[]> {
       const finalMatch = matches.find((m) => m.round === 'f');
       const slotNo = finalMatch?.winnerSlot ?? null;
       const slot = slotNo === null ? undefined : names.get(slotNo);
+      const loserNo = runnerUpSlot(finalMatch);
+      const loser = loserNo === null ? undefined : names.get(loserNo);
       return {
         division,
         label: DIV_LABEL[division] ?? division,
@@ -308,6 +319,15 @@ export async function listBf6Champions(): Promise<Champion[]> {
         dancerName: slot?.dancerName ?? '',
         hasPhoto: slot?.hasPhoto ?? false,
         photoAt: slot?.photoAt ?? null,
+        runnerUp:
+          loserNo === null
+            ? null
+            : {
+                slotNo: loserNo,
+                dancerName: loser?.dancerName ?? '',
+                hasPhoto: loser?.hasPhoto ?? false,
+                photoAt: loser?.photoAt ?? null,
+              },
       };
     })
   );

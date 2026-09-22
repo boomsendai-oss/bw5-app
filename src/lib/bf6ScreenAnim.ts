@@ -95,6 +95,7 @@ export function sceneKey(s: {
   if (s.mode === 'champions' || s.mode === 'drumroll') return 'champions';
   // 記念撮影用の1人カード。部門を切り替えたら入れ替わる
   if (s.mode === 'champion') return `champion|${s.division}`;
+  if (s.mode === 'runnerup') return `runnerup|${s.division}`;
   return 'logo';
 }
 
@@ -103,7 +104,7 @@ export function sceneKey(s: {
  * (発表の瞬間に写真だけ遅れて出るのを防ぐ)。名前はドラムロール画面には描かない。
  */
 export function needsChampions(mode: string): boolean {
-  return mode === 'champions' || mode === 'drumroll' || mode === 'champion';
+  return mode === 'champions' || mode === 'drumroll' || mode === 'champion' || mode === 'runnerup';
 }
 
 /**
@@ -114,4 +115,15 @@ export function needsChampions(mode: string): boolean {
  */
 export function hideFinalWinner<T extends { round: string; winnerSlot: number | null }>(matches: T[]): T[] {
   return matches.map((m) => (m.round === 'f' ? { ...m, winnerSlot: null } : m));
+}
+
+/**
+ * 決勝で負けた人(準優勝)の枠番号。勝者が決まるまでは null。
+ * 不戦勝で相手がいないときも null(準優勝者はいない)。
+ */
+export function runnerUpSlot(m: { slotA: number | null; slotB: number | null; winnerSlot: number | null } | undefined): number | null {
+  if (!m || m.winnerSlot === null) return null;
+  if (m.winnerSlot === m.slotA) return m.slotB;
+  if (m.winnerSlot === m.slotB) return m.slotA;
+  return null;
 }

@@ -237,3 +237,36 @@ describe('決勝の勝者を隠す', () => {
     expect([f.slotA, f.slotB]).toEqual([1, 2]);
   });
 });
+
+// ── 記念撮影用: 準優勝者の銀のカード(TARO 2026-09-23) ──
+describe('準優勝者の1人カード', () => {
+  const s = (mode: string, division: string) => ({ mode, division, round: null, matchNo: null, rev: 0 });
+
+  it('優勝者のカードとは別の場面(優勝→準優勝で暗転して入れ替わる)', async () => {
+    const { sceneKey } = await import('../bf6ScreenAnim');
+    expect(sceneKey(s('runnerup', 'kids'))).not.toBe(sceneKey(s('champion', 'kids')));
+    expect(sceneKey(s('runnerup', 'kids'))).not.toBe(sceneKey(s('runnerup', 'general')));
+  });
+
+  it('優勝者のデータ(準優勝者を含む)を渡す', async () => {
+    const { needsChampions } = await import('../bf6ScreenAnim');
+    expect(needsChampions('runnerup')).toBe(true);
+  });
+});
+
+describe('runnerUpSlot(準優勝の枠)', () => {
+  it('決勝の勝者でない方を返す', async () => {
+    const { runnerUpSlot } = await import('../bf6ScreenAnim');
+    expect(runnerUpSlot({ slotA: 3, slotB: 9, winnerSlot: 3 })).toBe(9);
+    expect(runnerUpSlot({ slotA: 3, slotB: 9, winnerSlot: 9 })).toBe(3);
+  });
+  it('勝者が決まる前・決勝が無いときは null', async () => {
+    const { runnerUpSlot } = await import('../bf6ScreenAnim');
+    expect(runnerUpSlot({ slotA: 3, slotB: 9, winnerSlot: null })).toBeNull();
+    expect(runnerUpSlot(undefined)).toBeNull();
+  });
+  it('不戦勝(相手がいない)なら準優勝者はいない', async () => {
+    const { runnerUpSlot } = await import('../bf6ScreenAnim');
+    expect(runnerUpSlot({ slotA: 3, slotB: null, winnerSlot: 3 })).toBeNull();
+  });
+});

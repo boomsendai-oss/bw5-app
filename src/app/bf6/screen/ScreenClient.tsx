@@ -20,9 +20,10 @@ type Slot = { slotNo: number; dancerName: string; rep: string; genre: string; ha
 type Champion = {
   division: string; label: string; slotNo: number | null;
   dancerName: string; hasPhoto: boolean; photoAt: string | null;
+  runnerUp?: { slotNo: number; dancerName: string; hasPhoto: boolean; photoAt: string | null } | null;
 };
 type Payload = {
-  state: { mode: 'logo' | 'bracket' | 'vs' | 'drumroll' | 'champions' | 'champion'; division: string; round: string | null; matchNo: number | null; rev: number };
+  state: { mode: 'logo' | 'bracket' | 'vs' | 'drumroll' | 'champions' | 'champion' | 'runnerup'; division: string; round: string | null; matchNo: number | null; rev: number };
   matches: Match[];
   slots: Record<string, Slot>;
   nextMatch: Match | null;
@@ -191,6 +192,20 @@ export function ScreenClient() {
     return (
       <Stage dark={dark}>
         <ChampionSolo c={(shown.champions ?? []).find((c) => c.division === state.division)} />
+      </Stage>
+    );
+  }
+  // 準優勝者の記念撮影。銀のカード・銀のスポットライト(TARO 2026-09-23)
+  if (state.mode === 'runnerup') {
+    const c = (shown.champions ?? []).find((c) => c.division === state.division);
+    const ru = c?.runnerUp;
+    return (
+      <Stage dark={dark}>
+        <ChampionSolo
+          c={c && ru ? { ...c, slotNo: ru.slotNo, dancerName: ru.dancerName, hasPhoto: ru.hasPhoto, photoAt: ru.photoAt } : undefined}
+          tier="silver"
+          k={RUNNERUP_K}
+        />
       </Stage>
     );
   }
@@ -691,8 +706,26 @@ function ScreenAnimStyles() {
         100%    { opacity: 1; transform: scale(1); box-shadow: 0 0 1vw rgba(249,115,22,0.5); }
       }
       /* 優勝者発表(カード形式)。ドラムロール中はタイトルが鼓動する */
-      @keyframes bf6Drum { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
-      .bf6-drum { animation: bf6Drum .9s ease-in-out infinite; }
+      /* 心臓の鼓動(ドクン、ドクン)。強く1回・少し弱く1回・間を置く(TARO 2026-09-23)。
+         ドラムロールの間ずっと続ける。光(後ろのにじみ)も同じ拍で脈打たせる */
+      @keyframes bf6Drum {
+        0%   { transform: scale(1); }
+        9%   { transform: scale(1.075); }
+        18%  { transform: scale(0.995); }
+        27%  { transform: scale(1.045); }
+        40%  { transform: scale(1); }
+        100% { transform: scale(1); }
+      }
+      .bf6-drum { animation: bf6Drum 1.05s cubic-bezier(.3,0,.3,1) infinite; }
+      @keyframes bf6DrumGlow {
+        0%   { opacity: .35; }
+        9%   { opacity: 1; }
+        18%  { opacity: .5; }
+        27%  { opacity: .85; }
+        45%  { opacity: .35; }
+        100% { opacity: .35; }
+      }
+      .bf6-drum-glow { animation: bf6DrumGlow 1.05s cubic-bezier(.3,0,.3,1) infinite; }
       @keyframes bf6Hud { from { opacity: 0; } to { opacity: 1; } }
       .bf6-hud { animation: bf6Hud .6s ease-out .45s both; }
       /* カードがふわっと出る(下から・ぼかしから・起き上がりながら)。最後に各カードの傾きで止まる */
@@ -890,6 +923,8 @@ function ChampionsScene({ rows, reveal }: { rows: Champion[]; reveal: boolean })
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/bf6/led-bg.png" alt="" className="absolute inset-0 h-full w-full object-cover opacity-55" />
         <div className="absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_36%,rgba(252,211,77,0.10),transparent_70%),radial-gradient(120%_90%_at_50%_40%,transparent_30%,rgba(5,7,12,0.92)_100%)]" />
+        {/* 鼓動に合わせて脈打つ光 */}
+        <div className="bf6-drum-glow absolute inset-0 bg-[radial-gradient(45%_40%_at_50%_36%,rgba(252,211,77,0.22),transparent_70%)]" />
         {/* ⚠️ 上にイベントロゴを置かない。TODAY'S のロゴとぶつかる(TARO 2026-09-22) */}
         <div className="absolute inset-x-0 top-[16vh] flex justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -922,16 +957,36 @@ function ChampionsScene({ rows, reveal }: { rows: Champion[]; reveal: boolean })
 }
 
 /**
+ * カードの格。優勝=金・準優勝=銀(TARO 2026-09-23「セカンドプレイスなんで豪華さの差はつけた方がいい」)。
+ * 形はそろえて、色と光の筋で差をつける。
+ */
+type CardTier = 'gold' | 'silver';
+/** 準優勝のカードの大きさ。優勝(1.4)より一回り小さくして、大きさでも差をつける(見本の案A) */
+const RUNNERUP_K = 1.2;
+const CARD_TIER: Record<CardTier, { stroke: string; border: string; accent: string; vertical: string; under: string; hud: string; glow: string; sweep: boolean; bg: string }> = {
+  gold: {
+    stroke: 'rgba(252,211,77,0.75)', border: 'rgba(252,211,77,0.55)', accent: '#fcd34d',
+    vertical: 'CHAMPION BF6', under: 'WINNER', hud: 'CHAMPION', glow: 'rgba(252,211,77,0.10)', sweep: true, bg: '/bf6/champ-bg-gold.jpg',
+  },
+  silver: {
+    stroke: 'rgba(226,232,240,0.7)', border: 'rgba(203,213,225,0.5)', accent: '#cbd5e1',
+    vertical: '2ND PLACE BF6', under: '2ND PLACE', hud: '2ND PLACE', glow: 'rgba(0,0,0,0)', sweep: false, bg: '/bf6/champ-bg-silver.jpg',
+  },
+};
+
+/**
  * 優勝者1人分のカード。3部門同時の発表と、記念撮影用の1人表示(ChampionSolo)で共用する。
  * k は大きさの倍率(1 = 3部門並び)。⚠️ 大きくするときに transform: scale を使わないこと
  * (LEDで文字がにじむ)。寸法そのものに k を掛ける。
  */
 function ChampionPosterCard({
-  c, src, shown, centerVw, topVh = 9.6, tilt = 0, k = 1, floatDelay = 0, sweepDelay = 0,
+  c, src, shown, centerVw, topVh = 9.6, tilt = 0, k = 1, floatDelay = 0, sweepDelay = 0, tier = 'gold',
 }: {
   c: Champion; src: string | null; shown: boolean; centerVw: number;
   topVh?: number; tilt?: number; k?: number; floatDelay?: number; sweepDelay?: number;
+  tier?: CardTier;
 }) {
+  const t = CARD_TIER[tier];
   const theme = divisionTheme(c.division);
   const color = CARD_COLOR[c.division] ?? '#fb923c';
   const top = usePhotoTop(src);
@@ -962,10 +1017,10 @@ function ChampionPosterCard({
             style={{ background: `radial-gradient(90% 45% at 50% 0%, ${color}33, transparent 70%), linear-gradient(165deg, #171a21 0%, #08090c 58%, #0e0f13 100%)` }}
           />
           <p
-            className="absolute whitespace-nowrap font-black italic leading-none tracking-[0.08em] text-transparent [-webkit-text-stroke:1.2px_rgba(252,211,77,0.75)] [writing-mode:vertical-rl]"
-            style={{ left: v(1.15), top: vh(5.7), fontSize: v(2.4) }}
+            className="absolute whitespace-nowrap font-black italic leading-none tracking-[0.08em] text-transparent [writing-mode:vertical-rl]"
+            style={{ left: v(1.15), top: vh(5.7), fontSize: v(2.4), WebkitTextStroke: `1.2px ${t.stroke}` }}
           >
-            CHAMPION BF6
+            {t.vertical}
           </p>
           <p
             className="absolute whitespace-nowrap font-bold tracking-[0.5em] text-[rgba(220,228,240,0.55)] [writing-mode:vertical-rl]"
@@ -985,7 +1040,7 @@ function ChampionPosterCard({
               />
             )}
           </div>
-          <div className="absolute rounded-sm border border-[rgba(252,211,77,0.55)]" style={{ inset: vh(1.1) }} />
+          <div className="absolute rounded-sm border" style={{ inset: vh(1.1), borderColor: t.border }} />
           <div className="absolute inset-x-0 top-0" style={{ height: vh(0.46), background: color }} />
           <p
             className={`absolute inset-x-0 whitespace-nowrap text-center font-black tracking-[0.3em] ${theme.text}`}
@@ -1001,16 +1056,18 @@ function ChampionPosterCard({
             {c.dancerName || '—'}
           </p>
           <p
-            className="bf6-name-in absolute inset-x-0 top-[92%] text-center font-black tracking-[0.5em] text-amber-300"
-            style={{ fontSize: v(1.15) }}
+            className="bf6-name-in absolute inset-x-0 top-[92%] text-center font-black tracking-[0.5em]"
+            style={{ fontSize: v(1.15), color: t.accent }}
           >
-            WINNER
+            {t.under}
           </p>
-          {/* 光の筋。ずっと横切り続ける */}
-          <div
-            className="bf6-card-sweep pointer-events-none absolute -top-[30%] h-[160%] mix-blend-screen"
-            style={{ width: v(11.5), animationDelay: `${sweepDelay}s` }}
-          />
+          {/* 光の筋。ずっと横切り続ける(優勝だけ) */}
+          {t.sweep && (
+            <div
+              className="bf6-card-sweep pointer-events-none absolute -top-[30%] h-[160%] mix-blend-screen"
+              style={{ width: v(11.5), animationDelay: `${sweepDelay}s` }}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -1022,22 +1079,19 @@ function ChampionPosterCard({
  * 「一人ずつ写真撮るんで、このカードを後ろにバーンと表示できるように」)。
  * 前に本人が立って写真を撮るので、背景としての見栄えを優先して大きくする。
  */
-function ChampionSolo({ c }: { c: Champion | undefined }) {
+function ChampionSolo({ c, tier = 'gold', k = 1.4 }: { c: Champion | undefined; tier?: CardTier; k?: number }) {
+  const t = CARD_TIER[tier];
   const src = c && c.hasPhoto && c.slotNo !== null ? photoUrl(c.slotNo, c.division, c.photoAt) : null;
   return (
     <div className="relative h-full w-full overflow-hidden bg-[#020203]">
+      {/* 背景は格ごとに画像を変える(優勝=金のスポットライト・準優勝=銀のスポットライト。TARO 2026-09-23 確定) */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src="/bf6/led-loop-poster.jpg"
-        alt=""
-        className="absolute inset-0 h-full w-full scale-[1.15] object-cover opacity-55 [filter:blur(34px)_grayscale(.5)_brightness(.5)]"
-      />
-      <div className="absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_42%,rgba(252,211,77,0.10),transparent_70%),linear-gradient(180deg,rgba(0,0,0,0.2),rgba(0,0,0,0.65))]" />
-      <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_40%,transparent_35%,rgba(3,3,6,0.9)_100%)]" />
-      <p className="bf6-hud absolute left-[2.5vw] top-[2.4vh] text-[1.8vw] font-black tracking-[0.4em] text-amber-300">CHAMPION</p>
+      <img src={t.bg} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      <div className="absolute inset-0 bg-[radial-gradient(130%_100%_at_50%_40%,transparent_50%,rgba(3,3,6,0.7)_100%)]" />
+      <p className="bf6-hud absolute left-[2.5vw] top-[2.4vh] text-[1.8vw] font-black tracking-[0.4em]" style={{ color: t.accent }}>{t.hud}</p>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/bf6/led-title.png" alt="" className="bf6-hud absolute right-[2.5vw] top-[1.7vh] h-[5.7vh] w-auto" />
-      {c && <ChampionPosterCard c={c} src={src} shown centerVw={50} topVh={4} tilt={0} k={1.4} />}
+      {c && <ChampionPosterCard c={c} src={src} shown centerVw={50} topVh={4 + (1.4 - k) * 30.1} tilt={0} k={k} tier={tier} />}
     </div>
   );
 }
