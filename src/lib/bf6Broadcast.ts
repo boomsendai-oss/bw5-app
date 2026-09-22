@@ -32,7 +32,17 @@ export type Bf6BroadcastTemplate = {
   audience: Bf6BroadcastAudience;
   /** 画面に出す宛先の説明 */
   audienceNote: string;
+  /**
+   * 添付する画像。path は public/ からの相対パス。送信時に本番のURLから取ってきて付ける
+   * (⚠️ Vercelの関数からは public/ のファイルを直接読めないため)。
+   */
+  attachments?: Bf6BroadcastAttachment[];
 };
+
+export type Bf6BroadcastAttachment = { filename: string; path: string };
+
+/** 添付画像を取りに行く先。publicは本番と同じものが配信されている。 */
+const PUBLIC_BASE_URL = 'https://bw5-app.vercel.app';
 
 const CALL_TIME_BODY = `BOOMER'S FIGHT!!! vol.6 にエントリーいただき、ありがとうございます。
 
@@ -155,6 +165,77 @@ const CASH_DUE_BODY = `BOOMER'S FIGHT!!! vol.6 にお申し込みいただき、
 BOOM DANCE SCHOOL
 BOOMER'S FIGHT!!! vol.6`;
 
+// 当日のご案内(TARO 2026-09-22 承認)。控室・飲食禁止・立ち入り・保護者の入場受付と当日現金の
+// まとめ払いを、受付(13:30)の前に伝える。地図とタイムテーブルの画像を添付する。
+const ENTRANT_GUIDE_BODY = `BOOMER'S FIGHT!!! vol.6 にエントリーいただき、ありがとうございます。
+当日のご案内です。
+
+
+▼ 集合・受付
+
+  9月26日(土) 13:30〜14:00　9階ホール前
+
+  SSM(仙台スクールオブミュージック&ダンス専門学校)の1階の入口を入ると、
+  エレベーターが2つあります。そこから9階へ直接上がってきてください。
+  エレベーターを降りた目の前がホールです。
+
+  受付に置いてあるタブレットで、エントリー受付
+  (部門を選ぶ → 名前を選ぶ → くじを引く)をお済ませください。
+  14:00を過ぎると抽選に参加できず、運営側で決定する場合があります。
+
+
+▼ 保護者の方へ(受付と一緒にお願いします)
+
+  ・観覧チケットを購入済みの方は、このタイミングで入場受付
+   (リストバンドのお渡し)も済ませてください。
+   ホールへの入場自体は、開場の14:30からです。
+  ・お支払いが当日現金の方は、このタイミングで、
+   エントリー費と観覧チケットのお支払いをまとめてお願いします。
+
+  開場の時間は受付が混み合うため、一緒に済ませていただけると大変助かります。
+
+
+▼ 控室(柔道場)
+
+  柔道場を控室としてご利用いただけます。荷物なども置いていただけます。
+
+  柔道場は飲食禁止です。
+  会場をお借りしているので、食べ物・飲み物をこぼすなどがあると、
+  今後この会場を使えなくなります。必ずお守りください。
+
+  柔道場の場所は、添付の地図をご覧ください。
+
+
+▼ ご注意
+
+  ・SSMの校舎では、ほかのフロアやお部屋で授業やほかの催しが
+   行われていることがあります。ご迷惑にならないよう、
+   用のないフロア・お部屋には立ち入らないでください。
+  ・バトルの時間は、進行状況によって変わることがあります。
+   なるべく会場の近くにいてください。
+  ・コール(呼び出し)のときにいない場合は、不戦敗になることがあります。
+  ・会場内での紛失・盗難などについて、主催者は一切責任を負いません。
+   貴重品は各自で管理してください。
+
+
+▼ タイムテーブル
+
+  添付のタイムテーブルをご覧ください。
+
+
+▼ 観覧の方へ
+
+  一般の開場は14:30です。
+  ご家族・お友達の観覧チケットはこちらから。
+
+  https://boomersfight.vercel.app
+
+
+当日お会いできるのを楽しみにしています。
+
+BOOM DANCE SCHOOL
+BOOMER'S FIGHT!!! vol.6`;
+
 export const BF6_BROADCAST_TEMPLATES: Bf6BroadcastTemplate[] = [
   {
     key: 'call-time-1',
@@ -182,6 +263,19 @@ export const BF6_BROADCAST_TEMPLATES: Bf6BroadcastTemplate[] = [
     audience: 'cash_due',
     audienceNote:
       '支払い方法が「当日現金」で、まだ受け取っていない注文のみ。人ごとに金額と内訳を差し込みます。すでに受け取った方・事前決済の方には送りません。',
+  },
+  {
+    key: 'entrant-guide-1',
+    label: '当日のご案内(控室・飲食禁止・保護者の受付)',
+    subject: "【BOOMER'S FIGHT!!! vol.6】当日のご案内(バトル出場者の方へ)",
+    body: ENTRANT_GUIDE_BODY,
+    audience: 'entrants',
+    audienceNote:
+      'バトルエントリーを含む有効な注文(決済済み・当日現金)。地図とタイムテーブルの画像を添付します。',
+    attachments: [
+      { filename: '控室（柔道場）への行き方.png', path: 'bf6/mail/judo-map.png' },
+      { filename: 'タイムテーブル.png', path: 'bf6/mail/timetable.png' },
+    ],
   },
 ];
 
@@ -236,10 +330,25 @@ export function buildBf6Broadcast(key: string): {
   subject: string;
   body: string;
   audience: Bf6BroadcastAudience;
+  attachments: Bf6BroadcastAttachment[];
 } {
   const t = BF6_BROADCAST_TEMPLATES.find((x) => x.key === key);
   if (!t) throw new Error(`未知の一斉メールテンプレート: ${key}`);
-  return { subject: t.subject, body: t.body, audience: t.audience };
+  return { subject: t.subject, body: t.body, audience: t.audience, attachments: t.attachments ?? [] };
+}
+
+/**
+ * 添付画像を取ってくる。1回の送信で1度だけ取り、全員に同じものを付ける。
+ * ⚠️ 取れなかったら送信自体を止める(添付なしで一部の人にだけ届く、を防ぐ)。
+ */
+async function loadBroadcastAttachments(list: Bf6BroadcastAttachment[]): Promise<{ filename: string; content: Buffer }[]> {
+  return Promise.all(
+    list.map(async (a) => {
+      const res = await fetch(`${PUBLIC_BASE_URL}/${a.path}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`添付画像を取得できません: ${a.path} (${res.status})`);
+      return { filename: a.filename, content: Buffer.from(await res.arrayBuffer()) };
+    })
+  );
 }
 
 /**
@@ -334,8 +443,10 @@ export type Bf6BroadcastResult = {
  * 1件ずつ送り、個別の失敗で全体を止めない。
  */
 export async function sendBf6Broadcast(key: string): Promise<Bf6BroadcastResult> {
-  const { subject, body, audience } = buildBf6Broadcast(key);
+  const { subject, body, audience, attachments: attachmentList } = buildBf6Broadcast(key);
   const now = nowUtcIso();
+  // 添付は送信済みの記録を作る前に取る(取れないまま「送信済み」にならないように)
+  const attachments = await loadBroadcastAttachments(attachmentList);
 
   // key の UNIQUE で二重送信を弾く。挿入できなければ既に送信済み。
   const ins = await execute(
@@ -356,7 +467,7 @@ export async function sendBf6Broadcast(key: string): Promise<Bf6BroadcastResult>
     const to = r.email;
     if (idx > 0) await wait(SEND_INTERVAL_MS);
     try {
-      await sendEmail({ to, subject, text: fillBroadcastVars(body, r.vars) });
+      await sendEmail({ to, subject, text: fillBroadcastVars(body, r.vars), attachments });
       sent += 1;
       await execute(
         'INSERT INTO bf_broadcast_recipient (broadcast_id, email, status, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(broadcast_id, email) DO NOTHING',
@@ -404,6 +515,9 @@ export async function retryBf6BroadcastFailures(key: string): Promise<Bf6Broadca
   const broadcastId = Number(b[0].id);
   const subject = String(b[0].subject);
   const body = String(b[0].body);
+  // 送り直しでも最初と同じ添付を付ける(テンプレートが無くなっていれば添付なし)
+  const tpl = BF6_BROADCAST_TEMPLATES.find((x) => x.key === key);
+  const attachments = await loadBroadcastAttachments(tpl?.attachments ?? []);
 
   const rows = await getAll(
     "SELECT email FROM bf_broadcast_recipient WHERE broadcast_id = ? AND status = 'failed' ORDER BY email",
@@ -416,7 +530,7 @@ export async function retryBf6BroadcastFailures(key: string): Promise<Bf6Broadca
     if (idx > 0) await wait(SEND_INTERVAL_MS);
     const to = String(r.email);
     try {
-      await sendEmail({ to, subject, text: body });
+      await sendEmail({ to, subject, text: body, attachments });
       sent += 1;
       await execute(
         "UPDATE bf_broadcast_recipient SET status = 'sent', error = NULL WHERE broadcast_id = ? AND email = ?",

@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { buildBf6Broadcast, BF6_BROADCAST_TEMPLATES } from '../bf6Broadcast';
 
 describe('BF6 一斉メールのテンプレート', () => {
@@ -88,5 +90,52 @@ describe('宛先の範囲', () => {
     const b = buildBf6Broadcast('cash-due-1').body;
     expect(b).toContain('{{amount}}');
     expect(b).toContain('{{breakdown}}');
+  });
+});
+
+describe('当日のご案内(バトル出場者の方へ)', () => {
+  // TARO 2026-09-22 承認の文面
+  it('テンプレートがあり、宛先はバトルエントリー者', () => {
+    const t = BF6_BROADCAST_TEMPLATES.find((x) => x.key === 'entrant-guide-1');
+    expect(t).toBeTruthy();
+    expect(t!.audience).toBe('entrants');
+  });
+
+  it('集合・エレベーターでの行き方・タブレットでの受付が入る', () => {
+    const { subject, body } = buildBf6Broadcast('entrant-guide-1');
+    expect(subject).toContain('当日のご案内');
+    expect(body).toContain('13:30〜14:00');
+    expect(body).toContain('エレベーターが2つ');
+    expect(body).toContain('9階へ直接');
+    expect(body).toContain('タブレット');
+  });
+
+  it('保護者の入場受付・当日現金のまとめ払いをお願いする', () => {
+    const { body } = buildBf6Broadcast('entrant-guide-1');
+    expect(body).toContain('リストバンド');
+    expect(body).toContain('開場の14:30から');
+    expect(body).toContain('エントリー費と観覧チケットのお支払い');
+  });
+
+  it('柔道場・飲食禁止とその理由・立ち入り・不戦敗・貴重品を必ず書く', () => {
+    const { body } = buildBf6Broadcast('entrant-guide-1');
+    expect(body).toContain('柔道場を控室として');
+    expect(body).toContain('飲食禁止');
+    expect(body).toContain('今後この会場を使えなくなります');
+    expect(body).toContain('用のないフロア・お部屋には立ち入らないでください');
+    expect(body).toContain('不戦敗');
+    expect(body).toContain('貴重品');
+  });
+
+  it('地図とタイムテーブルの画像を添付する(ファイルが実在する)', () => {
+    const { attachments } = buildBf6Broadcast('entrant-guide-1');
+    expect(attachments.map((a) => a.filename)).toEqual(['控室（柔道場）への行き方.png', 'タイムテーブル.png']);
+    for (const a of attachments) {
+      expect(existsSync(join(process.cwd(), 'public', a.path))).toBe(true);
+    }
+  });
+
+  it('ほかのテンプレートには添付を付けない', () => {
+    expect(buildBf6Broadcast('call-time-1').attachments).toEqual([]);
   });
 });
