@@ -819,7 +819,7 @@ function ScreenAnimStyles() {
  * ⚠️ 3人そろって出すため、写真の頭頂を3枚とも測り終えてから出す(1.5秒で見切る)。
  *    1枚ずつ出すと、写真の読み込みが早い人から出てしまい「同時」にならない。
  */
-const CHAMP_PHOTO_SCALE = 1.25;
+const CHAMP_PHOTO_SCALE = 1.15;
 
 function Champions({ rows }: { rows: Champion[] }) {
   const srcs = rows.map((c) => (c.hasPhoto && c.slotNo !== null ? photoUrl(c.slotNo, c.division, c.photoAt) : null));
@@ -865,7 +865,7 @@ function Champions({ rows }: { rows: Champion[] }) {
       </div>
 
       {/* 前景は上72%に収める(LEDの前に人が立つため)。 */}
-      <div className="absolute inset-x-0 top-[7vh] flex h-[65vh]">
+      <div className="absolute inset-x-0 top-0 flex h-[72vh]">
         {rows.map((c, i) => (
           <ChampionColumn key={c.division} c={c} src={srcs[i]} ready={ready} />
         ))}
@@ -879,23 +879,25 @@ function ChampionColumn({ c, src, ready }: { c: Champion; src: string | null; re
   const top = usePhotoTop(src);
   // 頭頂をそろえる(VSと同じ)。写真ごとに頭の位置がばらつくため。
   const shift = headAlignShift(top ?? null, { scale: CHAMP_PHOTO_SCALE, target: VS_HEAD_TARGET });
-  const fade = photoFadeStops(shift, CHAMP_PHOTO_SCALE, 0.62, 0.96);
+  // 下のぼかし。写真の枠(10vh〜66vh)に対して 78% からぼけ始め、画面の72%あたりで消える。
+  // ⚠️ 写真の下端ちょうど(100%)で消えるようにすると、下端に細い線が残る(9/22 実画面で確認)。手前で消しきる。
+  const f = photoFadeStops(shift, CHAMP_PHOTO_SCALE, 0.78, 1.1);
+  const end = Math.min(f.end, 0.985);
+  const start = Math.min(f.start, end - 0.2);
   const mask =
-    `linear-gradient(to bottom, #000 ${(fade.start * 100).toFixed(2)}%, transparent ${(fade.end * 100).toFixed(2)}%), ` +
+    `linear-gradient(to bottom, #000 ${(start * 100).toFixed(2)}%, transparent ${(end * 100).toFixed(2)}%), ` +
     'linear-gradient(to right, transparent 0%, #000 12%, #000 88%, transparent 100%)';
   return (
-    <div
-      className={`flex min-w-0 flex-1 basis-1/3 flex-col items-center ${ready ? 'bf6-champ-in' : 'opacity-0'}`}
-      style={{ animationDelay: '150ms' }}
-    >
-      <p className={`shrink-0 text-[1.6vw] font-black tracking-[0.35em] ${theme.text}`}>{c.label}部門</p>
-      <div className="relative min-h-0 w-full flex-1">
+    <div className={`relative h-full min-w-0 flex-1 basis-1/3 ${ready ? 'bf6-champ-in' : 'opacity-0'}`} style={{ animationDelay: '150ms' }}>
+      <p className={`absolute inset-x-0 top-[6.5vh] text-center text-[1.6vw] font-black tracking-[0.35em] ${theme.text}`}>{c.label}部門</p>
+      {/* 写真は列より少し広く取り、隣と重なるぶんは左右のぼかしで溶かす */}
+      <div className="absolute -inset-x-[4%] top-[10vh] flex h-[56vh] justify-center">
         {src && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={src}
             alt=""
-            className="absolute left-0 top-0 h-auto w-full origin-top"
+            className="h-full w-auto max-w-none origin-top"
             style={{
               transform: `translateY(${(shift * 100).toFixed(2)}%) scale(${CHAMP_PHOTO_SCALE})`,
               maskImage: mask,
@@ -907,12 +909,12 @@ function ChampionColumn({ c, src, ready }: { c: Champion; src: string | null; re
         )}
       </div>
       <p
-        className="bf6-face bf6-chrome bf6-sheen relative -mt-[10vh] w-full shrink-0 break-words px-[0.6vw] text-center text-[5.6vw] font-black italic leading-[0.95]"
+        className="bf6-face bf6-chrome bf6-sheen absolute inset-x-0 bottom-[4.2vh] break-words px-[0.6vw] text-center text-[5.2vw] font-black italic leading-[0.95]"
         data-text={c.dancerName || '—'}
       >
         {c.dancerName || '—'}
       </p>
-      <p className="relative mt-[0.4vh] shrink-0 text-[1.5vw] font-black tracking-[0.45em] text-amber-300">WINNER</p>
+      <p className="absolute inset-x-0 bottom-[0.8vh] text-center text-[1.5vw] font-black tracking-[0.45em] text-amber-300">WINNER</p>
     </div>
   );
 }
