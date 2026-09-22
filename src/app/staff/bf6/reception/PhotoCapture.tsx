@@ -57,10 +57,19 @@ export default function PhotoCapture({
   // 撮影ガイド(点線の人型)を重ねる位置。保存される範囲(fitBustFrame)と必ず一致させる
   const stageRef = useRef<HTMLDivElement>(null);
   const [guide, setGuide] = useState<Rect | null>(null);
-  // カメラの映像が縦長か。縦向きだと保存範囲が画面の上の方だけになり撮りにくいので案内を出す。
   // ⚠️ 写真撮影の担当はクルー画面(スマホ)。受付のiPadにも同じ部品が載っている。
   //    文言に端末名(iPad/スマホ)を書かないこと。どちらからも開かれる。
-  const [portrait, setPortrait] = useState(false);
+  // 画面が縦向きか。縦向きでは撮らせない(TARO 2026-09-22「横でしか撮れないようにしちゃったらいい」)。
+  // 保存する写真は横長(1.2:1)なので、縦持ちだと保存範囲が画面の上の方に小さく収まり、人物が小さく映る。
+  // 文字で「横にして」と言う代わりに、横倒しの人型を先に見せて自然に横へ回してもらう。
+  const [screenPortrait, setScreenPortrait] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: portrait)');
+    const update = () => setScreenPortrait(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
   const streamRef = useRef<MediaStream | null>(null);
   const segRef = useRef<Segmenter>(null);
   const blobRef = useRef<Blob | null>(null);
@@ -86,7 +95,6 @@ export default function PhotoCapture({
       const sb = stage.getBoundingClientRect();
       const r = guideRect({ width: v.videoWidth, height: v.videoHeight }, { width: vb.width, height: vb.height });
       setGuide(r ? { left: vb.left - sb.left + r.left, top: vb.top - sb.top + r.top, width: r.width, height: r.height } : null);
-      setPortrait(v.videoWidth > 0 && v.videoWidth < v.videoHeight);
     };
     update();
     v.addEventListener('loadedmetadata', update);
@@ -372,10 +380,21 @@ export default function PhotoCapture({
             </p>
           </div>
         )}
-        {phase === 'live' && guide && portrait && (
-          <p className="pointer-events-none absolute inset-x-4 bottom-4 rounded-lg bg-black/70 px-3 py-2 text-center text-sm font-bold text-white">
-            横向きにすると、画面を広く使えて撮りやすくなります
-          </p>
+        {(phase === 'live' || phase === 'loading') && screenPortrait && (
+          // 縦向きのときは撮影できない。横倒しの人型(=横にしたときの見え方)だけを大きく出す
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black" data-testid="rotate-guard">
+            <div className="relative aspect-[1.2/1] w-[78vh] max-w-none -rotate-90">
+              <div className="absolute inset-0 rounded-md border-2 border-white/70" />
+              <svg viewBox="0 0 78 100" preserveAspectRatio="xMidYMid meet" className="absolute inset-0 h-full w-full" aria-hidden>
+                {GUIDE_LAYERS.map((l, i) => (
+                  <g key={i} fill="none" stroke={l.stroke} strokeWidth={l.width} strokeDasharray={l.dash} strokeLinecap="round" strokeLinejoin="round">
+                    <path d={GUIDE_HEAD} vectorEffect="non-scaling-stroke" />
+                    <path d={GUIDE_BODY} vectorEffect="non-scaling-stroke" />
+                  </g>
+                ))}
+              </svg>
+            </div>
+          </div>
         )}
         {phase === 'preview' && preview && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -405,7 +424,7 @@ export default function PhotoCapture({
         </div>
 
         <div className="flex gap-3 landscape:flex-col">
-          {phase === 'live' && (
+          {phase === 'live' && !screenPortrait && (
             <button onClick={shoot} className="flex-1 rounded-xl bg-brand-600 py-4 text-lg font-black text-white landscape:flex-none landscape:py-6">
               撮影する
             </button>
@@ -426,7 +445,7 @@ export default function PhotoCapture({
         </div>
 
         <p className="text-center text-xs text-white/60 landscape:hidden">
-          無地の壁の前で、頭のてっぺんとあごが線に合う距離で撮ってください(横向き推奨)
+          無地の壁の前で、頭のてっぺんとあごが線に合う距離で撮ってください
         </p>
       </div>
     </div>
