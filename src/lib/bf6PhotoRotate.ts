@@ -129,3 +129,60 @@ export function effectiveTurn(s: { gravity: TurnDir | null; signFix: boolean; ma
   if (s.gravity) return s.signFix ? flipTurn(s.gravity) : s.gravity;
   return s.manual ?? DEFAULT_TURN;
 }
+
+/**
+ * 画面と映像の組み合わせ(実機で分かった話・TARO 2026-09-23)。
+ *
+ * ⚠️ 回転ロックONのiPhoneでは、映像が「世界から見て正しい向き」=横長で届いた
+ *    (画面は縦のまま)。「縦画面には必ず縦長の映像が来る」という前提が実機で崩れた
+ *    (TARO実機の画面写真。MacBookが横倒しに映り、重ねた文字とガイドだけが回っていた)。
+ *    端末・OSで変わるので、届いた映像の縦横で決める。
+ *
+ *  'landscape'                … 画面が横向き。今までどおり(何も回さない)
+ *  'portrait-rotate-video'    … 縦画面 × 横長の映像(回転ロックの実機)。
+ *                               映像も重ねる層も同じだけ回す。切り出しは回さずそのまま
+ *  'portrait-rotate-overlay'  … 縦画面 × 縦長の映像。映像は回さず、重ねる層だけ回す。
+ *                               切り出した縦長の範囲を90°戻して横長にする
+ */
+export type StageMode = 'landscape' | 'portrait-rotate-video' | 'portrait-rotate-overlay';
+
+export function stageMode(screenPortrait: boolean, video: { width: number; height: number } | null): StageMode {
+  if (!screenPortrait) return 'landscape';
+  // 映像の大きさがまだ分からないときは、映像を回さない側(安全側)にしておく
+  if (video && video.width > video.height) return 'portrait-rotate-video';
+  return 'portrait-rotate-overlay';
+}
+
+/** ガイドを計算するときの映像の大きさ(横持ちした人から見た向き) */
+export function guideSource(video: { width: number; height: number }, mode: StageMode): { width: number; height: number } {
+  return mode === 'portrait-rotate-overlay' ? physicalSize(video) : video;
+}
+
+/**
+ * 撮るときの切り出し。turned が true のときだけ canvas を回す(uprightTransform)。
+ * 映像ごと回して見せているとき('portrait-rotate-video')は、映像がすでに正しい向きなので
+ * 横向きのカメラと同じ切り出しでよい。
+ */
+export function capturePlan(
+  video: { width: number; height: number },
+  mode: StageMode,
+  turn: TurnDir
+): { frame: Frame; src: Frame; turned: boolean } {
+  if (mode === 'portrait-rotate-overlay') {
+    const { frame, src } = portraitLockCrop(video, turn);
+    return { frame, src, turned: true };
+  }
+  const frame = fitBustFrame(video);
+  return { frame, src: frame, turned: false };
+}
+
+/**
+ * カメラを開き直すべきか。
+ * ⚠️ 「画面と映像の向きが違えば開き直す」にすると、回転ロックの実機(縦画面×横長の映像)で
+ *    開き直しが無限に続く。あれは正しく扱える状態なので触らない。
+ *    開き直して得があるのは「画面は横向きなのに縦長の映像が来ている」場合だけ
+ *    (縦向きで開いたカメラが縦長のまま残り、横向きの利点が消える・2026-09-19の件)。
+ */
+export function shouldReopen(screenPortrait: boolean, video: { width: number; height: number }): boolean {
+  return !screenPortrait && video.width > 0 && video.width <= video.height;
+}

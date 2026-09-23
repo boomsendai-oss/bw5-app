@@ -6,16 +6,18 @@
 // 機器間の通信を障害点にしないため)。モデルは自前で配信しているので
 // 外部CDNにも依存しない。
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { PHOTO_TARGET_HEIGHT, fillEdgeColors, fitBustFrame, refineMask } from '@/lib/bf6Photo';
+import { PHOTO_TARGET_HEIGHT, fillEdgeColors, refineMask } from '@/lib/bf6Photo';
 import { guideRect } from '@/lib/bf6PhotoAlign';
 import {
+  capturePlan,
   containRect,
   effectiveTurn,
   flipTurn,
+  guideSource,
   motionSign,
   overlayRotationDeg,
-  physicalSize,
-  portraitLockCrop,
+  shouldReopen,
+  stageMode,
   turnFromGravity,
   uprightTransform,
   type TurnDir,
@@ -105,8 +107,12 @@ export default function PhotoCapture({
   //    文言に端末名(iPad/スマホ)を書かないこと。どちらからも開かれる。
   // 画面が縦向きか。縦向きのときは「仮想の横画面」で撮る(TARO 2026-09-23「回転ロックのまま
   // 縦持ちでも、横向きのカメラ画面が出るようにする」)。回転ロックONで横に倒すと画面は縦のままなので、
-  // 映像はそのまま・文字とボタンとガイドだけを90°回して、横持ちした人から正しい向きに見せる。
+  // 横持ちした人から正しい向きに見えるように、画面の中身を90°回す。
   // (以前は縦向きだと黒い画面で撮影を止めていたが、回転ロックの人には「真っ黒に見える」だけだった)
+  //
+  // ⚠️ 映像を回すかどうかは、届いた映像の縦横で決める(stageMode)。端末で違う:
+  //    実機のiPhone(回転ロックON)は、縦画面でも「世界から見て正しい向き」の横長で映像をよこした。
+  //    このとき映像を回さないと、重ねた文字とガイドだけが回って90°ずれる(TARO実機 2026-09-23)。
   const [screenPortrait, setScreenPortrait] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(orientation: portrait)');
@@ -147,7 +153,8 @@ export default function PhotoCapture({
   }, [open, motionEpoch]);
   const turn = effectiveTurn({ gravity: gravityTurn, signFix, manual: manualTurn });
   // 縦画面 = 仮想の横画面で撮る。横画面なら回さない(今までどおり)
-  const virtualTurn: TurnDir | null = screenPortrait ? turn : null;
+  const mode = stageMode(screenPortrait, videoSize);
+  const virtualTurn: TurnDir | null = mode === 'landscape' ? null : turn;
 
   /** 「↻ 上下が逆のとき」。傾きが取れている機種では符号直しとして覚え、取れない機種では手動の向きを変える */
   const flipDirection = () => {
@@ -213,12 +220,19 @@ export default function PhotoCapture({
           transform: `rotate(${overlayRotationDeg(virtualTurn)}deg)`,
         }
       : undefined;
+  // 映像も層と同じだけ回すか(縦画面に横長の映像が届いたとき)。
+  // 回すときは層と同じ箱に収めるので、回したあとの映像は画面いっぱい(縦横比ぶんの余白だけ)に出る。
+  // ⚠️ maxWidth を切ること。Tailwind の preflight が video に max-width:100% を掛けるので、
+  //    回した映像の幅(画面の高さぶん)が画面の幅に縮められ、映像だけ小さく square に潰れる
+  //    (偽カメラで実測 844px指定→390pxに縮んだ・2026-09-23)。
+  const videoStyle: CSSProperties | undefined =
+    mode === 'portrait-rotate-video' && layerStyle ? { ...layerStyle, maxWidth: 'none' } : undefined;
   // 撮影ガイド(点線の人型)を重ねる位置(層の座標)。保存される範囲(fitBustFrame)と必ず一致させる。
-  // 縦画面では、横持ちした人から見た映像の大きさ(縦横を入れ替えたもの)で計算する。
-  // 層の回転と保存時の切り出し(portraitLockCrop)の対応は bf6PhotoRotate のテストで確かめている。
+  // 映像を回さない縦画面だけ、横持ちした人から見た大きさ(縦横を入れ替えたもの)で計算する。
+  // 層の回転と保存時の切り出し(capturePlan)の対応は bf6PhotoRotate のテストで確かめている。
   const guide = (() => {
     if (!videoSize || !layerSize) return null;
-    const src = virtualTurn ? physicalSize(videoSize) : videoSize;
+    const src = guideSource(videoSize, mode);
     const shown = containRect(src, layerSize);
     if (!shown) return null;
     const r = guideRect(src, { width: shown.width, height: shown.height });
@@ -253,13 +267,14 @@ export default function PhotoCapture({
   }, []);
 
   /**
-   * 端末の向きとカメラ映像の向きが食い違っていたら、カメラを開き直す。
+   * 画面は横向きなのに縦長の映像が来ているときだけ、カメラを開き直す。
    *
    * ⚠️ iPhoneで、縦向きでカメラを開いてから横向きにすると、映像が縦長のまま残った
    *    (TARO実機 2026-09-19)。カメラは開いたときの向きの解像度で動き続けるため。
    *    そのままだと保存範囲が画面の上の方だけになり、横向きにした意味がなくなる。
    * 回転直後は映像の大きさがまだ古いことがあるので、少し待ってから比べる。
-   * iOSが自分で映像を回転させた場合は向きが一致するので、開き直さない。
+   * ⚠️ 「画面と映像の向きが違えば開き直す」にしないこと。回転ロックONの実機は
+   *    縦画面に横長の映像をよこすので、開き直しが止まらなくなる(あれは正しく扱える状態)。
    */
   const phaseRef = useRef<Phase>('idle');
   phaseRef.current = phase;
@@ -269,9 +284,8 @@ export default function PhotoCapture({
       if (!v || !streamRef.current || v.videoWidth === 0) return;
       // 撮影直後の確認画面では開き直さない(撮り直すを押したときに改めて確かめる)
       if (phaseRef.current !== 'live') return;
-      const screenLandscape = window.matchMedia('(orientation: landscape)').matches;
-      const videoLandscape = v.videoWidth > v.videoHeight;
-      if (screenLandscape !== videoLandscape) {
+      const portrait = window.matchMedia('(orientation: portrait)').matches;
+      if (shouldReopen(portrait, { width: v.videoWidth, height: v.videoHeight })) {
         stopCamera();
         void start();
       }
@@ -325,28 +339,22 @@ export default function PhotoCapture({
       const vsize = { width: video.videoWidth, height: video.videoHeight };
       const h = PHOTO_TARGET_HEIGHT;
       const shot = document.createElement('canvas');
-      let w: number;
-      if (virtualTurn) {
-        // 縦画面(回転ロックで横持ち): 映像の中の縦長の範囲を切り出し、90°戻して横長の正しい向きにする。
-        // ⚠️ 切り抜き(MediaPipe)も元画像(JPEG)も、回し終えた正しい向きの画像に対して行う。
-        //    横倒しのまま渡すと、人物の認識が落ちる・Macの切り抜き係にも横倒しで届く。
-        const { frame, src } = portraitLockCrop(vsize, virtualTurn);
-        w = Math.round((frame.width / frame.height) * h);
-        shot.width = w;
-        shot.height = h;
-        const ctx = shot.getContext('2d')!;
-        const t = uprightTransform(virtualTurn, w, h);
+      // 縦画面 × 縦長の映像のときだけ、切り出した縦長の範囲を90°戻して横長にする。
+      // 縦画面 × 横長の映像(回転ロックONの実機)は、映像がすでに正しい向きなので回さない。
+      // ⚠️ 切り抜き(MediaPipe)も元画像(JPEG)も、向きを直し終えた画像に対して行う。
+      //    横倒しのまま渡すと、人物の認識が落ちる・Macの切り抜き係にも横倒しで届く。
+      const { frame, src, turned } = capturePlan(vsize, mode, turn);
+      const w = Math.round((frame.width / frame.height) * h);
+      shot.width = w;
+      shot.height = h;
+      const ctx = shot.getContext('2d')!;
+      if (turned) {
+        const t = uprightTransform(turn, w, h);
         ctx.translate(t.tx, t.ty);
         ctx.rotate(t.angle);
         ctx.drawImage(video, src.x, src.y, src.width, src.height, 0, 0, h, w);
       } else {
-        const frame = fitBustFrame(vsize);
-        w = Math.round((frame.width / frame.height) * h);
-        shot.width = w;
-        shot.height = h;
-        shot.getContext('2d')!.drawImage(
-          video, frame.x, frame.y, frame.width, frame.height, 0, 0, w, h
-        );
+        ctx.drawImage(video, src.x, src.y, src.width, src.height, 0, 0, w, h);
       }
 
       // 1'. 元画像をJPEGで保持(Macの切り抜き係が使う。端末内の切り抜きは仮)
@@ -403,7 +411,7 @@ export default function PhotoCapture({
       setError(e instanceof Error ? e.message : '切り抜きに失敗しました');
       setPhase('live');
     }
-  }, [loadSegmenter, virtualTurn]);
+  }, [loadSegmenter, mode, turn]);
 
   const save = useCallback(async () => {
     if (!blobRef.current) return;
@@ -459,15 +467,19 @@ export default function PhotoCapture({
   // ⚠️ このアプリは body の文字色が白。ボタン・文字は色を必ず明示する(CLAUDE.md §11)
   return (
     <div ref={stageRef} className="fixed inset-0 z-50 overflow-hidden bg-black text-white">
-      {/* 映像は画面に対して回さない(縦画面でも)。横持ちした人には、このままで正しい向きに見えている */}
+      {/* 映像の向きは端末しだい(stageMode)。
+          縦画面に縦長の映像が来たとき … 回さない。横持ちした人には、このままで正しい向きに見えている
+          縦画面に横長の映像が来たとき … 重ねる層と同じだけ回す(回転ロックONのiPhoneはこちら) */}
       <video
         ref={videoRef}
         playsInline
         muted
+        style={videoStyle}
+        data-testid="photo-video"
         className={`absolute inset-0 h-full w-full object-contain ${phase === 'preview' ? 'hidden' : ''}`}
       />
 
-      <div className="absolute inset-0" style={layerStyle} data-testid="photo-layer" data-turn={virtualTurn ?? 'none'}>
+      <div className="absolute inset-0" style={layerStyle} data-testid="photo-layer" data-turn={virtualTurn ?? 'none'} data-mode={mode}>
         {/* 撮影ガイド(TARO 2026-09-18)。点線の人型に頭と肩を合わせて撮ると、
             全員の頭の大きさと位置がそろう。LEDでは頭頂の高さを自動でそろえるが、
             大きさは自動では直せない(ポーズが自由なため)ので、撮る時点で揃える。

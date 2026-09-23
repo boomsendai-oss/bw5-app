@@ -13,11 +13,18 @@ import {
   portraitLockCrop,
   turnFromGravity,
   uprightTransform,
+  capturePlan,
+  guideSource,
+  shouldReopen,
+  stageMode,
+  type StageMode,
   type TurnDir,
 } from '../bf6PhotoRotate';
 
 /** 縦向きのカメラ映像(iPhoneの縦画面で届く大きさ) */
 const VIDEO = { width: 1080, height: 1440 };
+/** 横長の映像(回転ロックONの実機は、縦画面でもこちらが届く) */
+const WIDE = { width: 1920, height: 1080 };
 
 /** CSS の rotate(deg)(時計回りが正・y は下向き)で点を回す */
 function rot(deg: number, p: { x: number; y: number }) {
@@ -169,5 +176,101 @@ describe('effectiveTurn', () => {
   it('傾きが取れなければ手動の向き、それも無ければ既定', () => {
     expect(effectiveTurn({ gravity: null, signFix: true, manual: 'cw' })).toBe('cw');
     expect(effectiveTurn({ gravity: null, signFix: true, manual: null })).toBe(DEFAULT_TURN);
+  });
+});
+
+describe('stageMode(画面と映像の組み合わせで見せ方を決める)', () => {
+  it('画面が横向きなら、映像の向きによらず今までどおり', () => {
+    expect(stageMode(false, WIDE)).toBe('landscape');
+    expect(stageMode(false, VIDEO)).toBe('landscape');
+  });
+
+  it('縦画面 × 横長の映像(回転ロックONの実機)は、映像ごと回す', () => {
+    expect(stageMode(true, WIDE)).toBe('portrait-rotate-video');
+  });
+
+  it('縦画面 × 縦長の映像は、重ねる層だけ回す', () => {
+    expect(stageMode(true, VIDEO)).toBe('portrait-rotate-overlay');
+    // 映像の大きさがまだ取れていないときも、映像は回さない側にしておく
+    expect(stageMode(true, null)).toBe('portrait-rotate-overlay');
+  });
+});
+
+describe('capturePlan(切り出し)', () => {
+  it('縦画面 × 横長の映像: すでに正しい向きなので、横向きのカメラと同じ切り出し(回さない)', () => {
+    for (const d of ['ccw', 'cw'] as TurnDir[]) {
+      const p = capturePlan(WIDE, 'portrait-rotate-video', d);
+      expect(p.turned).toBe(false);
+      expect(p.src).toEqual(fitBustFrame(WIDE));
+      expect(p.frame).toEqual(fitBustFrame(WIDE));
+      expect(p.frame.width / p.frame.height).toBeCloseTo(PHOTO_ASPECT, 2);
+    }
+  });
+
+  it('画面が横向きのときも同じ(今までどおり)', () => {
+    const p = capturePlan(WIDE, 'landscape', 'ccw');
+    expect(p.turned).toBe(false);
+    expect(p.src).toEqual(fitBustFrame(WIDE));
+  });
+
+  it('縦画面 × 縦長の映像: 縦長の範囲を切り出して90°戻す', () => {
+    const p = capturePlan(VIDEO, 'portrait-rotate-overlay', 'ccw');
+    expect(p.turned).toBe(true);
+    expect(p.src).toEqual(portraitLockCrop(VIDEO, 'ccw').src);
+    expect(p.frame.width / p.frame.height).toBeCloseTo(PHOTO_ASPECT, 2);
+  });
+});
+
+describe('ガイドと保存範囲が一致する(3つの見せ方すべて)', () => {
+  // 層の中でガイドが指す点 → 層の回転で画面へ → 映像の座標へ、と写して
+  // capturePlan の切り出し範囲と重なるかを見る。
+  // 'portrait-rotate-video' では映像も層と同じだけ回っているので、層の座標 = 映像の座標。
+  const cases: { mode: StageMode; video: { width: number; height: number }; rotatesVideo: boolean }[] = [
+    { mode: 'landscape', video: WIDE, rotatesVideo: false },
+    { mode: 'portrait-rotate-video', video: WIDE, rotatesVideo: true },
+    { mode: 'portrait-rotate-overlay', video: VIDEO, rotatesVideo: false },
+  ];
+  for (const c of cases) {
+    for (const d of ['ccw', 'cw'] as TurnDir[]) {
+      it(`${c.mode} / ${d}: ガイドの四隅が保存範囲の四隅に重なる`, () => {
+        const src = guideSource(c.video, c.mode);
+        // 映像を等倍で見せたとする(層の大きさ = 見た目の映像の大きさ)
+        const g = guideRect(src, src)!;
+        const corners = [
+          { x: g.left, y: g.top },
+          { x: g.left + g.width, y: g.top },
+          { x: g.left, y: g.top + g.height },
+          { x: g.left + g.width, y: g.top + g.height },
+        ].map((p) => {
+          // 映像も一緒に回っている(または回っていない)なら、層の座標がそのまま映像の座標
+          if (c.mode === 'landscape' || c.rotatesVideo) return { x: Math.round(p.x), y: Math.round(p.y) };
+          const r = rot(overlayRotationDeg(d), { x: p.x - src.width / 2, y: p.y - src.height / 2 });
+          return { x: Math.round(r.x + c.video.width / 2), y: Math.round(r.y + c.video.height / 2) };
+        });
+        const { src: crop } = capturePlan(c.video, c.mode, d);
+        const xs = corners.map((p) => p.x);
+        const ys = corners.map((p) => p.y);
+        expect(Math.min(...xs)).toBe(crop.x);
+        expect(Math.max(...xs)).toBe(crop.x + crop.width);
+        expect(Math.min(...ys)).toBe(crop.y);
+        expect(Math.max(...ys)).toBe(crop.y + crop.height);
+      });
+    }
+  }
+});
+
+describe('shouldReopen(カメラを開き直すか)', () => {
+  it('画面が横向きなのに縦長の映像が来ているときだけ開き直す(2026-09-19の件)', () => {
+    expect(shouldReopen(false, VIDEO)).toBe(true);
+    expect(shouldReopen(false, WIDE)).toBe(false);
+  });
+
+  it('⚠️ 縦画面×横長の映像(回転ロックONの実機)では開き直さない。開き直しが止まらなくなる', () => {
+    expect(shouldReopen(true, WIDE)).toBe(false);
+    expect(shouldReopen(true, VIDEO)).toBe(false);
+  });
+
+  it('映像の大きさがまだ取れていないときは何もしない', () => {
+    expect(shouldReopen(false, { width: 0, height: 0 })).toBe(false);
   });
 });
