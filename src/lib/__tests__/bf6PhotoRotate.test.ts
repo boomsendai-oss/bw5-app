@@ -11,9 +11,12 @@ import {
   physicalSize,
   physicalToVideoRect,
   portraitLockCrop,
+  rotate180Rect,
   turnFromGravity,
   uprightTransform,
   capturePlan,
+  captureTransform,
+  videoRotationDeg,
   guideSource,
   shouldReopen,
   stageMode,
@@ -197,25 +200,28 @@ describe('stageMode(画面と映像の組み合わせで見せ方を決める)',
 });
 
 describe('capturePlan(切り出し)', () => {
-  it('縦画面 × 横長の映像: すでに正しい向きなので、横向きのカメラと同じ切り出し(回さない)', () => {
+  it('縦画面 × 横長の映像: 映像を180°回して見せているので、切り出しも180°回す', () => {
+    // ⚠️ 見えていたものと保存されるものを一致させる。回さないと保存した写真だけ上下逆になる
     for (const d of ['ccw', 'cw'] as TurnDir[]) {
       const p = capturePlan(WIDE, 'portrait-rotate-video', d);
-      expect(p.turned).toBe(false);
-      expect(p.src).toEqual(fitBustFrame(WIDE));
+      expect(p.turned).toBe('half');
       expect(p.frame).toEqual(fitBustFrame(WIDE));
       expect(p.frame.width / p.frame.height).toBeCloseTo(PHOTO_ASPECT, 2);
+      // 見た目の上(人の頭)は映像では下側。切り出しは映像の下端に貼り付く
+      expect(p.src).toEqual(rotate180Rect(fitBustFrame(WIDE), WIDE));
+      expect(p.src.y + p.src.height).toBe(WIDE.height);
     }
   });
 
-  it('画面が横向きのときも同じ(今までどおり)', () => {
+  it('画面が横向きのときは回さない(今までどおり)', () => {
     const p = capturePlan(WIDE, 'landscape', 'ccw');
-    expect(p.turned).toBe(false);
+    expect(p.turned).toBe('none');
     expect(p.src).toEqual(fitBustFrame(WIDE));
   });
 
   it('縦画面 × 縦長の映像: 縦長の範囲を切り出して90°戻す', () => {
     const p = capturePlan(VIDEO, 'portrait-rotate-overlay', 'ccw');
-    expect(p.turned).toBe(true);
+    expect(p.turned).toBe('quarter');
     expect(p.src).toEqual(portraitLockCrop(VIDEO, 'ccw').src);
     expect(p.frame.width / p.frame.height).toBeCloseTo(PHOTO_ASPECT, 2);
   });
@@ -242,8 +248,14 @@ describe('ガイドと保存範囲が一致する(3つの見せ方すべて)', (
           { x: g.left, y: g.top + g.height },
           { x: g.left + g.width, y: g.top + g.height },
         ].map((p) => {
-          // 映像も一緒に回っている(または回っていない)なら、層の座標がそのまま映像の座標
-          if (c.mode === 'landscape' || c.rotatesVideo) return { x: Math.round(p.x), y: Math.round(p.y) };
+          // 画面が横向き … 層の座標 = 映像の座標
+          if (c.mode === 'landscape') return { x: Math.round(p.x), y: Math.round(p.y) };
+          // 映像も回しているとき … 層と映像の差は180°(videoRotationDeg = 層 + 180°)
+          if (c.rotatesVideo) {
+            const r = rot(videoRotationDeg(d) - overlayRotationDeg(d), { x: p.x - src.width / 2, y: p.y - src.height / 2 });
+            return { x: Math.round(r.x + c.video.width / 2), y: Math.round(r.y + c.video.height / 2) };
+          }
+          // 映像は回していないとき … 層の回転ぶんだけ写す
           const r = rot(overlayRotationDeg(d), { x: p.x - src.width / 2, y: p.y - src.height / 2 });
           return { x: Math.round(r.x + c.video.width / 2), y: Math.round(r.y + c.video.height / 2) };
         });
@@ -272,5 +284,66 @@ describe('shouldReopen(カメラを開き直すか)', () => {
 
   it('映像の大きさがまだ取れていないときは何もしない', () => {
     expect(shouldReopen(false, { width: 0, height: 0 })).toBe(false);
+  });
+});
+
+describe('videoRotationDeg(縦画面に横長の映像が来たときの、映像の回し方)', () => {
+  // ⚠️ 実機の証拠(TARO iPhone 2026-09-23・2枚目): 重ねる層と同じだけ回したら、
+  //    映像の中身だけが上下逆さまになった(文字とガイドは読めるのにMacBookが逆さま)。
+  //    倒した向きの判定が逆でも層と映像は一緒に180°ずれるだけなので、食い違いは出ない。
+  //    実機で食い違った以上、原因は層と映像の相対関係。だから相対で180°ずらして固定する。
+  it('層とは逆向き(= 層 + 180°)に回す', () => {
+    for (const d of ['ccw', 'cw'] as TurnDir[]) {
+      expect(videoRotationDeg(d)).toBe(-overlayRotationDeg(d));
+      expect(((videoRotationDeg(d) - overlayRotationDeg(d)) % 360 + 360) % 360).toBe(180);
+    }
+  });
+
+  it('↻ で向きを変えると、層と映像がそろったまま両方が180°回る(ずれたままにならない)', () => {
+    for (const d of ['ccw', 'cw'] as TurnDir[]) {
+      const f = flipTurn(d);
+      expect(((overlayRotationDeg(f) - overlayRotationDeg(d)) % 360 + 360) % 360).toBe(180);
+      expect(((videoRotationDeg(f) - videoRotationDeg(d)) % 360 + 360) % 360).toBe(180);
+    }
+  });
+});
+
+describe('captureTransform(保存する向き)', () => {
+  /** drawImage の描き先(回転後の座標)を canvas の座標に写す */
+  function toCanvas(t: { tx: number; ty: number; angle: number }, l: { x: number; y: number }) {
+    const c = Math.cos(t.angle);
+    const s = Math.sin(t.angle);
+    // ⚠️ -0 と 0 は toEqual で別物になる。|| 0 で潰す
+    return { x: Math.round(t.tx + c * l.x - s * l.y) || 0, y: Math.round(t.ty + s * l.x + c * l.y) || 0 };
+  }
+  const outW = 1200;
+  const outH = 1000;
+
+  it('縦画面 × 横長の映像: 映像の右下(= 見た目の左上・頭側)が保存画像の左上に来る', () => {
+    for (const d of ['ccw', 'cw'] as TurnDir[]) {
+      const { src, turned } = capturePlan(WIDE, 'portrait-rotate-video', d);
+      const t = captureTransform(turned, d, outW, outH);
+      expect(t.drawWidth).toBe(outW);
+      expect(t.drawHeight).toBe(outH);
+      const local = (vx: number, vy: number) => ({
+        x: ((vx - src.x) / src.width) * t.drawWidth,
+        y: ((vy - src.y) / src.height) * t.drawHeight,
+      });
+      expect(toCanvas(t, local(src.x + src.width, src.y + src.height))).toEqual({ x: 0, y: 0 });
+      expect(toCanvas(t, local(src.x, src.y))).toEqual({ x: outW, y: outH });
+    }
+  });
+
+  it('画面が横向き: そのまま(左上が左上)', () => {
+    const t = captureTransform('none', 'ccw', outW, outH);
+    expect(toCanvas(t, { x: 0, y: 0 })).toEqual({ x: 0, y: 0 });
+    expect(t.drawWidth).toBe(outW);
+  });
+
+  it('縦画面 × 縦長の映像: 90°回すので描き先の幅と高さが入れ替わる', () => {
+    const t = captureTransform('quarter', 'ccw', outW, outH);
+    expect(t.drawWidth).toBe(outH);
+    expect(t.drawHeight).toBe(outW);
+    expect(t).toMatchObject(uprightTransform('ccw', outW, outH));
   });
 });

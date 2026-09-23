@@ -10,6 +10,7 @@ import { PHOTO_TARGET_HEIGHT, fillEdgeColors, refineMask } from '@/lib/bf6Photo'
 import { guideRect } from '@/lib/bf6PhotoAlign';
 import {
   capturePlan,
+  captureTransform,
   containRect,
   effectiveTurn,
   flipTurn,
@@ -19,7 +20,7 @@ import {
   shouldReopen,
   stageMode,
   turnFromGravity,
-  uprightTransform,
+  videoRotationDeg,
   type TurnDir,
 } from '@/lib/bf6PhotoRotate';
 
@@ -220,13 +221,17 @@ export default function PhotoCapture({
           transform: `rotate(${overlayRotationDeg(virtualTurn)}deg)`,
         }
       : undefined;
-  // 映像も層と同じだけ回すか(縦画面に横長の映像が届いたとき)。
-  // 回すときは層と同じ箱に収めるので、回したあとの映像は画面いっぱい(縦横比ぶんの余白だけ)に出る。
+  // 映像も回すか(縦画面に横長の映像が届いたとき)。層と同じ箱に収めるので、
+  // 回したあとの映像は画面いっぱい(縦横比ぶんの余白だけ)に出る。
+  // ⚠️ 回す向きは層と同じではなく逆(videoRotationDeg)。層と同じにしたら実機で映像だけが
+  //    上下逆になった(TARO iPhone 2026-09-23)。理由は bf6PhotoRotate の videoRotationDeg 参照。
   // ⚠️ maxWidth を切ること。Tailwind の preflight が video に max-width:100% を掛けるので、
   //    回した映像の幅(画面の高さぶん)が画面の幅に縮められ、映像だけ小さく square に潰れる
   //    (偽カメラで実測 844px指定→390pxに縮んだ・2026-09-23)。
   const videoStyle: CSSProperties | undefined =
-    mode === 'portrait-rotate-video' && layerStyle ? { ...layerStyle, maxWidth: 'none' } : undefined;
+    mode === 'portrait-rotate-video' && layerStyle
+      ? { ...layerStyle, transform: `rotate(${videoRotationDeg(turn)}deg)`, maxWidth: 'none' }
+      : undefined;
   // 撮影ガイド(点線の人型)を重ねる位置(層の座標)。保存される範囲(fitBustFrame)と必ず一致させる。
   // 映像を回さない縦画面だけ、横持ちした人から見た大きさ(縦横を入れ替えたもの)で計算する。
   // 層の回転と保存時の切り出し(capturePlan)の対応は bf6PhotoRotate のテストで確かめている。
@@ -339,23 +344,18 @@ export default function PhotoCapture({
       const vsize = { width: video.videoWidth, height: video.videoHeight };
       const h = PHOTO_TARGET_HEIGHT;
       const shot = document.createElement('canvas');
-      // 縦画面 × 縦長の映像のときだけ、切り出した縦長の範囲を90°戻して横長にする。
-      // 縦画面 × 横長の映像(回転ロックONの実機)は、映像がすでに正しい向きなので回さない。
+      // 画面に見えていたのと同じ向きに起こして保存する(capturePlan が向きを決める)。
       // ⚠️ 切り抜き(MediaPipe)も元画像(JPEG)も、向きを直し終えた画像に対して行う。
-      //    横倒しのまま渡すと、人物の認識が落ちる・Macの切り抜き係にも横倒しで届く。
+      //    横倒し・逆さまのまま渡すと、人物の認識が落ちる・Macの切り抜き係にもその向きで届く。
       const { frame, src, turned } = capturePlan(vsize, mode, turn);
       const w = Math.round((frame.width / frame.height) * h);
       shot.width = w;
       shot.height = h;
       const ctx = shot.getContext('2d')!;
-      if (turned) {
-        const t = uprightTransform(turn, w, h);
-        ctx.translate(t.tx, t.ty);
-        ctx.rotate(t.angle);
-        ctx.drawImage(video, src.x, src.y, src.width, src.height, 0, 0, h, w);
-      } else {
-        ctx.drawImage(video, src.x, src.y, src.width, src.height, 0, 0, w, h);
-      }
+      const t = captureTransform(turned, turn, w, h);
+      ctx.translate(t.tx, t.ty);
+      ctx.rotate(t.angle);
+      ctx.drawImage(video, src.x, src.y, src.width, src.height, 0, 0, t.drawWidth, t.drawHeight);
 
       // 1'. 元画像をJPEGで保持(Macの切り抜き係が使う。端末内の切り抜きは仮)
       rawRef.current = await new Promise<Blob | null>((resolve) => shot.toBlob((b) => resolve(b), 'image/jpeg', 0.9));

@@ -59,6 +59,38 @@ export function physicalToVideoRect(frame: Frame, video: { width: number; height
   return { x: frame.y, y: video.height - frame.x - frame.width, width: frame.height, height: frame.width };
 }
 
+/**
+ * 縦画面に横長の映像が来たとき、映像を画面に対して何度回すか(CSSの rotate)。
+ *
+ * ⚠️ 重ねる層(overlayRotationDeg)と同じではなく、逆向き(= 層 + 180°)。
+ *
+ * 分かっている事実(TARO iPhone 2026-09-23・2枚目): 層と同じだけ回したら、映像の中身だけが
+ * 上下逆さまになった(重ねた文字とガイドはそのまま読めるのに、写っているMacBookが逆さま)。
+ *
+ * なぜ「傾きの判定が逆だった」ではなく「層と映像の関係が逆」と言えるか:
+ * 倒した向きの判定が逆でも、層と映像は両方とも180°ずれるだけなので、互いの食い違いは出ない。
+ * 実機で食い違ったのだから、原因は層と映像の相対関係そのもの。だから相対で180°直す。
+ * (このため「↻ 上下が逆のとき」は今も効く。↻は層と映像を一緒に180°回すので、
+ *  そろったまま上下だけが入れ替わる。傾きの判定が逆の機種はこれで直せる)
+ *
+ * 推測(確かめていない): iOSが返す横長のフレームは端末に貼り付いた向きで返っていて、
+ * 世界の上がどちら側かがこちらの想定と逆になっている。
+ */
+export function videoRotationDeg(d: TurnDir): 90 | -90 {
+  // overlayRotationDeg(d) + 180 と同じ(±90 なので符号を返すだけで足りる)
+  return d === 'ccw' ? -90 : 90;
+}
+
+/** 枠を180°回した位置(映像を180°回して見せているときに、見た目の枠を映像の座標に戻す) */
+export function rotate180Rect(frame: Frame, video: { width: number; height: number }): Frame {
+  return {
+    x: video.width - frame.x - frame.width,
+    y: video.height - frame.y - frame.height,
+    width: frame.width,
+    height: frame.height,
+  };
+}
+
 /** 回転ロックの縦画面で保存する範囲(映像の座標)。保存される写真の縦横は frame 側(横長) */
 export function portraitLockCrop(video: { width: number; height: number }, d: TurnDir): { frame: Frame; src: Frame } {
   const frame = fitBustFrame(physicalSize(video));
@@ -159,21 +191,54 @@ export function guideSource(video: { width: number; height: number }, mode: Stag
 }
 
 /**
- * 撮るときの切り出し。turned が true のときだけ canvas を回す(uprightTransform)。
- * 映像ごと回して見せているとき('portrait-rotate-video')は、映像がすでに正しい向きなので
- * 横向きのカメラと同じ切り出しでよい。
+ * 撮るときに canvas をどれだけ回すか。
+ *  'none'    … そのまま(画面が横向き)
+ *  'half'    … 180°(縦画面 × 横長の映像。映像も180°回して見せているので、保存も同じだけ回す)
+ *  'quarter' … 90°(縦画面 × 縦長の映像。縦長に切り出した範囲を横長に起こす)
+ */
+export type CaptureTurn = 'none' | 'half' | 'quarter';
+
+/**
+ * 撮るときの切り出し。
+ * ⚠️ 見えていたものと保存されるものを必ず一致させる。'portrait-rotate-video' で映像を
+ *    180°回して見せているのに切り出しを回さないと、保存した写真だけが上下逆になる。
  */
 export function capturePlan(
   video: { width: number; height: number },
   mode: StageMode,
   turn: TurnDir
-): { frame: Frame; src: Frame; turned: boolean } {
+): { frame: Frame; src: Frame; turned: CaptureTurn } {
   if (mode === 'portrait-rotate-overlay') {
     const { frame, src } = portraitLockCrop(video, turn);
-    return { frame, src, turned: true };
+    return { frame, src, turned: 'quarter' };
   }
   const frame = fitBustFrame(video);
-  return { frame, src: frame, turned: false };
+  if (mode === 'portrait-rotate-video') {
+    // 見た目の上(人の頭)は、映像の座標では下側にある
+    return { frame, src: rotate180Rect(frame, video), turned: 'half' };
+  }
+  return { frame, src: frame, turned: 'none' };
+}
+
+/**
+ * 切り出した範囲を、正しい向きの画像(幅 outW × 高さ outH)に描くための変換。
+ * ctx.translate(tx, ty) → ctx.rotate(angle) のあと
+ * drawImage(video, src..., 0, 0, drawWidth, drawHeight)。
+ */
+export function captureTransform(
+  turned: CaptureTurn,
+  turn: TurnDir,
+  outW: number,
+  outH: number
+): { tx: number; ty: number; angle: number; drawWidth: number; drawHeight: number } {
+  if (turned === 'quarter') {
+    // 90°回すので、描き先は幅と高さが入れ替わる
+    return { ...uprightTransform(turn, outW, outH), drawWidth: outH, drawHeight: outW };
+  }
+  if (turned === 'half') {
+    return { tx: outW, ty: outH, angle: Math.PI, drawWidth: outW, drawHeight: outH };
+  }
+  return { tx: 0, ty: 0, angle: 0, drawWidth: outW, drawHeight: outH };
 }
 
 /**
