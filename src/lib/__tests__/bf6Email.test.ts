@@ -61,3 +61,19 @@ describe('buildBf6OrderEmail — 出場者の集合案内', () => {
     expect(text).toContain('13:30');
   });
 });
+
+// 9/23に一斉送信した「当日のご案内」と同じ内容を、締切までの申込にも自動返信で届ける(TARO 2026-09-23)
+describe('buildBf6OrderEmail — 当日のご案内(控室・飲食禁止)', () => {
+  it('エントリーを含む注文には、控室(柔道場)と飲食禁止と保護者の受付を書く', () => {
+    const { text } = buildBf6OrderEmail(order({ items: [entryItem] }), 'tok');
+    expect(text).toContain('柔道場');
+    expect(text).toContain('飲食禁止');
+    expect(text).toContain('保護者の方へ');
+    expect(text).toContain('添付の地図');
+  });
+
+  it('観覧チケットのみの注文には書かない', () => {
+    const { text } = buildBf6OrderEmail(order({ items: [ticketItem] }), 'tok');
+    expect(text).not.toContain('柔道場');
+  });
+});

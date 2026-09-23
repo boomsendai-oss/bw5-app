@@ -7,6 +7,8 @@ import type { OwnBf6Order } from '@/lib/bf6Db';
 // 告知はすべて boomersfight.vercel.app で統一している(bw5-app も同じサイトに解決するが
 // 受け手に「別サイト?」と見せないため、メール内のリンクも告知側のドメインに揃える)。
 const BASE_URL = 'https://boomersfight.vercel.app';
+// 添付画像を取りに行く先(本番の公開URL)。メールはサーバ側から送るので絶対URLが要る
+const PUBLIC_BASE_URL = 'https://bw5-app.vercel.app';
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 
 export function buildBf6OrderEmail(order: OwnBf6Order, editToken: string): { subject: string; text: string } {
@@ -80,6 +82,42 @@ export function buildBf6OrderEmail(order: OwnBf6Order, editToken: string): { sub
     lines.push('  時間内にお越しください。');
     lines.push('  遅れると抽選に参加できず、運営サイドで決定を行う場合があります。');
     lines.push('  ※ 観覧の方の開場は 14:30 です');
+    // 9/23に出場者へ一斉送信した「当日のご案内」と同じ内容。締切(9/24)までに申し込んだ人にも
+    // 同じ情報が届くように、自動返信にもそのまま入れる(TARO 2026-09-23)。
+    lines.push('');
+    lines.push('▼ 会場への行き方');
+    lines.push('  SSMの1階の入口を入るとエレベーターが2つあります。');
+    lines.push('  そこから9階へ直接上がってきてください。');
+    lines.push('  エレベーターを降りた目の前がホールです。');
+    lines.push('  受付に置いてあるタブレットで、エントリー受付');
+    lines.push('  (部門を選ぶ → 名前を選ぶ → くじを引く)をお済ませください。');
+    lines.push('');
+    lines.push('▼ 保護者の方へ(受付と一緒にお願いします)');
+    lines.push('  ・観覧チケットを購入済みの方は、このタイミングで入場受付');
+    lines.push('   (リストバンドのお渡し)も済ませてください。');
+    lines.push('   ホールへの入場自体は、開場の14:30からです。');
+    lines.push('  ・お支払いが当日現金の方は、このタイミングで、');
+    lines.push('   エントリー費と観覧チケットのお支払いをまとめてお願いします。');
+    lines.push('');
+    lines.push('▼ 控室(柔道場)');
+    lines.push('  柔道場を控室としてご利用いただけます。荷物なども置いていただけます。');
+    lines.push('  柔道場は飲食禁止です。');
+    lines.push('  会場をお借りしているので、食べ物・飲み物をこぼすなどがあると、');
+    lines.push('  今後この会場を使えなくなります。必ずお守りください。');
+    lines.push('  柔道場の場所は、添付の地図をご覧ください。');
+    lines.push('');
+    lines.push('▼ ご注意');
+    lines.push('  ・SSMの校舎では、ほかのフロアやお部屋で授業やほかの催しが');
+    lines.push('   行われていることがあります。ご迷惑にならないよう、');
+    lines.push('   用のないフロア・お部屋には立ち入らないでください。');
+    lines.push('  ・バトルの時間は、進行状況によって変わることがあります。');
+    lines.push('   なるべく会場の近くにいてください。');
+    lines.push('  ・コール(呼び出し)のときにいない場合は、不戦敗になることがあります。');
+    lines.push('  ・会場内での紛失・盗難などについて、主催者は一切責任を負いません。');
+    lines.push('   貴重品は各自で管理してください。');
+    lines.push('');
+    lines.push('▼ タイムテーブル');
+    lines.push('  添付のタイムテーブルをご覧ください。');
   }
   lines.push('');
   lines.push('内容の変更・キャンセルはBOOM公式LINEまでご連絡ください。');
@@ -89,11 +127,43 @@ export function buildBf6OrderEmail(order: OwnBf6Order, editToken: string): { sub
   return { subject, text: lines.join('\n') };
 }
 
+/**
+ * 出場者の自動返信に付ける添付(控室の地図・タイムテーブル)。
+ * 一斉メール(bf6Broadcast)と同じ画像をpublicから取る。取れないときは添付なしで送る
+ * (メールそのものが届かない方が困るため)。
+ */
+const GUIDE_ATTACHMENTS = [
+  { filename: '控室（柔道場）への行き方.png', path: 'bf6/mail/judo-map.png' },
+  { filename: 'タイムテーブル.png', path: 'bf6/mail/timetable.png' },
+];
+
+async function loadGuideAttachments(): Promise<{ filename: string; content: Buffer }[]> {
+  try {
+    return await Promise.all(
+      GUIDE_ATTACHMENTS.map(async (a) => {
+        const res = await fetch(`${PUBLIC_BASE_URL}/${a.path}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`${a.path} (${res.status})`);
+        return { filename: a.filename, content: Buffer.from(await res.arrayBuffer()) };
+      })
+    );
+  } catch (e) {
+    console.error('[bf6] guide attachments failed', e instanceof Error ? e.message : e);
+    return [];
+  }
+}
+
 /** 完了メールを送る。失敗しても呼び出し元の処理(申込・Webhook)は止めない。 */
 export async function sendBf6OrderEmail(order: OwnBf6Order, editToken: string): Promise<void> {
   try {
     const mail = buildBf6OrderEmail(order, editToken);
-    await sendEmail({ to: order.email, subject: mail.subject, text: mail.text });
+    const isEntry = order.items.some((i) => i.itemType === 'entry');
+    const attachments = isEntry ? await loadGuideAttachments() : [];
+    await sendEmail({
+      to: order.email,
+      subject: mail.subject,
+      text: mail.text,
+      ...(attachments.length > 0 ? { attachments } : {}),
+    });
   } catch (e) {
     console.error('[bf6] order email failed', order.orderId, e instanceof Error ? e.message : e);
   }
