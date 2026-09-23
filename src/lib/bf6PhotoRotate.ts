@@ -100,18 +100,67 @@ export function containRect(src: { width: number; height: number }, box: { width
 
 /** 画面いっぱいに寄せるときの上限。これ以上拡大しても粗くなるだけ */
 const MAX_ZOOM = 3;
+/** 保存範囲の外に残す余白の割合。頭のてっぺんの線とその文字が画面の端に触れないように */
+const GUIDE_MARGIN = 0.9;
 
 /**
- * 保存範囲が画面いっぱいに映るように、映像を拡大する倍率。
+ * 画面に何をどう出すか。保存範囲(ガイド)を画面の真ん中に、画面いっぱいまで寄せて出す。
+ * 返す guide は寄せたあとの位置(層の座標)。映像には scale と、同じだけの移動を掛ける。
  *
- * ⚠️ 横長のフレームを縦画面にそのまま出すと、真ん中の帯にしか映らず人物が小さい
- *    (TARO実機 2026-09-23「上下に黒帯」)。保存されるのは下の範囲だけなので、
- *    そこが画面に収まるところまで寄せる。映像と一緒にガイドも同じ倍率で動かすこと。
+ * ⚠️ 保存範囲(ガイド)は画面から絶対にはみ出させない(contain。cover にしない)。
+ *    寄せる倍率を映像の中心で掛けていたため、上端に貼り付いている保存範囲が画面の外に出て、
+ *    頭のてっぺんの線と文字が切れた(TARO実機 2026-09-23「頭の先っぽ切れちゃってて
+ *    レイアウト崩れてますね」)。スタッフは頭とあごをこの線に合わせるので、線が見えないのは致命的。
+ *    黒帯が出るのは構わない。ガイドの中心を画面の中心に置き、余白ぶん小さく収める。
  */
-export function zoomToFit(guide: { width: number; height: number }, box: { width: number; height: number }): number {
-  if (guide.width <= 0 || guide.height <= 0) return 1;
-  const s = Math.min((box.width * 0.96) / guide.width, (box.height * 0.96) / guide.height);
-  return Math.min(MAX_ZOOM, Math.max(1, s));
+export function stageView(
+  video: { width: number; height: number },
+  box: { width: number; height: number },
+  rotated: boolean
+): { guide: Rect; scale: number; dx: number; dy: number } | null {
+  const viewed = viewedSize(video, rotated);
+  const shown = containRect(viewed, box);
+  if (!shown) return null;
+  const { frame } = capturePlan(video, rotated);
+  const p = shown.width / viewed.width;
+  const g: Rect = {
+    left: shown.left + frame.x * p,
+    top: shown.top + frame.y * p,
+    width: frame.width * p,
+    height: frame.height * p,
+  };
+  if (g.width <= 0 || g.height <= 0) return null;
+  // 横画面は今までどおり、映像を丸ごと見せる(寄せない)
+  if (!rotated) return { guide: g, scale: 1, dx: 0, dy: 0 };
+
+  const scale = Math.min(
+    MAX_ZOOM,
+    (box.width * GUIDE_MARGIN) / g.width,
+    (box.height * GUIDE_MARGIN) / g.height
+  );
+  // ガイドの中心が画面の中心に来るように動かす(映像も同じだけ動かす)
+  const gcx = g.left + g.width / 2;
+  const gcy = g.top + g.height / 2;
+  const dx = scale * (box.width / 2 - gcx);
+  const dy = scale * (box.height / 2 - gcy);
+  const width = g.width * scale;
+  const height = g.height * scale;
+  return {
+    guide: { left: (box.width - width) / 2, top: (box.height - height) / 2, width, height },
+    scale,
+    dx,
+    dy,
+  };
+}
+
+/**
+ * 上の移動量(層の座標)を、画面の座標に直す。映像は画面に対して回していないので、
+ * CSSの transform に入れる前に層の回転ぶん(OVERLAY_DEG)だけ回す必要がある。
+ */
+export function toScreenOffset(dx: number, dy: number, rotated: boolean): { x: number; y: number } {
+  if (!rotated) return { x: dx, y: dy };
+  // OVERLAY_DEG = 90 の回転: (x, y) → (-y, x)。⚠️ OVERLAY_DEG を変えたらここも直す
+  return { x: -dy, y: dx };
 }
 
 /**

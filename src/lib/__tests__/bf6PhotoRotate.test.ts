@@ -7,8 +7,9 @@ import {
   containRect,
   shouldReopen,
   viewedSize,
+  stageView,
+  toScreenOffset,
   viewedToVideoRect,
-  zoomToFit,
 } from '../bf6PhotoRotate';
 
 /** 回転ロックONの実機が縦画面によこす横長の映像 */
@@ -148,7 +149,7 @@ describe('captureTransform(保存する向き)', () => {
   });
 });
 
-describe('containRect / zoomToFit', () => {
+describe('containRect', () => {
   it('横長の箱に縦長の映像を収めると、左右に余白が出て中央に来る', () => {
     expect(containRect({ width: 300, height: 400 }, { width: 800, height: 400 })).toEqual({
       left: 250,
@@ -160,13 +161,6 @@ describe('containRect / zoomToFit', () => {
 
   it('大きさが0なら null', () => {
     expect(containRect({ width: 0, height: 400 }, { width: 800, height: 400 })).toBeNull();
-  });
-
-  it('保存範囲が小さいほど大きく寄せる。縮小はしない・上限は3倍', () => {
-    expect(zoomToFit({ width: 200, height: 200 }, { width: 800, height: 400 })).toBeCloseTo(1.92, 2);
-    expect(zoomToFit({ width: 800, height: 400 }, { width: 800, height: 400 })).toBe(1);
-    expect(zoomToFit({ width: 10, height: 10 }, { width: 800, height: 400 })).toBe(3);
-    expect(zoomToFit({ width: 0, height: 0 }, { width: 800, height: 400 })).toBe(1);
   });
 });
 
@@ -183,5 +177,62 @@ describe('shouldReopen(カメラを開き直すか)', () => {
 
   it('映像の大きさがまだ取れていないときは何もしない', () => {
     expect(shouldReopen(false, { width: 0, height: 0 })).toBe(false);
+  });
+});
+
+describe('stageView(ガイドは画面から絶対にはみ出さない)', () => {
+  // ⚠️ 実機で頭のてっぺんの線が画面の外に出て切れた(TARO 2026-09-23
+  //    「頭の先っぽ切れちゃっててレイアウト崩れてますね」)。寄せる倍率を映像の中心で
+  //    掛けていたため、上端に貼り付いた保存範囲が画面の外に出ていた。
+  //    スタッフは頭とあごをこの線に合わせる。黒帯は許すが、線が切れるのは許さない。
+  const PORTRAIT = { width: 390, height: 844 };
+  const LANDSCAPE = { width: 844, height: 390 };
+  const cases = [
+    { name: '縦画面 / 横長の映像', video: WIDE, box: { width: PORTRAIT.height, height: PORTRAIT.width }, rotated: true },
+    { name: '縦画面 / 縦長の映像', video: TALL, box: { width: PORTRAIT.height, height: PORTRAIT.width }, rotated: true },
+    { name: '横画面', video: WIDE, box: LANDSCAPE, rotated: false },
+  ];
+
+  for (const c of cases) {
+    it(`${c.name}: ガイドが画面の中に丸ごと入る(余白は0以上)`, () => {
+      const v = stageView(c.video, c.box, c.rotated)!;
+      expect(v).not.toBeNull();
+      expect(v.guide.left).toBeGreaterThanOrEqual(0);
+      expect(v.guide.top).toBeGreaterThanOrEqual(0);
+      expect(v.guide.left + v.guide.width).toBeLessThanOrEqual(c.box.width);
+      expect(v.guide.top + v.guide.height).toBeLessThanOrEqual(c.box.height);
+      // 保存される写真と同じ縦横比のまま(歪めていない)
+      expect(v.guide.width / v.guide.height).toBeCloseTo(PHOTO_ASPECT, 2);
+    });
+  }
+
+  it('縦画面ではガイドを画面の中央に置き、画面の9割まで寄せる', () => {
+    const box = { width: PORTRAIT.height, height: PORTRAIT.width };
+    const v = stageView(WIDE, box, true)!;
+    expect(v.guide.top + v.guide.height / 2).toBeCloseTo(box.height / 2, 5);
+    expect(v.guide.left + v.guide.width / 2).toBeCloseTo(box.width / 2, 5);
+    // 高さいっぱい(9割)まで大きくなる
+    expect(v.guide.height).toBeCloseTo(box.height * 0.9, 5);
+    expect(v.scale).toBeGreaterThan(1);
+  });
+
+  it('横画面は今までどおり寄せない(倍率1・移動なし)', () => {
+    const v = stageView(WIDE, LANDSCAPE, false)!;
+    expect(v.scale).toBe(1);
+    expect(v.dx).toBe(0);
+    expect(v.dy).toBe(0);
+  });
+
+  it('映像の大きさが0なら null', () => {
+    expect(stageView({ width: 0, height: 0 }, LANDSCAPE, false)).toBeNull();
+  });
+});
+
+describe('toScreenOffset(層の移動量を画面の座標に直す)', () => {
+  it('縦画面では層の回転(+90°)ぶん回す', () => {
+    expect(toScreenOffset(10, 20, true)).toEqual({ x: -20, y: 10 });
+  });
+  it('横画面はそのまま', () => {
+    expect(toScreenOffset(10, 20, false)).toEqual({ x: 10, y: 20 });
   });
 });

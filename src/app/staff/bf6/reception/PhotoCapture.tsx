@@ -11,10 +11,9 @@ import {
   OVERLAY_DEG,
   capturePlan,
   captureTransform,
-  containRect,
   shouldReopen,
-  viewedSize,
-  zoomToFit,
+  stageView,
+  toScreenOffset,
 } from '@/lib/bf6PhotoRotate';
 
 type Phase = 'idle' | 'loading' | 'live' | 'working' | 'preview' | 'saving';
@@ -138,38 +137,21 @@ export default function PhotoCapture({
         }
       : undefined;
 
-  // 撮影ガイド(点線の人型)を重ねる位置(層の座標)。保存される範囲と必ず一致させる。
+  // 撮影ガイド(点線の人型)を重ねる位置(層の座標)と、映像の寄せ方。
   // ⚠️ 映像は画面に対して回さない(回転ロックONのiPhoneが返すフレームは「端末の窓」で、
   //    横に倒して持つ人にはそのまま正しく見える・TARO実機 2026-09-23)。層だけが回るので、
-  //    層から見た映像は縦横が入れ替わって見える。その大きさでガイドを計算する。
+  //    層から見た映像は縦横が入れ替わって見える。その大きさでガイドを計算する(stageView)。
   //    層の回転と保存時の切り出し(capturePlan)の対応は bf6PhotoRotate のテストで固定している。
-  // 拡大(zoom)は見た目だけの話。保存される画素は変わらない(切り出しは映像の座標で決める)。
-  const view = (() => {
-    if (!videoSize || !layerSize) return null;
-    const viewed = viewedSize(videoSize, rotated);
-    const shown = containRect(viewed, layerSize);
-    if (!shown) return null;
-    const { frame } = capturePlan(videoSize, rotated);
-    const p = shown.width / viewed.width;
-    const g = { left: shown.left + frame.x * p, top: shown.top + frame.y * p, width: frame.width * p, height: frame.height * p };
-    // 寄せるのは縦画面だけ(横画面は今までどおり、映像を丸ごと見せる)
-    const zoom = rotated ? zoomToFit(g, layerSize) : 1;
-    // 層の中心を基準に、ガイドも映像と同じだけ寄せる
-    const cx = layerSize.width / 2;
-    const cy = layerSize.height / 2;
-    return {
-      zoom,
-      guide: {
-        left: cx + (g.left - cx) * zoom,
-        top: cy + (g.top - cy) * zoom,
-        width: g.width * zoom,
-        height: g.height * zoom,
-      },
-    };
-  })();
+  // 寄せ(scale と移動)は見た目だけの話。保存される画素は変わらない(切り出しは映像の座標で決める)。
+  const view = videoSize && layerSize ? stageView(videoSize, layerSize, rotated) : null;
   const guide = view?.guide ?? null;
-  // 映像は回さず、保存範囲が画面いっぱいになるところまで寄せるだけ
-  const videoStyle: CSSProperties | undefined = view ? { transform: `scale(${view.zoom})` } : undefined;
+  // 映像はガイドと同じだけ寄せる。回していないので、移動量は画面の座標に直してから渡す
+  const videoStyle: CSSProperties | undefined = (() => {
+    if (!view) return undefined;
+    const o = toScreenOffset(view.dx, view.dy, rotated);
+    // ⚠️ transform は1本の文字列で書く。Tailwind v4 の translate/scale クラスと混ぜると二重に掛かる
+    return { transform: `translate(${o.x}px, ${o.y}px) scale(${view.scale})` };
+  })();
 
   /** カメラを開く。前面/背面はどちらでも撮れるよう指定しすぎない。 */
   const start = useCallback(async () => {
