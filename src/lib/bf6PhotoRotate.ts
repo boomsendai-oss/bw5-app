@@ -4,109 +4,89 @@
 // スタッフのiPhoneは回転ロックがONのことが多い。横に倒しても画面は縦のままで、
 // 以前は「横にして」の黒い画面が出て撮れなかった(「真っ黒に見える」)。
 //
-// 考え方:
-//  - カメラ映像(<video>)は画面に対して回さない。端末と一緒にカメラも回っているので、
-//    横に持った人から見ると、縦向きの画面に映る映像はそのまま正しい向きに見えている。
-//  - 回すのは上に重ねる文字・ボタン・ガイドだけ(画面の中に「仮想の横画面」を作る)。
-//  - 保存範囲は「横持ちした人から見た横長」。画面の座標では縦長の範囲になる。
-//    縦横を入れ替えた映像の大きさで fitBustFrame を計算し、映像の座標に戻して切り出す。
+// ■ 持ち方は決め打ち(TARO 2026-09-23)
+// 当日は「スマホを左に倒して(端末の上端が左・左の辺が下)横向きに構える」。これだけ。
+// 傾きセンサーでの自動判定も、向きを切り替えるボタンも置かない(当日に迷う余地を作らない)。
 //
-// 回す向きの呼び方(端末をどちらに倒したか・画面を正面から見て):
-//   'ccw' = 反時計回りに倒した。端末の上端(インカメラ側)が左、下端が右に来る
-//   'cw'  = 時計回りに倒した。端末の上端が右、下端が左に来る
+// ■ 何をどう回すか(実機の画面写真から決めた。理屈から決めない)
+//  - カメラ映像(<video>)は画面に対して回さない。
+//    ⚠️ 実機(TARO iPhone 2026-09-23・3枚目)で分かったこと: 回転ロックONのiPhoneが返す
+//       フレームは「端末の窓」そのもの。画面に対して回さずに出すと、横に倒して持っている人には
+//       そのまま正しい向きに見える。1つ前の版は映像を -90° 回していて、TAROから
+//       「今の映像をさらに90°時計回りにしたのが正しい」= 回転0が正しい、という報告が出た。
+//  - 重ねるもの(名前・ボタン・ガイド・確認画面の写真)だけを +90°(時計回り)回す。
+//    この値は実機で文字の向きに文句が出ていない今の見え方をそのまま固定したもの。
+//  - 保存する範囲は「横持ちした人から見た横長」。画面(=映像)の座標では縦長の範囲になる。
+//
+// ■ 見たものがそのまま保存される(WYSIWYG)
+// ガイドの位置も、切り出す範囲も、保存時の回転も、すべて下の OVERLAY_DEG 1つから出す。
+// ガイドの四隅が保存範囲の四隅に重なることはテストで固定している。
 import { fitBustFrame, type Frame } from './bf6Photo';
 import type { Rect } from './bf6PhotoAlign';
 
-export type TurnDir = 'ccw' | 'cw';
-
 /**
- * 向きが分からないとき(傾きセンサーが使えない・拒否された)の既定。
- * 反時計回り(上端が左・下端=ホーム側が右)にした。横向き表示のアプリで一般的な持ち方
- * (iOSの landscapeRight)。逆なら画面の「↻ 上下が逆のとき」で直せる。
+ * 縦画面のときに、重ねるもの(名前・ボタン・ガイド・確認画面)を画面に対して回す角度。
+ * CSSの rotate と同じで時計回りが正。「スマホを左に倒す」持ち方に合わせた +90°。
+ * ⚠️ 実機の見え方(TARO iPhone 2026-09-23)を固定した値。理屈で動かさないこと。
  */
-export const DEFAULT_TURN: TurnDir = 'ccw';
+export const OVERLAY_DEG = 90;
 
-export function flipTurn(d: TurnDir): TurnDir {
-  return d === 'ccw' ? 'cw' : 'ccw';
-}
-
-/** 横持ちした人から見た映像の大きさ(縦と横を入れ替える) */
-export function physicalSize(video: { width: number; height: number }): { width: number; height: number } {
-  return { width: video.height, height: video.width };
+/** 横持ちした人から見た映像の大きさ。縦画面では縦横が入れ替わる */
+export function viewedSize(video: { width: number; height: number }, rotated: boolean): { width: number; height: number } {
+  return rotated ? { width: video.height, height: video.width } : { width: video.width, height: video.height };
 }
 
 /**
- * 重ねる文字・ボタンの層を画面に対して何度回すか(CSSの rotate・時計回りが正)。
- * 端末を反時計回りに倒したら、中身は時計回りに回すと正しい向きに見える。
- */
-export function overlayRotationDeg(d: TurnDir): 90 | -90 {
-  return d === 'ccw' ? 90 : -90;
-}
-
-/**
- * 横持ちした人から見た座標(physicalSize の中の枠)を、映像そのものの座標に戻す。
+ * 横持ちした人から見た座標の枠を、映像そのものの座標に戻す。
  *
- * 'ccw': 見た目の上 = 映像の右(+x)、見た目の右 = 映像の下(+y)
- * 'cw' : 見た目の上 = 映像の左(-x)、見た目の右 = 映像の上(-y)
+ * 重ねるものを +90°(時計回り)回しているので、映像は層から見ると -90° 回って見える。
+ * つまり 見た目の上 = 映像の右(+x)、見た目の右 = 映像の下(+y)。
  *
- * ⚠️ 画面側の層の回転(overlayRotationDeg)と必ず同じ対応にすること。
- *    ずれるとガイドに合わせて撮っても別の場所が保存される。テストで両者の一致を確かめている。
+ * ⚠️ 画面側の回転(OVERLAY_DEG)と必ず同じ対応にすること。ずれるとガイドに合わせて撮っても
+ *    別の場所が保存される。テストで両者の一致を確かめている。
  */
-export function physicalToVideoRect(frame: Frame, video: { width: number; height: number }, d: TurnDir): Frame {
-  if (d === 'ccw') {
-    return { x: video.width - frame.y - frame.height, y: frame.x, width: frame.height, height: frame.width };
+export function viewedToVideoRect(frame: Frame, video: { width: number; height: number }): Frame {
+  return { x: video.width - frame.y - frame.height, y: frame.x, width: frame.height, height: frame.width };
+}
+
+/** 保存時に canvas を回す量。'none' = そのまま(画面が横向き)、'quarter' = -90°(縦画面) */
+export type CaptureTurn = 'none' | 'quarter';
+
+/**
+ * 撮るときの切り出し。
+ * frame … 保存される写真の縦横(横長 1.2:1)。見た目の座標
+ * src   … 映像から切り出す範囲。映像の座標
+ */
+export function capturePlan(
+  video: { width: number; height: number },
+  screenPortrait: boolean
+): { frame: Frame; src: Frame; turned: CaptureTurn } {
+  if (!screenPortrait) {
+    const frame = fitBustFrame(video);
+    return { frame, src: frame, turned: 'none' };
   }
-  return { x: frame.y, y: video.height - frame.x - frame.width, width: frame.height, height: frame.width };
-}
-
-/**
- * 縦画面に横長の映像が来たとき、映像を画面に対して何度回すか(CSSの rotate)。
- *
- * ⚠️ 重ねる層(overlayRotationDeg)と同じではなく、逆向き(= 層 + 180°)。
- *
- * 分かっている事実(TARO iPhone 2026-09-23・2枚目): 層と同じだけ回したら、映像の中身だけが
- * 上下逆さまになった(重ねた文字とガイドはそのまま読めるのに、写っているMacBookが逆さま)。
- *
- * なぜ「傾きの判定が逆だった」ではなく「層と映像の関係が逆」と言えるか:
- * 倒した向きの判定が逆でも、層と映像は両方とも180°ずれるだけなので、互いの食い違いは出ない。
- * 実機で食い違ったのだから、原因は層と映像の相対関係そのもの。だから相対で180°直す。
- * (このため「↻ 上下が逆のとき」は今も効く。↻は層と映像を一緒に180°回すので、
- *  そろったまま上下だけが入れ替わる。傾きの判定が逆の機種はこれで直せる)
- *
- * 推測(確かめていない): iOSが返す横長のフレームは端末に貼り付いた向きで返っていて、
- * 世界の上がどちら側かがこちらの想定と逆になっている。
- */
-export function videoRotationDeg(d: TurnDir): 90 | -90 {
-  // overlayRotationDeg(d) + 180 と同じ(±90 なので符号を返すだけで足りる)
-  return d === 'ccw' ? -90 : 90;
-}
-
-/** 枠を180°回した位置(映像を180°回して見せているときに、見た目の枠を映像の座標に戻す) */
-export function rotate180Rect(frame: Frame, video: { width: number; height: number }): Frame {
-  return {
-    x: video.width - frame.x - frame.width,
-    y: video.height - frame.y - frame.height,
-    width: frame.width,
-    height: frame.height,
-  };
-}
-
-/** 回転ロックの縦画面で保存する範囲(映像の座標)。保存される写真の縦横は frame 側(横長) */
-export function portraitLockCrop(video: { width: number; height: number }, d: TurnDir): { frame: Frame; src: Frame } {
-  const frame = fitBustFrame(physicalSize(video));
-  return { frame, src: physicalToVideoRect(frame, video, d) };
+  const frame = fitBustFrame(viewedSize(video, true));
+  return { frame, src: viewedToVideoRect(frame, video), turned: 'quarter' };
 }
 
 /**
  * 切り出した範囲を、横長で正しい向きの画像(幅 outW × 高さ outH)に描くための変換。
- * canvas で ctx.translate(tx, ty) → ctx.rotate(angle) のあと
- * drawImage(video, src..., 0, 0, outH, outW) と描く(回したあとなので幅と高さが入れ替わる)。
+ * ctx.translate(tx, ty) → ctx.rotate(angle) のあと
+ * drawImage(video, src..., 0, 0, drawWidth, drawHeight)。
+ *
+ * 縦画面では -90°(反時計回り)。重ねるものを +90° 回して見せているぶんを戻すと、
+ * 横持ちした人が見ていた向き = 世界の上 が、写真の上になる。
  */
-export function uprightTransform(d: TurnDir, outW: number, outH: number): { tx: number; ty: number; angle: number } {
-  // 'ccw' は映像の右が上なので、反時計回りに90°戻す。原点を左下に置く
-  if (d === 'ccw') return { tx: 0, ty: outH, angle: -Math.PI / 2 };
-  // 'cw' は映像の左が上なので、時計回りに90°戻す。原点を右上に置く
-  return { tx: outW, ty: 0, angle: Math.PI / 2 };
+export function captureTransform(
+  turned: CaptureTurn,
+  outW: number,
+  outH: number
+): { tx: number; ty: number; angle: number; drawWidth: number; drawHeight: number } {
+  if (turned === 'quarter') {
+    // 原点を左下に置いて反時計回りに90°。回したあとなので描き先は幅と高さが入れ替わる
+    return { tx: 0, ty: outH, angle: -Math.PI / 2, drawWidth: outH, drawHeight: outW };
+  }
+  return { tx: 0, ty: 0, angle: 0, drawWidth: outW, drawHeight: outH };
 }
 
 /** object-contain で箱に収めたときに、映像が実際に映る範囲(箱の座標) */
@@ -118,133 +98,26 @@ export function containRect(src: { width: number; height: number }, box: { width
   return { left: (box.width - width) / 2, top: (box.height - height) / 2, width, height };
 }
 
-/**
- * 重力(accelerationIncludingGravity)の符号の向き。
- * ⚠️ iPhone(Safari)と Android(Chrome)で符号が逆。仕様とAndroidは「上向きが正」
- *    (まっすぐ縦に持つと y ≒ +9.8)、iPhoneは「下向きが正」(y ≒ -9.8)。
- *    ここで仕様の向きにそろえてから判定する。符号が合わない機種でも画面の「↻」で直せる。
- */
-export function motionSign(iosLike: boolean): 1 | -1 {
-  return iosLike ? -1 : 1;
-}
-
-/** 横に倒したと判定する x の大きさ(m/s²)。9.8の半分強。机に平置きのときは変えない */
-const TURN_ON = 5.5;
+/** 画面いっぱいに寄せるときの上限。これ以上拡大しても粗くなるだけ */
+const MAX_ZOOM = 3;
 
 /**
- * 重力から、端末をどちらに倒しているかを決める。はっきりしないときは前の値のまま
- * (平置き・斜め持ちで表示がパタパタ入れ替わらないように)。
- * x, y は accelerationIncludingGravity の生の値、sign は motionSign()。
- */
-export function turnFromGravity(
-  prev: TurnDir | null,
-  g: { x: number | null; y: number | null },
-  sign: 1 | -1
-): TurnDir | null {
-  if (g.x == null || !Number.isFinite(g.x)) return prev;
-  const x = g.x * sign;
-  const y = g.y != null && Number.isFinite(g.y) ? Math.abs(g.y) : 0;
-  // 横方向の重力が十分に大きく、縦方向より勝っているときだけ判定する
-  if (Math.abs(x) < TURN_ON || Math.abs(x) < y) return prev;
-  // 反時計回りに倒すと端末の右側(+x)が上を向く → 仕様の向きで x が正
-  return x > 0 ? 'ccw' : 'cw';
-}
-
-/**
- * 実際に使う向きを決める。
- *  - 傾きが取れているとき: 傾きの向き。符号が逆の機種のために signFix(「↻」で切り替え・端末に記憶)で反転できる
- *  - 取れないとき(拒否・非対応): 手動の向き(「↻」で切り替え)、それも無ければ既定
- * ⚠️ 2つを分けているのは、「傾きの符号直し」を傾きが無い状態の手動切り替えと混ぜると、
- *    次に傾きが取れたときに逆向きになるため。
- */
-export function effectiveTurn(s: { gravity: TurnDir | null; signFix: boolean; manual: TurnDir | null }): TurnDir {
-  if (s.gravity) return s.signFix ? flipTurn(s.gravity) : s.gravity;
-  return s.manual ?? DEFAULT_TURN;
-}
-
-/**
- * 画面と映像の組み合わせ(実機で分かった話・TARO 2026-09-23)。
+ * 保存範囲が画面いっぱいに映るように、映像を拡大する倍率。
  *
- * ⚠️ 回転ロックONのiPhoneでは、映像が「世界から見て正しい向き」=横長で届いた
- *    (画面は縦のまま)。「縦画面には必ず縦長の映像が来る」という前提が実機で崩れた
- *    (TARO実機の画面写真。MacBookが横倒しに映り、重ねた文字とガイドだけが回っていた)。
- *    端末・OSで変わるので、届いた映像の縦横で決める。
- *
- *  'landscape'                … 画面が横向き。今までどおり(何も回さない)
- *  'portrait-rotate-video'    … 縦画面 × 横長の映像(回転ロックの実機)。
- *                               映像も重ねる層も同じだけ回す。切り出しは回さずそのまま
- *  'portrait-rotate-overlay'  … 縦画面 × 縦長の映像。映像は回さず、重ねる層だけ回す。
- *                               切り出した縦長の範囲を90°戻して横長にする
+ * ⚠️ 横長のフレームを縦画面にそのまま出すと、真ん中の帯にしか映らず人物が小さい
+ *    (TARO実機 2026-09-23「上下に黒帯」)。保存されるのは下の範囲だけなので、
+ *    そこが画面に収まるところまで寄せる。映像と一緒にガイドも同じ倍率で動かすこと。
  */
-export type StageMode = 'landscape' | 'portrait-rotate-video' | 'portrait-rotate-overlay';
-
-export function stageMode(screenPortrait: boolean, video: { width: number; height: number } | null): StageMode {
-  if (!screenPortrait) return 'landscape';
-  // 映像の大きさがまだ分からないときは、映像を回さない側(安全側)にしておく
-  if (video && video.width > video.height) return 'portrait-rotate-video';
-  return 'portrait-rotate-overlay';
-}
-
-/** ガイドを計算するときの映像の大きさ(横持ちした人から見た向き) */
-export function guideSource(video: { width: number; height: number }, mode: StageMode): { width: number; height: number } {
-  return mode === 'portrait-rotate-overlay' ? physicalSize(video) : video;
-}
-
-/**
- * 撮るときに canvas をどれだけ回すか。
- *  'none'    … そのまま(画面が横向き)
- *  'half'    … 180°(縦画面 × 横長の映像。映像も180°回して見せているので、保存も同じだけ回す)
- *  'quarter' … 90°(縦画面 × 縦長の映像。縦長に切り出した範囲を横長に起こす)
- */
-export type CaptureTurn = 'none' | 'half' | 'quarter';
-
-/**
- * 撮るときの切り出し。
- * ⚠️ 見えていたものと保存されるものを必ず一致させる。'portrait-rotate-video' で映像を
- *    180°回して見せているのに切り出しを回さないと、保存した写真だけが上下逆になる。
- */
-export function capturePlan(
-  video: { width: number; height: number },
-  mode: StageMode,
-  turn: TurnDir
-): { frame: Frame; src: Frame; turned: CaptureTurn } {
-  if (mode === 'portrait-rotate-overlay') {
-    const { frame, src } = portraitLockCrop(video, turn);
-    return { frame, src, turned: 'quarter' };
-  }
-  const frame = fitBustFrame(video);
-  if (mode === 'portrait-rotate-video') {
-    // 見た目の上(人の頭)は、映像の座標では下側にある
-    return { frame, src: rotate180Rect(frame, video), turned: 'half' };
-  }
-  return { frame, src: frame, turned: 'none' };
-}
-
-/**
- * 切り出した範囲を、正しい向きの画像(幅 outW × 高さ outH)に描くための変換。
- * ctx.translate(tx, ty) → ctx.rotate(angle) のあと
- * drawImage(video, src..., 0, 0, drawWidth, drawHeight)。
- */
-export function captureTransform(
-  turned: CaptureTurn,
-  turn: TurnDir,
-  outW: number,
-  outH: number
-): { tx: number; ty: number; angle: number; drawWidth: number; drawHeight: number } {
-  if (turned === 'quarter') {
-    // 90°回すので、描き先は幅と高さが入れ替わる
-    return { ...uprightTransform(turn, outW, outH), drawWidth: outH, drawHeight: outW };
-  }
-  if (turned === 'half') {
-    return { tx: outW, ty: outH, angle: Math.PI, drawWidth: outW, drawHeight: outH };
-  }
-  return { tx: 0, ty: 0, angle: 0, drawWidth: outW, drawHeight: outH };
+export function zoomToFit(guide: { width: number; height: number }, box: { width: number; height: number }): number {
+  if (guide.width <= 0 || guide.height <= 0) return 1;
+  const s = Math.min((box.width * 0.96) / guide.width, (box.height * 0.96) / guide.height);
+  return Math.min(MAX_ZOOM, Math.max(1, s));
 }
 
 /**
  * カメラを開き直すべきか。
- * ⚠️ 「画面と映像の向きが違えば開き直す」にすると、回転ロックの実機(縦画面×横長の映像)で
- *    開き直しが無限に続く。あれは正しく扱える状態なので触らない。
+ * ⚠️ 「画面と映像の向きが違えば開き直す」にしないこと。回転ロックONの実機は
+ *    縦画面に横長の映像をよこすので、開き直しが止まらなくなる(あれは正しく扱える状態)。
  *    開き直して得があるのは「画面は横向きなのに縦長の映像が来ている」場合だけ
  *    (縦向きで開いたカメラが縦長のまま残り、横向きの利点が消える・2026-09-19の件)。
  */
