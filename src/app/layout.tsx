@@ -49,7 +49,9 @@ export default function RootLayout({
               function setup() { try {
                 var p = location.pathname;
                 var isStaff = p.indexOf('/staff/') === 0 || p === '/staff' || p.indexOf('/admin') === 0;
-                var isBf6 = p.indexOf('/bf6') === 0;
+                // vol.6 と vol.7 の告知ページは黒基調。オレンジのバー(BW5のtheme-color)が
+                // 画面の上下に出ると台無しになるので、同じ扱いにする(TARO 2026-09-24)
+                var isBf6 = p.indexOf('/bf6') === 0 || p.indexOf('/bf7') === 0;
                 var isKiosk = p.indexOf('/kiosk') === 0;
                 // 物販ページ(黒×黒Tシャツ等)は黒基調。BW5オレンジのバーが上下に出ると台無しになる
                 var isDark = isBf6 || p.indexOf('/merch') === 0;
