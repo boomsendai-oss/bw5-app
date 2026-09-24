@@ -13,6 +13,10 @@ const JOBS = [
   // post-story は「slot_time <= 現在のJST時刻 でまだ出していない枠」を出す期限方式なので、
   // 枠の時刻ちょうど(以降)に着火する必要がある。07:59のような前倒しだと 08:00 の枠が
   // 「まだ予定時刻前」と判定され取りこぼすため、必ず定刻に撃つ。
+  // BF6のエントリー締切(9/24 24:00)直後に「締め切りました」を出すための臨時枠(2026-09-24)。
+  // 平時は0時台に枠を置かないので、この2本は9/25以降は空振りするだけ(害はない)。
+  { at: '00:05', path: '/api/cron/post-story', label: 'story-0005' },
+  { at: '00:08', path: '/api/cron/post-story', label: 'story-0005-retry' },
   { at: '08:00', path: '/api/cron/post-story', label: 'story-08' },
   { at: '08:03', path: '/api/cron/post-story', label: 'story-08-retry' },
   { at: '12:00', path: '/api/cron/post-story', label: 'story-1200' },
