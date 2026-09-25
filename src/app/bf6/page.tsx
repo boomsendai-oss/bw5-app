@@ -55,17 +55,6 @@ export default async function Bf6TopPage() {
     <Bf6Shell full>
       <Bf6FloatingCta />
       <div>
-        {showBf7 && (
-          <Link
-            href="/bf7"
-            className="block bg-gradient-to-r from-sky-700 via-sky-600 to-blue-800 px-4 py-3 text-center text-white"
-          >
-            <span className="text-[10px] font-black tracking-[0.25em] text-sky-200">NEXT</span>
-            <span className="ml-3 text-base font-black">BOOMER&apos;S FIGHT!!! vol.7</span>
-            <span className="ml-3 text-sm font-bold text-sky-100">2027.1.30(土) SSM 9階ホール</span>
-            <span className="ml-3 text-sm font-black underline underline-offset-4">くわしく →</span>
-          </Link>
-        )}
         {/* ヒーロー = フライヤー本体(タイトルは画像側が担う。テキストの重複を避ける)。
             PCはフライヤー+日付/CTAの2カラムでダイナミックに(ダンスライブ参考) */}
         <div className="bg-neutral-950 md:grid md:grid-cols-2 md:items-center">
@@ -93,6 +82,18 @@ export default async function Bf6TopPage() {
                 観覧チケット
               </Link>
             </div>
+            {/* vol.7への導線。会場でMCが発表する時刻になったら自動で出る(TARO 2026-09-25) */}
+            {showBf7 && (
+              <Link
+                href="/bf7"
+                className="mt-3 flex h-16 w-full flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-sky-400 via-sky-500 to-blue-700 text-white ring-1 ring-blue-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.3),0_10px_25px_-5px_rgba(2,132,199,0.55)] font-black"
+              >
+                <span className="text-base md:text-lg">BOOMER&apos;S FIGHT!!! vol.7 詳細はこちら</span>
+                <span className="mt-0.5 text-[11px] font-bold text-sky-50 md:text-xs">
+                  2027.1.30(土) SSM 9階ホール ／ スペシャルゲスト決定
+                </span>
+              </Link>
+            )}
           </header>
         </div>
 
