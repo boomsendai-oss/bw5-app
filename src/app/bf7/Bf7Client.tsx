@@ -30,6 +30,8 @@ export default function Bf7Client() {
   }, []);
 
   const [form, setForm] = useState({ name: '', email: '', divisions: [] as string[], note: '' });
+  // まず大きなボタンだけ見せ、押したらフォームを出す(TARO 2026-09-25「押したくなるボタンが最初に要る」)
+  const [formOpen, setFormOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<null | { already: boolean }>(null);
@@ -91,12 +93,20 @@ export default function Bf7Client() {
             </p>
           </section>
 
-          {/* スペシャルゲスト(名前は出さない) */}
-          <section className="mt-4 flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-sky-500/10 text-3xl">?</div>
-            <div>
-              <p className="text-sm font-black tracking-[0.18em] text-sky-300">SPECIAL GUEST</p>
-              <p className="mt-1 text-sm text-neutral-300">大阪から、あの人が来ます。発表までお楽しみに。</p>
+          {/* スペシャルゲスト。写真は本人からもらったもの(2026-09-25) */}
+          <section className="mt-6 overflow-hidden rounded-2xl border border-sky-500/30 bg-gradient-to-b from-sky-500/10 to-transparent">
+            <div className="flex items-end gap-3 px-5 pt-5">
+              <div className="flex-1 pb-5">
+                <p className="text-xs font-black tracking-[0.22em] text-sky-300">SPECIAL GUEST</p>
+                <p className="mt-2 text-3xl font-black leading-none">Hiro</p>
+                <p className="mt-2 text-sm font-bold text-neutral-300">MIDDLE FILTER</p>
+                <p className="mt-1 text-xs font-bold tracking-[0.14em] text-sky-300">FROM OSAKA</p>
+                <p className="mt-3 text-xs leading-relaxed text-neutral-400">
+                  大阪から、HIPHOPのダンサー Hiro さんをゲストに迎えます。
+                </p>
+              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/bf7/guest-hiro.png" alt="Hiro (MIDDLE FILTER)" className="w-[46%] max-w-[230px] self-end" />
             </div>
           </section>
 
@@ -107,6 +117,19 @@ export default function Bf7Client() {
               登録しておくと、エントリー受付が始まったときにメールでお知らせします。この時点では申し込みではありません。
             </p>
 
+            {!done && !formOpen && (
+              <button
+                type="button"
+                onClick={() => setFormOpen(true)}
+                className="mt-4 w-full rounded-2xl bg-sky-500 px-5 py-6 text-center text-xl font-black text-neutral-950 shadow-lg shadow-sky-500/20 active:scale-[0.99]"
+              >
+                お知らせリストに登録する
+                <span className="mt-1 block text-xs font-bold text-neutral-900/70">
+                  30秒で終わります ／ 申し込みではありません
+                </span>
+              </button>
+            )}
+
             {done ? (
               <div className="mt-4 rounded-2xl border border-sky-500/40 bg-sky-500/10 p-5">
                 <p className="text-base font-black">
@@ -116,7 +139,7 @@ export default function Bf7Client() {
                   確認のメールをお送りしています。届かない場合は迷惑メールもご確認ください。
                 </p>
               </div>
-            ) : (
+            ) : formOpen ? (
               <div className="mt-4 space-y-4">
                 <div>
                   <label className="text-xs font-bold text-neutral-400">お名前</label>
@@ -171,13 +194,13 @@ export default function Bf7Client() {
                   onClick={submit}
                   className="w-full rounded-xl bg-sky-500 py-4 text-base font-black text-neutral-950 disabled:opacity-50"
                 >
-                  {busy ? '送信中…' : 'お知らせリストに登録する'}
+                  {busy ? '送信中…' : 'この内容で登録する'}
                 </button>
                 <p className="text-xs text-neutral-500">
                   いただいたメールアドレスは、vol.7のご案内にのみ使います。
                 </p>
               </div>
-            )}
+            ) : null}
           </section>
 
           <footer className="mt-10 border-t border-white/10 pt-5 text-xs text-neutral-500">

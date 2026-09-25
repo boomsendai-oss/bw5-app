@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { BF6_DIVISIONS } from '@/lib/bf6';
 import { calcBf6Remaining, getBf6Faqs, getBf6Settings, getBf6Usage, getPublicBf6Entries } from '@/lib/bf6Db';
 import { getBf6StreamConfig } from '@/lib/bf6StreamDb';
+import { isBf7TeaserVisible } from '@/lib/bf7';
 import { countWaiting } from '@/lib/bf6WaitlistDb';
 import { displayedEntryCount, entryListCta } from '@/lib/bf6Waitlist';
 import { Bf6DetailBlock, Bf6SectionHead, Bf6Shell } from './ui';
@@ -47,10 +48,24 @@ export default async function Bf6TopPage() {
     ])
   );
 
+  // vol.7の導線は9/26 18:45以降だけ出す(MCの発表に合わせる)。force-dynamicなので毎回評価される。
+  const showBf7 = isBf7TeaserVisible();
+
   return (
     <Bf6Shell full>
       <Bf6FloatingCta />
       <div>
+        {showBf7 && (
+          <Link
+            href="/bf7"
+            className="block bg-gradient-to-r from-sky-700 via-sky-600 to-blue-800 px-4 py-3 text-center text-white"
+          >
+            <span className="text-[10px] font-black tracking-[0.25em] text-sky-200">NEXT</span>
+            <span className="ml-3 text-base font-black">BOOMER&apos;S FIGHT!!! vol.7</span>
+            <span className="ml-3 text-sm font-bold text-sky-100">2027.1.30(土) SSM 9階ホール</span>
+            <span className="ml-3 text-sm font-black underline underline-offset-4">くわしく →</span>
+          </Link>
+        )}
         {/* ヒーロー = フライヤー本体(タイトルは画像側が担う。テキストの重複を避ける)。
             PCはフライヤー+日付/CTAの2カラムでダイナミックに(ダンスライブ参考) */}
         <div className="bg-neutral-950 md:grid md:grid-cols-2 md:items-center">

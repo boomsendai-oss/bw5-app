@@ -78,3 +78,15 @@ export function buildBf7NotifyEmail(v: Bf7NotifyValid): { subject: string; text:
   ];
   return { subject: "【BOOMER'S FIGHT!!! vol.7】お知らせリストに登録しました", text: lines.join('\n') };
 }
+
+/**
+ * BF6のトップページにvol.7への導線を出し始める時刻(JST)。
+ * 9/26の本番で、MCがvol.7とゲストを発表するタイミングに合わせて自動で出す(TARO 2026-09-25)。
+ * これより前は出さない = 会場より先にサイトでネタバレしない、という意図。
+ */
+export const BF7_TEASER_AT = '2026-09-26T18:45:00+09:00';
+
+/** BF6トップにvol.7の導線を出してよいか。 */
+export function isBf7TeaserVisible(now: Date = new Date()): boolean {
+  return now.getTime() >= new Date(BF7_TEASER_AT).getTime();
+}
