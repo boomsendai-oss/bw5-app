@@ -182,17 +182,18 @@ export type ReceptionEntrant = {
   dancerName: string;
   performerName: string;
   grade: string;
+  genre: string;
   divisions: string[];
   paymentStatus: string;
   amountDue: number;
   checkedIn: boolean;
-  draws: { division: string; phase: string; slotNo: number; block?: 'A' | 'B' }[];
+  draws: { division: string; phase: string; slotNo: number; block?: 'A' | 'B'; drawnAt: string | null }[];
 };
 
 /** 受付画面用。バトルエントリー1件=1行で、抽選結果とチェックイン状態を添える。 */
 export async function listBf6ReceptionEntrants(): Promise<ReceptionEntrant[]> {
   const rows = await getAll(
-    `SELECT i.id, i.order_id, i.dancer_name, i.performer_name, i.grade, i.divisions,
+    `SELECT i.id, i.order_id, i.dancer_name, i.performer_name, i.grade, i.genre, i.divisions,
             o.payment_status, o.amount_total, o.pay_method
        FROM bf_order_items i
        JOIN bf_orders o ON o.id = i.order_id
@@ -203,7 +204,10 @@ export async function listBf6ReceptionEntrants(): Promise<ReceptionEntrant[]> {
   // 直列に待つと DB 往復ぶんだけ遅くなる(スマホで「ボタンが重い」の一因・2026-09-10)。独立した問い合わせは並列に。
   const [checked, draws, slotTotals] = await Promise.all([
     listBf6CheckedIn(),
-    getAll(`SELECT division, phase, slot_no, item_id FROM bf_draw WHERE item_id IS NOT NULL`).catch(() => []),
+    getAll(
+      // drawn_at = くじ引き①を引いた時刻。予選の並び順(当日の受付順)に使う
+      `SELECT division, phase, slot_no, item_id, drawn_at FROM bf_draw WHERE item_id IS NOT NULL`
+    ).catch(() => []),
     getAll('SELECT division, phase, COUNT(*) AS n FROM bf_draw GROUP BY division, phase').catch(() => []),
   ]);
   const totals = new Map<string, number>();
@@ -226,6 +230,7 @@ export async function listBf6ReceptionEntrants(): Promise<ReceptionEntrant[]> {
       block: phase === 'block'
         ? blockOfSlot(slotNo, totalByKey.get(`${d.division}|${phase}`) ?? 0)
         : undefined,
+      drawnAt: d.drawn_at ? String(d.drawn_at) : null,
     });
     byItem.set(itemId, list);
   }
@@ -236,6 +241,7 @@ export async function listBf6ReceptionEntrants(): Promise<ReceptionEntrant[]> {
     dancerName: String(r.dancer_name ?? ''),
     performerName: String(r.performer_name ?? ''),
     grade: String(r.grade ?? ''),
+    genre: String(r.genre ?? ''),
     divisions: JSON.parse(String(r.divisions ?? '[]')) as string[],
     paymentStatus: String(r.payment_status),
     amountDue: r.payment_status === 'cash_due' ? Number(r.amount_total) : 0,

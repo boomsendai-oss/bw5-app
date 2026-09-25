@@ -11,7 +11,14 @@ import { crewSetQualifier } from './actions';
 import { matchesAny } from '@/lib/bf6ListUi';
 import { lineupForBlock } from '@/lib/bf6Lineup';
 
-export type Candidate = { itemId: number; dancerName: string; block: 'A' | 'B' | null };
+export type Candidate = {
+  itemId: number;
+  dancerName: string;
+  genre: string;
+  block: 'A' | 'B' | null;
+  /** くじ引き①を引いた時刻＝当日の受付順。並び順はこれで決まる */
+  drawnAt: string | null;
+};
 
 export default function QualifierPicker({
   division,
@@ -113,7 +120,8 @@ export default function QualifierPicker({
       {view === 'arc' && (
         <>
           <p className="text-xs leading-relaxed text-neutral-600">
-            この順番で左から並ばせてください。
+            <b>当日の受付順</b>です。この順番で左から並ばせてください。
+            受付が進むと右に足されていくので、紙に書き写しながら進められます。
             ジャッジが肩を叩いた人を、予選通過者としてチェックします。
           </p>
 
@@ -155,8 +163,20 @@ export default function QualifierPicker({
                             >
                               {i + 1}
                             </span>
-                            <span className="max-h-[88px] overflow-hidden text-[11px] font-black leading-none [text-orientation:mixed] [writing-mode:vertical-rl]">
-                              {c.dancerName}
+                            {/* 名前の右にジャンル。紙に書き写すのに要る(TARO 2026-09-25) */}
+                            <span className="flex max-h-[104px] justify-center gap-0.5 overflow-hidden">
+                              <span className="text-[11px] font-black leading-none [text-orientation:mixed] [writing-mode:vertical-rl]">
+                                {c.dancerName}
+                              </span>
+                              {c.genre && (
+                                <span
+                                  className={`text-[9px] font-bold leading-none [text-orientation:mixed] [writing-mode:vertical-rl] ${
+                                    on ? 'text-white/75' : 'text-neutral-500'
+                                  }`}
+                                >
+                                  {c.genre}
+                                </span>
+                              )}
                             </span>
                             <span className={`text-[10px] font-black leading-none ${on ? '' : 'invisible'}`}>✓</span>
                           </button>
@@ -224,6 +244,11 @@ export default function QualifierPicker({
                     >
                       {on ? '✓ ' : ''}
                       {c.dancerName}
+                      {c.genre && (
+                        <span className={`ml-1 text-xs font-bold ${on ? 'text-white/75' : 'text-neutral-500'}`}>
+                          {c.genre}
+                        </span>
+                      )}
                     </button>
                   </li>
                 );

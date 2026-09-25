@@ -28,14 +28,20 @@ export default async function CrewQualifiersPage({
 
   const [entrants, qualifiers] = await Promise.all([listBf6ReceptionEntrants(), listBf6Qualifiers()]);
 
-  // その部門にエントリーしている人。受付でA/Bブロックを引いていればブロックも出す
+  // その部門にエントリーしている人。受付でA/Bブロックを引いていればブロックも出す。
+  // ジャンルも渡す: 係が並び順を紙に書き写すとき、名前だけだと誰か特定しきれない(TARO 2026-09-25)
   const candidates: Candidate[] = entrants
     .filter((e) => e.divisions.includes(division))
-    .map((e) => ({
-      itemId: e.itemId,
-      dancerName: e.dancerName,
-      block: e.draws.find((d) => d.division === division && d.phase === 'block')?.block ?? null,
-    }))
+    .map((e) => {
+      const draw = e.draws.find((d) => d.division === division && d.phase === 'block');
+      return {
+        itemId: e.itemId,
+        dancerName: e.dancerName,
+        genre: e.genre,
+        block: draw?.block ?? null,
+        drawnAt: draw?.drawnAt ?? null,
+      };
+    })
     .sort((a, b) => a.dancerName.localeCompare(b.dancerName, 'ja'));
 
   return (
