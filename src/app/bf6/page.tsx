@@ -53,7 +53,7 @@ export default async function Bf6TopPage() {
 
   return (
     <Bf6Shell full>
-      <Bf6FloatingCta />
+      {!showBf7 && <Bf6FloatingCta />}
       <div>
         {/* ヒーロー = フライヤー本体(タイトルは画像側が担う。テキストの重複を避ける)。
             PCはフライヤー+日付/CTAの2カラムでダイナミックに(ダンスライブ参考) */}
@@ -68,31 +68,33 @@ export default async function Bf6TopPage() {
               2026.9.26 <span className="text-xl md:text-3xl">SAT</span>
             </p>
             <p className="mt-1 text-xs font-bold text-neutral-400 md:mt-2 md:text-sm">OPEN 14:30</p>
-            <div className="mt-6 flex gap-3">
-              <Link
-                href="/bf6/entry"
-                className="flex h-14 flex-1 items-center justify-center rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] font-black"
-              >
-                バトルエントリー
-              </Link>
-              <Link
-                href="/bf6/ticket"
-                className="flex h-14 flex-1 items-center justify-center rounded-2xl bg-gradient-to-b from-neutral-700 via-neutral-800 to-black text-white ring-1 ring-neutral-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_25px_-5px_rgba(0,0,0,0.6)] font-black"
-              >
-                観覧チケット
-              </Link>
-            </div>
-            {/* vol.7への導線。会場でMCが発表する時刻になったら自動で出る(TARO 2026-09-25) */}
-            {showBf7 && (
+            {/* 発表の時刻になったら、vol.6のエントリー/チケットは引っ込めて vol.7 の導線だけにする。
+                その時点で当日の受付もチケットも終わっており、押させる意味がない(TARO 2026-09-25) */}
+            {showBf7 ? (
               <Link
                 href="/bf7"
-                className="mt-3 flex h-16 w-full flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-sky-400 via-sky-500 to-blue-700 text-white ring-1 ring-blue-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.3),0_10px_25px_-5px_rgba(2,132,199,0.55)] font-black"
+                className="mt-6 flex h-20 w-full flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-sky-400 via-sky-500 to-blue-700 text-white ring-1 ring-blue-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.3),0_10px_25px_-5px_rgba(2,132,199,0.55)] font-black"
               >
-                <span className="text-base md:text-lg">BOOMER&apos;S FIGHT!!! vol.7 詳細はこちら</span>
-                <span className="mt-0.5 text-[11px] font-bold text-sky-50 md:text-xs">
+                <span className="text-lg md:text-xl">BOOMER&apos;S FIGHT!!! vol.7 詳細はこちら</span>
+                <span className="mt-1 text-[11px] font-bold text-sky-50 md:text-sm">
                   2027.1.30(土) SSM 9階ホール ／ スペシャルゲスト決定
                 </span>
               </Link>
+            ) : (
+              <div className="mt-6 flex gap-3">
+                <Link
+                  href="/bf6/entry"
+                  className="flex h-14 flex-1 items-center justify-center rounded-2xl bg-gradient-to-b from-red-500 via-red-600 to-red-800 text-white ring-1 ring-red-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(220,38,38,0.5)] font-black"
+                >
+                  バトルエントリー
+                </Link>
+                <Link
+                  href="/bf6/ticket"
+                  className="flex h-14 flex-1 items-center justify-center rounded-2xl bg-gradient-to-b from-neutral-700 via-neutral-800 to-black text-white ring-1 ring-neutral-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_25px_-5px_rgba(0,0,0,0.6)] font-black"
+                >
+                  観覧チケット
+                </Link>
+              </div>
             )}
           </header>
         </div>
