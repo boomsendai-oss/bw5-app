@@ -109,7 +109,7 @@ export default async function Bf6TopPage() {
             <Bf6DetailBlock en="TIME" ja="時間">
               <p className="font-bold text-orange-400">バトルエントリー者 集合 13:30</p>
               <p className="font-bold text-neutral-200">OPEN 14:30</p>
-              <p className="font-bold text-neutral-200">CLOSE 18:00頃</p>
+              <p className="font-bold text-neutral-200">CLOSE 19:00頃</p>
               <p className="mt-2 text-xs text-neutral-400">
                 ※ バトルエントリー者は9階ホール前で受付(14:00締切)。受付で組み合わせ抽選を行います
               </p>

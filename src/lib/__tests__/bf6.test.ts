@@ -523,3 +523,17 @@ describe('validateBf6SsmEntry: SSM学生無料枠のエントリー検証', () =
     expect(typeof validateBf6SsmEntry({ ...base, rep: '' })).toBe('string');
   });
 });
+
+describe('当日は観覧チケットが当日料金になる(TARO 2026-09-25)', () => {
+  test('前日まではオンラインの大人は前売¥2,000', () => {
+    expect(calcTicketUnitPrice('ticket_adult', 'prepaid', undefined, '2026-09-25')).toBe(2000);
+  });
+
+  test('開催日(9/26)はオンラインでも¥2,500', () => {
+    expect(calcTicketUnitPrice('ticket_adult', 'prepaid', undefined, '2026-09-26')).toBe(2500);
+  });
+
+  test('小学生は当日も¥1,000のまま', () => {
+    expect(calcTicketUnitPrice('ticket_child', 'prepaid', undefined, '2026-09-26')).toBe(1000);
+  });
+});

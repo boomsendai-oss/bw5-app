@@ -107,7 +107,7 @@ export default function Bf6SsmPage() {
             </Bf6Card>
             <Bf6Card label="イベント概要">
               <ul className="space-y-1.5 text-sm text-neutral-300">
-                <li>・2026年9月26日(土) OPEN 14:30 / CLOSE 18:00頃</li>
+                <li>・2026年9月26日(土) OPEN 14:30 / CLOSE 19:00頃</li>
                 <li>・SSM 9階ホール(仙台駅東口 徒歩5分)</li>
                 <li>・一般部門 1on1トーナメント(優勝賞金¥20,000)</li>
                 <li>・JUDGE: SHOKO / K@TTSU / Mao</li>

@@ -2,6 +2,8 @@
 // 料金・定員は bf_settings で上書きできるが、既定値はここに集約する。
 // 設計書: ~/BOOM/BOOMERS_FIGHT_2026/エントリーアプリ_設計書_v2.md
 
+import { todayJst } from './dateJst';
+
 export type Bf6PayMethod = 'prepaid' | 'onsite';
 
 export type Bf6Division = 'beginner' | 'kids' | 'general';
@@ -71,13 +73,26 @@ export function calcEntryFee(
   return payMethod === 'prepaid' ? base - pricing.prepaidDiscount : base;
 }
 
-/** 観覧チケット単価。大人のみ事前/当日で価格差、小学生は一律。 */
+/** 開催日(JST)。この日からは前売ではなく当日料金になる。 */
+export const BF6_EVENT_DATE = '2026-09-26';
+
+/**
+ * 観覧チケット単価。大人のみ事前/当日で価格差、小学生は一律。
+ *
+ * ⚠️ 開催日当日は、オンラインのカード決済でも「当日料金」になる(TARO 2026-09-25
+ *    「当日は2,500円なので2,500円にして、オンラインは開けたままでいい」)。
+ *    会場で当日券を買う人と値段が食い違わないようにするため。
+ *    表示も合計も同じこの関数を通っているので、両方そろって切り替わる。
+ */
 export function calcTicketUnitPrice(
   itemType: 'ticket_adult' | 'ticket_child',
   payMethod: Bf6PayMethod,
-  pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing
+  pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing,
+  today: string = todayJst()
 ): number {
   if (itemType === 'ticket_child') return pricing.ticketChild;
+  const isEventDay = today >= BF6_EVENT_DATE;
+  if (isEventDay) return pricing.ticketAdultOnsite;
   return payMethod === 'prepaid' ? pricing.ticketAdultPrepaid : pricing.ticketAdultOnsite;
 }
 
