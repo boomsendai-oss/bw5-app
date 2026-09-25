@@ -51,7 +51,8 @@ export default function RootLayout({
                 var isStaff = p.indexOf('/staff/') === 0 || p === '/staff' || p.indexOf('/admin') === 0;
                 // vol.6 と vol.7 の告知ページは黒基調。オレンジのバー(BW5のtheme-color)が
                 // 画面の上下に出ると台無しになるので、同じ扱いにする(TARO 2026-09-24)
-                var isBf6 = p.indexOf('/bf6') === 0 || p.indexOf('/bf7') === 0;
+                var isBf7 = p.indexOf('/bf7') === 0;
+                var isBf6 = p.indexOf('/bf6') === 0 || isBf7;
                 var isKiosk = p.indexOf('/kiosk') === 0;
                 // 物販ページ(黒×黒Tシャツ等)は黒基調。BW5オレンジのバーが上下に出ると台無しになる
                 var isDark = isBf6 || p.indexOf('/merch') === 0;
@@ -75,7 +76,7 @@ export default function RootLayout({
                 function add(tag, attrs){var e = d.createElement(tag); for(var k in attrs){e.setAttribute(k, attrs[k]);} e.setAttribute('data-pwa-boot','1'); head.appendChild(e); return e;}
                 // theme-color もパス別: スタッフ=ネイビー / BF6=黒(イベント配色) / それ以外=BW5オレンジ
                 rm('meta[name="theme-color"]');
-                add('meta', {name: 'theme-color', content: isKiosk ? '#F4EDE5' : isStaff ? '#101040' : isDark ? '#0a0a0a' : '#f27a1a'});
+                add('meta', {name: 'theme-color', content: isKiosk ? '#F4EDE5' : isStaff ? '#101040' : isBf7 ? '#0b1b36' : isDark ? '#0a0a0a' : '#f27a1a'});
                 // BF6当日: /bf6/crew=スタッフ / /bf6/checkin=出場者が自分で触るiPad。
                 // どちらもホーム画面に入れて使うので、start_url を自分のページにした
                 // 専用manifestを当てる。ここを通さないと main-manifest の start_url "/" が

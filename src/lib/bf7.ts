@@ -91,3 +91,41 @@ export const BF7_TEASER_AT = '2026-09-26T18:30:00+09:00';
 export function isBf7TeaserVisible(now: Date = new Date()): boolean {
   return now.getTime() >= new Date(BF7_TEASER_AT).getTime();
 }
+
+/** ゲストの経歴(本人提供 2026-09-25)から抜粋。ページでは「プロフィール」を押すと開く */
+export const HIRO_CREDITS: { label: string; body: string }[] = [
+  { label: 'TEAM CONTEST', body: 'JAPAN DANCE DELIGHT ファイナリスト(vol.11 / 16 / 17 / 19 / 20 / 30)' },
+  {
+    label: 'SOLO / 2on2 BATTLE',
+    body: 'LIVING LARGE HIPHOP 優勝(2004)／ULTIMATE 1000 HOUSE SOLO 優勝(2016)／ぐだぐだナイトスペシャル 優勝(2012・2016)',
+  },
+  {
+    label: 'CHOREOGRAPHER / LIVE',
+    body: 'THE RAMPAGE from EXILE TRIBE／PSYCHIC FEVER from EXILE TRIBE／Full Of Harmony／MASAYA from LL BROTHERS／SWEEP',
+  },
+  { label: 'TV / MAGAZINE', body: 'MTV「ダンスディライト」CM／NIGHT CRUISING／スーパーチャンプル／D.D.D／DANCE STYLE' },
+  {
+    label: 'EVENT GUEST SHOW',
+    body: 'SOUL ATTACK／StYiE JuNcTiOn／SUMMER SONIC OSAKA／EAST SIDE PARTY／OSAKA DANCE DELIGHT／JAPAN DANCE DELIGHT',
+  },
+  { label: 'OVERSEAS', body: 'シンガポール(2013〜2015)・台湾(2016〜2019)・中国 金華/武漢(2018〜2019)・韓国(2025〜2026)' },
+];
+
+/**
+ * vol.7のページに出してよいFAQ。
+ * ⚠️ vol.6のFAQをそのまま全部は出せない。部門構成・定員・料金はvol.7ではまだ決まっておらず、
+ *    vol.6の金額(観覧¥2,000 等)や「ビギナー部門16名」をそのまま載せると嘘になる(TARO方針)。
+ *    ここに挙げた「いつでも成り立つ質問」だけを出し、残りは決まってから足す。
+ */
+export const BF7_FAQ_ALLOW = [
+  'レペゼン',
+  'エントリージャンル',
+  '習っているジャンル',
+  'バトルは初めて',
+  'ダンスバトルはどういう流れ',
+  'どんな服装',
+];
+
+export function pickBf7Faqs<T extends { q: string }>(faqs: T[]): T[] {
+  return faqs.filter((f) => BF7_FAQ_ALLOW.some((k) => f.q.includes(k)));
+}
