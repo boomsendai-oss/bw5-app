@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.boom.bf6.caffeinate</string>
+  <!-- BF6当日(2026-09-26)だけ、12:00から8時間(=20:00まで)Macをスリープさせない。
+       他の日は何もせず終了する。イベント後はこのファイルを消してよい。 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-c</string>
+    <string>[ "$(date +%F)" = "2026-09-26" ] || exit 0; echo "$(date) caffeinate 開始(8時間)"; exec /usr/bin/caffeinate -dimsu -t 28800</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>12</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/tmp/bf6_caffeinate.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/bf6_caffeinate.log</string>
+</dict>
+</plist>
