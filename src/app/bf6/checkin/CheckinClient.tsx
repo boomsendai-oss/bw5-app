@@ -373,8 +373,11 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
           <p className="mt-3 text-[1.7vh] text-white/45">
             スタッフが先に記録した場合は、自動で次に進みます
           </p>
-          <button onClick={() => setScreen('name')} className="mt-3 text-[1.8vh] text-white/40 underline">
-            戻る
+          <button
+            onClick={() => setScreen('name')}
+            className="mt-5 rounded-xl border border-white/25 px-5 py-3 text-[1.9vh] font-bold text-white/70"
+          >
+            ← 名前を選び直す
           </button>
         </Center>
       )}
@@ -427,6 +430,16 @@ export default function CheckinClient({ entrants }: { entrants: Entrant[] }) {
               className="mt-8 w-full max-w-md rounded-2xl bg-gradient-to-b from-red-500 to-red-700 py-7 text-[3vh] font-black"
             >
               ストップ
+            </button>
+          )}
+          {/* 人を選び間違えたときに戻れないと詰む(TARO実機 2026-09-25)。
+              回している間は出さない(引いている途中で抜けさせない) */}
+          {!rolling && (
+            <button
+              onClick={() => { setError(''); setScreen('name'); }}
+              className="mt-5 rounded-xl border border-white/25 px-5 py-3 text-[1.9vh] font-bold text-white/70"
+            >
+              ← 名前を選び直す
             </button>
           )}
         </Center>
