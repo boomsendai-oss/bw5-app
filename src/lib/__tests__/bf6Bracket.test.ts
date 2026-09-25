@@ -24,9 +24,9 @@ describe('ラウンド構成', () => {
   it('小中学生はベスト8から(予選で8名に絞るため)', () => {
     expect(roundsFor('kids')).toEqual(['qf', 'sf', 'f']);
   });
-  // 一般は11名なので予選でベスト4まで絞る。初戦が準決勝になる(TARO 2026-09-17)
-  it('一般は準決勝から', () => {
-    expect(roundsFor('general')).toEqual(['sf', 'f']);
+  // 一般は締切時点で18名。A/Bの2サークルで各4名通過=ベスト8から(TARO 2026-09-25)
+  it('一般はベスト8から', () => {
+    expect(roundsFor('general')).toEqual(['qf', 'sf', 'f']);
   });
   it('ラウンド名は日本語で出す', () => {
     expect(roundLabel('r16')).toBe('ベスト16');

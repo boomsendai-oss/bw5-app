@@ -28,8 +28,9 @@ export type Bf6Format = { qualifier: QualifierStyle; bracketSize: BracketSize };
 export const BF6_FORMAT: Record<Bf6DrawDivision, Bf6Format> = {
   beginner: { qualifier: 'none', bracketSize: 16 },
   kids: { qualifier: 'ab', bracketSize: 8 },
-  // 一般は11名。A/Bに分ける意味が薄いので1サークルで回し、ベスト4まで絞る(TARO 2026-09-17)
-  general: { qualifier: 'single', bracketSize: 4 },
+  // 一般は締切時点で18名になった。A・Bの2サークルに分けて各4名通過=ベスト8(TARO 2026-09-25)。
+  // 終演は18:30→19:00に延び、撤収を19:30にする前提(会場へTARO確認中)。
+  general: { qualifier: 'ab', bracketSize: 8 },
 };
 
 export function formatFor(division: Bf6DrawDivision): Bf6Format {
