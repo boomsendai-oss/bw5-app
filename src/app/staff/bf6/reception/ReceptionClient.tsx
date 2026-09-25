@@ -114,7 +114,7 @@ export function ReceptionClient({
           onClick={() => { setDrawn(null); setSel(null); setQ(''); router.refresh(); }}
           className="mt-8 w-full max-w-sm rounded-2xl bg-brand-600 py-5 text-xl font-black text-white"
         >
-          次の人へ
+          次の人へ(一覧に戻る)
         </button>
       </div>
     );
@@ -126,8 +126,14 @@ export function ReceptionClient({
     const others = sel.divisions.filter((d) => d !== division);
     return (
       <div className="fixed inset-0 z-50 flex flex-col bg-white p-5 text-navy-900">
-        <button onClick={() => { setSel(null); setErr(null); }} className="self-start text-sm font-bold text-brand-700">
-          ← 戻る
+        {/* ⚠️ この画面は全画面(fixed)でヘッダーが隠れる。戻り口が小さい文字リンクだと
+               当日の急いでいる場面で「戻れない」と感じる(TARO実機 2026-09-25)。
+               指で押せる大きさのボタンにする。 */}
+        <button
+          onClick={() => { setSel(null); setErr(null); }}
+          className="self-start rounded-xl border-2 border-sand-300 bg-white px-4 py-3 text-base font-black text-brand-700 active:scale-95"
+        >
+          ← 一覧に戻る
         </button>
         <p className="mt-4 text-3xl font-black text-navy-900">{sel.dancerName}</p>
         <p className="text-sm text-neutral-600">{sel.performerName}</p>
