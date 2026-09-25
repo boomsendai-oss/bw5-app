@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server';
 import { hideFinalWinner, needsChampions } from '@/lib/bf6ScreenAnim';
 import { getBf6ScreenState, listBf6ScreenMatches, listBf6SlotNames, listBf6Champions, findNextMatch } from '@/lib/bf6ScreenDb';
+import { getBf6ScreenStreamSrc } from '@/lib/bf6StreamDb';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,6 +20,9 @@ export async function GET() {
   const next = pending ? null : findNextMatch(state.division, matches);
   // 優勝者は発表(とその前のドラムロール)のときだけ取りに行く。毎秒のポーリングを重くしないため
   const champions = needsChampions(state.mode) ? await listBf6Champions() : null;
+  // ⚠️ 配信の再生URLは「配信モード」のあいだだけ返す。常に返すと、この公開APIを叩けば
+  //    誰でも配信チケット無しで見られてしまう(bf6StreamDb の注意書きも参照)
+  const streamSrc = state.mode === 'stream' ? await getBf6ScreenStreamSrc() : null;
 
   return NextResponse.json(
     {
@@ -29,6 +33,7 @@ export async function GET() {
       slots: Object.fromEntries(names),
       nextMatch: next,
       champions,
+      streamSrc,
     },
     { headers: { 'Cache-Control': 'no-store' } }
   );

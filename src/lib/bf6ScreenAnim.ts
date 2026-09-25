@@ -94,6 +94,8 @@ export function sceneKey(s: {
   // ドラムロール → 発表 も同じ場面にする(暗転を挟むと「ジャーン」の瞬間に遅れる・TARO 2026-09-22)
   if (s.mode === 'champions' || s.mode === 'drumroll') return 'champions';
   // 記念撮影用の1人カード。部門を切り替えたら入れ替わる
+  // 配信の確認画面。部門を切り替えても場面は同じ(暗転で映像が止まらないように)
+  if (s.mode === 'stream') return 'stream';
   if (s.mode === 'champion') return `champion|${s.division}`;
   if (s.mode === 'runnerup') return `runnerup|${s.division}`;
   return 'logo';

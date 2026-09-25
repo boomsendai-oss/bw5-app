@@ -27,13 +27,15 @@ const MODES: { key: ScreenMode; label: string }[] = [
   { key: 'logo', label: 'ロゴ' },
   { key: 'bracket', label: 'トーナメント表' },
   { key: 'vs', label: 'VS' },
+  // 配信できているかをLEDで確かめるためのボタン(TARO 2026-09-25「PCまで行くのがタイムロス」)
+  { key: 'stream', label: '配信' },
 ];
 // 結果発表のモード(ドラムロール・発表・記念撮影)。これらのボタンは「結果発表」を選んだときだけ出す
 // (TARO 2026-09-23「普通のトーナメント表とかのところに常にドラムロールの画面を出すボタンがあると邪魔」)。
 // 本番中に間違って押すとネタバレになるので、普段の画面からは見えないようにする。
 const RESULT_MODES: ScreenMode[] = ['drumroll', 'champions', 'champion', 'runnerup'];
 const MODE_LABEL: Record<string, string> = {
-  logo: 'ロゴ', bracket: 'トーナメント表', vs: 'VS', drumroll: 'ドラムロール', champions: '優勝者発表',
+  logo: 'ロゴ', bracket: 'トーナメント表', vs: 'VS', stream: '配信', drumroll: 'ドラムロール', champions: '優勝者発表',
   champion: '記念撮影(優勝)', runnerup: '記念撮影(準優勝)',
 };
 const ROUND_LABEL: Record<string, string> = { r16: 'ベスト16', qf: 'ベスト8', sf: '準決勝', f: '決勝' };

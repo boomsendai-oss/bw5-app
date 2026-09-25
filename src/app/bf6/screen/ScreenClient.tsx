@@ -23,7 +23,7 @@ type Champion = {
   runnerUp?: { slotNo: number; dancerName: string; hasPhoto: boolean; photoAt: string | null } | null;
 };
 type Payload = {
-  state: { mode: 'logo' | 'bracket' | 'vs' | 'drumroll' | 'champions' | 'champion' | 'runnerup'; division: string; round: string | null; matchNo: number | null; rev: number };
+  state: { mode: 'logo' | 'bracket' | 'vs' | 'drumroll' | 'champions' | 'champion' | 'runnerup' | 'stream'; division: string; round: string | null; matchNo: number | null; rev: number };
   matches: Match[];
   slots: Record<string, Slot>;
   nextMatch: Match | null;
@@ -31,6 +31,8 @@ type Payload = {
   pending?: boolean;
   /** 優勝者発表のときだけ入る(3部門ぶん) */
   champions?: Champion[] | null;
+  /** 配信モードのときだけ入る再生URL(配信できているかをLEDで確かめる) */
+  streamSrc?: string | null;
 };
 
 const DIV_LABEL: Record<string, string> = { beginner: 'ビギナー', kids: '小中学生', general: '一般' };
@@ -66,6 +68,10 @@ const SPARKS = Array.from({ length: SPARK_COUNT }, (_, i) => {
 
 export function ScreenClient() {
   const [data, setData] = useState<Payload | null>(null);
+  // ⚠️ 配信の再生URLは毎回署名し直すので、ポーリングのたびに文字列が変わる。
+  //    そのままiframeに渡すと毎秒読み込み直しになるため、配信モードに入ったときの
+  //    1本だけを持ち続け、モードを抜けたら捨てる(TARO 2026-09-25)。
+  const [streamSrc, setStreamSrc] = useState<string | null>(null);
   // 勝った枠(光る) と 上がった先の枠(着弾) は演出が違うので分けて持つ
   const [flashWin, setFlashWin] = useState<Set<string>>(new Set());
   const [flashArrive, setFlashArrive] = useState<Set<string>>(new Set());
@@ -182,9 +188,47 @@ export function ScreenClient() {
 
   useEffect(() => () => { if (fadeTimer.current) clearTimeout(fadeTimer.current); }, []);
 
+  // 配信モードの出入りで再生URLを持つ／捨てる
+  useEffect(() => {
+    if (!data) return;
+    if (data.state.mode !== 'stream') {
+      setStreamSrc((prev) => (prev === null ? prev : null));
+      return;
+    }
+    setStreamSrc((prev) => prev ?? data.streamSrc ?? null);
+  }, [data]);
+
   if (!shown) return <Stage dark={dark}><Logo /></Stage>;
   const { state, matches, slots } = shown;
   if (state.mode === 'logo') return <Stage dark={dark}><Logo /></Stage>;
+
+  // 配信の確認。いま配信されている映像をそのままLEDに出す(TARO 2026-09-25)。
+  // ⚠️ iframe は1秒ごとのポーリングで作り直さないこと(毎秒読み込み直しになる)。
+  //    src は state に持ち、配信モードでいるあいだ同じものを使い続ける。
+  if (state.mode === 'stream') {
+    return (
+      <Stage dark={dark}>
+        <div className="absolute inset-0 bg-black">
+          {streamSrc ? (
+            <iframe
+              key="bf6-stream"
+              src={streamSrc}
+              allow="autoplay; fullscreen"
+              className="h-full w-full border-0"
+              title="BF6 配信"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <p className="text-[3vh] font-black text-white/70">配信の準備中…</p>
+            </div>
+          )}
+          <p className="absolute left-6 top-5 rounded-full bg-red-600 px-4 py-1.5 text-[2vh] font-black text-white">
+            ● LIVE 配信中
+          </p>
+        </div>
+      </Stage>
+    );
+  }
 
   // 優勝者発表。ドラムロール → 発表(カード形式・3部門同時)(TARO 2026-09-22)
   // 記念撮影用。優勝者1人のカードを大きく(部門は操作卓で選ぶ)

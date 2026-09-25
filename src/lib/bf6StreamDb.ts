@@ -145,6 +145,30 @@ export async function streamLogin(
   };
 }
 
+/**
+ * 会場LED用の再生URL。視聴キーも同時視聴の枠も使わない。
+ *
+ * ⚠️ これは「配信できているか」を会場で確かめるためだけのもの(TARO 2026-09-25)。
+ *    LEDの画面(/bf6/screen)は公開ページなので、配信モードのあいだだけ
+ *    /api/bf6/screen がこのURLを返す。URLを知っている人は配信チケット無しでも
+ *    見られる状態になる。**LEDを配信モードのままにしないこと。**
+ *    TARO判断:「この画面にアクセスできる人が実際にいないので問題ない」。
+ */
+export async function getBf6ScreenStreamSrc(): Promise<string | null> {
+  const cfg = await getBf6StreamConfig();
+  if (!cfg.liveInputUid || !cfg.customerCode) return null;
+  const target =
+    cfg.signingKeyId && cfg.signingKeyPem
+      ? signStreamPlaybackToken(
+          { signingKeyId: cfg.signingKeyId, signingKeyPem: cfg.signingKeyPem },
+          cfg.liveInputUid,
+          Math.floor(Date.now() / 1000) + PLAYBACK_TOKEN_TTL_SEC
+        )
+      : cfg.liveInputUid;
+  // LEDは音を出さない(会場の音響と二重になる)。muted で自動再生する
+  return `https://customer-${cfg.customerCode}.cloudflarestream.com/${target}/iframe?autoplay=true&muted=true&controls=false`;
+}
+
 export type StreamHeartbeatResult = { ok: true } | { ok: false; reason: 'taken' | 'invalid' };
 
 /** 視聴中の生存通知(20秒ごと)。別端末に乗っ取られていたら taken を返す。 */

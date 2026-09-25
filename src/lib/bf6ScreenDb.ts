@@ -23,7 +23,7 @@ import type { Bf6DrawDivision } from './bf6Draw';
 import { CHAMPION_ORDER } from './bf6Lineup';
 import { runnerUpSlot } from './bf6ScreenAnim';
 
-export type ScreenMode = 'logo' | 'bracket' | 'vs' | 'drumroll' | 'champions' | 'champion' | 'runnerup';
+export type ScreenMode = 'logo' | 'bracket' | 'vs' | 'drumroll' | 'champions' | 'champion' | 'runnerup' | 'stream';
 
 export type ScreenState = {
   mode: ScreenMode;
