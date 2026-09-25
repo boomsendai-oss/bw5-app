@@ -182,7 +182,7 @@ export default function Bf7Client() {
           </div>
         )}
         <p className="mt-3 text-xs leading-relaxed text-neutral-400">
-          エントリー開始は2026年11月30日ごろの予定です。日程・料金・部門の詳細は決まり次第お知らせします。
+          エントリー受付は2026年11月30日からの予定です。日程・料金・部門の詳細は決まり次第お知らせします。
         </p>
       </section>
 

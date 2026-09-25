@@ -77,7 +77,7 @@ export default async function Bf7Page() {
         <Bf7SectionHead en="ENTRY" ja="エントリー" img="/bf7/head-entry.png" />
         <div className="rounded-2xl border border-neutral-800 bg-neutral-900 px-4 py-2 shadow-sm">
           <Bf7DetailBlock en="OPEN" ja="受付開始">
-            <p className="text-lg font-black text-white">2026年11月30日ごろ</p>
+            <p className="text-lg font-black text-white">2026年11月30日 〜</p>
             <p className="mt-1 text-xs text-neutral-400">開催の約2か月前に受付を始めます</p>
           </Bf7DetailBlock>
           <Bf7DetailBlock en="DIVISION" ja="募集する部門">
