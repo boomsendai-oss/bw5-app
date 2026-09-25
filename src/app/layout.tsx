@@ -101,8 +101,8 @@ export default function RootLayout({
                   add('link', {rel: 'manifest', href: '/main-manifest.webmanifest'});
                   add('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
                   add('meta', {name: 'mobile-web-app-capable', content: 'yes'});
-                  add('meta', {name: 'apple-mobile-web-app-title', content: isBf6 ? "BOOMER'S FIGHT" : 'BW5 App'});
-                  add('link', {rel: 'apple-touch-icon', href: isBf6 ? '/bf6/icon.png' : '/apple-touch-icon.png'});
+                  add('meta', {name: 'apple-mobile-web-app-title', content: isBf7 ? "BOOMER'S FIGHT 7" : isBf6 ? "BOOMER'S FIGHT" : 'BW5 App'});
+                  add('link', {rel: 'apple-touch-icon', href: isBf7 ? '/bf7/icon.png' : isBf6 ? '/bf6/icon.png' : '/apple-touch-icon.png'});
                 } else {
                   // /staff/orders と /staff/backstage は専用manifest、それ以外の /staff* はスタッフハブ用manifest
                   var manifestHref = p.indexOf('/staff/orders') === 0 ? '/staff-orders-manifest.webmanifest'

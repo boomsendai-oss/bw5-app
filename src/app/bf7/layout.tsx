@@ -7,6 +7,14 @@ export const metadata: Metadata = {
   title: "BOOMER'S FIGHT!!! vol.7 | 2027.1.30(土) SSM 9階ホール",
   description:
     '2027.1.30(土) SSM 9階ホール / BOOM DANCE SCHOOL主催ダンスバトル。スペシャルゲスト Hiro(MIDDLE FILTER)。ウェイトリスト受付中!',
+  icons: {
+    // vol.6は「B6」の赤いクローム。vol.7は「BF7」の青いクロームにする(TARO 2026-09-25)
+    icon: [
+      { url: '/bf7/favicon.ico', sizes: '16x16 32x32 48x48' },
+      { url: '/bf7/icon.png', type: 'image/png', sizes: '512x512' },
+    ],
+    apple: '/bf7/apple-icon.png',
+  },
   openGraph: {
     title: "BOOMER'S FIGHT!!! vol.7",
     description: '2027.1.30(土) SSM 9階ホール / スペシャルゲスト Hiro(MIDDLE FILTER)',
