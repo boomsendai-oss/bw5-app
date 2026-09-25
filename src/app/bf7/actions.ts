@@ -1,6 +1,6 @@
 'use server';
 
-// BF7 お知らせリストの登録(Server Action・規約6)。
+// BF7 ウェイトリストの登録(Server Action・規約6)。
 // ⚠️ 公開ページから呼ばれる。連投対策に既存のレート制限を通す。
 import { validateBf7Notify, buildBf7NotifyEmail, type Bf7NotifyInput } from '@/lib/bf7';
 import { addBf7Notify } from '@/lib/bf7Db';

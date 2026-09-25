@@ -1,14 +1,30 @@
 'use client';
 
-// vol.7 告知ページの中身。カウントダウン + お知らせリスト登録。
+// vol.7 告知ページの中身。ウェイトリスト + カウントダウン + ゲスト。
 // 見た目はvol.6のフライヤー系(黒地・クロム)を踏襲しつつ、色はオレンジ→青に変えている
 // (TARO 2026-09-24「クロム調は同じで、色だけ変えてイメージを変える」)。
+// ⚠️ 並び順は ウェイトリスト → カウントダウン → ゲスト の順(TARO 2026-09-25「順番入れ替えましょう」)。
+//    一番やってほしいこと(登録)を最初に置く。
 import { useEffect, useState } from 'react';
 import { BF7_DIVISIONS, BF7_ENTRY_OPEN_AT, countdownTo } from '@/lib/bf7';
 import { submitBf7Notify } from './actions';
 
 const inputCls =
   'w-full rounded-xl border-2 border-neutral-800 bg-neutral-900 px-3.5 py-3 text-base text-white placeholder:text-neutral-500 focus:border-sky-500 focus:outline-none';
+
+// ゲストの経歴(本人提供・2026-09-25)から抜粋。見出しと項目だけにして読み流せる長さにする
+const HIRO_CREDITS: { label: string; body: string }[] = [
+  { label: 'TEAM CONTEST', body: 'JAPAN DANCE DELIGHT ファイナリスト(vol.11 / 16 / 17 / 19 / 20 / 30)' },
+  {
+    label: 'SOLO / 2on2 BATTLE',
+    body: 'LIVING LARGE HIPHOP 優勝(2004)／ULTIMATE 1000 HOUSE SOLO 優勝(2016)／ぐだぐだナイトスペシャル 優勝(2012・2016)',
+  },
+  {
+    label: 'CHOREOGRAPHER / LIVE',
+    body: 'THE RAMPAGE from EXILE TRIBE／PSYCHIC FEVER from EXILE TRIBE／Full Of Harmony／MASAYA from LL BROTHERS／SWEEP',
+  },
+  { label: 'OVERSEAS', body: 'シンガポール・台湾・中国(金華/武漢)・韓国での GUEST SHOW / WORKSHOP' },
+];
 
 function Unit({ n, label }: { n: number; label: string }) {
   return (
@@ -63,7 +79,7 @@ export default function Bf7Client() {
         <div className="relative">
           <p className="text-[11px] font-bold tracking-[0.25em] text-neutral-400">BOOM DANCE SCHOOL PRESENTS</p>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/bf7/title.png" alt="BOOMER'S FIGHT!!! vol.7" className="mt-3 w-full" />
+          <img src="/bf7/title.png" alt="BOOMER&apos;S FIGHT!!! vol.7" className="mt-3 w-full" />
 
           <div className="mt-5 flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <p className="text-4xl font-black leading-none">
@@ -73,46 +89,9 @@ export default function Bf7Client() {
           </div>
           <p className="mt-1 text-xs text-neutral-500">仙台スクールオブミュージック&amp;ダンス専門学校</p>
 
-          {/* カウントダウン */}
-          <section className="mt-8 rounded-2xl border border-sky-500/30 bg-white/[0.03] p-5">
-            <p className="text-xs font-black tracking-[0.2em] text-sky-300">エントリー開始まで</p>
-            {left === null ? (
-              <p className="mt-3 text-sm text-neutral-400">読み込み中…</p>
-            ) : left.done ? (
-              <p className="mt-3 text-xl font-black">エントリー受付中です</p>
-            ) : (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Unit n={left.days} label="DAYS" />
-                <Unit n={left.hours} label="HOURS" />
-                <Unit n={left.minutes} label="MIN" />
-                <Unit n={left.seconds} label="SEC" />
-              </div>
-            )}
-            <p className="mt-3 text-xs leading-relaxed text-neutral-400">
-              エントリー開始は2026年11月30日ごろの予定です。日程・料金・部門の詳細は決まり次第お知らせします。
-            </p>
-          </section>
-
-          {/* スペシャルゲスト。写真は本人からもらったもの(2026-09-25) */}
-          <section className="mt-6 overflow-hidden rounded-2xl border border-sky-500/30 bg-gradient-to-b from-sky-500/10 to-transparent">
-            <div className="flex items-end gap-3 px-5 pt-5">
-              <div className="flex-1 pb-5">
-                <p className="text-xs font-black tracking-[0.22em] text-sky-300">SPECIAL GUEST</p>
-                <p className="mt-2 text-3xl font-black leading-none">Hiro</p>
-                <p className="mt-2 text-sm font-bold text-neutral-300">MIDDLE FILTER</p>
-                <p className="mt-1 text-xs font-bold tracking-[0.14em] text-sky-300">FROM OSAKA</p>
-                <p className="mt-3 text-xs leading-relaxed text-neutral-400">
-                  大阪から、HIPHOPのダンサー Hiro さんをゲストに迎えます。
-                </p>
-              </div>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/bf7/guest-hiro.png" alt="Hiro (MIDDLE FILTER)" className="w-[46%] max-w-[230px] self-end" />
-            </div>
-          </section>
-
-          {/* お知らせリスト */}
+          {/* ウェイトリスト。カウントダウンより上に置く */}
           <section className="mt-8">
-            <h2 className="text-lg font-black">お知らせリスト</h2>
+            <h2 className="text-lg font-black">ウェイトリスト</h2>
             <p className="mt-1 text-sm leading-relaxed text-neutral-400">
               登録しておくと、エントリー受付が始まったときにメールでお知らせします。この時点では申し込みではありません。
             </p>
@@ -123,9 +102,9 @@ export default function Bf7Client() {
                 onClick={() => setFormOpen(true)}
                 className="mt-4 w-full rounded-2xl bg-sky-500 px-5 py-6 text-center text-xl font-black text-neutral-950 shadow-lg shadow-sky-500/20 active:scale-[0.99]"
               >
-                お知らせリストに登録する
+                ウェイトリストに登録する
                 <span className="mt-1 block text-xs font-bold text-neutral-900/70">
-                  30秒で終わります ／ 申し込みではありません
+                  約30秒 ／ 申し込みではありません
                 </span>
               </button>
             )}
@@ -201,6 +180,56 @@ export default function Bf7Client() {
                 </p>
               </div>
             ) : null}
+          </section>
+
+          {/* カウントダウン */}
+          <section className="mt-8 rounded-2xl border border-sky-500/30 bg-white/[0.03] p-5">
+            <p className="text-xs font-black tracking-[0.2em] text-sky-300">エントリー開始まで</p>
+            {left === null ? (
+              <p className="mt-3 text-sm text-neutral-400">読み込み中…</p>
+            ) : left.done ? (
+              <p className="mt-3 text-xl font-black">エントリー受付中です</p>
+            ) : (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Unit n={left.days} label="DAYS" />
+                <Unit n={left.hours} label="HOURS" />
+                <Unit n={left.minutes} label="MIN" />
+                <Unit n={left.seconds} label="SEC" />
+              </div>
+            )}
+            <p className="mt-3 text-xs leading-relaxed text-neutral-400">
+              エントリー開始は2026年11月30日ごろの予定です。日程・料金・部門の詳細は決まり次第お知らせします。
+            </p>
+          </section>
+
+          {/* スペシャルゲスト。写真・経歴は本人からもらったもの(2026-09-25) */}
+          <section className="mt-8 overflow-hidden rounded-2xl border border-sky-500/30 bg-gradient-to-b from-sky-500/10 to-transparent">
+            <div className="flex items-stretch gap-3 px-5 pt-5">
+              <div className="flex-1 pb-4">
+                <p className="text-xs font-black tracking-[0.22em] text-sky-300">SPECIAL GUEST</p>
+                <p className="mt-2 text-4xl font-black leading-none">Hiro</p>
+                <p className="mt-2 text-sm font-bold text-neutral-300">MIDDLE FILTER</p>
+                <p className="mt-1 text-xs font-bold tracking-[0.14em] text-sky-300">FROM OSAKA</p>
+                <p className="mt-3 text-xs leading-relaxed text-neutral-300">
+                  90年代より大阪を拠点に活動。MIDDLE SCHOOL(new jack swing / 90s HIPHOP)を広めつづける、唯一無二の伝道師的存在。
+                  国内・海外のイベント、SHOW、WORKSHOP、振付、コンテスト審査まで幅広く活動している。
+                </p>
+              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/bf7/guest-hiro.webp"
+                alt="Hiro (MIDDLE FILTER)"
+                className="w-[42%] max-w-[210px] self-end object-contain object-bottom"
+              />
+            </div>
+            <dl className="border-t border-white/10 bg-neutral-950/40 px-5 py-4">
+              {HIRO_CREDITS.map((c) => (
+                <div key={c.label} className="border-b border-white/[0.06] py-2 last:border-0">
+                  <dt className="text-[10px] font-black tracking-[0.18em] text-sky-300">{c.label}</dt>
+                  <dd className="mt-1 text-xs leading-relaxed text-neutral-300">{c.body}</dd>
+                </div>
+              ))}
+            </dl>
           </section>
 
           <footer className="mt-10 border-t border-white/10 pt-5 text-xs text-neutral-500">

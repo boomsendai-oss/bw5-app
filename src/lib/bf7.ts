@@ -1,7 +1,7 @@
 // BOOMER'S FIGHT!!! vol.7 の告知ページ用の純ロジック(DOM・DBに触らない)。
 //
 // 当日(2026-09-26 BF6)の会場でvol.7を発表する。サイトは先に出しておき、
-// エントリー開始までカウントダウン + お知らせリスト(メール)を集める(TARO 2026-09-24)。
+// エントリー開始までカウントダウン + ウェイトリスト(メール)を集める(TARO 2026-09-24)。
 // ⚠️ ゲスト(大阪から招へい)はサイトに名前を出さない。会場で口頭発表する方針。
 
 /** 開催日(JST)。2027年1月30日(土) SSM 9階ホール */
@@ -35,7 +35,7 @@ export function countdownTo(target: string, now: Date = new Date()): {
 }
 
 /**
- * お知らせリストの入力チェック。エラーは文字列で返す(BF6の validateBf6Order と同じ作法)。
+ * ウェイトリストの入力チェック。エラーは文字列で返す(BF6の validateBf6Order と同じ作法)。
  * 部門は「出たい希望」なので未選択でも通す。名前とメールだけ必須。
  */
 export function validateBf7Notify(input: Bf7NotifyInput): Bf7NotifyValid | string {
@@ -61,7 +61,7 @@ export function buildBf7NotifyEmail(v: Bf7NotifyValid): { subject: string; text:
   const lines = [
     `${v.name} 様`,
     '',
-    "BOOMER'S FIGHT!!! vol.7 のお知らせリストにご登録ありがとうございます。",
+    "BOOMER'S FIGHT!!! vol.7 のウェイトリストにご登録ありがとうございます。",
     'エントリーの受付を開始したら、このメールアドレスにご案内をお送りします。',
     '',
     '■ 開催日  2027年1月30日(土)',
@@ -76,7 +76,7 @@ export function buildBf7NotifyEmail(v: Bf7NotifyValid): { subject: string; text:
     'BOOM DANCE SCHOOL',
     "BOOMER'S FIGHT!!! vol.7",
   ];
-  return { subject: "【BOOMER'S FIGHT!!! vol.7】お知らせリストに登録しました", text: lines.join('\n') };
+  return { subject: "【BOOMER'S FIGHT!!! vol.7】ウェイトリストに登録しました", text: lines.join('\n') };
 }
 
 /**

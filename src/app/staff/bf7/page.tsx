@@ -1,4 +1,4 @@
-// スタッフ: vol.7 お知らせリストの一覧。/staff/* 配下なのでproxy認証で保護(規約4.5)。
+// スタッフ: vol.7 ウェイトリストの一覧。/staff/* 配下なのでproxy認証で保護(規約4.5)。
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { countBf7Notify, listBf7Notify } from '@/lib/bf7Db';
 import { BF7_DIVISIONS } from '@/lib/bf7';
@@ -12,7 +12,7 @@ export default async function StaffBf7Page() {
   return (
     <div>
       <StaffPageHeader
-        title="BF7 お知らせリスト"
+        title="BF7 ウェイトリスト"
         description="vol.7(2027/1/30)のエントリー開始を知らせる名簿"
       />
       <div className="mx-auto max-w-3xl space-y-5 p-4">

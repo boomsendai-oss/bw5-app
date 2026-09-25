@@ -1,4 +1,4 @@
-// BF7 お知らせリストの保存。DBアクセスは db.ts 経由(規約3)。
+// BF7 ウェイトリストの保存。DBアクセスは db.ts 経由(規約3)。
 import { getAll, getOne, execute } from './db';
 import { nowUtcIso } from './dateJst';
 import type { Bf7NotifyValid } from './bf7';
