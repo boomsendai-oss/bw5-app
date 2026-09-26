@@ -55,11 +55,15 @@ export const DEFAULT_BF6_SETTINGS: Bf6Settings = {
   ticketDeadline: '2026-09-25',
 };
 
+/** 基準日(YYYY-MM-DD・JST)が締切を過ぎていたらtrue。締切当日はまだ受け付ける。 */
+export function isPastDeadlineOn(deadline: string, today: string): boolean {
+  if (!deadline) return false;
+  return today > deadline;
+}
+
 /** JSTの今日の日付(YYYY-MM-DD)が締切を過ぎていたらtrue。 */
 export function isPastDeadlineJst(deadline: string, now: Date = new Date()): boolean {
-  if (!deadline) return false;
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  return jst > deadline;
+  return isPastDeadlineOn(deadline, todayJst(now));
 }
 
 /** バトルエントリー1人分の料金。1部門¥2,500 + 追加部門¥1,500、事前決済は一律−¥500。 */
@@ -91,9 +95,113 @@ export function calcTicketUnitPrice(
   today: string = todayJst()
 ): number {
   if (itemType === 'ticket_child') return pricing.ticketChild;
-  const isEventDay = today >= BF6_EVENT_DATE;
-  if (isEventDay) return pricing.ticketAdultOnsite;
+  if (isBf6EventDayOrLater(today)) return pricing.ticketAdultOnsite;
   return payMethod === 'prepaid' ? pricing.ticketAdultPrepaid : pricing.ticketAdultOnsite;
+}
+
+/** 開催日(JST)以降か。この日からは観覧チケットに前売価格が無い。 */
+export function isBf6EventDayOrLater(today: string = todayJst()): boolean {
+  return today >= BF6_EVENT_DATE;
+}
+
+const yenText = (n: number) => `¥${n.toLocaleString()}`;
+
+/**
+ * 支払い方法の選択欄に出す文言(「おトク」バッジの有無と説明文)。
+ *
+ * ⚠️ 金額は必ず calcTicketUnitPrice / calcEntryFee と同じ判定で組み立てる。
+ *    2026-09-26(BF6当日)、合計は¥2,500で計算されているのに説明文だけ
+ *    「大人は¥2,000」のハードコードで残り、表示と請求が食い違った。
+ *    画面に金額を直書きせず、必ずこの関数を通すこと。
+ */
+export interface Bf6PayMethodNote {
+  /** 事前カード決済に「おトク」バッジを出すか(割引が1つも無い日は出さない)。 */
+  discountBadge: boolean;
+  /** 事前カード決済の説明文。 */
+  prepaid: string;
+}
+
+/** /bf6/ticket(観覧チケットのみ)の支払い方法の説明。 */
+export function bf6TicketPayMethodNote(
+  pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing,
+  today: string = todayJst()
+): Bf6PayMethodNote {
+  const adult = calcTicketUnitPrice('ticket_adult', 'prepaid', pricing, today);
+  const child = calcTicketUnitPrice('ticket_child', 'prepaid', pricing, today);
+  if (isBf6EventDayOrLater(today)) {
+    // 当日は事前も当日も同額。割引が無いので「おトク」とは言わない
+    return {
+      discountBadge: false,
+      prepaid: `開催当日のため、事前カード決済でも当日料金です。大人${yenText(adult)}・小学生${yenText(child)}`,
+    };
+  }
+  return {
+    discountBadge: true,
+    prepaid:
+      `大人は${yenText(adult)}(当日現金だと${yenText(pricing.ticketAdultOnsite)})。` +
+      `小学生は一律${yenText(child)}(割引対象外)`,
+  };
+}
+
+/** /bf6/entry(エントリー+観覧の同時購入)の支払い方法の説明。 */
+export function bf6EntryPayMethodNote(
+  pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing,
+  today: string = todayJst()
+): Bf6PayMethodNote {
+  const entryOff = `エントリー料(出場者1人につき${yenText(pricing.prepaidDiscount)}引き)`;
+  const adult = calcTicketUnitPrice('ticket_adult', 'prepaid', pricing, today);
+  const child = calcTicketUnitPrice('ticket_child', 'prepaid', pricing, today);
+  if (isBf6EventDayOrLater(today)) {
+    // 観覧の前売は消えるが、エントリー料の¥500引きは日付で変わらないのでバッジは残す
+    return {
+      discountBadge: true,
+      prepaid:
+        `割引対象: ${entryOff}。観覧は開催当日のため、事前カード決済でも当日料金` +
+        `(大人${yenText(adult)}/小学生${yenText(child)})です`,
+    };
+  }
+  return {
+    discountBadge: true,
+    prepaid:
+      `割引対象: ${entryOff}と大人観覧(事前${yenText(adult)}/当日${yenText(pricing.ticketAdultOnsite)})。` +
+      `小学生観覧は一律${yenText(child)}(割引対象外)`,
+  };
+}
+
+/**
+ * 受付の開閉。カートの中身ごとに、それぞれの締切・フラグだけを見る。
+ *
+ * ⚠️ 配信チケットを観覧チケットの締切に相乗りさせないこと。
+ *    2026-09-26、観覧の ticket_deadline が既定値の 2026-09-25 のままだったため、
+ *    /bf6/stream は開いている(stream_open=1)のに送信だけが弾かれ、
+ *    オンライン販売が観覧・配信とも終日止まった。
+ */
+export interface Bf6SalesGate {
+  entryOpen: boolean;
+  entryDeadline: string;
+  ticketOpen: boolean;
+  ticketDeadline: string;
+  streamOpen: boolean;
+}
+
+export function bf6SalesGateError(
+  cart: { entries: unknown[]; adultTickets: number; childTickets: number; streamTickets: number },
+  gate: Bf6SalesGate,
+  today: string = todayJst()
+): string | null {
+  if (cart.entries.length > 0 && (!gate.entryOpen || isPastDeadlineOn(gate.entryDeadline, today))) {
+    return '現在エントリーは受け付けていません';
+  }
+  if (
+    (cart.adultTickets > 0 || cart.childTickets > 0) &&
+    (!gate.ticketOpen || isPastDeadlineOn(gate.ticketDeadline, today))
+  ) {
+    return '現在観覧チケットの販売は行っていません';
+  }
+  if (cart.streamTickets > 0 && !gate.streamOpen) {
+    return '現在オンライン配信チケットの販売は行っていません';
+  }
+  return null;
 }
 
 export interface Bf6Cart {
