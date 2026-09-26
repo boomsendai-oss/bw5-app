@@ -186,3 +186,56 @@ export async function streamHeartbeat(normalizedKey: string, sessionId: string):
   ]);
   return { ok: true };
 }
+
+export type StreamViewer = {
+  keyId: number;
+  /** 購入者名。TARO用のテストキーなど、申込に紐づかないものは空 */
+  buyerName: string;
+  email: string;
+  /** 視聴中(最後の生存通知から60秒以内) */
+  watching: boolean;
+  /** 端末の種類。iPhone / iPad / Android / Mac / Windows / その他 */
+  device: string;
+  /** 最後に生存通知が来た時刻(ISO)。一度も見ていなければ null */
+  lastSeenAt: string | null;
+};
+
+/** user-agent から端末の種類だけを取り出す(当日の画面に長い文字列を出さないため) */
+export function deviceLabel(ua: string): string {
+  if (/iPhone/i.test(ua)) return 'iPhone';
+  if (/iPad/i.test(ua)) return 'iPad';
+  if (/Android/i.test(ua)) return 'Android';
+  if (/Macintosh|Mac OS X/i.test(ua)) return 'Mac';
+  if (/Windows/i.test(ua)) return 'Windows';
+  if (!ua) return '—';
+  return 'その他';
+}
+
+/**
+ * いま配信を見ている人。スタッフ画面の「配信 接続中」に出す(TARO 2026-09-26)。
+ *
+ * 判定は視聴ページが20秒ごとに送る生存通知(bf_stream_sessions.last_seen_at)。
+ * ⚠️ 数えるのは「端末」であって人数ではない。1つのキーで同時1端末なので、
+ *    家族が同じ画面を4人で見ていても1と数える。
+ */
+export async function listBf6StreamViewers(now: number = Date.now()): Promise<StreamViewer[]> {
+  const rows = await getAll(
+    `SELECT k.id, k.email, o.buyer_name, s.last_seen_at, s.user_agent
+       FROM bf_stream_keys k
+       LEFT JOIN bf_orders o ON o.id = k.order_id
+       LEFT JOIN bf_stream_sessions s ON s.key_id = k.id
+      WHERE k.status = 'active'
+      ORDER BY k.id`
+  ).catch(() => []);
+  return rows.map((r) => {
+    const seen = r.last_seen_at === null || r.last_seen_at === undefined ? null : Number(r.last_seen_at);
+    return {
+      keyId: Number(r.id),
+      buyerName: String(r.buyer_name ?? ''),
+      email: String(r.email ?? ''),
+      watching: seen !== null && now - seen <= SESSION_TTL_SEC * 1000,
+      device: deviceLabel(String(r.user_agent ?? '')),
+      lastSeenAt: seen === null ? null : new Date(seen).toISOString(),
+    };
+  });
+}

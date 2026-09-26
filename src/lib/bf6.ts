@@ -107,7 +107,8 @@ export interface Bf6Cart {
 export function calcOrderTotal(
   cart: Bf6Cart,
   payMethod: Bf6PayMethod,
-  pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing
+  pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing,
+  today: string = todayJst()
 ): number {
   const entryTotal = cart.entries.reduce(
     (sum, e) => sum + calcEntryFee(e.divisions.length, payMethod, pricing),
@@ -115,8 +116,8 @@ export function calcOrderTotal(
   );
   return (
     entryTotal +
-    cart.adultTickets * calcTicketUnitPrice('ticket_adult', payMethod, pricing) +
-    cart.childTickets * calcTicketUnitPrice('ticket_child', payMethod, pricing) +
+    cart.adultTickets * calcTicketUnitPrice('ticket_adult', payMethod, pricing, today) +
+    cart.childTickets * calcTicketUnitPrice('ticket_child', payMethod, pricing, today) +
     (cart.streamTickets ?? 0) * pricing.stream
   );
 }
@@ -489,7 +490,8 @@ export interface Bf6OrderItemRow {
 export function buildBf6OrderItems(
   order: ValidatedBf6Order,
   payMethod: Bf6PayMethod,
-  pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing
+  pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing,
+  today: string = todayJst()
 ): Bf6OrderItemRow[] {
   const items: Bf6OrderItemRow[] = order.entries.map((e) => ({
     itemType: 'entry' as const,
@@ -513,14 +515,14 @@ export function buildBf6OrderItems(
     items.push({
       itemType: 'ticket_adult', ...emptyPerformer,
       qty: order.adultTickets,
-      unitAmount: calcTicketUnitPrice('ticket_adult', payMethod, pricing),
+      unitAmount: calcTicketUnitPrice('ticket_adult', payMethod, pricing, today),
     });
   }
   if (order.childTickets > 0) {
     items.push({
       itemType: 'ticket_child', ...emptyPerformer,
       qty: order.childTickets,
-      unitAmount: calcTicketUnitPrice('ticket_child', payMethod, pricing),
+      unitAmount: calcTicketUnitPrice('ticket_child', payMethod, pricing, today),
     });
   }
   if (order.streamTickets > 0) {

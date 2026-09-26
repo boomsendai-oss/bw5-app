@@ -4,18 +4,22 @@ import StaffPageHeader from '@/components/StaffPageHeader';
 import { BF6_DIVISIONS } from '@/lib/bf6';
 import { calcBf6Remaining, getBf6Settings, getBf6Usage, listBf6OrdersStaff } from '@/lib/bf6Db';
 import { getBf6Finance } from '@/lib/eventLedgerDb';
+import { listBf6StreamViewers } from '@/lib/bf6StreamDb';
 
 export const dynamic = 'force-dynamic';
 
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 
 export default async function StaffBf6Page() {
-  const [settings, usage, orders, { finance }] = await Promise.all([
+  const [settings, usage, orders, { finance }, viewers] = await Promise.all([
     getBf6Settings(),
     getBf6Usage(),
     listBf6OrdersStaff(),
     getBf6Finance(),
+    listBf6StreamViewers(),
   ]);
+  // 配信を見ている端末の数。押すと誰が見ているかの内訳へ(TARO 2026-09-26)
+  const watching = viewers.filter((v) => v.watching).length;
   const remaining = calcBf6Remaining(settings, usage);
 
   const confirmed = orders.filter((o) => ['paid', 'cash_due'].includes(o.paymentStatus));
@@ -48,6 +52,12 @@ export default async function StaffBf6Page() {
           <SummaryCard label="観覧チケット(確定)" value={`${ticketCount}枚`} />
           <SummaryCard label="カード入金済み" value={yen(paidTotal)} />
           <SummaryCard label="当日現金(未収)" value={yen(cashDueTotal)} />
+          <SummaryCard
+            label="配信 接続中"
+            value={`${watching}人`}
+            note={`配信チケット ${viewers.length}件`}
+            href="/staff/bf6/stream"
+          />
         </section>
 
         <section className="rounded-xl border border-sand-200 bg-white p-4">
@@ -113,12 +123,22 @@ export default async function StaffBf6Page() {
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-sand-200 bg-white p-4">
+function SummaryCard({ label, value, note, href }: { label: string; value: string; note?: string; href?: string }) {
+  const body = (
+    <>
       <p className="text-xs text-neutral-500">{label}</p>
       <p className="mt-1 text-xl font-bold text-navy-800">{value}</p>
-    </div>
+      {note && <p className="mt-0.5 text-[11px] text-neutral-400">{note}</p>}
+    </>
+  );
+  // 押せるカードは内訳へ飛ぶ(いまは配信だけ)
+  return href ? (
+    <Link href={href} className="rounded-xl border border-sand-200 bg-white p-4 hover:border-brand-400">
+      {body}
+      <p className="mt-1 text-[11px] font-bold text-brand-700">内訳を見る →</p>
+    </Link>
+  ) : (
+    <div className="rounded-xl border border-sand-200 bg-white p-4">{body}</div>
   );
 }
 

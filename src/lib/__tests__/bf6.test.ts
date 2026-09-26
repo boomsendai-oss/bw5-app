@@ -78,9 +78,9 @@ describe('calcEntryFee: バトルエントリー料金(部門数と支払方法�
 });
 
 describe('calcTicketUnitPrice: 観覧チケット単価', () => {
-  test('大人は事前¥2,000・当日¥2,500', () => {
-    expect(calcTicketUnitPrice('ticket_adult', 'prepaid')).toBe(2000);
-    expect(calcTicketUnitPrice('ticket_adult', 'onsite')).toBe(2500);
+  test('大人は事前¥2,000・当日¥2,500(開催日より前)', () => {
+    expect(calcTicketUnitPrice('ticket_adult', 'prepaid', undefined, '2026-09-25')).toBe(2000);
+    expect(calcTicketUnitPrice('ticket_adult', 'onsite', undefined, '2026-09-25')).toBe(2500);
   });
 
   test('小学生は事前・当日とも¥1,000', () => {
@@ -97,7 +97,9 @@ describe('calcOrderTotal: カート合計(エントリー複数人+観覧同時�
         adultTickets: 2,
         childTickets: 1,
       },
-      'prepaid'
+      'prepaid',
+      undefined,
+      '2026-09-25'
     );
     expect(total).toBe(2000 + 3500 + 2000 * 2 + 1000);
   });
@@ -306,7 +308,7 @@ describe('buildBf6OrderItems: 明細行の生成(単価はサーバ側で確定)
     input.childTickets = 2;
     const v = validateBf6Order(input);
     if (typeof v === 'string') throw new Error(v);
-    const items = buildBf6OrderItems(v, 'prepaid');
+    const items = buildBf6OrderItems(v, 'prepaid', undefined, '2026-09-25');
     const entryItems = items.filter((i) => i.itemType === 'entry');
     expect(entryItems).toHaveLength(2);
     expect(entryItems[0].unitAmount).toBe(2000);
@@ -319,7 +321,9 @@ describe('buildBf6OrderItems: 明細行の生成(単価はサーバ側で確定)
     expect(total).toBe(
       calcOrderTotal(
         { entries: v.entries.map((e) => ({ divisions: e.divisions })), adultTickets: 1, childTickets: 2 },
-        'prepaid'
+        'prepaid',
+        undefined,
+        '2026-09-25'
       )
     );
   });
@@ -387,7 +391,7 @@ describe('配信チケット(streamTickets)の購入対応', () => {
     expect(typeof v).not.toBe('string');
     if (typeof v === 'string') return;
     expect(v.streamTickets).toBe(2);
-    const items = buildBf6OrderItems(v, 'prepaid');
+    const items = buildBf6OrderItems(v, 'prepaid', undefined, '2026-09-25');
     const stream = items.find((i) => i.itemType === 'stream');
     expect(stream).toMatchObject({ qty: 2, unitAmount: 1500 });
     expect(items.reduce((s, i) => s + i.qty * i.unitAmount, 0)).toBe(3000);
