@@ -136,16 +136,18 @@ export default function Bf6StreamWatchPage() {
     return (
       <Bf6Shell wide>
         <div>
-          <Bf6Hero title="LIVE" subtitle="BOOMER'S FIGHT!!! vol.6 オンライン配信" />
+          <Bf6Hero title="ARCHIVE" subtitle="BOOMER'S FIGHT!!! vol.6 アーカイブ" />
           <div className="px-4 py-4">
-            {/* ⚠️ 配信開始前、Cloudflareのプレーヤーは英語で "Stream has not started yet" と出す。
-                   そのままだと壊れていると思われるので、上に日本語の案内を必ず添える(TARO実機 2026-09-10)。 */}
+            {/* 本番当日を過ぎたので、生配信の案内からアーカイブの案内に差し替えた(2026-09-27)。
+                録画は開場前(14:07)から始まっているため、本編の頭出しの目安を必ず書く。 */}
             <div className="mb-3 rounded-2xl border border-neutral-700 bg-neutral-900 p-4 text-center">
-              <p className="text-sm font-black text-white">配信は 9/26(土) 14:30頃 に開始します</p>
+              <p className="text-sm font-black text-white">アーカイブを公開しています（10/3まで）</p>
               <p className="mt-1 text-xs leading-relaxed text-neutral-400">
-                開始前は下の画面に英語で「Stream has not started yet」と表示されます。
+                録画は開場前から始まっています。本編は
+                <span className="font-bold text-white">開始から25分ほど進めたあたり</span>
+                からです。
                 <br />
-                故障ではありません。そのままお待ちいただくか、開始時刻に再度アクセスしてください。
+                再生バーを動かして、お好きなところからご覧いただけます。
               </p>
             </div>
             {/* ⚠️ 全画面の出し入れで iframe を作り直さないこと(再生が最初からやり直しになる)。枠の見た目だけ切り替える */}
