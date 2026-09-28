@@ -220,7 +220,9 @@ async function seedHacomonoScheduleMap(c: Client): Promise<void> {
     ['長町 WAACK 入門', 'PG0024', 'YURI / 長町 WAACK 入門', 'IN0010', 'S0001_SP0001', 0, 0, 0, 0],
     ['長町 ガールズ 初級', 'PG0027', '長町 キッズガールズ 初級', 'IN0005', 'S0001_SP0001', 0, 0, 0, 0],
     ['向山 ちびっこ HH', 'PG0028', '向山 キッズヒップホップ 基礎', 'IN0001', 'S0001_SP0001', 0, 0, 0, 0],
-    ['HOUSE エキスパート', 'PG0040', 'HOUSE エキスパート (選抜のみ)', 'IN0007', 'S0001_SP0001', 0, 1, 1, 0],
+    // 2026-10: HOUSE エキスパート → HOUSE 強化 に改名。実開催は PG0039 (PG0040「選抜のみ」は 2026-05 が最後)。
+    // 旧キーのまま残すと、起動のたびに旧名の行が作り直される (scripts/rename_house_expert_to_kyoka.mjs と同時に変えること)。
+    ['HOUSE 強化', 'PG0039', 'HOUSE 強化クラス', 'IN0007', 'S0001_SP0001', 0, 1, 1, 0],
   ];
   // staff: [bw5_key (BW5 instructor名), INコード, HACOMONO名]
   const hacoStaff: [string, string, string][] = [
