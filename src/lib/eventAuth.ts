@@ -59,6 +59,32 @@ export async function isAuthorized(req: NextRequest): Promise<boolean> {
 
 export { verifyPassword };
 
+/**
+ * 管理者認証 ＋ クラウドの定期ジョブ用の合言葉(REPORT_SECRET / CRON_SECRET)も許可する。
+ *
+ * 背景(2026-10-02): hacomonoの取込(daily_sync)をMac常駐からクラウド(GitHub Actions)へ移す。
+ * 取込APIは管理パスワードしか受け付けなかったが、管理パスワード(全画面を操作できる)を
+ * クラウドに置くのは権限が強すぎる。既にクラウドに置いてある定期ジョブ用の合言葉で
+ * 「取込APIだけ」書けるようにする。**使うのは取込APIに限ること**(画面系には付けない)。
+ */
+export async function isAuthorizedOrCron(req: NextRequest): Promise<boolean> {
+  if (await isAuthorized(req)) return true;
+  const secrets = [process.env.REPORT_SECRET, process.env.CRON_SECRET].filter(
+    (v): v is string => typeof v === 'string' && v.length >= 8
+  );
+  if (secrets.length === 0) return false;
+  const given = req.headers.get('x-cron-secret') ?? (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
+  if (!given) return false;
+  return secrets.some((s) => safeEqual(s, given));
+}
+
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 // Server Component / Server Action 用 (NextRequest が無い文脈)。
 // 既存のセッションcookie検証をそのまま流用する。
 export async function isAuthorizedServer(): Promise<boolean> {

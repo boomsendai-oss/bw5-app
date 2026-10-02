@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute } from '@/lib/db';
-import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { isAuthorizedOrCron, unauthorized } from '@/lib/eventAuth';
 import { parseCSV, rowsToDicts, parseDate } from '@/lib/csvUtil';
 
 export const dynamic = 'force-dynamic';
@@ -53,7 +53,8 @@ function parseTimeHM(s: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await isAuthorized(req))) return unauthorized();
+  // クラウド取込(cloud_sync)からは x-cron-secret で来る(2026-10-02)
+  if (!(await isAuthorizedOrCron(req))) return unauthorized();
 
   let csvText = '';
   const contentType = req.headers.get('content-type') ?? '';

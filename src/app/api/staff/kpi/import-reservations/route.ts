@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { batch, getAll } from '@/lib/db';
-import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { isAuthorizedOrCron, unauthorized } from '@/lib/eventAuth';
 import { parseCSV, rowsToDicts, parseDate } from '@/lib/csvUtil';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,8 @@ export const maxDuration = 60;
 // daily_sync.py が当月+前月分を日次POSTする。予約IDキーなので再取込は冪等。
 // PII最小化: メールアドレス・生年月日・住所系カラムは取り込まない。
 export async function POST(req: NextRequest) {
-  if (!(await isAuthorized(req))) return unauthorized();
+  // クラウド取込(cloud_sync)からは x-cron-secret で来る(2026-10-02)
+  if (!(await isAuthorizedOrCron(req))) return unauthorized();
   let csvText = '';
   const contentType = req.headers.get('content-type') ?? '';
   if (contentType.includes('multipart/form-data')) {
