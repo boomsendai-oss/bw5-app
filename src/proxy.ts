@@ -46,6 +46,10 @@ export function proxy(req: NextRequest) {
   const header = req.headers.get('x-admin-password');
   if (header) return NextResponse.next();
 
+  // クラウド取込(cloud_sync)は x-cron-secret で来る(2026-10-02)。ここは存在チェックだけで、
+  // 照合は API 層の isAuthorizedOrCron が行う(それを使っていない route は従来どおり 401)。
+  if (pathname.startsWith('/api/') && req.headers.get('x-cron-secret')) return NextResponse.next();
+
   if (pathname.startsWith('/api/')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
