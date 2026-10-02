@@ -432,3 +432,57 @@ export async function getChannelFunnel(startDate: string, endDate: string): Prom
     return { available: false, error: e instanceof Error ? e.message : String(e), start: startDate, end: endDate, rows: [] };
   }
 }
+
+export type AdLineClickRow = {
+  /** JST 'YYYY-MM-DD HH:MM' (GA4プロパティのタイムゾーン=Asia/Tokyo前提) */
+  minute: string;
+  page: string;
+  sourceMedium: string;
+  count: number;
+};
+
+/**
+ * 広告(google / cpc)経由セッションで発火した line_click を**分単位**で返す。
+ *
+ * 用途: 「広告経由で友だち追加した人が誰か」をLステップの友だち追加日時と突き合わせる
+ * (WS H / 2026-10-02)。Lステップは流入経路分析がプロプラン専用で使えないため、
+ * HP側のLINEクリック時刻(ここ)とLステップ側の追加日時を±数分で照合して推定する。
+ * 1日のクリック数が数件なので分単位で十分に一意になる。
+ *
+ * ⚠️ GA4 Data API は dateHourMinute 次元を「イベント発生時刻(プロパティTZ)」で返す。
+ *    期間は最長でも数ヶ月に留める(行数は line_click 件数程度で小さい)。
+ */
+export async function getAdLineClickTimeline(
+  startDate: string,
+  endDate: string,
+  opts: { allChannels?: boolean } = {}
+): Promise<{ available: boolean; error?: string; rows: AdLineClickRow[] }> {
+  const cfg = getClient();
+  if (!cfg) return { available: false, error: 'GA4_PROPERTY_ID / GA4_SA_KEY_JSON が未設定です', rows: [] };
+  const eventFilter = { filter: { fieldName: 'eventName', stringFilter: { value: LINE_EVENT() } } };
+  const cpcFilter = { filter: { fieldName: 'sessionSourceMedium', stringFilter: { value: 'google / cpc' } } };
+  try {
+    const [res] = await cfg.client.runReport({
+      property: cfg.property,
+      dateRanges: [{ startDate, endDate }],
+      dimensions: [{ name: 'dateHourMinute' }, { name: 'pagePath' }, { name: 'sessionSourceMedium' }],
+      metrics: [{ name: 'eventCount' }],
+      dimensionFilter: opts.allChannels ? eventFilter : { andGroup: { expressions: [eventFilter, cpcFilter] } },
+      orderBys: [{ dimension: { dimensionName: 'dateHourMinute' } }],
+      limit: 10000,
+    });
+    const rows: AdLineClickRow[] = (res.rows ?? []).map((r) => {
+      const d = String(r.dimensionValues?.[0]?.value ?? ''); // YYYYMMDDHHmm
+      const minute = d.length === 12 ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)} ${d.slice(8, 10)}:${d.slice(10, 12)}` : d;
+      return {
+        minute,
+        page: String(r.dimensionValues?.[1]?.value ?? ''),
+        sourceMedium: String(r.dimensionValues?.[2]?.value ?? ''),
+        count: Number(r.metricValues?.[0]?.value ?? 0),
+      };
+    });
+    return { available: true, rows };
+  } catch (e) {
+    return { available: false, error: e instanceof Error ? e.message : String(e), rows: [] };
+  }
+}
