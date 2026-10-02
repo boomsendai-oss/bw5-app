@@ -126,6 +126,10 @@ export function parseInstructors(summary: string, instructors: NamedRef[]): Pars
   if (sub) {
     const hit = lookup(sub[1]);
     if (hit) return [{ id: hit.id, name: hit.name, substitute: true }];
+    // 代講者が名簿にいない(講師登録前の人など)ときは、【】の本来の担当に落とさず
+    // 「読めない」に倒す。落とすと、やっていない担当講師に給与が付く
+    // (2026-09-25 七ヶ浜入門【代講HARUKI】…【AOI】が AOI に付いていた)。
+    return [];
   }
 
   // 【】の中身を区切り文字で割って、読めた人を順番どおりに集める
@@ -163,6 +167,7 @@ export function parseInstructor(summary: string, instructors: NamedRef[]): Parse
   if (sub) {
     const hit = lookup(sub[1]);
     if (hit) return { id: hit.id, name: hit.name, substitute: true };
+    return null; // 名簿にない代講者は本来の担当に落とさない(parseInstructors と同じ)
   }
 
   // 1 & 2. 【】の中身(先頭・末尾どちらでも)

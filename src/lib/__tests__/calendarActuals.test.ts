@@ -122,6 +122,12 @@ describe('parseInstructors — 連名(2人体制)', () => {
     expect(r[0]).toMatchObject({ id: 12, substitute: true });
   });
 
+  it('代講者が名簿に無いときは、本来の担当に落とさず「読めない」にする', () => {
+    // 2026-09-25 実例: 講師登録前のHARUKIの代講回がAOIに付いていた
+    expect(parseInstructors('【代講HARUKI】七ヶ浜HIPHOP 入門クラス【AOI】🔰', INSTRUCTORS)).toEqual([]);
+    expect(parseInstructor('【KEIKO】長町ガールズ 入門🔰代講SAYA', INSTRUCTORS)).toBeNull();
+  });
+
   it('名簿に無い名前が混ざっていても、読めた人だけ返す', () => {
     expect(parseInstructors('【TARO/ダレカ】クラス', INSTRUCTORS).map((x) => x.id)).toEqual([3]);
     expect(parseInstructors('⚔️ダンスバトル練習会', INSTRUCTORS)).toEqual([]);
