@@ -16,7 +16,14 @@ import { yen } from './utils';
 export type WindowCounts = {
   new_signups: number;
   churned: number;
+  /** 体験のレッスン日がこの週にあるもの（キャンセル含む・従来互換） */
   trials: number;
+  /**
+   * 体験の申込日(trial_records.created_at)がこの週にあるもの・キャンセル除外。
+   * 広告や施策の効果は「いつ申し込んだか」で出るので、判断にはこちらを使う
+   * (2026-09-14 Ultracode再検証で「レッスン日基準は週次の増減が読めない」と指摘)。
+   */
+  trial_bookings: number;
   line_new: number;
 };
 
@@ -218,12 +225,12 @@ export function buildChangeLines(i: WeeklyReportInput): string[] {
     out.push(`退会が先週より${t.churned - p.churned}人増加。単月のブレか継続傾向かは翌週まで判断保留。`);
   }
 
-  if (t.trials === 0) {
-    out.push('⚠️ 体験予約が0件。広告の配信状況とLINEの導線が生きているかを見たい。');
-  } else if (t.trials > p.trials) {
-    out.push(`体験予約が${p.trials}件→${t.trials}件に増加。増えた分の流入経路を残しておきたい。`);
-  } else if (t.trials < p.trials) {
-    out.push(`体験予約が${p.trials}件→${t.trials}件に減少。季節要因か配信量の変化かを切り分けたい。`);
+  if (t.trial_bookings === 0) {
+    out.push('⚠️ 体験申込が0件。広告の配信状況とLINEの導線が生きているかを見たい。');
+  } else if (t.trial_bookings > p.trial_bookings) {
+    out.push(`体験申込が${p.trial_bookings}件→${t.trial_bookings}件に増加。増えた分の流入経路を残しておきたい。`);
+  } else if (t.trial_bookings < p.trial_bookings) {
+    out.push(`体験申込が${p.trial_bookings}件→${t.trial_bookings}件に減少。季節要因か配信量の変化かを切り分けたい。`);
   }
 
   if (t.line_new === 0 && p.line_new > 0) {
@@ -335,7 +342,8 @@ export function formatWeeklyReport(i: WeeklyReportInput): WeeklyReport {
 
   // ── 入口の数字 ──
   L.push('■ 入口の数字');
-  L.push(vsPrev('体験予約', i.this_week.trials, i.prev_week.trials, '件'));
+  L.push(vsPrev('体験申込（申込日基準・キャンセル除外）', i.this_week.trial_bookings, i.prev_week.trial_bookings, '件'));
+  L.push(vsPrev('体験実施予定（レッスン日基準・キャンセル含む）', i.this_week.trials, i.prev_week.trials, '件'));
   L.push(vsPrev('LINE友だち追加', i.this_week.line_new, i.prev_week.line_new, '人'));
   L.push('    ※ LINE追加は日次同期で新しく現れた友だちの数（Lstepの登録日そのものではない）');
   // 広告費は GA4の実費用を優先し、取れないときだけ経費計上ベースへ落とす。

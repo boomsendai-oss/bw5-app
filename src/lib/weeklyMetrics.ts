@@ -51,7 +51,7 @@ function shift(iso: string, days: number): string {
 /** 指定ウィンドウ(両端含む)の入口カウント。取得失敗した指標は 0 ではなく null を返す。 */
 async function windowCounts(start: string, end: string): Promise<WindowCounts & { unavailable: string[] }> {
   const endISO = `${end}T23:59:59`;
-  const [signups, churned, trials, lineNew] = await Promise.all([
+  const [signups, churned, trials, trialBookings, lineNew] = await Promise.all([
     safeCount(
       `SELECT COUNT(*) AS n FROM boom_members
         WHERE enrolled_at BETWEEN ? AND ? AND ${NON_CUSTOMER_TYPES_SQL}`,
@@ -63,17 +63,25 @@ async function windowCounts(start: string, end: string): Promise<WindowCounts & 
       [start, endISO]
     ),
     safeCount(`SELECT COUNT(*) AS n FROM trial_records WHERE reserved_at BETWEEN ? AND ?`, [start, endISO]),
+    // 申込日基準・キャンセル除外（施策の効果判定用。status の値は '予約済' / '来店確認済' / 'キャンセル'）
+    safeCount(
+      `SELECT COUNT(*) AS n FROM trial_records
+        WHERE created_at BETWEEN ? AND ? AND (status IS NULL OR status NOT LIKE '%キャンセル%')`,
+      [start, endISO]
+    ),
     safeCount(`SELECT COUNT(*) AS n FROM lstep_friends WHERE created_at BETWEEN ? AND ?`, [start, endISO]),
   ]);
   const unavailable: string[] = [];
   if (signups === null) unavailable.push('入会');
   if (churned === null) unavailable.push('退会');
   if (trials === null) unavailable.push('体験予約');
+  if (trialBookings === null) unavailable.push('体験申込');
   if (lineNew === null) unavailable.push('LINE友だち追加');
   return {
     new_signups: signups ?? 0,
     churned: churned ?? 0,
     trials: trials ?? 0,
+    trial_bookings: trialBookings ?? 0,
     line_new: lineNew ?? 0,
     unavailable,
   };

@@ -13,8 +13,8 @@ function baseInput(over: Partial<WeeklyReportInput> = {}): WeeklyReportInput {
     week_start: '2026-07-20',
     week_end: '2026-07-26',
     members_now: 172,
-    this_week: { new_signups: 2, churned: 1, trials: 4, line_new: 7 },
-    prev_week: { new_signups: 1, churned: 1, trials: 2, line_new: 5 },
+    this_week: { new_signups: 2, churned: 1, trials: 4, trial_bookings: 4, line_new: 7 },
+    prev_week: { new_signups: 1, churned: 1, trials: 2, trial_bookings: 2, line_new: 5 },
     year_month: '2026-07',
     prev_year_month: '2026-06',
     revenue: {
@@ -85,7 +85,7 @@ describe('buildChangeLines', () => {
 
   it('退会が3人以上なら警告し、理由は「確認したい」に留める(断定しない)', () => {
     const lines = buildChangeLines(
-      baseInput({ this_week: { new_signups: 1, churned: 3, trials: 4, line_new: 7 } })
+      baseInput({ this_week: { new_signups: 1, churned: 3, trials: 4, trial_bookings: 4, line_new: 7 } })
     );
     const warn = lines.find((l) => l.includes('退会が3人と多め'));
     expect(warn).toBeDefined();
@@ -94,9 +94,9 @@ describe('buildChangeLines', () => {
 
   it('体験0件を警告する', () => {
     const lines = buildChangeLines(
-      baseInput({ this_week: { new_signups: 0, churned: 0, trials: 0, line_new: 1 } })
+      baseInput({ this_week: { new_signups: 0, churned: 0, trials: 0, trial_bookings: 0, line_new: 1 } })
     );
-    expect(lines.some((l) => l.includes('体験予約が0件'))).toBe(true);
+    expect(lines.some((l) => l.includes('体験申込が0件'))).toBe(true);
   });
 
   it('利益未確定の月は黒字赤字を断定しない', () => {
