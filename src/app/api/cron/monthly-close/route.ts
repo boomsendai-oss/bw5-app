@@ -108,8 +108,19 @@ export async function GET(req: NextRequest) {
   const overdue = day >= 10 && status.payrollRuns > 0 && status.payrollDraft === status.payrollRuns;
 
   const yen = (n: number) => `¥${n.toLocaleString()}`;
+  // daily_sync(Mac常駐)の見張り。2026-09-29〜10-01の3日間、Macがスリープ明けに
+  // ネット未接続のまま同期して全滅し、課金明細が9/28で止まった。Mac側の失敗メールは
+  // SMTP未設定で一度も届いておらず、誰も気づけなかった。このcronはクラウドで毎日動くので、
+  // Macがオフラインでも「データが古い」ことを検知できる。
+  const staleRow = (await getAll(
+    `SELECT MAX(imported_at) AS last, (julianday('now') - julianday(MAX(imported_at))) * 24 AS hours
+       FROM hacomono_billing_records`
+  )) as { last: string | null; hours: number | null }[];
+  const staleHours = Number(staleRow[0]?.hours ?? 0);
+  const staleSync = staleHours >= 36;
+
   const notifyAllowed = !phase || phase === 'close';
-  const shouldNotify = notifyAllowed && (doClose || errors.length > 0 || overdue || review.length > 0 || unregistered.length > 0 || conflicts.length > 0 || missingRecurring.length > 0);
+  const shouldNotify = notifyAllowed && (doClose || errors.length > 0 || overdue || review.length > 0 || unregistered.length > 0 || conflicts.length > 0 || missingRecurring.length > 0 || staleSync);
   let notified = false;
   if (shouldNotify) {
     const lines: string[] = [];
@@ -138,6 +149,12 @@ export async function GET(req: NextRequest) {
       lines.push('');
       lines.push(`■ カレンダーが読めなかった予定（給与に入っていません）`);
       for (const r of review.slice(0, 20)) lines.push(`  - ${r.date} ${r.start} ${r.class_name} … ${r.issues.join(' / ')}`);
+    }
+    if (staleSync) {
+      lines.push('');
+      lines.push(`■ 🔴 自動取込(daily_sync)が止まっています：hacomonoの売上データが ${Math.floor(staleHours)}時間 更新されていません（最終取込 ${staleRow[0]?.last ?? '不明'} UTC）`);
+      lines.push('  - 主な原因はMacのスリープ/ネット切断。Macを起こしてネットに繋げば次の定時実行で戻ります');
+      lines.push('  - 急ぐなら手動実行: launchctl kickstart -k gui/$(id -u)/com.boom.dailysync');
     }
     if (pendingFees && pendingFees.n > 0) {
       const est = Math.round(pendingFees.amt * 0.0348); // 実効率3.47〜3.49%の実測から概算
