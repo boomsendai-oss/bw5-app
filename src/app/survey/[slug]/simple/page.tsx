@@ -3,7 +3,7 @@
 // 古い端末(iOS 16.3以前等)では白い画面のまま止まる。このページはサーバレンダリング
 // された素のHTMLフォーム+Server Actionだけで完結し、どんなブラウザでも送信できる。
 // 見た目より確実性を優先(ネイティブのチェックボックス/ラジオを使う)。
-import { effectiveState, gridCellKey, gridColsForRow, OTHER_KEY, type QuestionDef } from '@/lib/survey';
+import { effectiveState, gridCellKey, gridColsForRow, introSegments, OTHER_KEY, type QuestionDef } from '@/lib/survey';
 import { fieldName } from '@/lib/surveySimpleForm';
 import { getSurveyBySlug } from '@/lib/surveyDb';
 import { submitSimpleSurvey } from './actions';
@@ -147,7 +147,15 @@ export default async function SimpleSurveyPage({
       <form action={submitWithSlug} className="max-w-md mx-auto space-y-4">
         <Card>
           <h1 className="text-lg font-bold text-slate-900 leading-snug">{survey.title}</h1>
-          {survey.intro ? <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-wrap">{survey.intro}</p> : null}
+          {survey.intro ? <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-wrap">{introSegments(survey.intro).map((seg, i) =>
+            seg.type === 'link' ? (
+              <a key={i} href={seg.value} target="_blank" rel="noopener noreferrer" className="text-teal-700 underline font-bold break-all">
+                {seg.label}
+              </a>
+            ) : (
+              <span key={i}>{seg.value}</span>
+            )
+          )}</p> : null}
           {survey.closes_at ? <p className="text-xs text-slate-500 mt-3">回答締切: {formatJst(survey.closes_at)}</p> : null}
         </Card>
 

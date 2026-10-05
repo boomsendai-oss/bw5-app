@@ -468,3 +468,27 @@ describe('crossTab', () => {
     expect(cells.find((c) => c.rowKey === 'mon' && c.colKey === 'unknown')).toBeUndefined();
   });
 });
+
+describe('introSegments', () => {
+  it('URLなしは全文textの1セグメント', async () => {
+    const { introSegments } = await import('../survey');
+    expect(introSegments('こんにちは')).toEqual([{ type: 'text', value: 'こんにちは', label: 'こんにちは' }]);
+  });
+  it('URLをlinkセグメントに分割する', async () => {
+    const { introSegments } = await import('../survey');
+    const segs = introSegments('場所はこちら https://example.com/abc です');
+    expect(segs).toEqual([
+      { type: 'text', value: '場所はこちら ', label: '場所はこちら ' },
+      { type: 'link', value: 'https://example.com/abc', label: 'https://example.com/abc' },
+      { type: 'text', value: ' です', label: ' です' },
+    ]);
+  });
+  it('GoogleマップのURLはラベルが「Googleマップで開く」になる', async () => {
+    const { introSegments } = await import('../survey');
+    const url = 'https://www.google.com/maps/search/?api=1&query=GOAT%20DANCE%20STUDIO';
+    const segs = introSegments(`地図:\n${url}`);
+    expect(segs[1]).toEqual({ type: 'link', value: url, label: 'Googleマップで開く' });
+    const short = introSegments('https://maps.app.goo.gl/xyz');
+    expect(short[0].label).toBe('Googleマップで開く');
+  });
+});
