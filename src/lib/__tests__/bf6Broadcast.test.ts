@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildBf6Broadcast, BF6_BROADCAST_TEMPLATES } from '../bf6Broadcast';
+import { buildBf6Broadcast, BF6_BROADCAST_TEMPLATES, excludeWaitlisted } from '../bf6Broadcast';
 
 describe('BF6 一斉メールのテンプレート', () => {
   it('集合時刻の案内テンプレートが存在する', () => {
@@ -72,7 +72,7 @@ describe('オンライン配信の案内テンプレート', () => {
 describe('宛先の範囲', () => {
   it('テンプレートごとに宛先の範囲が決まっている', () => {
     for (const t of BF6_BROADCAST_TEMPLATES) {
-      expect(['entrants', 'all', 'cash_due']).toContain(t.audience);
+      expect(['entrants', 'all', 'cash_due', 'entrants_not_bf7']).toContain(t.audience);
       expect(t.audienceNote.length).toBeGreaterThan(0);
     }
   });
@@ -137,5 +137,47 @@ describe('当日のご案内(バトル出場者の方へ)', () => {
 
   it('ほかのテンプレートには添付を付けない', () => {
     expect(buildBf6Broadcast('call-time-1').attachments).toEqual([]);
+  });
+});
+
+describe('vol.7 ウェイトリストの案内(2026-10-05 TARO承認)', () => {
+  const t = BF6_BROADCAST_TEMPLATES.find((x) => x.key === 'bf7-waitlist-1');
+
+  it('テンプレートが存在し、宛先は「エントリー者のうちウェイトリスト未登録」', () => {
+    expect(t).toBeTruthy();
+    expect(t!.audience).toBe('entrants_not_bf7');
+  });
+
+  it('件名で vol.7 の開催日とウェイトリストの案内だと分かる', () => {
+    expect(t!.subject).toContain('vol.7');
+    expect(t!.subject).toContain('2027年1月30日');
+    expect(t!.subject).toContain('ウェイトリスト');
+  });
+
+  it('本文に日程・会場・ゲスト・受付開始日・登録URLが入る', () => {
+    const b = t!.body;
+    expect(b).toContain('2027年1月30日(土)');
+    expect(b).toContain('仙台スクールオブミュージック&ダンス専門学校 9階ホール');
+    expect(b).toContain('Hiro（MIDDLE FILTER／大阪）');
+    expect(b).toContain('2026年11月30日');
+    expect(b).toContain('https://boomersfight.vercel.app/bf7');
+    expect(b).toContain('申し込みではありません');
+  });
+
+  it('宣伝メールなので配信停止の方法と送り主が必ず入る', () => {
+    expect(t!.body).toContain('今後このようなご案内が不要な方は');
+    expect(t!.body).toContain('BOOM DANCE SCHOOL');
+  });
+});
+
+describe('excludeWaitlisted', () => {
+  it('ウェイトリスト登録済みの人を除く(大文字小文字・空白を区別しない)', () => {
+    expect(
+      excludeWaitlisted(['a@x.jp', 'B@x.jp', 'c@x.jp'], [' b@X.JP ', 'z@x.jp'])
+    ).toEqual(['a@x.jp', 'c@x.jp']);
+  });
+
+  it('ウェイトリストが空なら全員に送る', () => {
+    expect(excludeWaitlisted(['a@x.jp'], [])).toEqual(['a@x.jp']);
   });
 });

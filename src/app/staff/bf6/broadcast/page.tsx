@@ -8,16 +8,23 @@ export const dynamic = 'force-dynamic';
 
 export default async function StaffBf6BroadcastPage() {
   // 宛先の範囲はテンプレートごとに違う(当日の段取り=エントリー者だけ / 配信の案内=全員)
-  const [entrants, all, cashDue, history, failures] = await Promise.all([
+  const [entrants, all, cashDue, history, failures, notOnBf7] = await Promise.all([
     getBf6BroadcastRecipients('entrants'),
     getBf6BroadcastRecipients('all'),
     getCashDueRecipients(),
     listBf6Broadcasts(),
     listBf6BroadcastFailures(),
+    getBf6BroadcastRecipients('entrants_not_bf7'),
   ]);
   const failedOf = (key: string) => failures.find((f) => f.key === key)?.failed ?? 0;
   const countOf = (a: Bf6BroadcastAudience) =>
-    a === 'all' ? all.length : a === 'cash_due' ? cashDue.length : entrants.length;
+    a === 'all'
+      ? all.length
+      : a === 'cash_due'
+        ? cashDue.length
+        : a === 'entrants_not_bf7'
+          ? notOnBf7.length
+          : entrants.length;
   // 差し込みのあるメールは、実際に届く形が分からないと承認できない。1人目の中身で見せる。
   const previewOf = (t: { body: string; audience: Bf6BroadcastAudience }) =>
     t.audience === 'cash_due' && cashDue.length > 0

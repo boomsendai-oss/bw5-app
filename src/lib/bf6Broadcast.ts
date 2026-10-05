@@ -21,8 +21,11 @@ import { nowUtcIso } from './dateJst';
  *              案内はこちら。配信チケットを既に持っている人は自動で除く。
  *  cash_due … 支払い方法が「当日現金」でまだ払っていない注文。人ごとに金額が違うので
  *              本文に金額と内訳を差し込む。すでに受け取った人には送らない。
+ *  entrants_not_bf7 … entrants のうち、vol.7 のウェイトリストにまだ登録していない人。
+ *              vol.7 の案内(2026-10-05 TARO承認)用。登録済みの人に重ねて送らないため、
+ *              送信する瞬間の登録状況で除く。
  */
-export type Bf6BroadcastAudience = 'entrants' | 'all' | 'cash_due';
+export type Bf6BroadcastAudience = 'entrants' | 'all' | 'cash_due' | 'entrants_not_bf7';
 
 export type Bf6BroadcastTemplate = {
   key: string;
@@ -237,6 +240,32 @@ const ENTRANT_GUIDE_BODY = `BOOMER'S FIGHT!!! vol.6 にエントリーいただ�
 BOOM DANCE SCHOOL
 BOOMER'S FIGHT!!! vol.6`;
 
+const BF7_WAITLIST_BODY = `BOOMER'S FIGHT!!! vol.6 にエントリーいただいた皆さまへ
+
+先日はご出場いただき、ありがとうございました。
+次回 vol.7 の開催が決まりましたので、ご案内いたします。
+
+■ 日程　2027年1月30日(土)
+■ 会場　仙台スクールオブミュージック&ダンス専門学校 9階ホール
+　　　　（vol.6と同じ会場です）
+■ スペシャルゲスト　Hiro（MIDDLE FILTER／大阪）
+　ヒップホップの中の「ニュージャックスイング」というスタイルの、
+　日本の第一人者です。
+
+エントリー受付は 2026年11月30日 から始める予定です。
+ウェイトリストにご登録いただくと、受付開始のタイミングで
+メールでお知らせします。
+（約30秒・この時点では申し込みではありません）
+
+▼ ウェイトリスト登録
+https://boomersfight.vercel.app/bf7
+
+部門・料金などの詳細は、決まり次第お知らせします。
+
+──────────
+今後このようなご案内が不要な方は、このメールにその旨ご返信ください。
+BOOM DANCE SCHOOL`;
+
 export const BF6_BROADCAST_TEMPLATES: Bf6BroadcastTemplate[] = [
   {
     key: 'call-time-1',
@@ -277,6 +306,16 @@ export const BF6_BROADCAST_TEMPLATES: Bf6BroadcastTemplate[] = [
       { filename: '控室（柔道場）への行き方.png', path: 'bf6/mail/judo-map.png' },
       { filename: 'タイムテーブル.png', path: 'bf6/mail/timetable.png' },
     ],
+  },
+  {
+    // ⚠️ 宣伝メールにあたるので、末尾の配信停止の一文を消さないこと(特定電子メール法)
+    key: 'bf7-waitlist-1',
+    label: 'vol.7 開催決定とウェイトリストのご案内',
+    subject: "【BOOMER'S FIGHT!!! vol.7】2027年1月30日(土)開催決定・ウェイトリストのご案内",
+    body: BF7_WAITLIST_BODY,
+    audience: 'entrants_not_bf7',
+    audienceNote:
+      'vol.6 にバトルエントリーした方のうち、vol.7 のウェイトリストにまだ登録していない方。観覧・配信のみの購入者には送りません。',
   },
 ];
 
@@ -390,9 +429,21 @@ export async function getCashDueRecipients(): Promise<BroadcastRecipient[]> {
  * all のときは、配信チケットを既に買っている人を除く。
  * 買った本人に「買いませんか」と送るのは失礼だし、問い合わせの原因になる。
  */
+/** すでに vol.7 のウェイトリストにいる人を除く。メールは大文字小文字・前後の空白を区別しない。 */
+export function excludeWaitlisted(emails: string[], waitlisted: string[]): string[] {
+  const norm = (e: string) => e.trim().toLowerCase();
+  const done = new Set(waitlisted.map(norm));
+  return emails.filter((e) => !done.has(norm(e)));
+}
+
 export async function getBf6BroadcastRecipients(
   audience: Bf6BroadcastAudience = 'entrants'
 ): Promise<string[]> {
+  if (audience === 'entrants_not_bf7') {
+    const entrants = await getBf6BroadcastRecipients('entrants');
+    const wl = await getAll('SELECT email FROM bf7_notify').catch(() => []);
+    return excludeWaitlisted(entrants, wl.map((r) => String(r.email)));
+  }
   if (audience === 'all') {
     const rows = await getAll(
       `SELECT DISTINCT o.email AS email
