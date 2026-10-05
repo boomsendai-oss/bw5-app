@@ -7,7 +7,7 @@
 import { useEffect, useState, use as usePromise } from 'react';
 import { getPublicSurvey, submitSurveyResponse, type PublicSurveyView } from './actions';
 import { installSurveyErrorHandlers, reportSurveyClientError } from './reportError';
-import { gridCellKey, gridColsForRow, OTHER_KEY, type QuestionDef } from '@/lib/survey';
+import { gridCellKey, gridColsForRow, introSegments, OTHER_KEY, type QuestionDef } from '@/lib/survey';
 
 type AnswerState = Record<string, { optionKeys: string[]; otherText: string; text: string }>;
 
@@ -224,7 +224,15 @@ export default function SurveyPage({ params }: { params: Promise<{ slug: string 
         ) : null}
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
           <h1 className="text-lg font-bold text-slate-900 leading-snug">{view.title}</h1>
-          {view.intro ? <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-wrap">{view.intro}</p> : null}
+          {view.intro ? <p className="text-sm text-slate-600 mt-2 leading-relaxed whitespace-pre-wrap">{introSegments(view.intro).map((seg, i) =>
+            seg.type === 'link' ? (
+              <a key={i} href={seg.value} target="_blank" rel="noopener noreferrer" className="text-teal-700 underline font-bold break-all">
+                {seg.label}
+              </a>
+            ) : (
+              <span key={i}>{seg.value}</span>
+            )
+          )}</p> : null}
           {view.closesAt ? (
             <p className="text-xs text-slate-500 mt-3">回答締切: {formatJst(view.closesAt)}</p>
           ) : null}

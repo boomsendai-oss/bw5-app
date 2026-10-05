@@ -455,3 +455,30 @@ export function crossTab(
     return { rowKey, colKey, count };
   });
 }
+
+// ── イントロ文のURL自動リンク化 ───────────────────────────────
+// intro はDB由来のプレーンテキスト。URLを<a>にするための分割を純関数で行う
+// (描画側は segments を map するだけ。Googleマップは長いURLを出さずラベル表示)
+export interface IntroSegment {
+  type: 'text' | 'link';
+  value: string;
+  /** linkのとき表示するテキスト(通常はURLそのもの) */
+  label: string;
+}
+
+const URL_RE = /(https?:\/\/[^\s]+)/g;
+
+export function introSegments(text: string): IntroSegment[] {
+  const out: IntroSegment[] = [];
+  let last = 0;
+  for (const m of text.matchAll(URL_RE)) {
+    const idx = m.index ?? 0;
+    if (idx > last) out.push({ type: 'text', value: text.slice(last, idx), label: text.slice(last, idx) });
+    const url = m[0];
+    const isMaps = /https?:\/\/(www\.)?google\.[^/\s]+\/maps/.test(url) || /https?:\/\/maps\.(app\.goo\.gl|google\.[^/\s]+)/.test(url);
+    out.push({ type: 'link', value: url, label: isMaps ? 'Googleマップで開く' : url });
+    last = idx + url.length;
+  }
+  if (last < text.length) out.push({ type: 'text', value: text.slice(last), label: text.slice(last) });
+  return out;
+}
