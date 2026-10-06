@@ -118,13 +118,23 @@ describe('reconcileDay', () => {
     // 七ヶ浜は国際村/アクアが週替わり。代講回は要確認になるが、会場違いで「別物」扱いすると
     // 枠が未開催(removed)・既定講師に戻され、手で付け替えた代講者の給与が消えた。
     const p = reconcileDay(
-      [slot({ master_id: 15, instructor_id: 2, studio_id: 7, start_time: '18:30', end_time: '19:30' })],
-      [res({ start: '18:30', end: '19:30', studio_id: 8, instructor_id: 14, substitute: true,
+      [slot({ master_id: 15, instructor_id: 2, studio_id: 7, start_time: '18:30', end_time: '19:30', class_name: '七ヶ浜 HIPHOP 入門' })],
+      [res({ start: '18:30', end: '19:30', studio_id: 8, instructor_id: 14, substitute: true, class_name: '七ヶ浜HIPHOP 入門クラス 🔰',
              instructors: [{ id: 14, name: 'HARUKI', substitute: true }],
              issues: ['代講のため単価が自動で決まらない'] })]
     );
     expect(p.removed).toHaveLength(0);
     expect(p.skipped).toHaveLength(1);
+  });
+
+  it('代講の予定でも、別クラス・別会場の枠は巻き込まない', () => {
+    const p = reconcileDay(
+      [slot({ master_id: 40, instructor_id: 10, studio_id: 4, start_time: '13:30', class_name: '長町HIPHOP' })],
+      [res({ start: '13:30', studio_id: 1, instructor_id: 12, substitute: true, class_name: 'キッズ HIPHOP 初級',
+             instructors: [{ id: 12, name: 'KOKEKO', substitute: true }], issues: ['代講のため単価が自動で決まらない'] })]
+    );
+    expect(p.removed).toHaveLength(1);
+    expect(p.skipped).toHaveLength(0);
   });
 
   it('開始時刻が一致する枠は、カレンダーの会場・講師で上書きする(週替わり会場の反映)', () => {

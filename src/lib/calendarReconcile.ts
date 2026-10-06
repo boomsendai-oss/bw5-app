@@ -66,6 +66,16 @@ export type ReconcileOpts = {
   matchByTimeOnly?: boolean;
 };
 
+/** クラス名の表記ゆれ(空白・「クラス」・絵文字・大小文字)を落として比べる */
+function sameClass(a: string | null | undefined, b: string | null | undefined): boolean {
+  const norm = (x: string | null | undefined) =>
+    (x ?? '').normalize('NFKC').toLowerCase()
+      .replace(/クラス/g, '')
+      .replace(/[\s\p{Extended_Pictographic}\uFE0F]/gu, '');
+  const na = norm(a), nb = norm(b);
+  return na !== '' && na === nb;
+}
+
 export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[], opts: ReconcileOpts = {}): DayPlan {
   const plan: DayPlan = { keep: [], removed: [], extra: [], needsReview: [], skipped: [] };
 
@@ -134,7 +144,8 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[], 
         // 代講と書かれた予定は「この時間にレッスンをやった」ことが確実なので、会場違いでも切らない。
         // 七ヶ浜は国際村/アクアが週替わりで、枠の既定会場と違うのが正常(2026-09-25の実例:
         // 会場違いで未開催扱い→既定講師に戻され、手で付け替えた代講者の給与が消えた)
-        if (e.substitute) return true;
+        // ただし同じクラスに限る(時間が近いだけの他会場の枠まで巻き込まない)。
+        if (e.substitute && sameClass(e.class_name, s.class_name)) return true;
         if (e.studio_id != null && s.studio_id != null && e.studio_id !== s.studio_id) return false;
         return true;
       });
