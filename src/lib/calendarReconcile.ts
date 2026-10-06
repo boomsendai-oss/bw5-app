@@ -131,6 +131,10 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[], 
       //  「開催したことにする」だと判明したため、会場で切れるものは切る)
       const ambiguous = plan.needsReview.some((e) => {
         if (Math.abs(toMin(e.start) - toMin(s.start_time)) > MATCH_WINDOW_MIN) return false;
+        // 代講と書かれた予定は「この時間にレッスンをやった」ことが確実なので、会場違いでも切らない。
+        // 七ヶ浜は国際村/アクアが週替わりで、枠の既定会場と違うのが正常(2026-09-25の実例:
+        // 会場違いで未開催扱い→既定講師に戻され、手で付け替えた代講者の給与が消えた)
+        if (e.substitute) return true;
         if (e.studio_id != null && s.studio_id != null && e.studio_id !== s.studio_id) return false;
         return true;
       });

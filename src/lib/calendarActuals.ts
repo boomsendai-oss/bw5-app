@@ -288,7 +288,8 @@ export function resolveCalendarEvent(
     end: event.end,
     duration_minutes: Number.isFinite(dur) ? dur : 0,
     cancelled,
-    substitute: inst?.substitute ?? false,
+    // 代講者が名簿に無く講師を特定できない回も「代講」として扱う(枠を未開催にしないため)
+    substitute: inst?.substitute ?? /代講/.test(event.summary),
     instructor_id: inst?.id ?? null,
     instructor_name: inst?.name ?? null,
     instructors: found,

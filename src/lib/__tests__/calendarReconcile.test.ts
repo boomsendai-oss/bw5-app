@@ -114,6 +114,19 @@ describe('reconcileDay', () => {
     expect(p.skipped).toHaveLength(0);
   });
 
+  it('【回帰】代講の予定は会場が枠と違っても枠に触らない (2026-09-25の実例)', () => {
+    // 七ヶ浜は国際村/アクアが週替わり。代講回は要確認になるが、会場違いで「別物」扱いすると
+    // 枠が未開催(removed)・既定講師に戻され、手で付け替えた代講者の給与が消えた。
+    const p = reconcileDay(
+      [slot({ master_id: 15, instructor_id: 2, studio_id: 7, start_time: '18:30', end_time: '19:30' })],
+      [res({ start: '18:30', end: '19:30', studio_id: 8, instructor_id: 14, substitute: true,
+             instructors: [{ id: 14, name: 'HARUKI', substitute: true }],
+             issues: ['代講のため単価が自動で決まらない'] })]
+    );
+    expect(p.removed).toHaveLength(0);
+    expect(p.skipped).toHaveLength(1);
+  });
+
   it('開始時刻が一致する枠は、カレンダーの会場・講師で上書きする(週替わり会場の反映)', () => {
     const p = reconcileDay([slot({})], [res({})]);
     expect(p.keep).toHaveLength(1);
