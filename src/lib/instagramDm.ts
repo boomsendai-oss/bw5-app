@@ -247,8 +247,10 @@ export async function handleInboundMessage(ev: InboundEvent): Promise<{ stored: 
     }
   }
 
-  // スレッド状態: 自動で案内できたものは auto_replied、申込・判定不能・送信失敗は needs_reply(人が見る)
-  const status = sendError ? 'needs_reply' : statusAfter(autoKind);
+  // スレッド状態: 自動で案内できたものは auto_replied、申込・判定不能・送信失敗は needs_reply(人が見る)。
+  // 本文なし(ストーリーのメンション・投稿のシェア・スタンプ・画像だけ)は「返信待ち」にしない=通知だけ残して new のまま。
+  const hasText = !!(ev.text || '').trim();
+  const status = sendError ? 'needs_reply' : !hasText ? 'new' : statusAfter(autoKind);
   // いったん done にした相手からまた来たら、また人の目に戻す
   await execute('UPDATE ig_dm_threads SET status = ?, auto_reply_kinds = ?, updated_at = ? WHERE sender_id = ?', [
     status,
@@ -265,7 +267,7 @@ export async function handleInboundMessage(ev: InboundEvent): Promise<{ stored: 
     `本文: ${ev.text || (ev.attachments.length ? `[${ev.attachments.map((a) => a.type).join(',')}]` : '(本文なし)')}`,
     '',
     autoKind ? `自動返信: ${autoKind} を送信しました` : `自動返信: なし(${decision.kind ? sendError : (decision as { reason: string }).reason})`,
-    `状態: ${status === 'needs_reply' ? '返信待ち(TAROの返信が必要)' : '自動案内済み'}`,
+    `状態: ${status === 'needs_reply' ? '返信待ち(TAROの返信が必要)' : status === 'new' ? '本文なし(メンション/シェア/画像のみ・自動返信なし)' : '自動案内済み'}`,
     '',
     '台帳・返信: https://bw5-app.vercel.app/staff/instagram/dm',
   ];
