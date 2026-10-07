@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { verifySignature, parseWebhookEvents, withinReplyWindow } from '../instagramDm';
-import { decideAutoReply, classify, looksLikeApplication, statusAfter, MAX_AUTO_PER_DAY, WS_INFO, AUTO_NOTE, renderTemplate } from '../instagramDmRules';
+import { decideAutoReply, classify, looksLikeApplication, statusAfter, MAX_AUTO_PER_DAY, WS_INFO, AUTO_NOTE, renderTemplate, TEMPLATES } from '../instagramDmRules';
 
 const NOW = '2026-10-07T12:00:00+09:00';
 const AFTER_WS = '2026-10-26T12:00:00+09:00';
@@ -126,7 +126,8 @@ describe('decideAutoReply', () => {
     expect(renderTemplate('ws')).toContain(AUTO_NOTE);
     expect(renderTemplate('ws_apply')).toContain(AUTO_NOTE);
     expect(renderTemplate('handoff')).not.toContain(AUTO_NOTE);
-    expect(renderTemplate('handoff')).toMatch(/スタッフ/);
+    expect(renderTemplate('handoff')).toMatch(/担当者|スタッフ/);
+    expect(Object.values(TEMPLATES).join('\n')).not.toMatch(/TARO|早めに/);
   });
   it('ws案内のあとに名前・人数が来たら ws_apply', () => {
     const d = decideAutoReply('佐藤です、2名でお願いします', { ...baseCtx, inboundCountBefore: 1, autoReplyKinds: ['ws'] });
