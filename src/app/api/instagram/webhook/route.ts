@@ -1,3 +1,5 @@
+// ⚠️ 公開API(認証なし)。理由: Metaのサーバーが直接叩くWebhook。代わりに GET は hub.verify_token、
+//    POST は X-Hub-Signature-256(INSTAGRAM_APP_SECRET の HMAC) で呼び出し元を検証する(規約4.5の例外)。
 // Instagram DM Webhook (Meta → ここ)。
 //   GET  = 購読の検証(hub.mode=subscribe / hub.verify_token / hub.challenge)
 //   POST = メッセージ受信通知。X-Hub-Signature-256 を INSTAGRAM_APP_SECRET で検証してから処理。

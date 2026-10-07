@@ -5,7 +5,7 @@
 //   POST {action:'subscribe'} … messages Webhook の購読を有効化(連携後に1回)
 //   POST {action:'preview', text} … 自動返信ルールの判定だけ試す(送信しない)
 import { NextRequest, NextResponse } from 'next/server';
-import { isAuthorized, unauthorized } from '@/lib/eventAuth';
+import { withAuth } from '@/lib/eventAuth';
 import { listThreads, listMessages, sendDm, setThreadStatus, subscribeMessagesWebhook, withinReplyWindow } from '@/lib/instagramDm';
 import { decideAutoReply, TEMPLATES } from '@/lib/instagramDmRules';
 import { getOne } from '@/lib/db';
@@ -13,8 +13,7 @@ import { getOne } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET(req: NextRequest) {
-  if (!(await isAuthorized(req))) return unauthorized();
+export const GET = withAuth(async (req: NextRequest) => {
   const sender = new URL(req.url).searchParams.get('sender');
   if (sender) {
     const [thread, messages] = await Promise.all([
@@ -29,10 +28,9 @@ export async function GET(req: NextRequest) {
     templates: TEMPLATES,
     webhookConfigured: !!process.env.INSTAGRAM_WEBHOOK_VERIFY_TOKEN,
   });
-}
+});
 
-export async function POST(req: NextRequest) {
-  if (!(await isAuthorized(req))) return unauthorized();
+export const POST = withAuth(async (req: NextRequest) => {
   const body = await req.json().catch(() => ({}));
   const action = String(body.action ?? '');
   try {
@@ -71,4 +69,4 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
-}
+});
