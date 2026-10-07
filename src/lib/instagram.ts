@@ -31,10 +31,12 @@ const GRAPH_VERSION = 'v21.0';
 // Instagramログインで投稿+インサイト取得に必要なスコープ
 // manage_insights = リーチ/プロフィールアクセス/フォロワー属性/ストーリー成績の取得用
 // (追加後は再認可が必要。旧トークンのままだとインサイトAPIは403)
+// manage_messages = DM受信(Webhook)・返信用(2026-10-07追加・instagramDm.ts)。追加後は再認可が必要。
 const SCOPES = [
   'instagram_business_basic',
   'instagram_business_content_publish',
   'instagram_business_manage_insights',
+  'instagram_business_manage_messages',
 ];
 
 function getEnv() {
@@ -194,6 +196,13 @@ export async function refreshTokenIfStale(): Promise<{ refreshed: boolean; ageDa
   await Promise.all([upsertSetting(TOKEN_KEY, newToken), upsertSetting(TOKEN_ISSUED_AT_KEY, new Date().toISOString())]);
   return { refreshed: true, ageDays: 0 };
 }
+
+/** DM送受信(instagramDm.ts)用: 保存済みトークンとIGユーザーIDを返す。未連携なら例外。 */
+export async function getInstagramAuth(): Promise<{ token: string; igUserId: string }> {
+  return requireConnection();
+}
+
+export const GRAPH_BASE = `${GRAPH}/${GRAPH_VERSION}`;
 
 async function requireConnection(): Promise<{ token: string; igUserId: string }> {
   const token = await getSetting(TOKEN_KEY);
