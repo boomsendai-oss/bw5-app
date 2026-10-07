@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { verifySignature, parseWebhookEvents, withinReplyWindow } from '../instagramDm';
-import { decideAutoReply, classify, looksLikeApplication, statusAfter, MAX_AUTO_PER_DAY, WS_INFO } from '../instagramDmRules';
+import { decideAutoReply, classify, looksLikeApplication, statusAfter, MAX_AUTO_PER_DAY, WS_INFO, AUTO_NOTE, renderTemplate } from '../instagramDmRules';
 
 const NOW = '2026-10-07T12:00:00+09:00';
 const AFTER_WS = '2026-10-26T12:00:00+09:00';
@@ -102,13 +102,31 @@ describe('decideAutoReply', () => {
     const d = decideAutoReply('こんにちは！', baseCtx);
     expect(d.kind).toBe('greeting');
   });
-  it('2通目以降の雑談には返さない', () => {
-    const d = decideAutoReply('ありがとうございます', { ...baseCtx, inboundCountBefore: 1, autoReplyKinds: ['greeting'] });
+  it('お礼・相槌だけには返さない', () => {
+    const d = decideAutoReply('ありがとうございます！', { ...baseCtx, inboundCountBefore: 1, autoReplyKinds: ['greeting'] });
     expect(d.kind).toBeNull();
   });
-  it('同じ種類は2回送らない', () => {
+  it('2通目以降で定型に当たらなければ「スタッフが返す」と伝えて止める(handoff)', () => {
+    const d = decideAutoReply('来月もやりますか？', { ...baseCtx, inboundCountBefore: 1, autoReplyKinds: ['ws'] });
+    expect(d.kind).toBe('handoff');
+  });
+  it('同じ案内を繰り返し聞かれたら2回送らずに handoff', () => {
     const d = decideAutoReply('ワークショップについて', { ...baseCtx, inboundCountBefore: 1, autoReplyKinds: ['ws'] });
+    expect(d.kind).toBe('handoff');
+  });
+  it('「違う」「自動ですか」など噛み合っていないサインは即 handoff', () => {
+    expect(decideAutoReply('いや、そうじゃなくて体験の話です', { ...baseCtx, inboundCountBefore: 1, autoReplyKinds: ['ws'] }).kind).toBe('handoff');
+    expect(decideAutoReply('これ自動ですか？', baseCtx).kind).toBe('handoff');
+  });
+  it('handoff を送った後は何が来ても自動では返さない', () => {
+    const d = decideAutoReply('ワークショップ 2名で', { ...baseCtx, inboundCountBefore: 3, autoReplyKinds: ['ws', 'handoff'] });
     expect(d.kind).toBeNull();
+  });
+  it('自動送信の断りが定型文に付く(handoff以外)', () => {
+    expect(renderTemplate('ws')).toContain(AUTO_NOTE);
+    expect(renderTemplate('ws_apply')).toContain(AUTO_NOTE);
+    expect(renderTemplate('handoff')).not.toContain(AUTO_NOTE);
+    expect(renderTemplate('handoff')).toMatch(/スタッフ/);
   });
   it('ws案内のあとに名前・人数が来たら ws_apply', () => {
     const d = decideAutoReply('佐藤です、2名でお願いします', { ...baseCtx, inboundCountBefore: 1, autoReplyKinds: ['ws'] });
@@ -129,6 +147,7 @@ describe('statusAfter / withinReplyWindow', () => {
     expect(statusAfter('trial')).toBe('auto_replied');
     expect(statusAfter('ws_apply')).toBe('needs_reply');
     expect(statusAfter('greeting')).toBe('needs_reply');
+    expect(statusAfter('handoff')).toBe('needs_reply');
     expect(statusAfter(null)).toBe('needs_reply');
   });
   it('24時間ウィンドウ', () => {

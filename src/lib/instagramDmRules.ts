@@ -13,7 +13,10 @@
 //   4. どの種類にも当たらない初回メッセージには「受け取りました」だけ返す(greeting)。
 //   5. 2通目以降で種類が当たらなければ自動返信なし→返信待ち。
 
-export type DmKind = 'ws' | 'ws_apply' | 'trial' | 'greeting';
+export type DmKind = 'ws' | 'ws_apply' | 'trial' | 'greeting' | 'handoff';
+
+/** 全ての自動返信の末尾に付ける(自動であることを隠さない・TARO 2026-10-07)。 */
+export const AUTO_NOTE = '※この返信は自動送信です。内容はスタッフが後ほど確認し、必要があれば改めてお返事します。';
 
 export const MAX_AUTO_PER_DAY = 3;
 
@@ -57,11 +60,27 @@ export const TEMPLATES: Record<DmKind, string> = {
   ].join('\n'),
   greeting: [
     'メッセージありがとうございます！BOOMです😊',
-    '順番にお返事しますので、少しお待ちください。',
+    'スタッフが内容を確認して、順番にお返事します。少しお待ちください。',
     'お急ぎの方は公式LINEからもご連絡いただけます。',
     OFFICIAL_LINE_URL,
   ].join('\n'),
+  // 2通目以降で定型に当たらない／噛み合っていない時の逃げ道。これを送ったら、そのスレッドの自動返信は止める。
+  handoff: [
+    'ありがとうございます。ここから先はスタッフが内容を確認して、直接お返事します。',
+    '少しお待ちください。お急ぎの場合は公式LINEからもご連絡いただけます。',
+    OFFICIAL_LINE_URL,
+  ].join('\n'),
 };
+
+/** 送信する本文(定型文＋自動送信の断り)。handoff は本文自体が「人に引き継ぐ」宣言なので断りを付けない。 */
+export function renderTemplate(kind: DmKind): string {
+  return kind === 'handoff' ? TEMPLATES[kind] : `${TEMPLATES[kind]}\n\n${AUTO_NOTE}`;
+}
+
+// 噛み合っていない・人を呼んでいるサイン。これが来たら定型を返さず handoff。
+const CONFUSION_KEYWORDS = ['違う', '違います', 'ちがう', 'そうじゃなく', 'ではなく', 'じゃなくて', '自動', 'ボット', 'bot', '担当者', '直接', '伝わって', '分かりません', 'わかりません', '意味が', '質問が'];
+// 相槌・お礼だけ。返信不要(沈黙でよい)。
+const ACK_ONLY = /^(ありがとうございます|ありがとうございました|ありがとう|了解です|了解しました|承知しました|わかりました|分かりました|はい|よろしくお願いします|よろしくお願いいたします|お願いします|助かります)[！!。．\s]*$/;
 
 const TRIAL_KEYWORDS = ['体験', '見学', '入会', '料金', '月謝', 'レッスン', 'クラス', 'スケジュール', '何歳', '初心者', '通い'];
 const APPLY_KEYWORDS = ['申込', '申し込', '参加希望', '参加したい', '参加します', '予約', '行きたい', '行きます', '出たい'];
@@ -119,12 +138,21 @@ export function decideAutoReply(text: string, ctx: ThreadContext): Decision {
   if (!t) return { kind: null, reason: '本文なし(スタンプ/画像)' };
   if (ctx.autoRepliesLast24h >= MAX_AUTO_PER_DAY) return { kind: null, reason: '24時間の自動返信上限' };
 
+  // 一度「スタッフに引き継ぐ」と言ったスレッドでは、以後いっさい自動で返さない(人が返す)
+  if (ctx.autoReplyKinds.includes('handoff')) return { kind: null, reason: 'スタッフ引き継ぎ済み' };
+  if (ACK_ONLY.test(t)) return { kind: null, reason: '相槌・お礼のみ' };
+  if (includesAny(t, CONFUSION_KEYWORDS)) return { kind: 'handoff', text: renderTemplate('handoff') };
+
   const wsContext = ctx.autoReplyKinds.includes('ws');
   let kind = classify(t, ctx.now, wsContext);
   if (!kind && ctx.inboundCountBefore === 0) kind = 'greeting';
-  if (!kind) return { kind: null, reason: '定型に当たらない(2通目以降)' };
-  if (ctx.autoReplyKinds.includes(kind)) return { kind: null, reason: `同じ種類(${kind})は送信済み` };
-  return { kind, text: TEMPLATES[kind] };
+  // 2通目以降で定型に当たらない＝自動では噛み合わない。黙らずに「人が返す」と伝えて止める
+  if (!kind) kind = 'handoff';
+  if (kind !== 'handoff' && ctx.autoReplyKinds.includes(kind)) {
+    // 同じ案内を2回は送らない。繰り返し聞かれている＝噛み合っていないので人に引き継ぐ
+    kind = 'handoff';
+  }
+  return { kind, text: renderTemplate(kind) };
 }
 
 /** 自動返信のあとスレッドをどの状態に置くか。人の返信が要るものは needs_reply。 */
