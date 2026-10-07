@@ -82,10 +82,18 @@ describe('classify / looksLikeApplication', () => {
     expect(classify('体験レッスンは何歳からですか', NOW)).toBe('trial');
     expect(classify('こんにちは', NOW)).toBeNull();
   });
-  it('人数表現を拾う', () => {
+  it('人数表現・電話番号を拾う', () => {
     expect(looksLikeApplication('２名で')).toBe(true);
     expect(looksLikeApplication('ひとりで行きます')).toBe(true);
+    expect(looksLikeApplication('木村です 090-1234-5678')).toBe(true);
+    expect(looksLikeApplication('佐藤 ０９０１２３４５６７８')).toBe(true);
     expect(looksLikeApplication('ありがとうございます')).toBe(false);
+    expect(looksLikeApplication('10/25 15:45からですか')).toBe(false);
+  });
+  it('案内文にお名前と電話番号とキャンセルの注意が入っている', () => {
+    expect(WS_INFO.text).toMatch(/お名前/);
+    expect(WS_INFO.text).toMatch(/電話番号/);
+    expect(WS_INFO.text).toMatch(/キャンセル/);
   });
 });
 

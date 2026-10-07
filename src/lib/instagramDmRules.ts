@@ -34,7 +34,8 @@ export const WS_INFO = {
     '',
     'ルーティーンを覚えるというより「踊り方」が中心の内容なので、HOUSEが初めての方もジャンルが違う方も大丈夫です。',
     '',
-    '参加希望の方は、このままDMで「お名前・人数」を送ってください。こちらで受付して折り返しご連絡します。',
+    '参加希望の方は、このままDMで「参加される方のお名前」と「当日連絡のつく電話番号」を送ってください。こちらで受付して折り返しご連絡します。',
+    '※前日以降のキャンセルは参加費をいただく場合があります。',
     '※BOOM会員の方はポータル(HACOMONO)の予約画面からお願いします。',
   ].join('\n'),
 };
@@ -45,6 +46,7 @@ export const TEMPLATES: Record<DmKind, string> = {
     'ありがとうございます！受け付けました。',
     '定員(15名)の空きを確認して、担当のTAROから折り返しご連絡します。',
     '当日は開始10分前までにAZUMAスタジオ（仙台市青葉区二日町7 5F）へお越しください。参加費¥2,000は当日現金でお願いします。',
+    'キャンセルの場合は早めにご連絡ください。前日以降のキャンセルは参加費をいただく場合があります。',
   ].join('\n'),
   trial: [
     'メッセージありがとうございます！BOOMです😊',
@@ -69,8 +71,15 @@ function includesAny(text: string, words: string[]): boolean {
   return words.some((w) => t.includes(w.toLowerCase()));
 }
 
-/** 「名前・人数」を送ってきたっぽいか(自動返信 ws_apply の判定)。数字+人 or 「名」 or 「人」の表現。 */
+/** 電話番号らしき並び(090-1234-5678 / 09012345678 / 全角数字も)。 */
+export function containsPhoneNumber(text: string): boolean {
+  const digits = text.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+  return /0\d{1,4}[-‐−ー\s]?\d{1,4}[-‐−ー\s]?\d{3,4}/.test(digits) && digits.replace(/\D/g, '').length >= 10;
+}
+
+/** 「名前・電話番号(または人数)」を送ってきたっぽいか(自動返信 ws_apply の判定)。 */
 export function looksLikeApplication(text: string): boolean {
+  if (containsPhoneNumber(text)) return true;
   if (/[0-9０-９一二三四五六七八九十]\s*[人名]/.test(text)) return true;
   if (/(ひとり|一人|1人|二人|ふたり|2人)/.test(text)) return true;
   return includesAny(text, APPLY_KEYWORDS);
