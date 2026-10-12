@@ -1,0 +1,28 @@
+# 公開Googleレッスンカレンダー 毎時同期
+# Vercel Hobbyはcronが1日1回までのため、毎時の同期は事務所Macのcrontab
+# (BOOM_Master_template/05_運営/scripts/auto_sync/sync_lesson_calendar.sh)で回していた。
+# Macがスリープ・持ち出し中だと止まるので、2026-10-12にGH Actionsへ移した(Mac2台体制の準備)。
+# 差分のみ書き換える冪等な処理なので、GH Actionsの遅延や重複発火があっても問題ない。
+# Vercel側の1日1回cron(/api/cron/sync-lesson-calendar)はそのまま残す=保険。
+name: lesson-calendar-sync
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/sync-lesson-calendar
+        run: |
+          set -e
+          RESP=$(curl -s --max-time 90 -w '\n%{http_code}' \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/sync-lesson-calendar)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
