@@ -2,7 +2,7 @@
 // 当日の現金は会場キャッシャーが受け取り、会場費と相殺した差額をBOOMと精算する。
 // 精算結果と支出は event_ledger(event_key='xmas2026')に記録する。
 import StaffPageHeader from '@/components/StaffPageHeader';
-import { PARTY_EVENT_KEY, STRIPE_FEE_RATE, summarizePartyOrders, yen } from '@/lib/party';
+import { PARTY_EVENT_KEY, STRIPE_FEE_RATE, signedYen, summarizePartyOrders, yen } from '@/lib/party';
 import { getPartySettings, listPartyOrdersStaff } from '@/lib/partyDb';
 import { listLedger } from '@/lib/eventLedgerDb';
 import SettlementForm from './SettlementForm';
@@ -39,11 +39,11 @@ export default async function StaffXmasSettlementPage() {
           <h2 className="text-sm font-bold text-navy-800">収支{settled ? '' : '(精算前の見込み)'}</h2>
           <dl className="mt-2 space-y-1 text-sm text-navy-800">
             <Line k="カード前売・出演(支払済み)" v={yen(sum.cardPaid)} />
-            <Line k={`決済手数料(${(STRIPE_FEE_RATE * 100).toFixed(1)}%)`} v={`−${yen(stripeFee)}`} muted />
+            <Line k={`決済手数料(${(STRIPE_FEE_RATE * 100).toFixed(1)}%)`} v={yen(-stripeFee)} muted />
             <Line k="キャッシャー回収の現金" v={settled ? yen(cashIncome) : `未精算(予約分の見込み ${yen(sum.cashDue)})`} />
-            <Line k="支出(会場費・プレゼントなど)" v={`−${yen(costTotal)}`} />
+            <Line k="支出(会場費・プレゼントなど)" v={yen(-costTotal)} />
             <div className="mt-2 border-t border-sand-200 pt-2">
-              <Line k="損益" v={`${profit >= 0 ? '+' : ''}${yen(profit)}`} strong />
+              <Line k="損益" v={signedYen(profit)} strong />
             </div>
           </dl>
         </section>

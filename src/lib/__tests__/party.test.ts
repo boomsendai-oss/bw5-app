@@ -215,3 +215,12 @@ describe('スタッフ集計', () => {
     expect(rosterRows(orders).map((r) => r.buyerKana)).toEqual(['か', 'さ', 'わ']);
   });
 });
+
+describe('金額表示', () => {
+  it('マイナスは −¥ で表示', async () => {
+    const { yen, signedYen } = await import('../party');
+    expect(yen(-1000)).toBe('−¥1,000');
+    expect(signedYen(1000)).toBe('+¥1,000');
+    expect(signedYen(0)).toBe('¥0');
+  });
+});

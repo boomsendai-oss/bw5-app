@@ -2,7 +2,7 @@
 
 // 当日精算の入力。期待額との差と会場費相殺の結果は calcSettlement(純関数)で出す。
 import { useState, useTransition } from 'react';
-import { calcSettlement, yen } from '@/lib/party';
+import { calcSettlement, signedYen, yen } from '@/lib/party';
 import { saveXmasSettlement } from '../actions';
 
 const inputCls =
@@ -44,7 +44,7 @@ export default function SettlementForm(p: { expectedCash: number; doorPrice: num
         <div className="flex justify-between"><dt>入るはずの合計</dt><dd>{yen(r.expectedTotal)}</dd></div>
         <div className={`flex justify-between font-bold ${r.diff === 0 ? 'text-brand-700' : 'text-red-600'}`}>
           <dt>実額との差</dt>
-          <dd>{r.diff === 0 ? 'ぴったり' : `${r.diff > 0 ? '+' : ''}${yen(r.diff)}`}</dd>
+          <dd>{r.diff === 0 ? 'ぴったり' : signedYen(r.diff)}</dd>
         </div>
         <div className="mt-2 flex justify-between border-t border-sand-200 pt-2 text-base font-bold">
           <dt>会場費 {yen(p.venueFee)} と相殺</dt>

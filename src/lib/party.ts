@@ -340,7 +340,10 @@ export function formatJstLabel(v: string): string {
   return `${m}/${d}(${wd}) ${time}`;
 }
 
-export const yen = (n: number) => `¥${n.toLocaleString('ja-JP')}`;
+export const yen = (n: number) => (n < 0 ? `−¥${(-n).toLocaleString('ja-JP')}` : `¥${n.toLocaleString('ja-JP')}`);
+
+/** 差額表示用: +¥1,000 / −¥1,000 / ¥0 */
+export const signedYen = (n: number) => (n > 0 ? `+${yen(n)}` : yen(n));
 
 export function partyStatusLabel(s: string): string {
   switch (s) {
