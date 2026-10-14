@@ -1064,6 +1064,83 @@ export function getSchemaStatements(): InStatement[] {
       sql: `CREATE INDEX IF NOT EXISTS idx_event_signup_audit_event ON event_signup_audit (event_id)`,
       args: [],
     },
+    // パーティー申込(クリスマスパーティー2026〜・本番は台帳 20261014_party_tables.sql)
+    {
+      sql: `CREATE TABLE IF NOT EXISTS party_orders (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_key         TEXT    NOT NULL,
+  kind              TEXT    NOT NULL,
+  buyer_name        TEXT    NOT NULL,
+  buyer_kana        TEXT    NOT NULL DEFAULT '',
+  email             TEXT    NOT NULL,
+  phone             TEXT    NOT NULL DEFAULT '',
+  is_member         INTEGER,
+  people_count      INTEGER NOT NULL DEFAULT 0,
+  infant_count      INTEGER NOT NULL DEFAULT 0,
+  team_name         TEXT    NOT NULL DEFAULT '',
+  genre             TEXT    NOT NULL DEFAULT '',
+  member_count      INTEGER NOT NULL DEFAULT 0,
+  pay_method        TEXT    NOT NULL,
+  status            TEXT    NOT NULL,
+  unit_price        INTEGER NOT NULL DEFAULT 0,
+  amount_total      INTEGER NOT NULL DEFAULT 0,
+  stripe_session_id TEXT    NOT NULL DEFAULT '',
+  edit_token        TEXT    NOT NULL UNIQUE,
+  expires_at        TEXT    NOT NULL DEFAULT '',
+  audio_url         TEXT    NOT NULL DEFAULT '',
+  audio_filename    TEXT    NOT NULL DEFAULT '',
+  audio_uploaded_at TEXT    NOT NULL DEFAULT '',
+  staff_note        TEXT    NOT NULL DEFAULT '',
+  created_at        TEXT    NOT NULL,
+  updated_at        TEXT    NOT NULL
+)`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_party_orders_event ON party_orders (event_key, kind, status)`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_party_orders_session ON party_orders (stripe_session_id)`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS party_entry_members (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id   INTEGER NOT NULL,
+  name       TEXT    NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0
+)`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_party_entry_members_order ON party_entry_members (order_id)`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS party_payments (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  stripe_event_id   TEXT    NOT NULL UNIQUE,
+  event_type        TEXT    NOT NULL,
+  stripe_session_id TEXT    NOT NULL DEFAULT '',
+  payment_intent_id TEXT    NOT NULL DEFAULT '',
+  order_id          INTEGER,
+  amount            INTEGER NOT NULL DEFAULT 0,
+  payload           TEXT    NOT NULL DEFAULT '',
+  created_at        TEXT    NOT NULL
+)`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS party_settings (
+  event_key  TEXT NOT NULL,
+  key        TEXT NOT NULL,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (event_key, key)
+)`,
+      args: [],
+    },
     // BOOMER'S FIGHT vol.6 (本番は台帳 20260803_bf6_tables.sql)
     {
       sql: `CREATE TABLE IF NOT EXISTS bf_orders (
