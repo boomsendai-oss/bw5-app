@@ -150,3 +150,30 @@ export async function patchGbpLocalPostSummary(token: string, name: string, summ
   if (!res.ok) throw new Error(`GBP localPosts.patch失敗: ${res.status} ${await res.text()}`);
   return (await res.json()) as GbpLocalPost;
 }
+
+// 画像つきの投稿を作成(scheduledTimeUtc を省くと即時公開)。画像は公開URL(Googleが取りに来る)
+export async function createGbpPhotoPost(
+  token: string,
+  opts: { summary: string; imageUrl: string; ctaUrl: string; scheduledTimeUtc?: string }
+): Promise<GbpLocalPost> {
+  const res = await fetch(localPostsBase(), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      languageCode: 'ja',
+      topicType: 'STANDARD',
+      summary: opts.summary,
+      callToAction: { actionType: 'LEARN_MORE', url: opts.ctaUrl },
+      media: [{ mediaFormat: 'PHOTO', sourceUrl: opts.imageUrl }],
+      ...(opts.scheduledTimeUtc ? { scheduledTime: opts.scheduledTimeUtc } : {}),
+    }),
+  });
+  if (!res.ok) throw new Error(`GBP localPosts.create(画像)失敗: ${res.status} ${await res.text()}`);
+  return (await res.json()) as GbpLocalPost;
+}
+
+export async function deleteGbpLocalPost(token: string, name: string): Promise<void> {
+  if (!/^accounts\/[^/]+\/locations\/[^/]+\/localPosts\/[^/]+$/.test(name)) throw new Error(`不正な投稿名: ${name}`);
+  const res = await fetch(`https://mybusiness.googleapis.com/v4/${name}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`GBP localPosts.delete失敗: ${res.status} ${await res.text()}`);
+}

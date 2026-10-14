@@ -366,3 +366,31 @@ export async function updatePagePostMessage(postId: string, message: string): Pr
   const json = await res.json();
   if (!res.ok || json.error) throw new Error(`FB投稿の更新失敗: ${JSON.stringify(json.error ?? json)}`);
 }
+
+/** 画像つきの予約投稿(写真投稿)。公開は10分後以上 */
+export async function schedulePagePhotoPost(message: string, imageUrl: string, scheduledAtUtcIso: string): Promise<{ id: string }> {
+  const { pageId, pageToken } = await requireConnection();
+  const unix = Math.floor(new Date(scheduledAtUtcIso).getTime() / 1000);
+  const res = await fetch(`${GRAPH}/${pageId}/photos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      url: imageUrl,
+      caption: message,
+      published: 'false',
+      scheduled_publish_time: String(unix),
+      access_token: pageToken,
+    }).toString(),
+  });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(`FB画像予約投稿の作成失敗: ${JSON.stringify(json.error ?? json)}`);
+  return { id: String(json.post_id ?? json.id) };
+}
+
+export async function deletePagePost(postId: string): Promise<void> {
+  const { pageToken } = await requireConnection();
+  if (!/^[0-9_]+$/.test(postId)) throw new Error(`不正な投稿ID: ${postId}`);
+  const res = await fetch(`${GRAPH}/${postId}?access_token=${pageToken}`, { method: 'DELETE' });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(`FB投稿の削除失敗: ${JSON.stringify(json.error ?? json)}`);
+}
