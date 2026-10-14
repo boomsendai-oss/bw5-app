@@ -138,3 +138,15 @@ export async function createGbpScheduledPost(
   return (await res.json()) as GbpLocalPost;
 }
 
+
+// 予約済み/公開済みの投稿の本文だけを書き換える (誤記の訂正用・2026-10-14)
+export async function patchGbpLocalPostSummary(token: string, name: string, summary: string): Promise<GbpLocalPost> {
+  if (!/^accounts\/[^/]+\/locations\/[^/]+\/localPosts\/[^/]+$/.test(name)) throw new Error(`不正な投稿名: ${name}`);
+  const res = await fetch(`https://mybusiness.googleapis.com/v4/${name}?updateMask=summary`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ summary }),
+  });
+  if (!res.ok) throw new Error(`GBP localPosts.patch失敗: ${res.status} ${await res.text()}`);
+  return (await res.json()) as GbpLocalPost;
+}

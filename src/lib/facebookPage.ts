@@ -338,3 +338,31 @@ export async function listScheduledPagePostTimes(): Promise<string[]> {
     .filter((p) => p.scheduled_publish_time)
     .map((p) => new Date(p.scheduled_publish_time! * 1000).toISOString());
 }
+
+/** 予約済み投稿の一覧(本文つき)。誤記の訂正用 */
+export async function listScheduledPagePosts(): Promise<{ id: string; message: string; scheduledAt: string }[]> {
+  const { pageId, pageToken } = await requireConnection();
+  const res = await fetch(
+    `${GRAPH}/${pageId}/scheduled_posts?fields=id,message,scheduled_publish_time&limit=100&access_token=${pageToken}`
+  );
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(`FB予約一覧の取得失敗: ${JSON.stringify(json.error ?? json)}`);
+  return ((json.data ?? []) as { id: string; message?: string; scheduled_publish_time?: number }[]).map((p) => ({
+    id: String(p.id),
+    message: p.message ?? '',
+    scheduledAt: p.scheduled_publish_time ? new Date(p.scheduled_publish_time * 1000).toISOString() : '',
+  }));
+}
+
+/** 予約済み投稿の本文を書き換える(公開時刻はそのまま) */
+export async function updatePagePostMessage(postId: string, message: string): Promise<void> {
+  const { pageToken } = await requireConnection();
+  if (!/^[0-9_]+$/.test(postId)) throw new Error(`不正な投稿ID: ${postId}`);
+  const res = await fetch(`${GRAPH}/${postId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ message, access_token: pageToken }).toString(),
+  });
+  const json = await res.json();
+  if (!res.ok || json.error) throw new Error(`FB投稿の更新失敗: ${JSON.stringify(json.error ?? json)}`);
+}
