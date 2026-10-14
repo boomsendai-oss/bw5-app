@@ -18,6 +18,8 @@ import {
   calcSettlement,
   formatPartyReceiptNo,
   formatJstLabel,
+  summarizePartyOrders,
+  rosterRows,
   type PartySettings,
 } from '../party';
 
@@ -187,5 +189,29 @@ describe('名簿・精算・表示', () => {
     expect(formatPartyReceiptNo(7)).toBe('X26-007');
     expect(formatJstLabel('2026-12-16T20:00')).toBe('12/16(水) 20:00');
     expect(formatJstLabel('')).toBe('');
+  });
+});
+
+
+describe('スタッフ集計', () => {
+  const o = (x: Partial<Parameters<typeof summarizePartyOrders>[0][number]> & { buyerKana?: string }) => ({
+    kind: 'ticket' as const, status: 'paid', payMethod: 'card' as const, peopleCount: 0, infantCount: 0,
+    memberCount: 0, amountTotal: 0, isMember: true, buyerKana: 'あ', ...x,
+  });
+  const orders = [
+    o({ peopleCount: 3, infantCount: 1, amountTotal: 6000, buyerKana: 'わ' }),
+    o({ status: 'cash_due', payMethod: 'cash', peopleCount: 2, amountTotal: 4000, isMember: false, buyerKana: 'か' }),
+    o({ kind: 'entry', status: 'cash_due', payMethod: 'cash', memberCount: 4, amountTotal: 16000, isMember: null, buyerKana: 'さ' }),
+    o({ status: 'expired', peopleCount: 9, amountTotal: 18000, buyerKana: 'あ' }),
+    o({ status: 'canceled', peopleCount: 9, amountTotal: 18000, buyerKana: 'い' }),
+  ];
+  it('確定分だけ数える', () => {
+    expect(summarizePartyOrders(orders)).toEqual({
+      ticketOrders: 2, people: 5, infants: 1, nonMemberOrders: 1, teams: 1, performers: 4,
+      cardPaid: 6000, cashDue: 20000, headcount: 9,
+    });
+  });
+  it('名簿は確定分を50音順', () => {
+    expect(rosterRows(orders).map((r) => r.buyerKana)).toEqual(['か', 'さ', 'わ']);
   });
 });

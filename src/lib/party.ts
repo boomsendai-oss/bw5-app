@@ -360,3 +360,61 @@ export function partyStatusLabel(s: string): string {
       return s;
   }
 }
+
+// ---- スタッフ画面の集計(純関数) ----
+
+export interface SummarizableOrder {
+  kind: PartyKind;
+  status: string;
+  payMethod: PartyPayMethod;
+  peopleCount: number;
+  infantCount: number;
+  memberCount: number;
+  amountTotal: number;
+  isMember: boolean | null;
+}
+
+export interface PartySummary {
+  ticketOrders: number;
+  people: number;
+  infants: number;
+  nonMemberOrders: number;
+  teams: number;
+  performers: number;
+  /** カードで支払い済みの合計 */
+  cardPaid: number;
+  /** 当日キャッシャーに入るはずの現金(cash_due の合計) */
+  cashDue: number;
+  /** 当日の来場見込み(小学生以上+出演者) */
+  headcount: number;
+}
+
+const CONFIRMED = new Set(['paid', 'cash_due']);
+
+export function summarizePartyOrders(orders: SummarizableOrder[]): PartySummary {
+  const s: PartySummary = { ticketOrders: 0, people: 0, infants: 0, nonMemberOrders: 0, teams: 0, performers: 0, cardPaid: 0, cashDue: 0, headcount: 0 };
+  for (const o of orders) {
+    if (!CONFIRMED.has(o.status)) continue;
+    if (o.kind === 'ticket') {
+      s.ticketOrders += 1;
+      s.people += o.peopleCount;
+      s.infants += o.infantCount;
+      if (o.isMember === false) s.nonMemberOrders += 1;
+    } else {
+      s.teams += 1;
+      s.performers += o.memberCount;
+    }
+    if (o.status === 'paid') s.cardPaid += o.amountTotal;
+    else s.cashDue += o.amountTotal;
+  }
+  s.headcount = s.people + s.performers;
+  return s;
+}
+
+/** 名簿に載せるのは確定(支払済み/当日現金)だけ。ふりがなの50音順。 */
+export function rosterRows<T extends SummarizableOrder & { buyerKana: string }>(orders: T[]): T[] {
+  return sortRosterByKana(orders.filter((o) => CONFIRMED.has(o.status)));
+}
+
+/** Stripe手数料(国内カード3.6%)。収支の見込みに使う。 */
+export const STRIPE_FEE_RATE = 0.036;

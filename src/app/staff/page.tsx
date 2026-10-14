@@ -22,6 +22,7 @@ import {
   Flame,
   Hash,
   type LucideIcon,
+  Gift,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
@@ -162,6 +163,12 @@ const CARDS: CardDef[] = [
       { label: '注文', value: s.merch.total },
       { label: '未払い', value: s.merch.pending, alert: s.merch.pending > 0 },
     ],
+  },
+  {
+    href: '/staff/xmas',
+    icon: Gift,
+    title: 'クリスマスパーティー2026',
+    description: '参加申込・出演エントリー・名簿・精算(12/19開催)',
   },
   {
     href: '/staff/bf6',
