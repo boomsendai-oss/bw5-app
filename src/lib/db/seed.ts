@@ -213,7 +213,7 @@ async function seedHacomonoScheduleMap(c: Client): Promise<void> {
     ['ちゃんなつ HH', 'PG0013', 'ちゃんなつ / HIPHOP', 'IN0002', 'S0001_SP0001', 0, 1, 1, 0],
     ['SAYUKI FS', 'PG0014', 'SAYUKI / FREE STYLE', 'IN0003', 'S0001_SP0001', 0, 1, 1, 0],
     ['おっちゃん NJS', 'PG0015', 'おっちゃん / NEW JACK SWING', 'IN0004', 'S0001_SP0001', 0, 1, 1, 0],
-    ['キッズ 強化', 'PG0016', 'キッズ強化クラス', 'IN0001', 'S0001_SP0001', 0, 1, 1, 0],
+    ['キッズHIPHOP 強化', 'PG0016', 'キッズHIPHOP強化クラス', 'IN0001', 'S0001_SP0001', 0, 1, 1, 0],
     ['多賀城 HOUSE', 'PG0017', '多賀城 HOUSE', 'IN0007', 'S0001_SP0001', 0, 1, 1, 0],
     ['ダンス部', 'PG0018', 'ダンス部', 'IN0015', 'S0001_SP0001', 0, 0, 0, 1],
     ['多賀城 JAZZ', 'PG0019', '多賀城 STREET JAZZ', 'IN0005', 'S0001_SP0001', 5, 0, 0, 0],
