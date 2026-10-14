@@ -62,7 +62,7 @@ const LSTEP_BOOKING = (optionKey: string) =>
  * url=null の回は公式LINEへ(現在は全回に専用URLあり)。会場・時刻は告知画像(10/13最新版)と同じ表記。
  */
 export const TRIAL_EVENTS: { until: string; line: string; url: string | null }[] = [
-  { until: '2026-10-22T19:00:00+09:00', line: '10月22日(木) 18:00〜19:00\n長町 ヒップホップ入門（ララガーデン長町4F）', url: LSTEP_BOOKING('nCpquX1wBy') },
+  { until: '2026-10-22T19:00:00+09:00', line: '10月22日(木) 18:00〜19:00\n長町 ヒップホップ入門（ララガーデン長町4F コナスポ）', url: LSTEP_BOOKING('nCpquX1wBy') },
   { until: '2026-10-23T18:30:00+09:00', line: '10月23日(金) 17:30〜18:30\n七ヶ浜 ヒップホップ超入門（アクアスタジオ）', url: LSTEP_BOOKING('GUihyOTQF8') },
   { until: '2026-11-09T19:50:00+09:00', line: '11月9日(月) 18:50〜19:50\nハウスダンス入門（AZUMAスタジオ）', url: LSTEP_BOOKING('WWt0xtZiNa') },
   { until: '2026-11-11T19:45:00+09:00', line: '11月11日(水) 18:45〜19:45\n水曜ヒップホップ入門（GOATスタジオ・本町）', url: LSTEP_BOOKING('VWfS5CY6Av') },
