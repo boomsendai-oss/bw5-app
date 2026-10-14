@@ -1,0 +1,132 @@
+// ⚠️ 公開ページ(認証なし)。理由: 申込者本人の控え。edit_token 完全一致の申込1件だけを表示する
+// (トークンなし・不一致では何も出さない。申込を列挙する経路はない)。
+import Link from 'next/link';
+import {
+  PARTY_EVENT_KEY,
+  XMAS_EVENT_INFO,
+  audioOpen,
+  formatJstLabel,
+  formatPartyReceiptNo,
+  partyStatusLabel,
+  yen,
+} from '@/lib/party';
+import { getPartySettings, loadPartyOrderByToken } from '@/lib/partyDb';
+import { Notice, Panel, Row, XmasShell, primaryBtnCls } from '../ui';
+import CheckoutButton from './CheckoutButton';
+import AudioUpload from './AudioUpload';
+
+export const dynamic = 'force-dynamic';
+
+export default async function XmasMyPage({ searchParams }: { searchParams: Promise<{ t?: string }> }) {
+  const { t } = await searchParams;
+  const o = t ? await loadPartyOrderByToken(t) : null;
+
+  if (!o || !t) {
+    return (
+      <XmasShell>
+        <h1 className="text-center text-2xl font-black">申込が見つかりません</h1>
+        <Notice>URLが正しいかご確認ください。カード払いで30分以内に決済されなかった申込は無効になります。</Notice>
+        <Link href="/xmas" className={`mt-6 ${primaryBtnCls}`}>
+          パーティーの案内へ
+        </Link>
+      </XmasShell>
+    );
+  }
+
+  const s = await getPartySettings(PARTY_EVENT_KEY);
+  const isEntry = o.kind === 'entry';
+  const confirmed = o.status === 'paid' || o.status === 'cash_due';
+  const heading =
+    o.status === 'paid' || o.status === 'cash_due'
+      ? isEntry
+        ? 'エントリー完了！'
+        : 'お申し込みありがとうございます！'
+      : o.status === 'pending'
+        ? 'あと少し：カード決済がまだです'
+        : o.status === 'expired'
+          ? 'この申込は無効になりました'
+          : 'この申込は取り消されています';
+
+  return (
+    <XmasShell>
+      <h1 className="text-center text-2xl font-black">{heading}</h1>
+      <div className="mx-auto mt-4 w-fit -rotate-1 border-[3px] border-[#1a1410] bg-[#f4cf3e] px-5 py-2 text-center shadow-[4px_4px_0_#1a1410]">
+        <p className="text-xs font-black">受付番号</p>
+        <p className="text-3xl font-black tracking-wider">{formatPartyReceiptNo(o.id)}</p>
+      </div>
+
+      {o.status === 'pending' && (
+        <div className="mt-6">
+          <CheckoutButton token={t} amountTotal={o.amountTotal} />
+          <p className="mt-2 text-center text-xs font-bold">申込から30分以内に決済してください</p>
+        </div>
+      )}
+      {o.status === 'expired' && (
+        <Link href={isEntry ? '/xmas/entry' : '/xmas/ticket'} className={`mt-6 ${primaryBtnCls}`}>
+          もう一度申し込む
+        </Link>
+      )}
+
+      <Panel title={isEntry ? 'エントリー内容' : '申込内容'} tone={isEntry ? 'green' : 'red'}>
+        <dl>
+          <Row k="状態" v={partyStatusLabel(o.status)} />
+          <Row k="代表者" v={`${o.buyerName}(${o.buyerKana})`} />
+          {isEntry ? (
+            <>
+              <Row k="チーム" v={`${o.teamName}(${o.genre})`} />
+              <Row k="メンバー" v={`${o.memberCount}名: ${o.members.join('、')}`} />
+            </>
+          ) : (
+            <Row k="人数" v={`小学生以上 ${o.peopleCount}名${o.infantCount > 0 ? ` / 未就学児 ${o.infantCount}名(無料)` : ''}`} />
+          )}
+          <Row
+            k="合計"
+            v={
+              <>
+                {yen(o.amountTotal)}
+                <span className="block text-xs">
+                  {o.status === 'paid'
+                    ? 'カード決済でお支払い済み'
+                    : o.status === 'cash_due'
+                      ? '当日、会場のキャッシャーで現金でお支払いください'
+                      : ''}
+                </span>
+              </>
+            }
+          />
+          <Row k="日時" v={`${XMAS_EVENT_INFO.dateLabel} ${XMAS_EVENT_INFO.timeLabel}`} />
+          <Row k="会場" v={XMAS_EVENT_INFO.venue} />
+        </dl>
+        {confirmed && (
+          <p className="mt-3 text-xs font-bold text-neutral-700">
+            当日は会場のキャッシャーで「{o.buyerName}」のお名前をお伝えください。{XMAS_EVENT_INFO.drinkLabel}。
+          </p>
+        )}
+      </Panel>
+
+      {isEntry && confirmed && (
+        <Panel title="音源の提出" tone="green">
+          <p className="text-sm font-bold">
+            締切 {formatJstLabel(s.audioDeadline)}。持ち時間は{XMAS_EVENT_INFO.showTimeLimit}です。差し替えもできます。
+          </p>
+          {o.audioFilename ? (
+            <p className="mt-2 rounded-lg border-[3px] border-[#1a1410] bg-white p-2 text-sm font-black">
+              提出済み: {o.audioFilename}
+            </p>
+          ) : (
+            <p className="mt-2 text-sm font-black text-[#d4302a]">まだ提出されていません</p>
+          )}
+          {audioOpen(s, new Date()) ? (
+            <AudioUpload token={t} orderId={o.id} />
+          ) : (
+            <Notice>音源の提出は締め切りました。差し替えが必要な場合は公式LINEへご連絡ください。</Notice>
+          )}
+        </Panel>
+      )}
+
+      <p className="mt-8 text-center text-xs font-bold text-neutral-600">
+        お申し込み後は原則として返金できません。お問い合わせは BOOM 公式LINE まで。
+      </p>
+    </XmasShell>
+  );
+}
