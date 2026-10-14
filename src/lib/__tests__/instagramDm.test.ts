@@ -152,6 +152,9 @@ describe('体験会(ストーリーの「DMで体験会と送ってください�
     const before = trialTemplate('2026-10-14T12:00:00+09:00');
     expect(before).toContain('10月22日(木)');
     expect(before).toContain('11月11日(水)');
+    expect(before).toContain('GOATスタジオ');
+    expect(before).not.toContain('Kスタジオ');
+    expect(before).toContain('option_key=VWfS5CY6Av');
     const mid = trialTemplate('2026-10-24T12:00:00+09:00');
     expect(mid).not.toContain('10月22日');
     expect(mid).not.toContain('10月23日');
@@ -159,6 +162,7 @@ describe('体験会(ストーリーの「DMで体験会と送ってください�
     const after = trialTemplate('2026-11-12T12:00:00+09:00');
     expect(after).not.toContain('体験会（参加無料）');
     expect(after).toContain('公式LINE');
+    expect(after).not.toContain('option_key');
     const d = decideAutoReply('体験会', baseCtx);
     expect(d.kind === 'trial' && d.text).toContain('10月22日(木)');
   });

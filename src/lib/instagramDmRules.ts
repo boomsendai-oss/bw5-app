@@ -53,32 +53,50 @@ export const WS_INFO = {
  * 外部向けストーリーに「DMで『体験会』と送ってください」と書いているので、trial の返信に日程を載せる。
  * 会場・時刻は告知画像と同じ表記(2026-10-14 TARO: ストーリー＋固定投稿で外部告知)。
  */
-export const TRIAL_EVENTS: { until: string; line: string }[] = [
-  { until: '2026-10-22T19:00:00+09:00', line: '・10月22日(木) 18:00〜19:00　長町 ヒップホップ入門（ララガーデン長町4F）' },
-  { until: '2026-10-23T18:30:00+09:00', line: '・10月23日(金) 17:30〜18:30　七ヶ浜 ヒップホップ超入門（アクアスタジオ）' },
-  { until: '2026-11-09T19:50:00+09:00', line: '・11月9日(月) 18:50〜19:50　ハウスダンス入門（AZUMAスタジオ）' },
-  { until: '2026-11-11T19:45:00+09:00', line: '・11月11日(水) 18:45〜19:45　水曜ヒップホップ入門（Kスタジオ・花京院）' },
+const LSTEP_BOOKING = (optionKey: string) =>
+  `https://liff.line.me/2001085279-PJAp9QO9?liff_id=2001085279-PJAp9QO9&is=jR6xMELe9W&option_key=${optionKey}`;
+
+/**
+ * はじめての方向けの体験会(期間限定・終わった回は自動で消える)。
+ * 申込はDMで受けず、各回のLステップ予約ページへ直接つなぐ(TARO 2026-10-14)。
+ * url=null の回は専用の予約枠が無いので公式LINEへ。会場・時刻は告知画像(10/13最新版)と同じ表記。
+ */
+export const TRIAL_EVENTS: { until: string; line: string; url: string | null }[] = [
+  { until: '2026-10-22T19:00:00+09:00', line: '10月22日(木) 18:00〜19:00　長町 ヒップホップ入門（ララガーデン長町4F）', url: null },
+  { until: '2026-10-23T18:30:00+09:00', line: '10月23日(金) 17:30〜18:30　七ヶ浜 ヒップホップ超入門（アクアスタジオ）', url: LSTEP_BOOKING('GUihyOTQF8') },
+  { until: '2026-11-09T19:50:00+09:00', line: '11月9日(月) 18:50〜19:50　ハウスダンス入門（AZUMAスタジオ）', url: LSTEP_BOOKING('WWt0xtZiNa') },
+  { until: '2026-11-11T19:45:00+09:00', line: '11月11日(水) 18:45〜19:45　水曜ヒップホップ入門（GOATスタジオ・本町）', url: LSTEP_BOOKING('VWfS5CY6Av') },
 ];
 
 export function trialTemplate(nowIso: string): string {
   const now = new Date(nowIso).getTime();
-  const events = TRIAL_EVENTS.filter((e) => new Date(e.until).getTime() > now).map((e) => e.line);
+  const events = TRIAL_EVENTS.filter((e) => new Date(e.until).getTime() > now);
+  if (events.length === 0) {
+    return [
+      'お問い合わせありがとうございます。BOOMダンススクールです。',
+      '',
+      '体験レッスンは無料でご参加いただけます。',
+      '日程・会場・クラスのご確認とご予約は、公式LINEから承っております。',
+      OFFICIAL_LINE_URL,
+      '',
+      'LINEのご利用が難しい場合は、このDMでご相談ください。担当者より折り返しご連絡いたします。',
+    ].join('\n');
+  }
+  const lines: string[] = [];
+  for (const e of events) {
+    lines.push(`・${e.line}`);
+    lines.push(`　ご予約：${e.url ?? OFFICIAL_LINE_URL}`);
+  }
   return [
     'お問い合わせありがとうございます。BOOMダンススクールです。',
     '',
-    '体験レッスンは無料でご参加いただけます。',
-    ...(events.length
-      ? ['', '■ はじめての方向け 体験会（参加無料）', ...events, '']
-      : ['']),
-    '日程・会場・クラスのご確認とご予約は、公式LINEから承っております。',
-    OFFICIAL_LINE_URL,
+    '■ はじめての方向け 体験会（参加無料）',
+    ...lines,
     '',
-    'LINEのご利用が難しい場合は、このDMに以下をご返信ください。',
-    events.length ? '・参加をご希望の体験会（またはジャンル）' : '・ご希望のジャンル',
-    '・参加される方のお名前と年齢（お子さまの場合は学年）',
-    '・通いやすいエリア',
+    'ご予約は、各回のリンクからお進みください（LINEが開き、そのまま予約できます）。',
+    '体験会以外の日の体験レッスンも、公式LINEから承っております。',
     '',
-    '担当者より折り返しご連絡いたします。',
+    'LINEのご利用が難しい場合は、このDMでご相談ください。担当者より折り返しご連絡いたします。',
   ].join('\n');
 }
 
