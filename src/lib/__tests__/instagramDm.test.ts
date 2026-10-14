@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { verifySignature, parseWebhookEvents, withinReplyWindow } from '../instagramDm';
-import { decideAutoReply, classify, looksLikeApplication, statusAfter, MAX_AUTO_PER_DAY, WS_INFO, AUTO_NOTE, renderTemplate, TEMPLATES } from '../instagramDmRules';
+import { decideAutoReply, classify, looksLikeApplication, statusAfter, MAX_AUTO_PER_DAY, WS_INFO, AUTO_NOTE, renderTemplate, TEMPLATES, trialTemplate } from '../instagramDmRules';
 
 const NOW = '2026-10-07T12:00:00+09:00';
 const AFTER_WS = '2026-10-26T12:00:00+09:00';
@@ -139,6 +139,28 @@ describe('decideAutoReply', () => {
   });
   it('定型文に広告臭の記号を入れない', () => {
     expect(WS_INFO.text).not.toMatch(/✅|！！|今すぐ/);
+  });
+});
+
+describe('体験会(ストーリーの「DMで体験会と送ってください」)', () => {
+  it('「体験会」「ハウス入門」はWS期間中でも trial(唯愛WSの案内に吸われない)', () => {
+    expect(classify('体験会', NOW)).toBe('trial');
+    expect(classify('ハウス入門の体験会に行きたいです', NOW)).toBe('trial');
+    expect(classify('唯愛さんのワークショップ', NOW)).toBe('ws');
+  });
+  it('trial の返信に、まだ終わっていない体験会だけが載る', () => {
+    const before = trialTemplate('2026-10-14T12:00:00+09:00');
+    expect(before).toContain('10月22日(木)');
+    expect(before).toContain('11月11日(水)');
+    const mid = trialTemplate('2026-10-24T12:00:00+09:00');
+    expect(mid).not.toContain('10月22日');
+    expect(mid).not.toContain('10月23日');
+    expect(mid).toContain('11月9日(月)');
+    const after = trialTemplate('2026-11-12T12:00:00+09:00');
+    expect(after).not.toContain('体験会（参加無料）');
+    expect(after).toContain('公式LINE');
+    const d = decideAutoReply('体験会', baseCtx);
+    expect(d.kind === 'trial' && d.text).toContain('10月22日(木)');
   });
 });
 

@@ -48,6 +48,40 @@ export const WS_INFO = {
   ].join('\n'),
 };
 
+/**
+ * はじめての方向けの体験会(期間限定・終わったものは自動で消える)。
+ * 外部向けストーリーに「DMで『体験会』と送ってください」と書いているので、trial の返信に日程を載せる。
+ * 会場・時刻は告知画像と同じ表記(2026-10-14 TARO: ストーリー＋固定投稿で外部告知)。
+ */
+export const TRIAL_EVENTS: { until: string; line: string }[] = [
+  { until: '2026-10-22T19:00:00+09:00', line: '・10月22日(木) 18:00〜19:00　長町 ヒップホップ入門（ララガーデン長町4F）' },
+  { until: '2026-10-23T18:30:00+09:00', line: '・10月23日(金) 17:30〜18:30　七ヶ浜 ヒップホップ超入門（アクアスタジオ）' },
+  { until: '2026-11-09T19:50:00+09:00', line: '・11月9日(月) 18:50〜19:50　ハウスダンス入門（AZUMAスタジオ）' },
+  { until: '2026-11-11T19:45:00+09:00', line: '・11月11日(水) 18:45〜19:45　水曜ヒップホップ入門（Kスタジオ・花京院）' },
+];
+
+export function trialTemplate(nowIso: string): string {
+  const now = new Date(nowIso).getTime();
+  const events = TRIAL_EVENTS.filter((e) => new Date(e.until).getTime() > now).map((e) => e.line);
+  return [
+    'お問い合わせありがとうございます。BOOMダンススクールです。',
+    '',
+    '体験レッスンは無料でご参加いただけます。',
+    ...(events.length
+      ? ['', '■ はじめての方向け 体験会（参加無料）', ...events, '']
+      : ['']),
+    '日程・会場・クラスのご確認とご予約は、公式LINEから承っております。',
+    OFFICIAL_LINE_URL,
+    '',
+    'LINEのご利用が難しい場合は、このDMに以下をご返信ください。',
+    events.length ? '・参加をご希望の体験会（またはジャンル）' : '・ご希望のジャンル',
+    '・参加される方のお名前と年齢（お子さまの場合は学年）',
+    '・通いやすいエリア',
+    '',
+    '担当者より折り返しご連絡いたします。',
+  ].join('\n');
+}
+
 export const TEMPLATES: Record<DmKind, string> = {
   ws: WS_INFO.text,
   ws_apply: [
@@ -63,20 +97,7 @@ export const TEMPLATES: Record<DmKind, string> = {
     'ご都合が悪くなった場合は、10月23日(金)までにこのDMにてご連絡ください。',
     '10月24日(土)以降はキャンセルできません（参加費2,000円をお支払いいただきます）。',
   ].join('\n'),
-  trial: [
-    'お問い合わせありがとうございます。BOOMダンススクールです。',
-    '',
-    '体験レッスンは無料でご参加いただけます。',
-    '日程・会場・クラスのご確認とご予約は、公式LINEから承っております。',
-    OFFICIAL_LINE_URL,
-    '',
-    'LINEのご利用が難しい場合は、このDMに以下をご返信ください。',
-    '・ご希望のジャンル',
-    '・年齢（お子さまの場合は学年）',
-    '・通いやすいエリア',
-    '',
-    '担当者より折り返しご連絡いたします。',
-  ].join('\n'),
+  trial: trialTemplate(new Date().toISOString()),
   greeting: [
     'お問い合わせありがとうございます。BOOMダンススクールです。',
     '',
@@ -96,8 +117,9 @@ export const TEMPLATES: Record<DmKind, string> = {
 };
 
 /** 送信する本文(定型文＋自動送信の断り)。handoff は本文自体が「人に引き継ぐ」宣言なので断りを付けない。 */
-export function renderTemplate(kind: DmKind): string {
-  return kind === 'handoff' ? TEMPLATES[kind] : `${TEMPLATES[kind]}\n\n${AUTO_NOTE}`;
+export function renderTemplate(kind: DmKind, nowIso: string = new Date().toISOString()): string {
+  const body = kind === 'trial' ? trialTemplate(nowIso) : TEMPLATES[kind];
+  return kind === 'handoff' ? body : `${body}\n\n${AUTO_NOTE}`;
 }
 
 // 噛み合っていない・人を呼んでいるサイン。これが来たら定型を返さず handoff。
@@ -105,6 +127,8 @@ const CONFUSION_KEYWORDS = ['違う', '違います', 'ちがう', 'そうじゃ
 // 相槌・お礼だけ。返信不要(沈黙でよい)。
 const ACK_ONLY = /^(ありがとうございます|ありがとうございました|ありがとう|了解です|了解しました|承知しました|わかりました|分かりました|はい|よろしくお願いします|よろしくお願いいたします|お願いします|助かります)[！!。．\s]*$/;
 
+// 体験会(入門のお試し)系。「ハウス入門」はWSのキーワード(ハウス)にも当たるので、WSより先に判定する
+const TRIAL_EVENT_KEYWORDS = ['体験会', 'お試し', '超入門', '入門'];
 const TRIAL_KEYWORDS = ['体験', '見学', '入会', '料金', '月謝', 'レッスン', 'クラス', 'スケジュール', '何歳', '初心者', '通い'];
 const APPLY_KEYWORDS = ['申込', '申し込', '参加希望', '参加したい', '参加します', '予約', '行きたい', '行きます', '出たい'];
 
@@ -147,6 +171,7 @@ export function classify(text: string, nowIso: string, wsContext = false): DmKin
   const t = text.trim();
   if (!t) return null;
   const ws = wsActive(nowIso);
+  if (includesAny(t, TRIAL_EVENT_KEYWORDS)) return 'trial';
   if (ws && (wsContext || includesAny(t, WS_INFO.keywords)) && looksLikeApplication(t)) return 'ws_apply';
   if (ws && includesAny(t, WS_INFO.keywords)) return 'ws';
   if (includesAny(t, TRIAL_KEYWORDS)) return 'trial';
@@ -175,7 +200,7 @@ export function decideAutoReply(text: string, ctx: ThreadContext): Decision {
     // 同じ案内を2回は送らない。繰り返し聞かれている＝噛み合っていないので人に引き継ぐ
     kind = 'handoff';
   }
-  return { kind, text: renderTemplate(kind) };
+  return { kind, text: renderTemplate(kind, ctx.now) };
 }
 
 /** 自動返信のあとスレッドをどの状態に置くか。人の返信が要るものは needs_reply。 */
