@@ -10,6 +10,9 @@ import { sendTshirtOrderEmail } from '@/lib/tshirtEmail';
 import { applyBf6WebhookEvent } from '@/lib/bf6Db';
 import { sendBf6OrderEmail } from '@/lib/bf6Email';
 import { handleBf6StreamPurchase } from '@/lib/bf6StreamDb';
+import { parsePartyWebhookEvent } from '@/lib/partyStripe';
+import { applyPartyWebhookEvent, getPartySettings } from '@/lib/partyDb';
+import { sendPartyOrderEmail } from '@/lib/partyEmail';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +35,28 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'invalid payload' }, { status: 400 });
   }
+  // パーティー申込(クリパ2026〜・metadata.party_order_id)も同じ相乗り方式。
+  // BF6の判定(metadata.order_id)より前に振り分け、BF6側で order_not_found を出させない。
+  const partyEv = parsePartyWebhookEvent(event);
+  if (partyEv) {
+    try {
+      const r = await applyPartyWebhookEvent(partyEv, payload);
+      if (r.status === 'paid') {
+        if (r.amountMismatch) {
+          console.error('[party] amount mismatch on order', partyEv.orderId, 'stripe:', partyEv.amountTotal);
+        }
+        await sendPartyOrderEmail(r.order, r.token, await getPartySettings(r.order.eventKey));
+      } else if (r.status === 'order_not_found') {
+        console.error('[party] webhook order not found. order:', partyEv.orderId);
+      }
+      return NextResponse.json({ received: true, result: `party_${r.status}` });
+    } catch (e) {
+      // 500でStripeが自動リトライ(冪等なので再適用は安全)
+      console.error('[party] webhook apply failed', e instanceof Error ? e.message : e);
+      return NextResponse.json({ error: 'apply failed' }, { status: 500 });
+    }
+  }
+
   // Tシャツ物販(metadata.tshirt_order_id)のイベントは同一Stripeアカウントのためここに届く。
   // kioskと同じ相乗り方式(専用エンドポイントの追加登録を不要にする)。
   const tshirtEv = parseTshirtWebhookEvent(event);

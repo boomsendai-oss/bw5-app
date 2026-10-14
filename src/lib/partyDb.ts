@@ -1,0 +1,355 @@
+// パーティー申込のDBアクセス層。src/lib/db.ts 経由のみ(createClient直呼び禁止)。
+// 枠の考え方(出演エントリーの先着):
+//   - 枠を使っている = status IN ('paid','cash_due') + 決済待ち'pending'(30分の仮押さえ)
+//   - 期限切れの 'pending' は読む前に sweep で 'expired' にして枠を空ける
+//   - 上限の判定と作成は1つの書き込みトランザクション(同時送信で上限を超えないように)
+import type { Transaction } from '@libsql/client';
+import { execute, getAll, getOne, withWriteTx } from '@/lib/db';
+import { generateEditToken } from '@/lib/eventSignup';
+import {
+  entryUnitPrice,
+  partySettingsToRows,
+  resolvePartySettings,
+  type PartyKind,
+  type PartyPayMethod,
+  type PartySettings,
+  type PartyStatus,
+  type ValidatedEntry,
+  type ValidatedTicket,
+} from '@/lib/party';
+
+const HOLD_MINUTES = 30;
+const HOLDING = "('paid','cash_due','pending')";
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+export interface PartyOrder {
+  id: number;
+  eventKey: string;
+  kind: PartyKind;
+  buyerName: string;
+  buyerKana: string;
+  email: string;
+  phone: string;
+  isMember: boolean | null;
+  peopleCount: number;
+  infantCount: number;
+  teamName: string;
+  genre: string;
+  memberCount: number;
+  members: string[];
+  payMethod: PartyPayMethod;
+  status: PartyStatus;
+  unitPrice: number;
+  amountTotal: number;
+  expiresAt: string;
+  audioUrl: string;
+  audioFilename: string;
+  audioUploadedAt: string;
+  staffNote: string;
+  createdAt: string;
+}
+
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any -- DB行 */
+function rowToOrder(r: any, members: string[]): PartyOrder {
+  return {
+    id: Number(r.id),
+    eventKey: String(r.event_key),
+    kind: r.kind === 'entry' ? 'entry' : 'ticket',
+    buyerName: String(r.buyer_name),
+    buyerKana: String(r.buyer_kana ?? ''),
+    email: String(r.email),
+    phone: String(r.phone ?? ''),
+    isMember: r.is_member == null ? null : Number(r.is_member) === 1,
+    peopleCount: Number(r.people_count ?? 0),
+    infantCount: Number(r.infant_count ?? 0),
+    teamName: String(r.team_name ?? ''),
+    genre: String(r.genre ?? ''),
+    memberCount: Number(r.member_count ?? 0),
+    members,
+    payMethod: r.pay_method === 'card' ? 'card' : 'cash',
+    status: String(r.status) as PartyStatus,
+    unitPrice: Number(r.unit_price ?? 0),
+    amountTotal: Number(r.amount_total ?? 0),
+    expiresAt: String(r.expires_at ?? ''),
+    audioUrl: String(r.audio_url ?? ''),
+    audioFilename: String(r.audio_filename ?? ''),
+    audioUploadedAt: String(r.audio_uploaded_at ?? ''),
+    staffNote: String(r.staff_note ?? ''),
+    createdAt: String(r.created_at),
+  };
+}
+
+async function membersOf(orderId: number): Promise<string[]> {
+  const rows = await getAll('SELECT name FROM party_entry_members WHERE order_id = ? ORDER BY sort_order, id', [orderId]);
+  return rows.map((r) => String(r.name));
+}
+
+// ---- 設定 ----
+
+export async function getPartySettings(eventKey: string): Promise<PartySettings> {
+  const rows = await getAll('SELECT key, value FROM party_settings WHERE event_key = ?', [eventKey]);
+  const map: Record<string, string> = {};
+  for (const r of rows) map[String(r.key)] = String(r.value);
+  return resolvePartySettings(map);
+}
+
+export async function savePartySettings(eventKey: string, s: PartySettings): Promise<void> {
+  const now = nowIso();
+  for (const [key, value] of Object.entries(partySettingsToRows(s))) {
+    await execute(
+      'INSERT INTO party_settings (event_key, key, value, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(event_key, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at',
+      [eventKey, key, value, now]
+    );
+  }
+}
+
+// ---- 枠 ----
+
+/** 30分過ぎた決済待ちを expired にして枠を空ける。読み取り系の入口で呼ぶ。 */
+export async function sweepExpiredPartyOrders(): Promise<number> {
+  const now = nowIso();
+  const r = await execute(
+    "UPDATE party_orders SET status = 'expired', updated_at = ? WHERE status = 'pending' AND expires_at != '' AND expires_at < ?",
+    [now, now]
+  );
+  return Number(r.rowsAffected ?? 0);
+}
+
+export async function countHoldingTeams(eventKey: string): Promise<number> {
+  await sweepExpiredPartyOrders();
+  const row = await getOne(
+    `SELECT COUNT(*) AS n FROM party_orders WHERE event_key = ? AND kind = 'entry' AND status IN ${HOLDING}`,
+    [eventKey]
+  );
+  return Number(row?.n ?? 0);
+}
+
+// ---- 作成 ----
+
+export type CreatePartyResult =
+  | { ok: true; orderId: number; token: string; amountTotal: number }
+  | { ok: false; error: string };
+
+interface NewOrderRow {
+  kind: PartyKind;
+  buyerName: string;
+  buyerKana: string;
+  email: string;
+  phone: string;
+  isMember: boolean | null;
+  peopleCount: number;
+  infantCount: number;
+  teamName: string;
+  genre: string;
+  memberCount: number;
+  payMethod: PartyPayMethod;
+  unitPrice: number;
+  amountTotal: number;
+}
+
+async function insertOrder(tx: Transaction, eventKey: string, o: NewOrderRow, token: string): Promise<number> {
+  const now = nowIso();
+  const isCard = o.payMethod === 'card';
+  const res = await tx.execute({
+    sql: `INSERT INTO party_orders (event_key, kind, buyer_name, buyer_kana, email, phone, is_member,
+      people_count, infant_count, team_name, genre, member_count, pay_method, status, unit_price, amount_total,
+      edit_token, expires_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      eventKey, o.kind, o.buyerName, o.buyerKana, o.email, o.phone,
+      o.isMember == null ? null : o.isMember ? 1 : 0,
+      o.peopleCount, o.infantCount, o.teamName, o.genre, o.memberCount,
+      o.payMethod, isCard ? 'pending' : 'cash_due', o.unitPrice, o.amountTotal, token,
+      isCard ? new Date(Date.now() + HOLD_MINUTES * 60 * 1000).toISOString() : '',
+      now, now,
+    ],
+  });
+  return Number(res.lastInsertRowid);
+}
+
+export async function createPartyTicket(eventKey: string, v: ValidatedTicket, s: PartySettings): Promise<CreatePartyResult> {
+  const token = generateEditToken();
+  const unitPrice = s.presalePrice;
+  const amountTotal = unitPrice * v.peopleCount;
+  try {
+    const orderId = await withWriteTx((tx) =>
+      insertOrder(
+        tx,
+        eventKey,
+        {
+          kind: 'ticket', buyerName: v.buyerName, buyerKana: v.buyerKana, email: v.email, phone: v.phone,
+          isMember: v.isMember, peopleCount: v.peopleCount, infantCount: v.infantCount,
+          teamName: '', genre: '', memberCount: 0, payMethod: v.payMethod, unitPrice, amountTotal,
+        },
+        token
+      )
+    );
+    return { ok: true, orderId, token, amountTotal };
+  } catch (e) {
+    console.error('[party] create ticket failed', e instanceof Error ? e.message : e);
+    return { ok: false, error: '申込の保存に失敗しました。時間をおいてお試しください' };
+  }
+}
+
+export async function createPartyEntry(eventKey: string, v: ValidatedEntry, s: PartySettings): Promise<CreatePartyResult> {
+  await sweepExpiredPartyOrders();
+  const token = generateEditToken();
+  const unitPrice = entryUnitPrice(s);
+  const amountTotal = unitPrice * v.members.length;
+  try {
+    const orderId = await withWriteTx(async (tx) => {
+      const cnt = await tx.execute({
+        sql: `SELECT COUNT(*) AS n FROM party_orders WHERE event_key = ? AND kind = 'entry' AND status IN ${HOLDING}`,
+        args: [eventKey],
+      });
+      if (Number(cnt.rows[0]?.n ?? 0) >= s.teamCap) throw new FullError();
+      const id = await insertOrder(
+        tx,
+        eventKey,
+        {
+          kind: 'entry', buyerName: v.buyerName, buyerKana: v.buyerKana, email: v.email, phone: v.phone,
+          isMember: null, peopleCount: 0, infantCount: 0, teamName: v.teamName, genre: v.genre,
+          memberCount: v.members.length, payMethod: v.payMethod, unitPrice, amountTotal,
+        },
+        token
+      );
+      let sort = 0;
+      for (const name of v.members) {
+        await tx.execute({
+          sql: 'INSERT INTO party_entry_members (order_id, name, sort_order) VALUES (?, ?, ?)',
+          args: [id, name, sort++],
+        });
+      }
+      return id;
+    });
+    return { ok: true, orderId, token, amountTotal };
+  } catch (e) {
+    if (e instanceof FullError) {
+      return { ok: false, error: '申し訳ありません。出演チームは定員に達したため受付を終了しました' };
+    }
+    console.error('[party] create entry failed', e instanceof Error ? e.message : e);
+    return { ok: false, error: 'エントリーの保存に失敗しました。時間をおいてお試しください' };
+  }
+}
+
+class FullError extends Error {}
+
+// ---- 読み取り ----
+
+/** edit_token 完全一致の1件だけ返す(公開ページ用。列挙できる経路は作らない)。 */
+export async function loadPartyOrderByToken(token: string): Promise<PartyOrder | null> {
+  if (!token || !/^[0-9a-f]{20,64}$/.test(token)) return null;
+  await sweepExpiredPartyOrders();
+  const r = await getOne('SELECT * FROM party_orders WHERE edit_token = ? LIMIT 1', [token]);
+  if (!r) return null;
+  return rowToOrder(r, r.kind === 'entry' ? await membersOf(Number(r.id)) : []);
+}
+
+export async function listPartyOrdersStaff(eventKey: string): Promise<PartyOrder[]> {
+  await sweepExpiredPartyOrders();
+  const rows = await getAll('SELECT * FROM party_orders WHERE event_key = ? ORDER BY id DESC', [eventKey]);
+  const members = await getAll(
+    'SELECT m.order_id, m.name FROM party_entry_members m JOIN party_orders o ON o.id = m.order_id WHERE o.event_key = ? ORDER BY m.sort_order, m.id',
+    [eventKey]
+  );
+  const byOrder = new Map<number, string[]>();
+  for (const m of members) {
+    const id = Number(m.order_id);
+    byOrder.set(id, [...(byOrder.get(id) ?? []), String(m.name)]);
+  }
+  return rows.map((r) => rowToOrder(r, byOrder.get(Number(r.id)) ?? []));
+}
+
+// ---- スタッフ操作 ----
+
+/** 取消 / 返金済み にする。返金そのものはStripe管理画面で人が行う。 */
+export async function setPartyOrderStatusStaff(id: number, status: 'canceled' | 'refunded'): Promise<boolean> {
+  const from = status === 'canceled' ? "('paid','cash_due','pending','expired')" : "('paid','canceled')";
+  const r = await execute(`UPDATE party_orders SET status = ?, updated_at = ? WHERE id = ? AND status IN ${from}`, [
+    status,
+    nowIso(),
+    id,
+  ]);
+  return Number(r.rowsAffected ?? 0) > 0;
+}
+
+/** 取消を元に戻す。当日現金→cash_due、カード→決済記録があれば paid。 */
+export async function restorePartyOrderStaff(id: number): Promise<boolean> {
+  const r = await getOne("SELECT pay_method FROM party_orders WHERE id = ? AND status = 'canceled'", [id]);
+  if (!r) return false;
+  let next = 'cash_due';
+  if (r.pay_method === 'card') {
+    const paid = await getOne(
+      "SELECT 1 AS x FROM party_payments WHERE order_id = ? AND event_type = 'checkout.session.completed' LIMIT 1",
+      [id]
+    );
+    if (!paid) return false;
+    next = 'paid';
+  }
+  const u = await execute("UPDATE party_orders SET status = ?, updated_at = ? WHERE id = ? AND status = 'canceled'", [
+    next,
+    nowIso(),
+    id,
+  ]);
+  return Number(u.rowsAffected ?? 0) > 0;
+}
+
+export async function setPartyStaffNote(id: number, note: string): Promise<void> {
+  await execute('UPDATE party_orders SET staff_note = ?, updated_at = ? WHERE id = ?', [note.slice(0, 500), nowIso(), id]);
+}
+
+// ---- 決済 ----
+
+export async function savePartyStripeSession(orderId: number, sessionId: string): Promise<void> {
+  await execute('UPDATE party_orders SET stripe_session_id = ?, updated_at = ? WHERE id = ?', [sessionId, nowIso(), orderId]);
+}
+
+export type ApplyPartyWebhookResult =
+  | { status: 'paid'; order: PartyOrder; token: string; amountMismatch: boolean }
+  | { status: 'duplicate' | 'ignored' | 'order_not_found' | 'not_updated' };
+
+/**
+ * 検証済みWebhookイベントを適用する(決済の正本)。
+ * - party_payments.stripe_event_id UNIQUE で同じイベントの再送は何もしない
+ * - checkout.session.completed で pending/expired を paid に(期限切れ後の決済完了も入金を優先)
+ * - 取消・返金済みは paid に戻さない
+ */
+export async function applyPartyWebhookEvent(
+  ev: { eventId: string; type: string; sessionId: string; paymentIntentId: string; orderId: number; amountTotal: number | null },
+  rawPayload: string
+): Promise<ApplyPartyWebhookResult> {
+  const ins = await execute(
+    'INSERT OR IGNORE INTO party_payments (stripe_event_id, event_type, stripe_session_id, payment_intent_id, order_id, amount, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [ev.eventId, ev.type, ev.sessionId, ev.paymentIntentId, ev.orderId, ev.amountTotal ?? 0, rawPayload.slice(0, 20000), nowIso()]
+  );
+  if (Number(ins.rowsAffected ?? 0) === 0) return { status: 'duplicate' };
+  if (ev.type !== 'checkout.session.completed') return { status: 'ignored' };
+  const row = await getOne('SELECT * FROM party_orders WHERE id = ? LIMIT 1', [ev.orderId]);
+  if (!row) return { status: 'order_not_found' };
+  const u = await execute(
+    "UPDATE party_orders SET status = 'paid', stripe_session_id = ?, updated_at = ? WHERE id = ? AND status IN ('pending','expired')",
+    [ev.sessionId, nowIso(), ev.orderId]
+  );
+  if (Number(u.rowsAffected ?? 0) === 0) return { status: 'not_updated' };
+  const order = rowToOrder({ ...row, status: 'paid' }, row.kind === 'entry' ? await membersOf(ev.orderId) : []);
+  return {
+    status: 'paid',
+    order,
+    token: String(row.edit_token),
+    amountMismatch: ev.amountTotal != null && ev.amountTotal !== Number(row.amount_total),
+  };
+}
+
+// ---- 音源 ----
+
+/** 確定済み(paid/cash_due)のエントリーだけ音源を保存できる。差し替えは上書き。 */
+export async function savePartyAudio(token: string, url: string, filename: string): Promise<boolean> {
+  const r = await execute(
+    "UPDATE party_orders SET audio_url = ?, audio_filename = ?, audio_uploaded_at = ?, updated_at = ? WHERE edit_token = ? AND kind = 'entry' AND status IN ('paid','cash_due')",
+    [url, filename.slice(0, 200), nowIso(), nowIso(), token]
+  );
+  return Number(r.rowsAffected ?? 0) > 0;
+}
