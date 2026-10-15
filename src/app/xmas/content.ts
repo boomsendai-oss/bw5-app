@@ -19,8 +19,7 @@ export const XMAS_PROGRAM: { title: string; body: string }[] = [
 /** 当日の流れ(予定)。時間は前後することがある。 */
 export const XMAS_TIMETABLE: { time: string; label: string }[] = [
   { time: '11:00', label: '開場・受付' },
-  { time: '11:30', label: 'オープニング' },
-  { time: '11:40', label: 'ショーケース 第1部' },
+  { time: '11:30', label: 'ショーケース 第1部' },
   { time: '12:00', label: 'DJタイム' },
   { time: '12:30', label: '画伯の絵を当てろ！ゲーム' },
   { time: '13:10', label: 'ショーケース 第2部' },

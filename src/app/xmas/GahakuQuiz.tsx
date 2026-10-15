@@ -4,24 +4,19 @@
 // 賞品とは関係ない(サイト上の遊び)。答えはTARO確認(2026-10-15): Q1=プーさん / Q2=ロバ。
 import { useState } from 'react';
 import Image from 'next/image';
-import { normalizeKana } from '@/lib/party';
+import { checkGahakuAnswer } from '@/lib/party';
 
 interface Question {
-  q: string;
+  q: 'Q1' | 'Q2';
   src: string;
   rot: string;
   answer: string;
-  accept: string[];
 }
 
 const QUESTIONS: Question[] = [
-  { q: 'Q1', src: '/xmas/gahaku_cat.jpg', rot: '-rotate-2', answer: 'プーさん', accept: ['ぷーさん', 'くまのぷーさん', 'ぷー', 'pooh', 'winniethepooh'] },
-  { q: 'Q2', src: '/xmas/gahaku_pig.jpg', rot: 'rotate-2', answer: 'ロバ', accept: ['ろば', 'ろばさん', 'donkey'] },
+  { q: 'Q1', src: '/xmas/gahaku_cat.jpg', rot: '-rotate-2', answer: 'くまのプーさん' },
+  { q: 'Q2', src: '/xmas/gahaku_pig.jpg', rot: 'rotate-2', answer: 'ロバ' },
 ];
-
-function normalizeAnswer(v: string): string {
-  return normalizeKana(v).toLowerCase().replace(/[\s・!！?？。、.]/g, '');
-}
 
 type Result = '' | 'ok' | 'ng';
 
@@ -33,7 +28,7 @@ function QuizCard({ item }: { item: Question }) {
   function check(e: React.FormEvent) {
     e.preventDefault();
     if (!value.trim()) return;
-    setResult(item.accept.includes(normalizeAnswer(value)) ? 'ok' : 'ng');
+    setResult(checkGahakuAnswer(item.q, value) ? 'ok' : 'ng');
   }
 
   return (

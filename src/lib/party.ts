@@ -272,6 +272,15 @@ export const GRADES = [
 ] as const;
 export type GradeKey = (typeof GRADES)[number][0];
 
+/** 入力欄(スマホ幅)用の短い表記。 */
+export const GRADE_SHORT: Record<GradeKey, string> = {
+  g1_3: '小1〜3年',
+  g4_6: '小4〜6年',
+  jhs: '中学生',
+  hs: '高校生',
+  adult: 'それ以上',
+};
+
 export function gradeLabel(g: string): string {
   return GRADES.find(([k]) => k === g)?.[1] ?? '';
 }
@@ -465,3 +474,34 @@ export function rosterRows<T extends SummarizableOrder & { buyerKana: string }>(
 
 /** Stripe手数料(国内カード3.6%)。収支の見込みに使う。 */
 export const STRIPE_FEE_RATE = 0.036;
+
+// ---- 画伯コーナー(練習問題) ----
+
+/** 答え合わせ用の正規化: カタカナ→ひらがな・空白や記号を除く・英字は小文字。 */
+export function normalizeQuizAnswer(v: string): string {
+  return normalizeKana(v).toLowerCase().replace(/[\s・!！?？。、.,'’〜~]/g, '');
+}
+
+/** 正解とみなす答え(TARO 2026-10-15)。Q1=プーさん系 / Q2=ロバ(ひらがな・カタカナどちらでも)。 */
+const GAHAKU_ACCEPT: Record<'Q1' | 'Q2', string[]> = {
+  Q1: ['くまのぷーさん', '熊のぷーさん', 'ぷーさん', 'ぷー', 'pooh', 'winniethepooh'],
+  Q2: ['ろば', 'ろばさん', '驢馬', 'donkey'],
+};
+
+export function checkGahakuAnswer(q: 'Q1' | 'Q2', input: string): boolean {
+  const v = normalizeQuizAnswer(input);
+  return v.length > 0 && GAHAKU_ACCEPT[q].some((a) => normalizeQuizAnswer(a) === v);
+}
+
+// ---- 入力中のその場チェック(欄を離れたとき) ----
+
+export type ContactField = 'kana' | 'email' | 'phone';
+
+/** 形式が違えばエラー文、正しい/空なら ''(空は送信時にまとめて知らせる)。 */
+export function contactFieldError(field: ContactField, value: string): string {
+  const v = (value ?? '').trim();
+  if (!v) return '';
+  if (field === 'email') return isValidEmail(v) ? '' : 'メールアドレスの形式が正しくありません(例: boom@example.com)';
+  if (field === 'phone') return /^0\d{9,10}$/.test(normalizePhone(v)) ? '' : '電話番号は数字10〜11桁で入力してください(ハイフンはあってもなくてもOK)';
+  return KANA_RE.test(normalizeKana(v)) ? '' : 'ひらがなで入力してください';
+}

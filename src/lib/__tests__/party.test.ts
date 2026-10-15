@@ -247,3 +247,33 @@ describe('金額表示', () => {
     expect(signedYen(0)).toBe('¥0');
   });
 });
+
+describe('画伯コーナーの答え合わせ', () => {
+  it('Q1: くまのプーさん・熊のプーさん・プーさん・プーはすべて正解', async () => {
+    const { checkGahakuAnswer } = await import('../party');
+    for (const a of ['くまのプーさん', 'クマノプーサン', '熊のプーさん', 'プーさん', 'ぷーさん', 'プー', ' プー さん ', 'Pooh']) {
+      expect(checkGahakuAnswer('Q1', a)).toBe(true);
+    }
+    expect(checkGahakuAnswer('Q1', 'くま')).toBe(false);
+    expect(checkGahakuAnswer('Q1', '')).toBe(false);
+  });
+  it('Q2: ロバはひらがなでもカタカナでも正解', async () => {
+    const { checkGahakuAnswer } = await import('../party');
+    for (const a of ['ロバ', 'ろば', 'ロバ！', 'ろばさん']) expect(checkGahakuAnswer('Q2', a)).toBe(true);
+    expect(checkGahakuAnswer('Q2', 'うま')).toBe(false);
+  });
+});
+
+describe('入力欄のその場チェック', () => {
+  it('形式が違うときだけエラー文・空はエラーにしない', async () => {
+    const { contactFieldError } = await import('../party');
+    expect(contactFieldError('email', '')).toBe('');
+    expect(contactFieldError('email', 'boom@example.com')).toBe('');
+    expect(contactFieldError('email', 'boom@')).toMatch(/メールアドレス/);
+    expect(contactFieldError('phone', '090-1234-5678')).toBe('');
+    expect(contactFieldError('phone', '０９０１２３４５６７８')).toBe('');
+    expect(contactFieldError('phone', '1234')).toMatch(/10〜11桁/);
+    expect(contactFieldError('kana', 'キムラ タロウ')).toBe('');
+    expect(contactFieldError('kana', '木村')).toMatch(/ひらがな/);
+  });
+});

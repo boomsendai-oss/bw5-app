@@ -5,7 +5,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MAX_INFANTS, MAX_PEOPLE, XMAS_EVENT_INFO, ticketTotal, yen, DEFAULT_PARTY_SETTINGS } from '@/lib/party';
 import { startXmasCheckout, submitXmasTicket } from '../actions';
-import { Field, Notice, Panel, inputCls, primaryBtnCls } from '../ui';
+import { Field, Notice, Panel, errCls, inputCls, primaryBtnCls } from '../ui';
+import { useFieldErrors } from '../useFieldErrors';
 
 export default function TicketForm(p: {
   presalePrice: number;
@@ -26,6 +27,7 @@ export default function TicketForm(p: {
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const fe = useFieldErrors();
 
   const total = ticketTotal(peopleCount, { ...DEFAULT_PARTY_SETTINGS, presalePrice: p.presalePrice });
 
@@ -59,14 +61,45 @@ export default function TicketForm(p: {
         <Field label="お名前">
           <input className={inputCls} value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="例: 木村 太郎" autoComplete="name" />
         </Field>
-        <Field label="ふりがな" hint="当日の受付は、このお名前で確認します">
-          <input className={inputCls} value={buyerKana} onChange={(e) => setBuyerKana(e.target.value)} placeholder="例: きむら たろう" />
+        <Field label="ふりがな" hint="当日の受付は、このお名前で確認します" error={fe.errs.kana}>
+          <input
+            className={inputCls + errCls(fe.errs.kana)}
+            value={buyerKana}
+            onChange={(e) => {
+              setBuyerKana(e.target.value);
+              fe.clear('kana');
+            }}
+            onBlur={(e) => fe.check('kana', 'kana', e.target.value)}
+            placeholder="例: きむら たろう"
+          />
         </Field>
-        <Field label="メールアドレス" hint="申込の控えが届きます">
-          <input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="例: boom@example.com" autoComplete="email" />
+        <Field label="メールアドレス" hint="予約の控えが届きます" error={fe.errs.email}>
+          <input
+            className={inputCls + errCls(fe.errs.email)}
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              fe.clear('email');
+            }}
+            onBlur={(e) => fe.check('email', 'email', e.target.value)}
+            placeholder="例: boom@example.com"
+            autoComplete="email"
+          />
         </Field>
-        <Field label="電話番号">
-          <input className={inputCls} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="例: 09012345678" autoComplete="tel" />
+        <Field label="電話番号" error={fe.errs.phone}>
+          <input
+            className={inputCls + errCls(fe.errs.phone)}
+            type="tel"
+            value={phone}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              fe.clear('phone');
+            }}
+            onBlur={(e) => fe.check('phone', 'phone', e.target.value)}
+            placeholder="例: 09012345678"
+            autoComplete="tel"
+          />
         </Field>
         <Field label="BOOMの会員ですか？">
           <div className="grid grid-cols-2 gap-2">

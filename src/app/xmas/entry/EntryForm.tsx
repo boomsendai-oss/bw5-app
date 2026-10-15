@@ -4,9 +4,10 @@
 // 出演はカード払いのみ(後からのキャンセルで枠が空くと困るため・TARO 2026-10-15)。
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { GRADES, MAX_MEMBERS, MIN_MEMBERS, yen } from '@/lib/party';
+import { GRADES, GRADE_SHORT, MAX_MEMBERS, MIN_MEMBERS, yen } from '@/lib/party';
 import { startXmasCheckout, submitXmasEntry } from '../actions';
-import { Field, Notice, Panel, greenBtnCls, inputCls } from '../ui';
+import { Field, Notice, Panel, errCls, greenBtnCls, inputCls } from '../ui';
+import { useFieldErrors } from '../useFieldErrors';
 
 const GENRES = ['HIPHOP', 'JAZZ', 'HOUSE', 'GIRLS', 'BREAKIN', 'LOCK', 'POP', 'WAACK', 'K-POP', 'MIX'];
 
@@ -38,6 +39,7 @@ export default function EntryForm(p: {
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const fe = useFieldErrors();
 
   const filled = members.filter((m) => m.name.trim()).length;
   const total = filled * p.entryUnit;
@@ -98,8 +100,17 @@ export default function EntryForm(p: {
         <Field label="チーム名">
           <input className={inputCls} value={teamName} onChange={(e) => setTeamName(e.target.value)} placeholder="例: BOOM KIDS" />
         </Field>
-        <Field label="チーム名のふりがな" hint="当日のMCが読み上げます">
-          <input className={inputCls} value={teamKana} onChange={(e) => setTeamKana(e.target.value)} placeholder="例: ぶーむ きっず" />
+        <Field label="チーム名のふりがな" hint="当日のMCが読み上げます" error={fe.errs.teamKana}>
+          <input
+            className={inputCls + errCls(fe.errs.teamKana)}
+            value={teamKana}
+            onChange={(e) => {
+              setTeamKana(e.target.value);
+              fe.clear('teamKana');
+            }}
+            onBlur={(e) => fe.check('teamKana', 'kana', e.target.value)}
+            placeholder="例: ぶーむ きっず"
+          />
         </Field>
         <Field label="ジャンル">
           <input className={inputCls} value={genre} onChange={(e) => setGenre(e.target.value)} list="xmas-genres" placeholder="例: HIPHOP" />
@@ -112,12 +123,12 @@ export default function EntryForm(p: {
         <Field label={`メンバー全員の名前と学年(${MIN_MEMBERS}人以上)`} hint="BOOMの生徒ではない友達も参加OK">
           <div className="space-y-2">
             {members.map((m, i) => (
-              <div key={i} className="grid grid-cols-[minmax(0,1fr)_8.5rem] gap-2">
+              <div key={i} className="grid grid-cols-[minmax(0,1fr)_6.75rem] gap-2">
                 <input
                   className={inputCls}
                   value={m.name}
                   onChange={(e) => setMember(i, { name: e.target.value })}
-                  placeholder={`メンバー${i + 1}`}
+                  placeholder={`メンバー${i + 1}の名前`}
                 />
                 <select
                   className={`${inputCls} px-2 text-sm`}
@@ -126,9 +137,9 @@ export default function EntryForm(p: {
                   aria-label={`メンバー${i + 1}の学年`}
                 >
                   <option value="">学年</option>
-                  {GRADES.map(([k, label]) => (
+                  {GRADES.map(([k]) => (
                     <option key={k} value={k}>
-                      {label}
+                      {GRADE_SHORT[k]}
                     </option>
                   ))}
                 </select>
@@ -151,14 +162,45 @@ export default function EntryForm(p: {
         <Field label="お名前" hint="保護者の方でもOKです">
           <input className={inputCls} value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="例: 木村 太郎" autoComplete="name" />
         </Field>
-        <Field label="ふりがな">
-          <input className={inputCls} value={buyerKana} onChange={(e) => setBuyerKana(e.target.value)} placeholder="例: きむら たろう" />
+        <Field label="ふりがな" error={fe.errs.kana}>
+          <input
+            className={inputCls + errCls(fe.errs.kana)}
+            value={buyerKana}
+            onChange={(e) => {
+              setBuyerKana(e.target.value);
+              fe.clear('kana');
+            }}
+            onBlur={(e) => fe.check('kana', 'kana', e.target.value)}
+            placeholder="例: きむら たろう"
+          />
         </Field>
-        <Field label="メールアドレス" hint="控えと、音源の提出ページのURLが届きます">
-          <input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="例: boom@example.com" autoComplete="email" />
+        <Field label="メールアドレス" hint="控えと、音源の提出ページのURLが届きます" error={fe.errs.email}>
+          <input
+            className={inputCls + errCls(fe.errs.email)}
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              fe.clear('email');
+            }}
+            onBlur={(e) => fe.check('email', 'email', e.target.value)}
+            placeholder="例: boom@example.com"
+            autoComplete="email"
+          />
         </Field>
-        <Field label="電話番号">
-          <input className={inputCls} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="例: 09012345678" autoComplete="tel" />
+        <Field label="電話番号" error={fe.errs.phone}>
+          <input
+            className={inputCls + errCls(fe.errs.phone)}
+            type="tel"
+            value={phone}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              fe.clear('phone');
+            }}
+            onBlur={(e) => fe.check('phone', 'phone', e.target.value)}
+            placeholder="例: 09012345678"
+            autoComplete="tel"
+          />
         </Field>
       </Panel>
 

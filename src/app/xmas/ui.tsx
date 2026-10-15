@@ -73,12 +73,19 @@ export function Notice({ children, tone = 'info' }: { children: ReactNode; tone?
   );
 }
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+export function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: ReactNode }) {
   return (
     <label className="mt-4 block">
       <span className="mb-1 block text-sm font-black">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs font-bold text-neutral-600">{hint}</span>}
+      {error ? (
+        <span className="mt-1 block text-xs font-black text-[#c0241f]">⚠ {error}</span>
+      ) : (
+        hint && <span className="mt-1 block text-xs font-bold text-neutral-600">{hint}</span>
+      )}
     </label>
   );
 }
+
+/** エラーがある入力欄は赤枠にする。 */
+export const errCls = (err?: string) => (err ? ' !border-[#d4302a] ring-2 ring-[#d4302a]/30' : '');
