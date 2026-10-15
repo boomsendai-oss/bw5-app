@@ -45,7 +45,12 @@ export async function POST(req: NextRequest) {
       // 本番では完了通知でも保存する(画面側の保存が通信切れで落ちたときの保険)。冪等
       onUploadCompleted: async ({ blob, tokenPayload }) => {
         if (!tokenPayload) return;
-        const name = decodeURIComponent(blob.pathname.split('/').pop() ?? '').replace(/^\d+-/, '');
+        // 画面側の保存(元のファイル名つき)が先に済んでいれば何もしない
+        const cur = await loadPartyOrderByToken(tokenPayload);
+        if (!cur || cur.audioUrl === blob.url) return;
+        const name = decodeURIComponent(blob.pathname.split('/').pop() ?? '')
+          .replace(/^\d+-/, '')
+          .replace(/-[A-Za-z0-9]{16,}(?=\.[^.]+$)/, '');
         await savePartyAudio(tokenPayload, blob.url, name);
       },
     });

@@ -29,8 +29,9 @@ import {
   loadPartyOrderByToken,
   savePartyAudio,
   savePartyStripeSession,
+  extendPartyHold,
 } from '@/lib/partyDb';
-import { buildPartyCheckoutParams, buildPartyLineItems } from '@/lib/partyStripe';
+import { buildPartyCheckoutParams, buildPartyLineItems, retrieveCheckoutSession } from '@/lib/partyStripe';
 import { createBf6CheckoutSession } from '@/lib/bf6Stripe';
 import { buildLinkResendEmail, sendPartyMail, sendPartyOrderEmail } from '@/lib/partyEmail';
 import { isValidEmail } from '@/lib/party';
@@ -132,10 +133,28 @@ export async function startXmasCheckout(token: string): Promise<XmasCheckoutResu
   if (o.payMethod !== 'card' || o.status !== 'pending') {
     return { ok: false, error: 'この申込はカード決済の対象ではありません' };
   }
+  // 決済ページを何度も作り直して枠を押さえ続けられないよう、申込から90分を過ぎたら受け付けない
+  if (Date.now() - new Date(o.createdAt).getTime() > 90 * 60 * 1000) {
+    return { ok: false, error: '申込から時間が経ったため、この申込では決済できません。お手数ですがもう一度お申し込みください' };
+  }
+  // 同じ申込で決済ページを作り直さない(押し直し・別タブで二重に請求されるのを防ぐ)
+  if (o.stripeSessionId) {
+    const prev = await retrieveCheckoutSession(o.stripeSessionId);
+    if (prev.status === 'complete') {
+      return { ok: false, error: 'お支払いは完了しています。反映まで少しかかることがあります。数分後にこのページを再読み込みしてください' };
+    }
+    if (prev.status === 'open' && prev.url && prev.expiresAtSec * 1000 > Date.now() + 60_000) {
+      await extendPartyHold(o.id, new Date(prev.expiresAtSec * 1000 + 60_000).toISOString());
+      return { ok: true, url: prev.url };
+    }
+  }
   const h = await headers();
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'bw5-app.vercel.app';
   const proto = h.get('x-forwarded-proto') ?? 'https';
   const myUrl = `${proto}://${host}/xmas/my?t=${token}`;
+  // Stripeの決済ページの有効期限は最短30分。仮押さえもその期限(+1分)まで延ばし、
+  // 「仮押さえが切れて枠が空いた後に入金される」ことがないようにする
+  const expiresAtEpochSec = Math.floor(Date.now() / 1000) + 30 * 60 + 5;
   try {
     const params = buildPartyCheckoutParams({
       lineItems: buildPartyLineItems(o),
@@ -143,14 +162,11 @@ export async function startXmasCheckout(token: string): Promise<XmasCheckoutResu
       cancelUrl: myUrl,
       customerEmail: o.email,
       orderId: o.id,
-      // Stripeの最短は30分。申込の仮押さえ期限に合わせる
-      expiresAtEpochSec: Math.max(
-        Math.floor(Date.now() / 1000) + 30 * 60 + 5,
-        Math.floor(new Date(o.expiresAt).getTime() / 1000)
-      ),
+      expiresAtEpochSec,
     });
     const session = await createBf6CheckoutSession(params);
     await savePartyStripeSession(o.id, session.id);
+    await extendPartyHold(o.id, new Date((expiresAtEpochSec + 60) * 1000).toISOString());
     return { ok: true, url: session.url };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : '決済ページの作成に失敗しました' };

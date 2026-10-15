@@ -76,3 +76,26 @@ export function parsePartyWebhookEvent(event: any): PartyWebhookEvent | null {
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
+
+export interface CheckoutSessionState {
+  status: 'open' | 'complete' | 'expired' | 'unknown';
+  url: string;
+  expiresAtSec: number;
+}
+
+/** 作成済みのCheckout Sessionの状態を取る(同じ申込で決済ページを二重に作らないため)。失敗時は unknown。 */
+export async function retrieveCheckoutSession(sessionId: string): Promise<CheckoutSessionState> {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key || !sessionId) return { status: 'unknown', url: '', expiresAtSec: 0 };
+  try {
+    const res = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) return { status: 'unknown', url: '', expiresAtSec: 0 };
+    const b = await res.json();
+    const st = b?.status === 'open' || b?.status === 'complete' || b?.status === 'expired' ? b.status : 'unknown';
+    return { status: st, url: typeof b?.url === 'string' ? b.url : '', expiresAtSec: Number(b?.expires_at ?? 0) };
+  } catch {
+    return { status: 'unknown', url: '', expiresAtSec: 0 };
+  }
+}

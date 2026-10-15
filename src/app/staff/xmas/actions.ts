@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { isAuthorizedServer } from '@/lib/eventAuth';
 import {
   PARTY_EVENT_KEY,
+  audioOpen,
   isValidJstLocal,
   type PartySettings,
 } from '@/lib/party';
@@ -55,8 +56,8 @@ export async function saveXmasSettings(input: XmasSettingsInput): Promise<Result
     if (!isValidJstLocal(v)) return { ok: false, error: `${label}の形式が正しくありません` };
   }
   for (const [label, v, min] of [
-    ['前売料金', input.presalePrice, 0],
-    ['当日料金', input.doorPrice, 0],
+    ['前売料金', input.presalePrice, 1],
+    ['当日料金', input.doorPrice, 1],
     ['出演料', input.performerFee, 0],
     ['チーム上限', input.teamCap, 1],
     ['会場費', input.venueFee, 0],
@@ -72,7 +73,12 @@ export async function saveXmasSettings(input: XmasSettingsInput): Promise<Result
 
 export async function setXmasOrderStatus(id: number, action: 'canceled' | 'refunded' | 'restore'): Promise<Result> {
   await requireStaff();
-  const ok = action === 'restore' ? await restorePartyOrderStaff(id) : await setPartyOrderStatusStaff(id, action);
+  if (action === 'restore') {
+    const r = await restorePartyOrderStaff(id, (await getPartySettings(EV)).teamCap);
+    revalidatePath('/staff/xmas');
+    return r;
+  }
+  const ok = await setPartyOrderStatusStaff(id, action);
   revalidatePath('/staff/xmas');
   return ok ? { ok: true } : { ok: false, error: 'この状態からは変更できません' };
 }
@@ -144,6 +150,7 @@ export async function sendXmasAudioReminders(staffName: string): Promise<{ ok: t
   await requireStaff();
   if (!staffName.trim()) return { ok: false, error: '送る人の名前を入れてください' };
   const s = await getPartySettings(EV);
+  if (!audioOpen(s, new Date())) return { ok: false, error: '音源の提出締切を過ぎているため送れません' };
   let sent = 0;
   let failed = 0;
   for (const { order, token } of await listEntriesMissingAudio(EV)) {

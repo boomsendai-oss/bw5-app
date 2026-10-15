@@ -18,6 +18,9 @@ import { countHoldingTeams, getPartySettings, listPartyOrdersStaff } from '@/lib
 import OrderActions from './OrderActions';
 import AudioReminderButton from './AudioReminderButton';
 
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
+
 export const dynamic = 'force-dynamic';
 
 const GATE_LABEL: Record<GateState, string> = {
@@ -29,6 +32,8 @@ const GATE_LABEL: Record<GateState, string> = {
 };
 
 export default async function StaffXmasPage() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const [orders, s, holding] = await Promise.all([
     listPartyOrdersStaff(PARTY_EVENT_KEY),
     getPartySettings(PARTY_EVENT_KEY),
@@ -102,7 +107,10 @@ export default async function StaffXmasPage() {
                       </a>
                     ) : (
                       <span className="font-semibold text-red-600">
-                        未提出{o.audioRemindedAt ? `(リマインド送信済み ${o.audioRemindedAt.slice(5, 10).replace('-', '/')})` : ''}
+                        未提出
+                        {o.audioRemindedAt
+                          ? `(リマインド送信済み ${new Date(o.audioRemindedAt).toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric' })})`
+                          : ''}
                       </span>
                     )}
                   </p>

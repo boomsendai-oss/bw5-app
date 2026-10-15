@@ -45,9 +45,12 @@ export async function POST(req: NextRequest) {
         if (r.amountMismatch) {
           console.error('[party] amount mismatch on order', partyEv.orderId, 'stripe:', partyEv.amountTotal);
         }
+        if (r.overCap) console.error('[party] paid after hold expired and team cap reached. order:', partyEv.orderId);
         await sendPartyOrderEmail(r.order, r.token, await getPartySettings(r.order.eventKey));
       } else if (r.status === 'order_not_found') {
         console.error('[party] webhook order not found. order:', partyEv.orderId);
+      } else if (r.status === 'not_updated' && partyEv.type === 'checkout.session.completed') {
+        console.error('[party] payment completed for non-pending order (refund check). order:', partyEv.orderId);
       }
       return NextResponse.json({ received: true, result: `party_${r.status}` });
     } catch (e) {

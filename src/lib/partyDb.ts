@@ -46,6 +46,7 @@ export interface PartyOrder {
   status: PartyStatus;
   unitPrice: number;
   amountTotal: number;
+  stripeSessionId: string;
   expiresAt: string;
   audioUrl: string;
   audioFilename: string;
@@ -77,6 +78,7 @@ function rowToOrder(r: any, members: EntryMember[]): PartyOrder {
     status: String(r.status) as PartyStatus,
     unitPrice: Number(r.unit_price ?? 0),
     amountTotal: Number(r.amount_total ?? 0),
+    stripeSessionId: String(r.stripe_session_id ?? ''),
     expiresAt: String(r.expires_at ?? ''),
     audioUrl: String(r.audio_url ?? ''),
     audioFilename: String(r.audio_filename ?? ''),
@@ -283,25 +285,42 @@ export async function setPartyOrderStatusStaff(id: number, status: 'canceled' | 
 }
 
 /** 取消を元に戻す。当日現金→cash_due、カード→決済記録があれば paid。 */
-export async function restorePartyOrderStaff(id: number): Promise<boolean> {
-  const r = await getOne("SELECT pay_method FROM party_orders WHERE id = ? AND status = 'canceled'", [id]);
-  if (!r) return false;
-  let next = 'cash_due';
-  if (r.pay_method === 'card') {
-    const paid = await getOne(
-      "SELECT 1 AS x FROM party_payments WHERE order_id = ? AND event_type = 'checkout.session.completed' LIMIT 1",
-      [id]
-    );
-    if (!paid) return false;
-    next = 'paid';
+/**
+ * 取消を元に戻す。当日現金→cash_due、カード→決済記録があれば paid。
+ * 出演エントリーは、取消の間に別チームが入って上限に達していたら戻さない(上限超過を防ぐ)。
+ */
+export async function restorePartyOrderStaff(id: number, teamCap: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  await sweepExpiredPartyOrders();
+  try {
+    await withWriteTx(async (tx) => {
+      const r = (await tx.execute({ sql: "SELECT * FROM party_orders WHERE id = ? AND status = 'canceled'", args: [id] })).rows[0];
+      if (!r) throw new RestoreError('この申込は取消状態ではありません');
+      let next = 'cash_due';
+      if (r.pay_method === 'card') {
+        const paid = await tx.execute({
+          sql: "SELECT 1 AS x FROM party_payments WHERE order_id = ? AND event_type = 'checkout.session.completed' LIMIT 1",
+          args: [id],
+        });
+        if (paid.rows.length === 0) throw new RestoreError('カード決済の記録がないため戻せません');
+        next = 'paid';
+      }
+      if (r.kind === 'entry') {
+        const cnt = await tx.execute({
+          sql: `SELECT COUNT(*) AS n FROM party_orders WHERE event_key = ? AND kind = 'entry' AND status IN ${HOLDING} AND id != ?`,
+          args: [String(r.event_key), id],
+        });
+        if (Number(cnt.rows[0]?.n ?? 0) >= teamCap) throw new RestoreError('出演チームがすでに上限に達しているため戻せません');
+      }
+      await tx.execute({ sql: 'UPDATE party_orders SET status = ?, updated_at = ? WHERE id = ?', args: [next, nowIso(), id] });
+    });
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof RestoreError) return { ok: false, error: e.message };
+    throw e;
   }
-  const u = await execute("UPDATE party_orders SET status = ?, updated_at = ? WHERE id = ? AND status = 'canceled'", [
-    next,
-    nowIso(),
-    id,
-  ]);
-  return Number(u.rowsAffected ?? 0) > 0;
 }
+
+class RestoreError extends Error {}
 
 export async function setPartyStaffNote(id: number, note: string): Promise<void> {
   await execute('UPDATE party_orders SET staff_note = ?, updated_at = ? WHERE id = ?', [note.slice(0, 500), nowIso(), id]);
@@ -314,7 +333,7 @@ export async function savePartyStripeSession(orderId: number, sessionId: string)
 }
 
 export type ApplyPartyWebhookResult =
-  | { status: 'paid'; order: PartyOrder; token: string; amountMismatch: boolean }
+  | { status: 'paid'; order: PartyOrder; token: string; amountMismatch: boolean; overCap: boolean }
   | { status: 'duplicate' | 'ignored' | 'order_not_found' | 'not_updated' };
 
 /**
@@ -327,26 +346,68 @@ export async function applyPartyWebhookEvent(
   ev: { eventId: string; type: string; sessionId: string; paymentIntentId: string; orderId: number; amountTotal: number | null },
   rawPayload: string
 ): Promise<ApplyPartyWebhookResult> {
-  const ins = await execute(
-    'INSERT OR IGNORE INTO party_payments (stripe_event_id, event_type, stripe_session_id, payment_intent_id, order_id, amount, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [ev.eventId, ev.type, ev.sessionId, ev.paymentIntentId, ev.orderId, ev.amountTotal ?? 0, rawPayload.slice(0, 20000), nowIso()]
-  );
-  if (Number(ins.rowsAffected ?? 0) === 0) return { status: 'duplicate' };
-  if (ev.type !== 'checkout.session.completed') return { status: 'ignored' };
-  const row = await getOne('SELECT * FROM party_orders WHERE id = ? LIMIT 1', [ev.orderId]);
-  if (!row) return { status: 'order_not_found' };
-  const u = await execute(
-    "UPDATE party_orders SET status = 'paid', stripe_session_id = ?, updated_at = ? WHERE id = ? AND status IN ('pending','expired')",
-    [ev.sessionId, nowIso(), ev.orderId]
-  );
-  if (Number(u.rowsAffected ?? 0) === 0) return { status: 'not_updated' };
+  const pre = await getOne('SELECT event_key FROM party_orders WHERE id = ? LIMIT 1', [ev.orderId]);
+  const teamCap = pre ? (await getPartySettings(String(pre.event_key))).teamCap : Number.MAX_SAFE_INTEGER;
+  // 受信記録と注文の更新を1つのトランザクションにする。途中で落ちたら記録ごと戻り、
+  // Stripeの再送で正しく適用し直せる(記録だけ残って永久に未反映になるのを防ぐ)。
+  const result = await withWriteTx(async (tx) => {
+    const ins = await tx.execute({
+      sql: 'INSERT OR IGNORE INTO party_payments (stripe_event_id, event_type, stripe_session_id, payment_intent_id, order_id, amount, payload, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      args: [ev.eventId, ev.type, ev.sessionId, ev.paymentIntentId, ev.orderId, ev.amountTotal ?? 0, rawPayload.slice(0, 20000), nowIso()],
+    });
+    if (Number(ins.rowsAffected ?? 0) === 0) return { status: 'duplicate' as const };
+    if (ev.type !== 'checkout.session.completed') return { status: 'ignored' as const };
+    const row = (await tx.execute({ sql: 'SELECT * FROM party_orders WHERE id = ? LIMIT 1', args: [ev.orderId] })).rows[0];
+    if (!row) return { status: 'order_not_found' as const };
+    const st = String(row.status);
+    if (st !== 'pending' && st !== 'expired') {
+      // 二重決済・取消後の決済など。入金は受けているので、スタッフが返金を判断できるよう印を残す
+      const note = `⚠ ${new Date().toISOString().slice(0, 10)} 状態「${st}」の申込にカード決済が完了(二重入金/取消後の入金の可能性・Stripeで返金を確認)`;
+      await tx.execute({
+        sql: "UPDATE party_orders SET staff_note = trim(staff_note || ' ' || ?), updated_at = ? WHERE id = ?",
+        args: [note, nowIso(), ev.orderId],
+      });
+      return { status: 'not_updated' as const };
+    }
+    let overCap = false;
+    if (row.kind === 'entry' && st === 'expired') {
+      // 仮押さえが切れた後の入金: その間に枠が埋まっていたら上限超過として印を残す(入金は無効にしない)
+      const cnt = await tx.execute({
+        sql: `SELECT COUNT(*) AS n FROM party_orders WHERE event_key = ? AND kind = 'entry' AND status IN ${HOLDING} AND id != ?`,
+        args: [String(row.event_key), ev.orderId],
+      });
+      overCap = Number(cnt.rows[0]?.n ?? 0) >= teamCap;
+    }
+    await tx.execute({
+      sql: "UPDATE party_orders SET status = 'paid', stripe_session_id = ?, updated_at = ? WHERE id = ?",
+      args: [ev.sessionId, nowIso(), ev.orderId],
+    });
+    if (overCap) {
+      await tx.execute({
+        sql: "UPDATE party_orders SET staff_note = trim(staff_note || ' ' || ?) WHERE id = ?",
+        args: ['⚠ 仮押さえ切れの後に入金・出演チームの上限を超えています(要確認)', ev.orderId],
+      });
+    }
+    return { status: 'paid' as const, row, overCap };
+  });
+  if (result.status !== 'paid') return { status: result.status };
+  const row = result.row;
   const order = rowToOrder({ ...row, status: 'paid' }, row.kind === 'entry' ? await membersOf(ev.orderId) : []);
   return {
     status: 'paid',
     order,
     token: String(row.edit_token),
     amountMismatch: ev.amountTotal != null && ev.amountTotal !== Number(row.amount_total),
+    overCap: result.overCap,
   };
+}
+
+/** 決済ページを作ったら、その有効期限まで仮押さえを延ばす(期限切れ後の入金で上限を超えないように)。 */
+export async function extendPartyHold(orderId: number, untilIso: string): Promise<void> {
+  await execute(
+    "UPDATE party_orders SET expires_at = ?, updated_at = ? WHERE id = ? AND status = 'pending' AND expires_at < ?",
+    [untilIso, nowIso(), orderId, untilIso]
+  );
 }
 
 // ---- 音源 ----

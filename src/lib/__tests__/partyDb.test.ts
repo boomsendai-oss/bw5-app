@@ -125,7 +125,7 @@ describe('スタッフ操作と音源', () => {
     const r = await db.createPartyTicket(EV, ticket, s);
     if (!r.ok) throw new Error(r.error);
     expect(await db.setPartyOrderStatusStaff(r.orderId, 'canceled')).toBe(true);
-    expect(await db.restorePartyOrderStaff(r.orderId)).toBe(true);
+    expect((await db.restorePartyOrderStaff(r.orderId, 8)).ok).toBe(true);
     expect((await db.loadPartyOrderByToken(r.token))?.status).toBe('cash_due');
   });
   it('音源はエントリー(確定)だけ保存できる', async () => {
@@ -150,5 +150,49 @@ describe('音源の後日提出', () => {
     const found = await db.findConfirmedOrdersByEmail(EV, 'E@EXAMPLE.COM');
     expect(found.length).toBeGreaterThan(0);
     expect(await db.findConfirmedOrdersByEmail(EV, 'nobody@example.com')).toEqual([]);
+  });
+});
+
+describe('不具合チェックで見つかった点の再発防止', () => {
+  it('取消中に枠が埋まったエントリーは元に戻せない', async () => {
+    const s = await db.getPartySettings(EV); // teamCap=2・確定チームは A と C
+    const a = (await db.listPartyOrdersStaff(EV)).find((o) => o.teamName === 'A')!;
+    expect(await db.setPartyOrderStatusStaff(a.id, 'canceled')).toBe(true);
+    const d = await db.createPartyEntry(EV, entry('D'), s); // 空いた枠に D が入る
+    expect(d.ok).toBe(true);
+    const r = await db.restorePartyOrderStaff(a.id, s.teamCap);
+    expect(r.ok).toBe(false);
+  });
+  it('仮押さえ切れの後の入金で上限を超えたら paid にしつつ印を残す', async () => {
+    const b = (await db.listPartyOrdersStaff(EV)).find((o) => o.teamName === 'B')!; // expired
+    const res = await db.applyPartyWebhookEvent(
+      { eventId: 'evt_over', type: 'checkout.session.completed', sessionId: 'cs_over', paymentIntentId: '', orderId: b.id, amountTotal: 12000 },
+      '{}'
+    );
+    expect(res.status).toBe('paid');
+    if (res.status === 'paid') expect(res.overCap).toBe(true);
+    const after = (await db.listPartyOrdersStaff(EV)).find((o) => o.id === b.id)!;
+    expect(after.staffNote).toMatch(/上限を超えています/);
+  });
+  it('支払済みの申込への二重決済は状態を変えずに印を残す', async () => {
+    const b = (await db.listPartyOrdersStaff(EV)).find((o) => o.teamName === 'B')!;
+    const res = await db.applyPartyWebhookEvent(
+      { eventId: 'evt_dup2', type: 'checkout.session.completed', sessionId: 'cs_dup2', paymentIntentId: '', orderId: b.id, amountTotal: 12000 },
+      '{}'
+    );
+    expect(res.status).toBe('not_updated');
+    const after = (await db.listPartyOrdersStaff(EV)).find((o) => o.id === b.id)!;
+    expect(after.staffNote).toMatch(/二重入金/);
+  });
+  it('決済ページの期限まで仮押さえを延ばす(短くはしない)', async () => {
+    const s = await db.getPartySettings(EV);
+    await db.savePartySettings(EV, { ...s, teamCap: 99 });
+    const r = await db.createPartyTicket(EV, { ...ticket, payMethod: 'card' }, s);
+    if (!r.ok) throw new Error(r.error);
+    const later = new Date(Date.now() + 59 * 60 * 1000).toISOString();
+    await db.extendPartyHold(r.orderId, later);
+    expect((await db.loadPartyOrderByToken(r.token))?.expiresAt).toBe(later);
+    await db.extendPartyHold(r.orderId, new Date(Date.now() + 60 * 1000).toISOString());
+    expect((await db.loadPartyOrderByToken(r.token))?.expiresAt).toBe(later);
   });
 });

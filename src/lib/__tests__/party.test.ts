@@ -277,3 +277,16 @@ describe('入力欄のその場チェック', () => {
     expect(contactFieldError('kana', '木村')).toMatch(/ひらがな/);
   });
 });
+
+describe('不具合チェック対応', () => {
+  it('存在しない日付は設定値として受け付けない', async () => {
+    const { isValidJstLocal } = await import('../party');
+    expect(isValidJstLocal('2026-12-16T20:00')).toBe(true);
+    expect(isValidJstLocal('2026-02-30T10:00')).toBe(false);
+    expect(isValidJstLocal('2026-12-16T24:00')).toBe(false);
+  });
+  it('ふりがなに中黒(・)を使える', () => {
+    const v = validateEntryInput({ ...baseEntry, teamKana: 'ぶーむ・きっず' });
+    expect(typeof v !== 'string' && v.teamKana).toBe('ぶーむ・きっず');
+  });
+});

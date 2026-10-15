@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     title: 'BOOM クリスマスパーティー 2026',
     description: '2026.12.19(土) SPACE ZERO / 参加申込・ショーケース出演エントリー',
     type: 'website',
-    images: ['/xmas/hero-v3.jpg'],
+    images: ['/xmas/hero-v4.jpg'],
   },
 };
 

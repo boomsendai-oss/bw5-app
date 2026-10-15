@@ -5,9 +5,14 @@ import { PARTY_EVENT_KEY, XMAS_EVENT_INFO, formatMembers, rosterRows, summarizeP
 import { listPartyOrdersStaff } from '@/lib/partyDb';
 import PrintButton from './PrintButton';
 
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
+
 export const dynamic = 'force-dynamic';
 
 export default async function StaffXmasRosterPage() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const orders = await listPartyOrdersStaff(PARTY_EVENT_KEY);
   const rows = rosterRows(orders);
   const sum = summarizePartyOrders(orders);

@@ -57,7 +57,11 @@ export const XMAS_EVENT_INFO = {
 const LOCAL_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 export function isValidJstLocal(v: string): boolean {
-  return LOCAL_RE.test(v) && jstLocalToMs(v) != null;
+  const ms = jstLocalToMs(v);
+  if (ms == null) return false;
+  // 2026-02-30 のような存在しない日付(翌月に繰り越される)を弾く
+  const back = new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 16);
+  return back === v;
 }
 
 /** 'YYYY-MM-DDTHH:mm'(JST) → epoch ms。不正/空は null。 */
@@ -196,7 +200,7 @@ export function normalizeKana(v: string): string {
     .replace(/\s+/g, ' ');
 }
 
-const KANA_RE = /^[ぁ-ゖー ]+$/;
+const KANA_RE = /^[ぁ-ゖー・ ]+$/;
 
 interface ContactInput {
   buyerName?: unknown;

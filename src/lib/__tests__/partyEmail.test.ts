@@ -7,7 +7,7 @@ const base: PartyOrder = {
   id: 7, eventKey: 'xmas2026', kind: 'ticket', buyerName: '木村 太郎', buyerKana: 'きむら たろう',
   email: 't@example.com', phone: '09012345678', isMember: true, peopleCount: 3, infantCount: 1,
   teamName: '', teamKana: '', genre: '', memberCount: 0, members: [], payMethod: 'cash', status: 'cash_due',
-  unitPrice: 2000, amountTotal: 6000, expiresAt: '', audioUrl: '', audioFilename: '', audioUploadedAt: '', audioRemindedAt: '',
+  unitPrice: 2000, amountTotal: 6000, stripeSessionId: '', expiresAt: '', audioUrl: '', audioFilename: '', audioUploadedAt: '', audioRemindedAt: '',
   staffNote: '', createdAt: '2026-10-20T11:00:00.000Z',
 };
 const S = DEFAULT_PARTY_SETTINGS;

@@ -5,9 +5,14 @@ import { PARTY_EVENT_KEY } from '@/lib/party';
 import { getPartySettings } from '@/lib/partyDb';
 import SettingsForm from './SettingsForm';
 
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
+
 export const dynamic = 'force-dynamic';
 
 export default async function StaffXmasSettingsPage() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const s = await getPartySettings(PARTY_EVENT_KEY);
   return (
     <div>
