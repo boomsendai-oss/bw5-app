@@ -165,6 +165,12 @@ const CARDS: CardDef[] = [
     ],
   },
   {
+    href: '/staff/bw6-interest',
+    icon: PartyPopper,
+    title: 'BW6 出てみたい集計',
+    description: 'プレ告知LPの「出てみたい／気になる」の数・流入元・名前を入れた人',
+  },
+  {
     href: '/staff/xmas',
     icon: Gift,
     title: 'クリスマスパーティー2026',
