@@ -133,8 +133,11 @@ export default function EntryForm(p: {
           ))}
         </div>
         <div className="mt-4 rounded-lg border-[3px] border-[#1a1410] bg-[#f4cf3e] p-3 text-center">
+          <p className="text-xs font-black">
+            出演料{yen(p.performerFee)} + 入場料{yen(p.presalePrice)}
+          </p>
           <p className="text-sm font-black">
-            出演料 {yen(p.performerFee)} + 入場料 {yen(p.presalePrice)} = 1人 {yen(p.entryUnit)} × {filled}人
+            1人 {yen(p.entryUnit)} × メンバー {filled}人
           </p>
           <p className="text-3xl font-black">{yen(total)}</p>
           <p className="text-xs font-bold">出演メンバーはパーティーの参加申込は不要です</p>

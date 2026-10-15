@@ -1,6 +1,7 @@
 // ⚠️ 公開ページ(認証なし)。理由: 申込者本人の控え。edit_token 完全一致の申込1件だけを表示する
 // (トークンなし・不一致では何も出さない。申込を列挙する経路はない)。
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   PARTY_EVENT_KEY,
   XMAS_EVENT_INFO,
@@ -49,6 +50,9 @@ export default async function XmasMyPage({ searchParams }: { searchParams: Promi
 
   return (
     <XmasShell>
+      {confirmed && (
+        <Image src="/xmas/kun_jump.png" alt="" width={458} height={480} priority className="mx-auto mb-2 w-32 drop-shadow-[3px_3px_0_rgba(26,20,16,0.35)]" />
+      )}
       <h1 className="text-center text-2xl font-black">{heading}</h1>
       <div className="mx-auto mt-4 w-fit -rotate-1 border-[3px] border-[#1a1410] bg-[#f4cf3e] px-5 py-2 text-center shadow-[4px_4px_0_#1a1410]">
         <p className="text-xs font-black">受付番号</p>

@@ -47,8 +47,8 @@ export default async function XmasTopPage() {
   return (
     <XmasShell>
       <Image
-        src="/xmas/flyer.jpg"
-        alt="BOOM クリスマスパーティー 2026 ショーケース出演チーム募集"
+        src="/xmas/hero.jpg"
+        alt="BOOM クリスマスパーティー 2026 12.19 SAT SPACE ZERO"
         width={1080}
         height={1350}
         priority
@@ -74,7 +74,12 @@ export default async function XmasTopPage() {
                 <br />
                 <span className="text-xs">{XMAS_EVENT_INFO.venueAddress}</span>
                 <br />
-                <a href={XMAS_MAP_URL} target="_blank" rel="noreferrer" className="text-xs font-black text-[#2f8a3e] underline">
+                <a
+                  href={XMAS_MAP_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-black text-[#2f8a3e] underline"
+                >
                   地図を開く
                 </a>
               </>
@@ -109,6 +114,29 @@ export default async function XmasTopPage() {
         </ul>
       </Panel>
 
+      <Panel title="画伯コーナー" tone="green">
+        <p className="text-sm font-black">去年の「画伯の絵を当てろ！ゲーム」より。これ、何に見えますか？</p>
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          {[
+            { src: '/xmas/gahaku_cat.jpg', q: 'Q1', rot: '-rotate-3' },
+            { src: '/xmas/gahaku_pig.jpg', q: 'Q2', rot: 'rotate-2' },
+          ].map((g) => (
+            <figure
+              key={g.q}
+              className={`relative ${g.rot} border-[3px] border-[#1a1410] bg-white p-1.5 pb-3 shadow-[4px_4px_0_#1a1410]`}
+            >
+              <span
+                className="absolute -top-3 left-1/2 h-5 w-14 -translate-x-1/2 rotate-2 bg-[#f4cf3e]/80"
+                aria-hidden
+              />
+              <Image src={g.src} alt={`画伯の絵 ${g.q}`} width={800} height={1100} className="h-auto w-full" />
+              <figcaption className="mt-1 text-center text-lg font-black text-[#d4302a]">{g.q}</figcaption>
+            </figure>
+          ))}
+        </div>
+        <p className="mt-4 text-xs font-bold text-neutral-700">正解した人には賞品があります。</p>
+      </Panel>
+
       <Panel title="タイムテーブル(予定)">
         <ol>
           {XMAS_TIMETABLE.map((t) => (
@@ -124,7 +152,8 @@ export default async function XmasTopPage() {
       <Panel title="参加申込(前売)">
         <p className="text-sm font-bold">{stateLine(ticketState, s.openAt, ticketDeadline)}</p>
         <p className="mt-1 text-xs font-bold text-neutral-600">
-          カード払い または 当日現金払い。締切後は当日券({yen(s.doorPrice)})を会場でお求めください。
+          カード払い または 当日現金払い。締切後は当日券({yen(s.doorPrice)}
+          )を会場でお求めください。
         </p>
         {ticketOpen ? (
           <Link href="/xmas/ticket" className={`mt-4 ${primaryBtnCls}`}>
@@ -133,21 +162,40 @@ export default async function XmasTopPage() {
         ) : null}
       </Panel>
 
-      <Panel title="ショーケース出演エントリー" tone="green">
-        <p className="text-sm font-bold">{stateLine(ctx.entry, s.openAt, s.entryDeadline)}</p>
-        {ctx.entry === 'open' && <p className="mt-1 text-sm font-black text-[#d4302a]">残り {ctx.teamsLeft} チーム</p>}
-        <ul className="mt-2 space-y-1 text-xs font-bold text-neutral-700">
-          <li>・2人以上のチーム(1人での出演はなし)・{XMAS_EVENT_INFO.showTimeLimit}・先着{s.teamCap}チーム</li>
-          <li>・クラスや学年が違うメンバー、BOOMの生徒ではない友達もOK</li>
-          <li>・出演料 1人 {yen(s.performerFee)}(別途 入場料 {yen(s.presalePrice)} がかかります。エントリーでまとめてお支払い・出演メンバーはパーティーの申込不要)</li>
-          <li>・エントリー締切 {formatJstLabel(s.entryDeadline)} / 音源の提出締切 {formatJstLabel(s.audioDeadline)}</li>
-        </ul>
-        {ctx.entry === 'open' ? (
-          <Link href="/xmas/entry" className={`mt-4 ${greenBtnCls}`}>
-            出演エントリーする
-          </Link>
-        ) : null}
-      </Panel>
+      <div className="relative">
+        <Panel title="ショーケース出演エントリー" tone="green">
+          <p className="text-sm font-bold">{stateLine(ctx.entry, s.openAt, s.entryDeadline)}</p>
+          {ctx.entry === 'open' && (
+            <p className="mt-1 text-sm font-black text-[#d4302a]">残り {ctx.teamsLeft} チーム</p>
+          )}
+          <ul className="mt-2 space-y-1 text-xs font-bold text-neutral-700">
+            <li>
+              ・2人以上のチーム(1人での出演はなし)・
+              {XMAS_EVENT_INFO.showTimeLimit}・先着{s.teamCap}チーム
+            </li>
+            <li>・クラスや学年が違うメンバー、BOOMの生徒ではない友達もOK</li>
+            <li>
+              ・出演料 1人 {yen(s.performerFee)}(別途 入場料 {yen(s.presalePrice)}{' '}
+              がかかります。エントリーでまとめてお支払い・出演メンバーはパーティーの申込不要)
+            </li>
+            <li>
+              ・エントリー締切 {formatJstLabel(s.entryDeadline)} / 音源の提出締切 {formatJstLabel(s.audioDeadline)}
+            </li>
+          </ul>
+          {ctx.entry === 'open' ? (
+            <Link href="/xmas/entry" className={`mt-4 ${greenBtnCls}`}>
+              出演エントリーする
+            </Link>
+          ) : null}
+        </Panel>
+        <Image
+          src="/xmas/kun_point.png"
+          alt=""
+          width={401}
+          height={480}
+          className="pointer-events-none absolute -top-2 right-0 z-10 w-24 rotate-6 drop-shadow-[3px_3px_0_rgba(26,20,16,0.35)]"
+        />
+      </div>
 
       <Panel title="よくある質問">
         <dl className="space-y-3">

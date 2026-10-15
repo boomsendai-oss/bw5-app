@@ -18,7 +18,7 @@ export const greenBtnCls =
 export function XmasShell({ children }: { children: ReactNode }) {
   return (
     <div
-      className="min-h-dvh text-[#1a1410]"
+      className="min-h-dvh overflow-x-clip text-[#1a1410]"
       style={{
         backgroundColor: '#f3e6c4',
         backgroundImage: 'radial-gradient(rgba(120,80,30,0.13) 1.2px, transparent 1.4px)',
