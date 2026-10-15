@@ -38,8 +38,9 @@ export function buildPartyOrderEmail(o: PartyOrder, token: string, s: PartySetti
     L.push(`■ チーム名: ${o.teamName}(${o.teamKana}) / ${o.genre}`);
     L.push(`■ メンバー(${o.memberCount}名):`);
     for (const m of o.members) L.push(`  ・${m.name}(${gradeLabel(m.grade)})`);
-    L.push(`■ 出演料+入場料: ${yen(o.unitPrice)} × ${o.memberCount}名`);
-    L.push('  ※出演メンバーはチケット予約は不要です(付き添いの保護者の方はチケット予約をお願いします)');
+    L.push(`■ 出演料: ${yen(o.unitPrice)} × ${o.memberCount}名`);
+    L.push('  ※入場には、出演メンバーも1人ずつチケット予約が必要です(出演料とは別)。まだの方はこちらから:');
+    L.push(`  ${BASE_URL}/xmas/ticket`);
   } else {
     L.push(`■ 参加人数: 小学生以上 ${o.peopleCount}名${o.infantCount > 0 ? ` / 未就学児 ${o.infantCount}名(無料)` : ''}`);
     L.push(`■ 入場チケット(前売): ${yen(o.unitPrice)} × ${o.peopleCount}名`);

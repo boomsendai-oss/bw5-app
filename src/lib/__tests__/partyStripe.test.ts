@@ -7,9 +7,9 @@ describe('buildPartyLineItems', () => {
       { name: 'BOOM クリスマスパーティー 2026 入場チケット(前売)', unitAmount: 2000, qty: 3 },
     ]);
   });
-  it('エントリーは 出演料+参加費 の単価×メンバー数', () => {
-    expect(buildPartyLineItems({ kind: 'entry', unitPrice: 4000, peopleCount: 0, memberCount: 4, teamName: 'BOOM KIDS' })).toEqual([
-      { name: 'ショーケース出演(出演料+入場料) BOOM KIDS', unitAmount: 4000, qty: 4 },
+  it('エントリーは 出演料 の単価×メンバー数', () => {
+    expect(buildPartyLineItems({ kind: 'entry', unitPrice: 2000, peopleCount: 0, memberCount: 4, teamName: 'BOOM KIDS' })).toEqual([
+      { name: 'ショーケース出演料 BOOM KIDS', unitAmount: 2000, qty: 4 },
     ]);
   });
 });

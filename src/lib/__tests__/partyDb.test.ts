@@ -78,7 +78,7 @@ describe('出演エントリーの先着', () => {
     expect(c.ok).toBe(false);
     if (!c.ok) expect(c.error).toMatch(/定員/);
     if (a.ok) {
-      expect(a.amountTotal).toBe(12000); // 3人×(2000+2000)
+      expect(a.amountTotal).toBe(6000); // 3人×出演料2000(入場はチケットで別)
       const o = await db.loadPartyOrderByToken(a.token);
       expect(o?.members.map((m) => m.name)).toEqual(['あ', 'い', 'う']);
       expect(o?.members[1].grade).toBe('jhs');

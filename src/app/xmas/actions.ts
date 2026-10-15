@@ -64,7 +64,7 @@ export async function getXmasContext(preview?: string): Promise<XmasPublicContex
   const now = new Date();
   // プレビュー鍵つきのときだけ、受付開始前でも「受付中の画面」を表示する(表示のみ。申込の判定は本物の設定で行う)
   const isPreview = isXmasPreview(EV, preview);
-  const gateSettings = isPreview ? { ...settings, openAt: '2000-01-01T00:00', suspended: false } : settings;
+  const gateSettings = isPreview ? { ...settings, openAt: '2000-01-01T00:00', ticketOpenAt: '2000-01-01T00:00', suspended: false } : settings;
   return {
     settings,
     ticketCard: ticketCardState(gateSettings, now),

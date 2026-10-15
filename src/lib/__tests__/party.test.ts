@@ -88,6 +88,19 @@ describe('受付の状態は商品ごとに別', () => {
     expect(entryState(OPEN, jst('2026-11-01T12:00'), 8)).toBe('full');
     expect(entryState(OPEN, jst('2026-12-02T00:00'), 0)).toBe('closed');
   });
+  it('チケット予約だけ先に開けられる(エントリーは openAt まで before)', () => {
+    const s = { ...OPEN, ticketOpenAt: '2026-10-15T20:00' };
+    const now = jst('2026-10-16T12:00');
+    expect(ticketCardState(s, now)).toBe('open');
+    expect(ticketCashState(s, now)).toBe('open');
+    expect(entryState(s, now, 0)).toBe('before');
+    expect(entryState(s, jst('2026-10-20T20:00:00'), 0)).toBe('open');
+  });
+  it('ticketOpenAt が空ならチケットもエントリーと同時に開く', () => {
+    expect(ticketCardState(OPEN, jst('2026-10-20T19:59:59'))).toBe('before');
+    expect(resolvePartySettings({ ticket_open_at: '2026-10-15T20:00' }).ticketOpenAt).toBe('2026-10-15T20:00');
+    expect(resolvePartySettings({ ticket_open_at: 'bad' }).ticketOpenAt).toBe('');
+  });
   it('緊急停止は全部止める', () => {
     const s = { ...OPEN, suspended: true };
     const now = jst('2026-11-01T12:00');
@@ -105,10 +118,10 @@ describe('金額は設定値から計算', () => {
   it('参加費は人数×前売・未就学児は数えない', () => {
     expect(ticketTotal(3, OPEN)).toBe(6000);
   });
-  it('出演は1人あたり出演料+参加費', () => {
-    expect(entryUnitPrice(OPEN)).toBe(4000);
-    expect(entryTotal(4, OPEN)).toBe(16000);
-    expect(entryTotal(4, { ...OPEN, performerFee: 1500 })).toBe(14000);
+  it('出演は1人あたり出演料だけ(入場は出演者もチケットで別に払う)', () => {
+    expect(entryUnitPrice(OPEN)).toBe(2000);
+    expect(entryTotal(4, OPEN)).toBe(8000);
+    expect(entryTotal(4, { ...OPEN, performerFee: 1500 })).toBe(6000);
   });
 });
 
@@ -231,7 +244,7 @@ describe('スタッフ集計', () => {
   it('確定分だけ数える', () => {
     expect(summarizePartyOrders(orders)).toEqual({
       ticketOrders: 2, people: 5, infants: 1, nonMemberOrders: 1, teams: 1, performers: 4,
-      cardPaid: 6000, cashDue: 20000, headcount: 9,
+      cardPaid: 6000, cashDue: 20000, headcount: 5,
     });
   });
   it('名簿は確定分を50音順', () => {

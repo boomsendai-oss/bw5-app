@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import StaffPageHeader from '@/components/StaffPageHeader';
 import {
+  ticketOpenAtOf,
   PARTY_EVENT_KEY,
   entryState,
   formatJstLabel,
@@ -48,7 +49,7 @@ export default async function StaffXmasPage() {
     <div>
       <StaffPageHeader
         title="クリスマスパーティー2026"
-        description={`12/19(土) SPACE ZERO ・ 公開 ${s.openAt ? formatJstLabel(s.openAt) : '未設定'}`}
+        description={`12/19(土) SPACE ZERO ・ チケット ${ticketOpenAtOf(s) ? formatJstLabel(ticketOpenAtOf(s)) : '未設定'}〜 ・ エントリー ${s.openAt ? formatJstLabel(s.openAt) : '未設定'}〜`}
         rightExtra={
           <div className="flex flex-wrap gap-2 text-sm">
             <HeaderLink href="/staff/xmas/settings">設定</HeaderLink>

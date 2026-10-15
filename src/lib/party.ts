@@ -13,9 +13,14 @@ export type PartyPayMethod = 'card' | 'cash';
 export type PartyStatus = 'pending' | 'paid' | 'cash_due' | 'expired' | 'canceled' | 'refunded';
 export type GateState = 'before' | 'open' | 'closed' | 'full' | 'suspended';
 
-/** 日時はすべて JST の壁時計 'YYYY-MM-DDTHH:mm'。openAt が空 = 未公開。 */
+/**
+ * 日時はすべて JST の壁時計 'YYYY-MM-DDTHH:mm'。
+ * openAt = 出演エントリーの受付開始(空=未公開)。ticketOpenAt = チケット予約の受付開始(空=openAtと同じ)。
+ * チケットとエントリーの開始を分けたのは TARO 2026-10-15(チケットは先に開け、先着のエントリーは時刻を決めて一斉に開ける)。
+ */
 export interface PartySettings {
   openAt: string;
+  ticketOpenAt: string;
   ticketCardDeadline: string;
   ticketCashDeadline: string;
   entryDeadline: string;
@@ -30,6 +35,7 @@ export interface PartySettings {
 
 export const DEFAULT_PARTY_SETTINGS: PartySettings = {
   openAt: '',
+  ticketOpenAt: '',
   ticketCardDeadline: '2026-12-16T20:00',
   ticketCashDeadline: '2026-12-16T20:00',
   entryDeadline: '2026-12-01T23:59',
@@ -83,24 +89,29 @@ function isOpened(openAt: string, now: Date): boolean {
   return ms != null && now.getTime() >= ms;
 }
 
-function gate(s: PartySettings, now: Date, deadline: string): GateState {
+/** チケット予約の受付開始(未設定ならエントリーと同じ)。 */
+export function ticketOpenAtOf(s: PartySettings): string {
+  return s.ticketOpenAt || s.openAt;
+}
+
+function gate(s: PartySettings, now: Date, deadline: string, openAt: string): GateState {
   if (s.suspended) return 'suspended';
-  if (!isOpened(s.openAt, now)) return 'before';
+  if (!isOpened(openAt, now)) return 'before';
   if (!isBeforeDeadline(deadline, now)) return 'closed';
   return 'open';
 }
 
 export function ticketCardState(s: PartySettings, now: Date): GateState {
-  return gate(s, now, s.ticketCardDeadline);
+  return gate(s, now, s.ticketCardDeadline, ticketOpenAtOf(s));
 }
 
 export function ticketCashState(s: PartySettings, now: Date): GateState {
-  return gate(s, now, s.ticketCashDeadline);
+  return gate(s, now, s.ticketCashDeadline, ticketOpenAtOf(s));
 }
 
 /** holdingTeams = 確定(paid/cash_due)＋決済中(期限内pending)のチーム数。 */
 export function entryState(s: PartySettings, now: Date, holdingTeams: number): GateState {
-  const g = gate(s, now, s.entryDeadline);
+  const g = gate(s, now, s.entryDeadline, s.openAt);
   if (g !== 'open') return g;
   return holdingTeams >= s.teamCap ? 'full' : 'open';
 }
@@ -113,9 +124,12 @@ export function ticketTotal(peopleCount: number, s: PartySettings): number {
   return peopleCount * s.presalePrice;
 }
 
-/** 出演者1人あたり = 出演料 + 入場料(前売)。 */
+/**
+ * 出演者1人あたり = 出演料だけ。入場は出演者もチケット予約で別に払う(TARO 2026-10-15)。
+ * 先にチケットを取った人が後から出演を決めても二重払いにならないようにするため。
+ */
 export function entryUnitPrice(s: PartySettings): number {
-  return s.performerFee + s.presalePrice;
+  return s.performerFee;
 }
 
 export function entryTotal(memberCount: number, s: PartySettings): number {
@@ -126,6 +140,7 @@ export function entryTotal(memberCount: number, s: PartySettings): number {
 
 const KEY_MAP: Record<keyof PartySettings, string> = {
   openAt: 'open_at',
+  ticketOpenAt: 'ticket_open_at',
   ticketCardDeadline: 'ticket_card_deadline',
   ticketCashDeadline: 'ticket_cash_deadline',
   entryDeadline: 'entry_deadline',
@@ -152,8 +167,10 @@ function dtOr(raw: string | undefined, fallback: string): string {
 export function resolvePartySettings(rows: Record<string, string>): PartySettings {
   const d = DEFAULT_PARTY_SETTINGS;
   const openRaw = rows[KEY_MAP.openAt];
+  const ticketOpenRaw = rows[KEY_MAP.ticketOpenAt];
   return {
     openAt: openRaw != null && isValidJstLocal(openRaw.trim()) ? openRaw.trim() : '',
+    ticketOpenAt: ticketOpenRaw != null && isValidJstLocal(ticketOpenRaw.trim()) ? ticketOpenRaw.trim() : '',
     ticketCardDeadline: dtOr(rows[KEY_MAP.ticketCardDeadline], d.ticketCardDeadline),
     ticketCashDeadline: dtOr(rows[KEY_MAP.ticketCashDeadline], d.ticketCashDeadline),
     entryDeadline: dtOr(rows[KEY_MAP.entryDeadline], d.entryDeadline),
@@ -445,7 +462,7 @@ export interface PartySummary {
   cardPaid: number;
   /** 当日キャッシャーに入るはずの現金(cash_due の合計) */
   cashDue: number;
-  /** 当日の来場見込み(小学生以上+出演者) */
+  /** 当日の来場見込み(小学生以上のチケット。出演者もチケットを取るので出演者は足さない) */
   headcount: number;
 }
 
@@ -467,7 +484,7 @@ export function summarizePartyOrders(orders: SummarizableOrder[]): PartySummary 
     if (o.status === 'paid') s.cardPaid += o.amountTotal;
     else s.cashDue += o.amountTotal;
   }
-  s.headcount = s.people + s.performers;
+  s.headcount = s.people;
   return s;
 }
 

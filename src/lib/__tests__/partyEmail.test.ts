@@ -43,7 +43,8 @@ describe('buildPartyOrderEmail', () => {
     expect(m.text).toContain('音源の提出(後日でOK)');
     expect(m.text).toContain('12/12(土) 23:59');
     expect(m.text).toContain('¥8,000');
-    expect(m.text).toContain('チケット予約は不要');
+    expect(m.text).toContain('出演メンバーも1人ずつチケット予約が必要');
+    expect(m.text).toContain('https://event.boom-sendai.com/xmas/ticket');
   });
 });
 

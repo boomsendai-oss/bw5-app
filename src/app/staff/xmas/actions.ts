@@ -32,6 +32,7 @@ type Result = { ok: true } | { ok: false; error: string };
 
 export interface XmasSettingsInput {
   openAt: string;
+  ticketOpenAt: string;
   ticketCardDeadline: string;
   ticketCashDeadline: string;
   entryDeadline: string;
@@ -46,7 +47,8 @@ export interface XmasSettingsInput {
 
 export async function saveXmasSettings(input: XmasSettingsInput): Promise<Result> {
   await requireStaff();
-  if (input.openAt && !isValidJstLocal(input.openAt)) return { ok: false, error: '公開日時の形式が正しくありません' };
+  if (input.openAt && !isValidJstLocal(input.openAt)) return { ok: false, error: 'エントリー受付開始の形式が正しくありません' };
+  if (input.ticketOpenAt && !isValidJstLocal(input.ticketOpenAt)) return { ok: false, error: 'チケット予約の受付開始の形式が正しくありません' };
   for (const [label, v] of [
     ['カード前売の締切', input.ticketCardDeadline],
     ['当日現金予約の締切', input.ticketCashDeadline],

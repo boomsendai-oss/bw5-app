@@ -70,6 +70,8 @@ export default async function StaffXmasRosterPage() {
                       <b>出演: {o.teamName}({o.teamKana})</b>
                       <br />
                       {formatMembers(o.members)}
+                      <br />
+                      <span className="text-[10px]">※入場は各自のチケットで確認</span>
                     </>
                   ) : (
                     <>参加{o.isMember === false ? '(会員以外)' : ''}</>
@@ -85,7 +87,7 @@ export default async function StaffXmasRosterPage() {
                   )}
                 </td>
                 <td className="py-1.5 text-right font-bold">
-                  {o.status === 'paid' ? '支払済み' : `当日 ${yen(o.amountTotal)}`}
+                  {o.kind === 'entry' ? '出演料 支払済み' : o.status === 'paid' ? '支払済み' : `当日 ${yen(o.amountTotal)}`}
                 </td>
               </tr>
             ))}

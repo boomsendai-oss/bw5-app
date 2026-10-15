@@ -2,7 +2,7 @@
 // 表示するのは公開情報(日時・料金・企画・受付状態・残りチーム数)だけで、申込者の情報は出さない。
 import Link from 'next/link';
 import Image from 'next/image';
-import { XMAS_EVENT_INFO, formatJstLabel, jstLocalToMs, yen, type GateState } from '@/lib/party';
+import { XMAS_EVENT_INFO, formatJstLabel, jstLocalToMs, ticketOpenAtOf, yen, type GateState } from '@/lib/party';
 import Countdown from './Countdown';
 import FloatingCta from './FloatingCta';
 import { MicVocal, Ticket } from 'lucide-react';
@@ -37,7 +37,11 @@ export default async function XmasTopPage({ searchParams }: { searchParams: Prom
   const ticketOpen = ctx.ticketCard === 'open' || ctx.ticketCash === 'open';
   const ticketState: GateState = ticketOpen ? 'open' : ctx.ticketCash;
   const ticketDeadline = ctx.ticketCash === 'open' ? s.ticketCashDeadline : s.ticketCardDeadline;
-  const beforeOpen = ctx.ticketCash === 'before' && s.openAt;
+  const ticketOpenAt = ticketOpenAtOf(s);
+  const ticketBefore = ctx.ticketCash === 'before' && Boolean(ticketOpenAt);
+  const entryBefore = ctx.entry === 'before' && Boolean(s.openAt);
+  // チケットとエントリーが同じ時刻に開くなら1つにまとめて案内する
+  const sameOpen = ticketBefore && ticketOpenAt === s.openAt;
   const openMs = jstLocalToMs(s.openAt);
   const cashDeadlineMs = (jstLocalToMs(s.ticketCashDeadline) ?? 0) + 60_000;
   const entryDeadlineMs = (jstLocalToMs(s.entryDeadline) ?? 0) + 60_000;
@@ -46,6 +50,10 @@ export default async function XmasTopPage({ searchParams }: { searchParams: Prom
     {
       q: '保護者も入場料がかかりますか？',
       a: `小学生以上は1人 前売${yen(s.presalePrice)}(当日${yen(s.doorPrice)})です。未就学児は無料です。`,
+    },
+    {
+      q: '出演する人もチケットは必要ですか？',
+      a: `必要です。出演料(1人${yen(s.performerFee)})とは別に、出演メンバーも1人ずつチケット予約をお願いします。先にチケットを予約していた人は、そのまま出演エントリーできます。`,
     },
     {
       q: '前売の締切を過ぎたら？',
@@ -66,19 +74,22 @@ export default async function XmasTopPage({ searchParams }: { searchParams: Prom
         className="w-full rounded-xl border-[3px] border-[#1a1410] shadow-[6px_6px_0_#1a1410]"
       />
 
-      {beforeOpen && (
+      {entryBefore && (
         <div className="mt-6 -rotate-1 border-[3px] border-[#1a1410] bg-[#f4cf3e] p-3 text-center shadow-[4px_4px_0_#1a1410]">
-          <p className="text-sm font-black">チケット予約・出演エントリーは</p>
+          <p className="text-sm font-black">{sameOpen ? 'チケット予約・出演エントリーは' : 'ショーケース出演エントリーは'}</p>
           <p className="text-2xl font-black">{formatJstLabel(s.openAt)} 受付開始</p>
           {openMs != null && (
             <div className="mt-2">
               <Countdown label="受付開始まで" targetMs={openMs} />
             </div>
           )}
-          <p className="mt-2 text-xs font-bold">出演は先着順です</p>
+          <p className="mt-2 text-xs font-bold">先着{s.teamCap}チーム。埋まり次第終了なので、出演希望の方はお早めにどうぞ</p>
+          {ticketBefore && !sameOpen && (
+            <p className="mt-1 text-xs font-bold">チケット予約は {formatJstLabel(ticketOpenAt)} 受付開始</p>
+          )}
         </div>
       )}
-      {!beforeOpen && (ctx.ticketCash === 'open' || ctx.entry === 'open') && (
+      {(ctx.ticketCash === 'open' || ctx.entry === 'open') && (
         <div className="mt-6 flex flex-wrap justify-center gap-x-4 gap-y-1 border-[3px] border-[#1a1410] bg-[#f4cf3e] px-3 py-2 text-sm font-black shadow-[4px_4px_0_#1a1410]">
           {ctx.ticketCash === 'open' && <DaysLeft label="前売の締切まで" remainingMs={cashDeadlineMs - ctx.nowMs} />}
           {ctx.entry === 'open' && <DaysLeft label="出演エントリーの締切まで" remainingMs={entryDeadlineMs - ctx.nowMs} />}
@@ -178,7 +189,7 @@ export default async function XmasTopPage({ searchParams }: { searchParams: Prom
       </Panel>
 
       <Panel title="チケット予約(前売)">
-        <p className="text-sm font-black">{stateLine(ticketState, s.openAt, ticketDeadline)}</p>
+        <p className="text-sm font-black">{stateLine(ticketState, ticketOpenAt, ticketDeadline)}</p>
         <p className="mt-1 text-xs font-bold text-neutral-600">
           前売 {yen(s.presalePrice)}。カード払い または 当日現金払いを選べます。締切後は当日券({yen(s.doorPrice)})を会場でお求めください。
         </p>
@@ -200,7 +211,7 @@ export default async function XmasTopPage({ searchParams }: { searchParams: Prom
             </li>
             <li>・クラスや学年が違うメンバーでOK。BOOMの生徒ではない友達も参加OK</li>
             <li>
-              ・出演料 1人 {yen(s.performerFee)}(別途 入場料 {yen(s.presalePrice)} がかかります)。カード払いのみ。出演メンバーはチケット予約不要
+              ・出演料 1人 {yen(s.performerFee)}(カード払いのみ)。入場には、出演メンバーも1人ずつチケット予約が必要です(出演料とは別)
             </li>
             <li>・リハーサルの時間はありません</li>
             <li>・{SHOWCASE_ORDER_NOTE}</li>

@@ -1,6 +1,6 @@
 // ⚠️ 公開ページ(認証なし)。理由: クリスマスパーティー2026のチケット予約フォーム(外部の子も参加可)。
 import Link from 'next/link';
-import { formatJstLabel } from '@/lib/party';
+import { formatJstLabel, ticketOpenAtOf } from '@/lib/party';
 import { getXmasContext } from '../actions';
 import { Notice, PreviewBanner, XmasShell } from '../ui';
 import TicketForm from './TicketForm';
@@ -29,8 +29,8 @@ export default async function XmasTicketPage({ searchParams }: { searchParams: P
       ) : (
         <Notice>
           {ctx.ticketCash === 'before'
-            ? s.openAt
-              ? `受付は ${formatJstLabel(s.openAt)} に始まります。`
+            ? ticketOpenAtOf(s)
+              ? `受付は ${formatJstLabel(ticketOpenAtOf(s))} に始まります。`
               : '受付開始は近日お知らせします。'
             : '前売の受付は終了しました。当日券は会場でお求めください。'}
         </Notice>

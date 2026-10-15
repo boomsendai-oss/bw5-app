@@ -16,7 +16,7 @@ export default function SettingsForm({ initial }: { initial: PartySettings }) {
   const num = (k: 'presalePrice' | 'doorPrice' | 'performerFee' | 'teamCap' | 'venueFee') => (
     <input type="number" inputMode="numeric" min={0} className={inputCls} value={s[k]} onChange={(e) => set(k, Number(e.target.value))} />
   );
-  const dt = (k: 'openAt' | 'ticketCardDeadline' | 'ticketCashDeadline' | 'entryDeadline' | 'audioDeadline') => (
+  const dt = (k: 'openAt' | 'ticketOpenAt' | 'ticketCardDeadline' | 'ticketCashDeadline' | 'entryDeadline' | 'audioDeadline') => (
     <input type="datetime-local" className={inputCls} value={s[k]} onChange={(e) => set(k, e.target.value)} />
   );
 
@@ -31,7 +31,10 @@ export default function SettingsForm({ initial }: { initial: PartySettings }) {
   return (
     <div className="space-y-5">
       <Section title="受付の開始と停止">
-        <Item label="公開日時(参加申込とエントリーを同時に開く)" hint="空のままなら未公開。日本時間で入力">
+        <Item label="チケット予約の受付開始" hint="空のままならエントリーと同時に開く。日本時間で入力">
+          {dt('ticketOpenAt')}
+        </Item>
+        <Item label="出演エントリーの受付開始(先着)" hint="空のままなら未公開。日本時間で入力">
           {dt('openAt')}
         </Item>
         <label className="flex items-center gap-2 text-sm font-semibold text-red-700">
@@ -57,7 +60,7 @@ export default function SettingsForm({ initial }: { initial: PartySettings }) {
           <Item label="会場費(税込)">{num('venueFee')}</Item>
         </div>
         <p className="text-xs text-neutral-500">
-          出演者1人あたりの請求 = 出演料 + 前売 = ¥{entryUnitPrice(s).toLocaleString()}。すでに受け付けた申込の金額は変わりません。
+          出演エントリーの請求 = 出演料 ¥{entryUnitPrice(s).toLocaleString()} × 人数(入場は出演者もチケット予約で別に払う)。すでに受け付けた申込の金額は変わりません。
         </p>
       </Section>
 

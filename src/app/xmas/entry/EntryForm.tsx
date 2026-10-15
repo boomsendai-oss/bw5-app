@@ -1,6 +1,6 @@
 'use client';
 
-// 出演エントリーフォーム。合計 = メンバー数 × (出演料 + 入場料)。請求額はサーバが再計算する。
+// 出演エントリーフォーム。合計 = メンバー数 × 出演料(入場は出演者もチケット予約で別に払う)。請求額はサーバが再計算する。
 // 出演はカード払いのみ(後からのキャンセルで枠が空くと困るため・TARO 2026-10-15)。
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -207,14 +207,13 @@ export default function EntryForm(p: {
 
       <Panel title="お支払い(カードのみ)" tone="green">
         <div className="rounded-lg border-[3px] border-[#1a1410] bg-[#f4cf3e] p-3 text-center">
-          <p className="text-xs font-black">
-            出演料{yen(p.performerFee)} + 入場料{yen(p.presalePrice)}
-          </p>
           <p className="text-sm font-black">
-            1人 {yen(p.entryUnit)} × メンバー {filled}人
+            出演料 1人 {yen(p.entryUnit)} × メンバー {filled}人
           </p>
           <p className="text-3xl font-black">{yen(total)}</p>
-          <p className="text-xs font-bold">出演メンバーはチケット予約は不要です</p>
+          <p className="text-xs font-bold">
+            入場には、出演メンバーも1人ずつチケット予約(前売{yen(p.presalePrice)})が必要です。出演料とは別にお支払いください
+          </p>
         </div>
         <p className="mt-3 text-xs font-bold text-neutral-700">
           出演エントリーはカード払いのみです。30分以内に決済が完了すると、エントリーが確定します。
