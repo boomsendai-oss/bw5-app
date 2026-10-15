@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateShiftSyncFreshness, SHIFT_SYNC_STALE_HOURS } from '../shiftSyncWatchdog';
+import { evaluateShiftSyncFreshness, evaluateMemberTagFreshness, SHIFT_SYNC_STALE_HOURS } from '../shiftSyncWatchdog';
 
 // Lステップのシフト同期(GitHub Actions・毎朝5時JST)のデッドマンスイッチ。
 // 「何も来ない＝正常」の運用にするため、止まったことをこちらから鳴らす。
@@ -40,5 +40,24 @@ describe('evaluateShiftSyncFreshness', () => {
   // 時計ズレで未来日付が入ることがある。誤爆でノイズを出す方が害が大きい。
   it('未来の日付は異常扱いにしない', () => {
     expect(evaluateShiftSyncFreshness(hoursAgo(-5), now).stale).toBe(false);
+  });
+});
+
+// 入会タグの自動付与(2026-10-15〜)。止まるとクーポン案内が入会者に届き続ける。
+describe('evaluateMemberTagFreshness', () => {
+  it('前日に成功していれば正常', () => {
+    expect(evaluateMemberTagFreshness(hoursAgo(25), now).stale).toBe(false);
+  });
+
+  it('2日ぶん動いていなければ、入会タグのワークフロー名で鳴らす', () => {
+    const r = evaluateMemberTagFreshness(hoursAgo(SHIFT_SYNC_STALE_HOURS + 1), now);
+    expect(r.stale).toBe(true);
+    expect(r.message).toMatch(/入会タグ/);
+    expect(r.message).toMatch(/lstep-member-tag/);
+    expect(r.message).not.toMatch(/シフト同期/);
+  });
+
+  it('一度も成功していなければ異常', () => {
+    expect(evaluateMemberTagFreshness(null, now).message).toMatch(/一度も成功していません/);
   });
 });
