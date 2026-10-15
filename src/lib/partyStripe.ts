@@ -20,9 +20,9 @@ export interface PartyOrderForCheckout {
 
 export function buildPartyLineItems(o: PartyOrderForCheckout): PartyCheckoutLineItem[] {
   if (o.kind === 'entry') {
-    return [{ name: `ショーケース出演(出演料+参加費) ${o.teamName}`, unitAmount: o.unitPrice, qty: o.memberCount }];
+    return [{ name: `ショーケース出演(出演料+入場料) ${o.teamName}`, unitAmount: o.unitPrice, qty: o.memberCount }];
   }
-  return [{ name: `${XMAS_EVENT_INFO.title} 参加費(前売)`, unitAmount: o.unitPrice, qty: o.peopleCount }];
+  return [{ name: `${XMAS_EVENT_INFO.title} 入場料(前売)`, unitAmount: o.unitPrice, qty: o.peopleCount }];
 }
 
 export function buildPartyCheckoutParams(p: {

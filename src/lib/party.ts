@@ -50,6 +50,7 @@ export const XMAS_EVENT_INFO = {
   venue: 'SPACE ZERO',
   venueAddress: '仙台市青葉区本町1丁目9-23(GOATスタジオビル内)',
   drinkLabel: '1ドリンク ¥600(会場のキャッシャーで別途お支払い)',
+  barLabel: 'バーカウンターあり(ソフトドリンク・お酒OK)。みんなで乾杯しましょう',
   showTimeLimit: '1チーム3分半まで',
 } as const;
 
@@ -108,7 +109,7 @@ export function ticketTotal(peopleCount: number, s: PartySettings): number {
   return peopleCount * s.presalePrice;
 }
 
-/** 出演者1人あたり = 出演料 + 参加費(前売)。 */
+/** 出演者1人あたり = 出演料 + 入場料(前売)。 */
 export function entryUnitPrice(s: PartySettings): number {
   return s.performerFee + s.presalePrice;
 }

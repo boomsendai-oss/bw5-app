@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { XMAS_EVENT_INFO, formatJstLabel, yen, type GateState } from '@/lib/party';
 import { getXmasContext } from './actions';
 import { Panel, Row, XmasShell, greenBtnCls, primaryBtnCls } from './ui';
-import { XMAS_FAQ_STATIC, XMAS_MAP_URL, XMAS_PROGRAM, XMAS_TIMETABLE } from './content';
+import { XMAS_FAQ_STATIC, XMAS_MAP_URL, XMAS_PRIZE_LINE, XMAS_PROGRAM, XMAS_TIMETABLE } from './content';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +34,7 @@ export default async function XmasTopPage() {
 
   const faq = [
     {
-      q: '保護者も参加費がかかりますか？',
+      q: '保護者も入場料がかかりますか？',
       a: `小学生以上は1人 前売${yen(s.presalePrice)}(当日${yen(s.doorPrice)})です。未就学児は無料です。`,
     },
     {
@@ -65,7 +65,7 @@ export default async function XmasTopPage() {
 
       <Panel title="開催概要">
         <dl>
-          <Row k="日時" v={`${XMAS_EVENT_INFO.dateLabel} ${XMAS_EVENT_INFO.timeLabel}`} />
+          <Row k="日時" v={`${XMAS_EVENT_INFO.dateLabel} ${XMAS_EVENT_INFO.timeLabel}・入退場自由`} />
           <Row
             k="会場"
             v={
@@ -81,7 +81,7 @@ export default async function XmasTopPage() {
             }
           />
           <Row
-            k="参加費"
+            k="入場料"
             v={
               <>
                 前売 {yen(s.presalePrice)} / 当日 {yen(s.doorPrice)}
@@ -91,11 +91,14 @@ export default async function XmasTopPage() {
             }
           />
           <Row k="対象" v="BOOMの生徒・保護者・お友達(会員以外もOK)" />
-          <Row k="お昼" v="持ち込みOK(会場で食べられます)・入退場自由" />
+          <Row k="バー" v={XMAS_EVENT_INFO.barLabel} />
         </dl>
       </Panel>
 
       <Panel title="企画" tone="green">
+        <p className="mb-3 -rotate-1 border-[3px] border-[#1a1410] bg-[#f4cf3e] px-3 py-2 text-center text-base font-black shadow-[3px_3px_0_#1a1410]">
+          🎁 {XMAS_PRIZE_LINE}
+        </p>
         <ul className="space-y-3">
           {XMAS_PROGRAM.map((p) => (
             <li key={p.title}>
@@ -136,7 +139,7 @@ export default async function XmasTopPage() {
         <ul className="mt-2 space-y-1 text-xs font-bold text-neutral-700">
           <li>・2人以上のチーム(1人での出演はなし)・{XMAS_EVENT_INFO.showTimeLimit}・先着{s.teamCap}チーム</li>
           <li>・クラスや学年が違うメンバー、BOOMの生徒ではない友達もOK</li>
-          <li>・出演料+参加費 1人 {yen(ctx.entryUnit)}(出演メンバーはパーティーの申込不要)</li>
+          <li>・出演料 1人 {yen(s.performerFee)}(別途 入場料 {yen(s.presalePrice)} がかかります。エントリーでまとめてお支払い・出演メンバーはパーティーの申込不要)</li>
           <li>・エントリー締切 {formatJstLabel(s.entryDeadline)} / 音源の提出締切 {formatJstLabel(s.audioDeadline)}</li>
         </ul>
         {ctx.entry === 'open' ? (

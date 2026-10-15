@@ -33,11 +33,11 @@ export function buildPartyOrderEmail(o: PartyOrder, token: string, s: PartySetti
   if (isEntry) {
     L.push(`■ チーム名: ${o.teamName}(${o.genre})`);
     L.push(`■ メンバー(${o.memberCount}名): ${o.members.join('、')}`);
-    L.push(`■ 出演料+参加費: ${yen(o.unitPrice)} × ${o.memberCount}名`);
+    L.push(`■ 出演料+入場料: ${yen(o.unitPrice)} × ${o.memberCount}名`);
     L.push('  ※出演メンバーはパーティーへの参加申込は不要です(付き添いの保護者の方は参加申込をお願いします)');
   } else {
     L.push(`■ 参加人数: 小学生以上 ${o.peopleCount}名${o.infantCount > 0 ? ` / 未就学児 ${o.infantCount}名(無料)` : ''}`);
-    L.push(`■ 参加費(前売): ${yen(o.unitPrice)} × ${o.peopleCount}名`);
+    L.push(`■ 入場料(前売): ${yen(o.unitPrice)} × ${o.peopleCount}名`);
   }
   L.push('');
   L.push(`■ 合計: ${yen(o.amountTotal)}`);

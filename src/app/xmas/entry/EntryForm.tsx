@@ -1,6 +1,6 @@
 'use client';
 
-// 出演エントリーフォーム。合計 = メンバー数 × (出演料 + 参加費)。請求額はサーバが再計算する。
+// 出演エントリーフォーム。合計 = メンバー数 × (出演料 + 入場料)。請求額はサーバが再計算する。
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MAX_MEMBERS, MIN_MEMBERS, yen } from '@/lib/party';
@@ -134,7 +134,7 @@ export default function EntryForm(p: {
         </div>
         <div className="mt-4 rounded-lg border-[3px] border-[#1a1410] bg-[#f4cf3e] p-3 text-center">
           <p className="text-sm font-black">
-            1人 {yen(p.entryUnit)}(出演料 {yen(p.performerFee)} + 参加費 {yen(p.presalePrice)}) × {filled}人
+            出演料 {yen(p.performerFee)} + 入場料 {yen(p.presalePrice)} = 1人 {yen(p.entryUnit)} × {filled}人
           </p>
           <p className="text-3xl font-black">{yen(total)}</p>
           <p className="text-xs font-bold">出演メンバーはパーティーの参加申込は不要です</p>
