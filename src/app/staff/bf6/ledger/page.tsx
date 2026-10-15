@@ -3,12 +3,16 @@
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { getBf6Finance } from '@/lib/eventLedgerDb';
 import LedgerEditor from './LedgerEditor';
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 
 export default async function StaffBf6LedgerPage() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const { finance, ledger } = await getBf6Finance();
 
   return (

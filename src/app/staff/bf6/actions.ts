@@ -4,8 +4,16 @@
 import { revalidatePath } from 'next/cache';
 import { setBf6OrderStatusStaff, setBf6Setting, updateBf6EntryItemStaff } from '@/lib/bf6Db';
 import { validateBf6EntryEdit, type Bf6EntryEditInput } from '@/lib/bf6';
+import { isAuthorizedServer } from '@/lib/eventAuth';
+
+// proxyはcookieの有無しか見ないため、Server Action は毎回セッションを本検証する(規約4.5)。
+// ⚠️ /bf6/crew からは呼ばれない(crewが使うのは reception/control の actions のみ)。
+async function requireStaff(): Promise<void> {
+  if (!(await isAuthorizedServer())) throw new Error('Unauthorized');
+}
 
 export async function staffSetOrderStatus(orderId: number, status: string): Promise<void> {
+  await requireStaff();
   await setBf6OrderStatusStaff(orderId, status);
   revalidatePath('/staff/bf6');
   revalidatePath('/staff/bf6/entries');
@@ -17,6 +25,7 @@ export async function staffUpdateEntryItem(
   itemId: number,
   input: Bf6EntryEditInput
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireStaff();
   const v = validateBf6EntryEdit(input);
   if (typeof v === 'string') return { ok: false, error: v };
   await updateBf6EntryItemStaff(itemId, v);
@@ -56,6 +65,7 @@ export interface Bf6SettingsForm {
 }
 
 export async function staffSaveSettings(form: Bf6SettingsForm): Promise<void> {
+  await requireStaff();
   await setBf6Setting('entry_open', form.entryOpen ? '1' : '0');
   await setBf6Setting('ticket_open', form.ticketOpen ? '1' : '0');
   await setBf6Setting('stream_open', form.streamOpen ? '1' : '0');
@@ -78,6 +88,7 @@ export async function staffSaveSettings(form: Bf6SettingsForm): Promise<void> {
 }
 
 export async function staffSendBf6Broadcast(key: string): Promise<{ sent: number; failed: number; alreadySent?: boolean }> {
+  await requireStaff();
   const { sendBf6Broadcast } = await import('@/lib/bf6Broadcast');
   const r = await sendBf6Broadcast(key);
   revalidatePath('/staff/bf6/broadcast');
@@ -88,6 +99,7 @@ export async function staffSendBf6Broadcast(key: string): Promise<{ sent: number
 export async function staffRetryBf6BroadcastFailures(
   key: string
 ): Promise<{ sent: number; failed: number }> {
+  await requireStaff();
   const { retryBf6BroadcastFailures } = await import('@/lib/bf6Broadcast');
   const r = await retryBf6BroadcastFailures(key);
   revalidatePath('/staff/bf6/broadcast');
@@ -99,6 +111,7 @@ export async function staffRetryBf6BroadcastFailures(
 export async function staffOfferNextWaitlist(division: string): Promise<
   { ok: true; dancerName: string; email: string } | { ok: false; error: string }
 > {
+  await requireStaff();
   const { offerNext } = await import('@/lib/bf6WaitlistDb');
   const { sendWaitlistOfferEmail } = await import('@/lib/bf6WaitlistEmail');
   const { formatOfferDeadline } = await import('@/lib/bf6Waitlist');
@@ -115,6 +128,7 @@ export async function staffOfferNextWaitlist(division: string): Promise<
 }
 
 export async function staffExpireStaleOffers(): Promise<number> {
+  await requireStaff();
   const { expireStaleOffers } = await import('@/lib/bf6WaitlistDb');
   const n = await expireStaleOffers();
   revalidatePath('/staff/bf6/waitlist');
@@ -130,6 +144,7 @@ export async function staffExpireStaleOffers(): Promise<number> {
 export async function staffSendCancelMail(
   orderId: number
 ): Promise<{ ok: true; to: string } | { ok: false; error: string }> {
+  await requireStaff();
   const { listBf6OrdersStaff } = await import('@/lib/bf6Db');
   const { sendCancelMailForOrder } = await import('@/lib/bf6CancelSend');
   const order = (await listBf6OrdersStaff()).find((o) => o.orderId === orderId);

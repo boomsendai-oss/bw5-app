@@ -3,10 +3,14 @@ import StaffPageHeader from '@/components/StaffPageHeader';
 import { getBf6Settings, getBf6SsmConfig } from '@/lib/bf6Db';
 import { getBf6StreamConfig } from '@/lib/bf6StreamDb';
 import SettingsForm from './SettingsForm';
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StaffBf6SettingsPage() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const s = await getBf6Settings();
   const sc = await getBf6StreamConfig();
   const ssm = await getBf6SsmConfig();

@@ -5,10 +5,14 @@
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { listBf6StreamViewers } from '@/lib/bf6StreamDb';
 import { StreamViewersClient } from './StreamViewersClient';
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StaffBf6StreamPage() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const viewers = await listBf6StreamViewers();
   return (
     <div>

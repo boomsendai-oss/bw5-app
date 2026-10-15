@@ -7,6 +7,8 @@ import EntryEditor from '../EntryEditor';
 import RefundNotice from '../RefundNotice';
 import CancelMailButton from '../CancelMailButton';
 import { requiresSlotRelease } from '@/lib/bf6Cancel';
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +24,8 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
 };
 
 export default async function StaffBf6EntriesPage() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const orders = (await listBf6OrdersStaff()).filter((o) =>
     o.items.some((i) => i.itemType === 'entry')
   );

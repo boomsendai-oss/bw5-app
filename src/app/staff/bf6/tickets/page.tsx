@@ -4,12 +4,16 @@ import { formatReceiptNo } from '@/lib/bf6';
 import { listBf6OrdersStaff } from '@/lib/bf6Db';
 import StatusButtons from '../StatusButtons';
 import { refundState } from '@/lib/bf6Cancel';
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 
 export default async function StaffBf6TicketsPage() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const orders = (await listBf6OrdersStaff()).filter((o) =>
     o.items.some((i) => i.itemType.startsWith('ticket_'))
   );

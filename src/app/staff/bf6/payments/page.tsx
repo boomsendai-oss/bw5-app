@@ -3,12 +3,16 @@
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { formatReceiptNo } from '@/lib/bf6';
 import { listBf6PaymentsStaff } from '@/lib/bf6Db';
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 
 export default async function StaffBf6PaymentsPage() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const payments = await listBf6PaymentsStaff();
   const issues = payments.filter(
     (p) => p.orderId == null || (p.orderAmount != null && p.amount !== p.orderAmount)

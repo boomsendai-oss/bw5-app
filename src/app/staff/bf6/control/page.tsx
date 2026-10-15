@@ -6,10 +6,14 @@ import StaffPageHeader from '@/components/StaffPageHeader';
 import { ControlClient } from './ControlClient';
 import { getBf6ScreenState, listBf6ScreenMatches, listBf6SlotNames, findNextMatch, countBf6Undrawn } from '@/lib/bf6ScreenDb';
 import { nextPendingMatch } from '@/lib/bf6Bracket';
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StaffBf6ControlPage() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const state = await getBf6ScreenState();
   // 直列に待つとDB往復ぶん遅い(最初のタップが重い・TARO実機 2026-09-10)
   const [{ matches, pending }, names, draw] = await Promise.all([

@@ -3,10 +3,14 @@ import StaffPageHeader from '@/components/StaffPageHeader';
 import { BF6_BROADCAST_TEMPLATES, getBf6BroadcastRecipients, getCashDueRecipients, listBf6Broadcasts, listBf6BroadcastFailures, fillBroadcastVars, type Bf6BroadcastAudience } from '@/lib/bf6Broadcast';
 import { SendButton } from './SendButton';
 import { RetryButton } from './RetryButton';
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StaffBf6BroadcastPage() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   // 宛先の範囲はテンプレートごとに違う(当日の段取り=エントリー者だけ / 配信の案内=全員)
   const [entrants, all, cashDue, history, failures, notOnBf7] = await Promise.all([
     getBf6BroadcastRecipients('entrants'),
