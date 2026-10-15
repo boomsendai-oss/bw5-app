@@ -12,7 +12,8 @@ import {
 } from '@/lib/party';
 import type { PartyOrder } from '@/lib/partyDb';
 
-const BASE_URL = 'https://bw5-app.vercel.app';
+// 恒久ドメイン(2026-10-15〜)。bw5-app.vercel.app も引き続き同じページを開ける
+const BASE_URL = 'https://event.boom-sendai.com';
 const myUrl = (token: string) => `${BASE_URL}/xmas/my?t=${token}`;
 
 export function buildPartyOrderEmail(o: PartyOrder, token: string, s: PartySettings): { subject: string; text: string } {
