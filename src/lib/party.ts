@@ -509,3 +509,10 @@ export function contactFieldError(field: ContactField, value: string): string {
   if (field === 'phone') return /^0\d{9,10}$/.test(normalizePhone(v)) ? '' : '電話番号は数字10〜11桁で入力してください(ハイフンはあってもなくてもOK)';
   return KANA_RE.test(normalizeKana(v)) ? '' : 'ひらがなで入力してください';
 }
+
+/** チーム名の照合用キー: 全角半角・大小文字・カタカナ/ひらがな・空白や記号の違いを吸収する。 */
+export function normalizeTeamKey(v: string): string {
+  return normalizeKana(String(v ?? '').normalize('NFKC'))
+    .toLowerCase()
+    .replace(/[\s・\-_'’.,!！?？。、☆★♪〜~]/g, '');
+}

@@ -11,7 +11,7 @@ import { Notice, greenBtnCls } from '../ui';
 
 const MAX_MB = 50;
 
-export default function AudioUpload({ token, orderId }: { token: string; orderId: number }) {
+export default function AudioUpload({ credential, orderId }: { credential: string; orderId: number }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -36,11 +36,11 @@ export default function AudioUpload({ token, orderId }: { token: string; orderId
       const blob = await upload(`${PARTY_EVENT_KEY}/audio/${orderId}-${safe}`, file, {
         access: 'public',
         handleUploadUrl: '/api/xmas/audio-upload',
-        clientPayload: token,
+        clientPayload: credential,
         multipart: file.size > 8 * 1024 * 1024,
         onUploadProgress: (p) => setPct(Math.round(p.percentage)),
       });
-      const r = await saveXmasAudio(token, blob.url, file.name);
+      const r = await saveXmasAudio(credential, blob.url, file.name);
       if (!r.ok) throw new Error(r.error);
       setMsg({ tone: 'info', text: `提出しました: ${file.name}` });
       router.refresh();

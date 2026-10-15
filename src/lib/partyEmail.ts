@@ -65,6 +65,7 @@ export function buildPartyOrderEmail(o: PartyOrder, token: string, s: PartySetti
     L.push(`  持ち時間は${XMAS_EVENT_INFO.showTimeLimit}です。差し替えもできます。このメールは提出まで保存しておいてください。`);
     L.push(`  ▼提出ページ`);
     L.push(`  ${myUrl(token)}`);
+    L.push(`  ※このURLが見つからなくなったら、${BASE_URL}/xmas/audio から、このメールアドレスかチーム名で提出できます。`);
   }
   L.push('');
   L.push('■ 申込内容の確認');
@@ -98,6 +99,7 @@ export function buildAudioReminderEmail(o: PartyOrder, token: string, s: PartySe
   L.push('');
   L.push('▼提出ページ');
   L.push(myUrl(token));
+  L.push(`(または ${BASE_URL}/xmas/audio から、このメールアドレスかチーム名で提出できます)`);
   L.push('');
   L.push('すでに準備中の場合は、このメールは気にせず締切までに提出してください。');
   L.push('ご不明な点は BOOM 公式LINE までお問い合わせください。');
@@ -133,4 +135,21 @@ export async function sendPartyMail(to: string, mail: { subject: string; text: s
     console.error(`[party] ${tag} email failed`, e instanceof Error ? e.message : e);
     return false;
   }
+}
+
+/** 音源の提出・差し替えを受け付けたお知らせ(登録メールアドレス宛て)。 */
+export function buildAudioReceivedEmail(o: PartyOrder, filename: string): { subject: string; text: string } {
+  const L: string[] = [];
+  L.push(`${o.buyerName} 様`);
+  L.push('');
+  L.push(`${XMAS_EVENT_INFO.title} ショーケース出演チーム「${o.teamName}」の音源を受け付けました。`);
+  L.push('');
+  L.push(`■ ファイル: ${filename}`);
+  L.push(`■ 受付日時: ${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}`);
+  L.push('');
+  L.push(`差し替える場合は ${BASE_URL}/xmas/audio から、新しいファイルを上げ直してください。`);
+  L.push('身に覚えのない提出・差し替えの場合は、BOOM 公式LINE までご連絡ください。');
+  L.push('');
+  L.push('BOOM DANCE SCHOOL');
+  return { subject: `【BOOMクリスマスパーティー2026】音源を受け付けました(${o.teamName})`, text: L.join('\n') };
 }

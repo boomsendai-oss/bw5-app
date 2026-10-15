@@ -24,17 +24,18 @@ import {
   countHoldingTeams,
   createPartyEntry,
   createPartyTicket,
-  findConfirmedOrdersByEmail,
+  findEntriesForAudio,
+  savePartyAudioById,
   getPartySettings,
   loadPartyOrderByToken,
-  savePartyAudio,
   savePartyStripeSession,
   extendPartyHold,
 } from '@/lib/partyDb';
 import { buildPartyCheckoutParams, buildPartyLineItems, retrieveCheckoutSession } from '@/lib/partyStripe';
 import { createBf6CheckoutSession } from '@/lib/bf6Stripe';
-import { buildLinkResendEmail, sendPartyMail, sendPartyOrderEmail } from '@/lib/partyEmail';
-import { isValidEmail } from '@/lib/party';
+import { buildAudioReceivedEmail, sendPartyMail, sendPartyOrderEmail } from '@/lib/partyEmail';
+import { makeAudioTicket } from '@/lib/partyAudioTicket';
+import { resolveAudioCredential } from '@/lib/partyAudio';
 
 const EV = PARTY_EVENT_KEY;
 
@@ -177,9 +178,9 @@ export async function startXmasCheckout(token: string): Promise<XmasCheckoutResu
  * 音源アップロード後にURLを控える。Blobの中身はアップロード用トークン発行時に
  * 申込・締切・形式・サイズを検証済み。ここではURLが自分のストアの所定の場所かを確かめる。
  */
-export async function saveXmasAudio(token: string, url: string, filename: string): Promise<{ ok: boolean; error?: string }> {
-  const o = await loadPartyOrderByToken(token);
-  if (!o || o.kind !== 'entry') return { ok: false, error: '申込が見つかりません' };
+export async function saveXmasAudio(credential: string, url: string, filename: string): Promise<{ ok: boolean; error?: string }> {
+  const o = await resolveAudioCredential(credential);
+  if (!o) return { ok: false, error: '時間が経ったため保存できませんでした。もう一度チームを探してからアップロードしてください' };
   const s = await getPartySettings(EV);
   if (!audioOpen(s, new Date())) return { ok: false, error: '音源の提出は締め切りました' };
   let u: URL;
@@ -191,24 +192,34 @@ export async function saveXmasAudio(token: string, url: string, filename: string
   if (!u.hostname.endsWith('.public.blob.vercel-storage.com') || !u.pathname.startsWith(`/${EV}/audio/${o.id}-`)) {
     return { ok: false, error: '保存に失敗しました' };
   }
-  const ok = await savePartyAudio(token, url, filename);
-  return ok ? { ok } : { ok: false, error: 'エントリーが確定していないため保存できません' };
+  const ok = await savePartyAudioById(o.id, url, filename);
+  if (!ok) return { ok: false, error: 'エントリーが確定していないため保存できません' };
+  // 提出・差し替えのたびに登録メールアドレスへ知らせる(身に覚えのない差し替えに気づけるように)
+  await sendPartyMail(o.email, buildAudioReceivedEmail(o, filename), 'audio-received');
+  return { ok: true };
 }
 
+export type XmasAudioLookup =
+  | { ok: true; teams: { ticket: string; orderId: number; teamName: string; audioFilename: string }[] }
+  | { ok: false; error: string };
+
 /**
- * 控えページのURLを登録メールアドレスへ送り直す(メールをなくした人・音源を後日出す人向け)。
- * 登録があるかどうかは画面に出さない(他人のメールアドレスで申込の有無を確かめられないように)。
+ * 「ショーケースに出演される方へ」ページ: エントリー時のメールアドレスかチーム名で、確定済みの
+ * 出演エントリーを探す。返すのはチーム名・提出状況と、そのチームの音源を上げるための短時間の通行証だけ
+ * (代表者名・メンバー名などの個人情報や、控えページを開けるトークンは返さない)。
  */
-export async function requestXmasLinkResend(email: string): Promise<{ ok: boolean; error?: string }> {
-  if (!(await checkRateLimit(`xmasresend:${await ip()}`, 5, 3600))) {
+export async function findXmasEntryForAudio(query: string): Promise<XmasAudioLookup> {
+  if (!(await checkRateLimit(`xmasaudiolookup:${await ip()}`, 15, 3600))) {
     return { ok: false, error: '操作が多すぎます。しばらくしてからお試しください' };
   }
-  const e = String(email ?? '').trim();
-  if (!isValidEmail(e)) return { ok: false, error: 'メールアドレスの形式が正しくありません' };
-  const items = await findConfirmedOrdersByEmail(EV, e);
-  if (items.length > 0) {
-    // 送り先は入力値ではなく、申込時に登録されたアドレス
-    await sendPartyMail(items[0].order.email, buildLinkResendEmail(items), 'resend');
+  const q = String(query ?? '').trim();
+  if (!q) return { ok: false, error: 'メールアドレスかチーム名を入れてください' };
+  const hits = await findEntriesForAudio(EV, q);
+  if (hits.length === 0) {
+    return { ok: false, error: 'エントリーが見つかりません。エントリー時のメールアドレスか、チーム名をご確認ください' };
   }
-  return { ok: true };
+  return {
+    ok: true,
+    teams: hits.map((o) => ({ ticket: makeAudioTicket(o.id), orderId: o.id, teamName: o.teamName, audioFilename: o.audioFilename })),
+  };
 }

@@ -290,3 +290,13 @@ describe('不具合チェック対応', () => {
     expect(typeof v !== 'string' && v.teamKana).toBe('ぶーむ・きっず');
   });
 });
+
+describe('チーム名の照合', () => {
+  it('表記ゆれを吸収する', async () => {
+    const { normalizeTeamKey } = await import('../party');
+    expect(normalizeTeamKey('BOOM KIDS')).toBe(normalizeTeamKey('ｂｏｏｍ ｋｉｄｓ'));
+    expect(normalizeTeamKey('ブーム・キッズ')).toBe(normalizeTeamKey('ぶーむきっず'));
+    expect(normalizeTeamKey('BOOM KIDS!')).toBe('boomkids');
+    expect(normalizeTeamKey('')).toBe('');
+  });
+});

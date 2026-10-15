@@ -7,7 +7,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { checkRateLimit, clientIp, tooManyRequests } from '@/lib/eventAuth';
 import { PARTY_EVENT_KEY, audioOpen } from '@/lib/party';
-import { getPartySettings, loadPartyOrderByToken, savePartyAudio } from '@/lib/partyDb';
+import { getPartySettings, loadConfirmedEntryById, savePartyAudioById } from '@/lib/partyDb';
+import { resolveAudioCredential } from '@/lib/partyAudio';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,11 +27,9 @@ export async function POST(req: NextRequest) {
       body,
       request: req,
       onBeforeGenerateToken: async (pathname, clientPayload) => {
-        const token = clientPayload ?? '';
-        const o = await loadPartyOrderByToken(token);
-        if (!o || o.kind !== 'entry' || (o.status !== 'paid' && o.status !== 'cash_due')) {
-          throw new Error('エントリーが確定していないためアップロードできません');
-        }
+        // clientPayload = 控えページのトークン or 提出ページで発行した短時間の通行証
+        const o = await resolveAudioCredential(clientPayload ?? '');
+        if (!o) throw new Error('エントリーが確定していないか、時間が経ちすぎました。もう一度チームを探してください');
         if (!audioOpen(await getPartySettings(PARTY_EVENT_KEY), new Date())) {
           throw new Error('音源の提出は締め切りました');
         }
@@ -39,19 +38,20 @@ export async function POST(req: NextRequest) {
           allowedContentTypes: ['audio/*', 'video/mp4'],
           maximumSizeInBytes: MAX_BYTES,
           addRandomSuffix: true,
-          tokenPayload: token,
+          // tokenPayload はブラウザから読めるので、控えページのトークンではなく申込IDだけを載せる
+          tokenPayload: String(o.id),
         };
       },
       // 本番では完了通知でも保存する(画面側の保存が通信切れで落ちたときの保険)。冪等
       onUploadCompleted: async ({ blob, tokenPayload }) => {
-        if (!tokenPayload) return;
+        if (!tokenPayload || !/^\d+$/.test(tokenPayload)) return;
         // 画面側の保存(元のファイル名つき)が先に済んでいれば何もしない
-        const cur = await loadPartyOrderByToken(tokenPayload);
+        const cur = await loadConfirmedEntryById(Number(tokenPayload));
         if (!cur || cur.audioUrl === blob.url) return;
         const name = decodeURIComponent(blob.pathname.split('/').pop() ?? '')
           .replace(/^\d+-/, '')
           .replace(/-[A-Za-z0-9]{16,}(?=\.[^.]+$)/, '');
-        await savePartyAudio(tokenPayload, blob.url, name);
+        await savePartyAudioById(cur.id, blob.url, name);
       },
     });
     return NextResponse.json(result);

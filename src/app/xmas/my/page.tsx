@@ -127,7 +127,7 @@ export default async function XmasMyPage({ searchParams }: { searchParams: Promi
             <p className="mt-2 text-sm font-black text-[#d4302a]">まだ提出されていません</p>
           )}
           {audioOpen(s, new Date()) ? (
-            <AudioUpload token={t} orderId={o.id} />
+            <AudioUpload credential={t} orderId={o.id} />
           ) : (
             <Notice>音源の提出は締め切りました。差し替えが必要な場合は公式LINEへご連絡ください。</Notice>
           )}

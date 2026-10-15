@@ -196,3 +196,20 @@ describe('不具合チェックで見つかった点の再発防止', () => {
     expect((await db.loadPartyOrderByToken(r.token))?.expiresAt).toBe(later);
   });
 });
+
+describe('音源提出ページの照合(メールアドレスかチーム名)', () => {
+  it('メールアドレスかチーム名(表記ゆれ込み)で確定エントリーが見つかる', async () => {
+    const byName = await db.findEntriesForAudio(EV, 'c');
+    expect(byName.map((o) => o.teamName)).toEqual(['C']);
+    expect((await db.findEntriesForAudio(EV, 'テスト')).length).toBeGreaterThan(0); // ふりがな「てすと」
+    expect((await db.findEntriesForAudio(EV, 'E@EXAMPLE.COM')).length).toBeGreaterThan(0);
+    expect(await db.findEntriesForAudio(EV, 'nobody@example.com')).toEqual([]);
+    expect(await db.findEntriesForAudio(EV, '存在しないチーム')).toEqual([]);
+  });
+  it('IDで保存できるのは確定エントリーだけ', async () => {
+    const c = (await db.findEntriesForAudio(EV, 'c'))[0];
+    expect(await db.savePartyAudioById(c.id, 'https://x/c.mp3', 'c.mp3')).toBe(true);
+    expect((await db.loadConfirmedEntryById(c.id))?.audioFilename).toBe('c.mp3');
+    expect(await db.savePartyAudioById(999999, 'https://x/z.mp3', 'z.mp3')).toBe(false);
+  });
+});

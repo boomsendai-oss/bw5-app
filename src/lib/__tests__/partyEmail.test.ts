@@ -63,3 +63,14 @@ describe('音源リマインド・控えの再送', () => {
     expect(m.text).toContain('/xmas/my?t=t2');
   });
 });
+
+describe('音源の受付お知らせ', () => {
+  it('チーム名・ファイル名・提出ページを書く', async () => {
+    const { buildAudioReceivedEmail } = await import('../partyEmail');
+    const m = buildAudioReceivedEmail({ ...base, kind: 'entry', teamName: 'BOOM KIDS' }, 'song.mp3');
+    expect(m.subject).toContain('BOOM KIDS');
+    expect(m.text).toContain('song.mp3');
+    expect(m.text).toContain('/xmas/audio');
+    expect(m.text).toContain('身に覚えのない');
+  });
+});

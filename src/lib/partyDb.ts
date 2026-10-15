@@ -17,6 +17,7 @@ import {
   type ValidatedEntry,
   type ValidatedTicket,
   type EntryMember,
+  normalizeTeamKey,
 } from '@/lib/party';
 
 const HOLD_MINUTES = 30;
@@ -451,4 +452,42 @@ export async function findConfirmedOrdersByEmail(eventKey: string, email: string
     out.push({ order: rowToOrder(r, r.kind === 'entry' ? await membersOf(Number(r.id)) : []), token: String(r.edit_token) });
   }
   return out;
+}
+
+/**
+ * 音源提出ページ用: メールアドレス(@を含む)またはチーム名で、確定済みの出演エントリーを探す。
+ * チーム名は表記ゆれ(全角半角・ひらがなカタカナ・空白)を吸収し、チーム名とふりがなの両方で照合する。
+ */
+export async function findEntriesForAudio(eventKey: string, query: string): Promise<PartyOrder[]> {
+  await sweepExpiredPartyOrders();
+  const q = String(query ?? '').trim();
+  if (!q) return [];
+  const rows = await getAll(
+    "SELECT * FROM party_orders WHERE event_key = ? AND kind = 'entry' AND status IN ('paid','cash_due') ORDER BY id",
+    [eventKey]
+  );
+  const key = normalizeTeamKey(q);
+  const hits = rows.filter((r) =>
+    q.includes('@')
+      ? String(r.email).toLowerCase() === q.toLowerCase()
+      : key.length > 0 && (normalizeTeamKey(String(r.team_name)) === key || normalizeTeamKey(String(r.team_kana ?? '')) === key)
+  );
+  const out: PartyOrder[] = [];
+  for (const r of hits) out.push(rowToOrder(r, await membersOf(Number(r.id))));
+  return out;
+}
+
+/** 確定済みの出演エントリーを申込IDで1件(音源の保存・確認用)。 */
+export async function loadConfirmedEntryById(orderId: number): Promise<PartyOrder | null> {
+  const r = await getOne("SELECT * FROM party_orders WHERE id = ? AND kind = 'entry' AND status IN ('paid','cash_due') LIMIT 1", [orderId]);
+  return r ? rowToOrder(r, await membersOf(orderId)) : null;
+}
+
+/** 申込IDで音源を保存(確定済みエントリーのみ)。 */
+export async function savePartyAudioById(orderId: number, url: string, filename: string): Promise<boolean> {
+  const r = await execute(
+    "UPDATE party_orders SET audio_url = ?, audio_filename = ?, audio_uploaded_at = ?, updated_at = ? WHERE id = ? AND kind = 'entry' AND status IN ('paid','cash_due')",
+    [url, filename.slice(0, 200), nowIso(), nowIso(), orderId]
+  );
+  return Number(r.rowsAffected ?? 0) > 0;
 }

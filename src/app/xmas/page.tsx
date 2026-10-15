@@ -7,7 +7,6 @@ import { getXmasContext } from './actions';
 import { Panel, Row, XmasShell, greenBtnCls, primaryBtnCls } from './ui';
 import { XMAS_FAQ_STATIC, XMAS_MAP_URL, XMAS_PRIZE_LINE, XMAS_PROGRAM, XMAS_TIMETABLE } from './content';
 import GahakuQuiz from './GahakuQuiz';
-import ResendForm from './ResendForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -192,9 +191,9 @@ export default async function XmasTopPage() {
               出演エントリーする
             </Link>
           ) : null}
-          <a href="#confirm" className="mt-3 block text-center text-xs font-black underline">
+          <Link href="/xmas/audio" className="mt-3 block text-center text-xs font-black underline">
             エントリー済みのチームの音源提出はこちら
-          </a>
+          </Link>
         </Panel>
         <Image
           src="/xmas/kun_point.png"
@@ -216,18 +215,13 @@ export default async function XmasTopPage() {
         </dl>
       </Panel>
 
-      <div id="confirm" className="scroll-mt-4">
-        <Panel title="申込の確認・音源の提出">
-          <p className="text-sm font-bold">
-            申込のあとに届くメールに「確認ページ」のURLがあります。予約内容の確認と、出演チームの音源の提出は、そのページからできます。
-          </p>
-          <p className="mt-3 text-xs font-black">メールが見つからないとき</p>
-          <p className="text-xs font-bold text-neutral-700">
-            申込時のメールアドレスを入れてください。確認ページのURLを、もう一度メールで送ります。
-          </p>
-          <ResendForm />
-        </Panel>
-      </div>
+      <Link
+        href="/xmas/audio"
+        className="mt-6 block rounded-xl border-[3px] border-[#1a1410] bg-[#2f8a3e] px-4 py-4 text-center text-white shadow-[5px_5px_0_#1a1410] active:translate-y-[2px]"
+      >
+        <span className="block text-lg font-black">ショーケースに出演される方へ</span>
+        <span className="block text-xs font-bold">音源の提出はこちら</span>
+      </Link>
 
       <p className="mt-8 text-center text-xs font-bold text-neutral-600">お問い合わせは BOOM 公式LINE まで。</p>
     </XmasShell>
