@@ -7,6 +7,9 @@ export const XMAS_MAP_URL = 'https://maps.app.goo.gl/C9xrB9vhtaCwTMsx6';
 /** 賞品・プレゼントの訴求(金額は伏せる=TARO 2026-10-15)。 */
 export const XMAS_PRIZE_LINE = '総額◯万円分のプレゼント配り';
 
+/** 保護者の参加の呼びかけ(TARO 2026-10-15)。 */
+export const XMAS_ADULT_LINE = ['Amazonギフトカードなど、', '大人ももらってうれしいプレゼントもあります。', '保護者の方もぜひご参加ください！'] as const;
+
 export const XMAS_PROGRAM: { title: string; body: string }[] = [
   { title: 'ダンスショーケース', body: '生徒同士で組んだチームのショーケース。第1部と第2部の2回に分けて、8チームほどが出演します。' },
   { title: '画伯の絵を当てろ！ゲーム(賞品あり)', body: 'BOOMの「画伯」が描いた絵が何なのかを当てるゲームです。' },

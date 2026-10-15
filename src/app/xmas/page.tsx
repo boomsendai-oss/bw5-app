@@ -8,7 +8,7 @@ import FloatingCta from './FloatingCta';
 import { MicVocal, Ticket } from 'lucide-react';
 import { getXmasContext } from './actions';
 import { Panel, PreviewBanner, Row, XmasShell, greenBtnCls, primaryBtnCls } from './ui';
-import { XMAS_FAQ_STATIC, XMAS_MAP_URL, XMAS_PRIZE_LINE, XMAS_PROGRAM, XMAS_TIMETABLE } from './content';
+import { XMAS_ADULT_LINE, XMAS_FAQ_STATIC, XMAS_MAP_URL, XMAS_PRIZE_LINE, XMAS_PROGRAM, XMAS_TIMETABLE } from './content';
 import { SHOWCASE_ORDER_NOTE } from './content';
 import GahakuQuiz from './GahakuQuiz';
 
@@ -160,6 +160,13 @@ export default async function XmasTopPage({ searchParams }: { searchParams: Prom
       <Panel title="企画" tone="green">
         <p className="mb-3 -rotate-1 border-[3px] border-[#1a1410] bg-[#f4cf3e] px-3 py-2 text-center text-base font-black shadow-[3px_3px_0_#1a1410]">
           🎁 {XMAS_PRIZE_LINE}
+        </p>
+        <p className="mb-3 text-center text-sm font-black text-[#d4302a]">
+          {XMAS_ADULT_LINE.map((l) => (
+            <span key={l} className="inline-block">
+              {l}
+            </span>
+          ))}
         </p>
         <ul className="space-y-3">
           {XMAS_PROGRAM.map((p) => (
