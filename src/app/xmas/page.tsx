@@ -49,7 +49,7 @@ export default async function XmasTopPage() {
   return (
     <XmasShell>
       <Image
-        src="/xmas/hero-v4.jpg"
+        src="/xmas/hero-v5.jpg"
         alt="BOOM クリスマスパーティー 2026 12.19 SAT SPACE ZERO"
         width={1080}
         height={1350}

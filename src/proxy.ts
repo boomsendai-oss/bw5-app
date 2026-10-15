@@ -19,6 +19,14 @@ export function proxy(req: NextRequest) {
       url.pathname = '/bf6';
       return NextResponse.redirect(url);
     }
+    // イベント用の恒久ドメイン(event.boom-sendai.com・2026-10-15 TARO決定)のトップは
+    // 開催が近いイベントのページを出す。各イベントは event.boom-sendai.com/xmas のように
+    // パスで出す。次のイベントに切り替えるときはここの行き先だけ変える。
+    if (host.startsWith('event.')) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/xmas';
+      return NextResponse.rewrite(url);
+    }
     // 物販ドメイン(shop.boom-sendai.com)のトップは商品ページを出す。
     // ここは redirect ではなく rewrite にして、共有されるURLを
     // 「shop.boom-sendai.com」だけの短い形に保つ。
