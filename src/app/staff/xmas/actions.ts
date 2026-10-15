@@ -15,7 +15,10 @@ import {
   savePartySettings,
   setPartyOrderStatusStaff,
   setPartyStaffNote,
+  listEntriesMissingAudio,
+  markAudioReminded,
 } from '@/lib/partyDb';
+import { buildAudioReminderEmail, sendPartyMail } from '@/lib/partyEmail';
 import { addLedgerEntry, deleteLedgerEntry, listLedger } from '@/lib/eventLedgerDb';
 
 const EV = PARTY_EVENT_KEY;
@@ -134,4 +137,27 @@ export async function deleteXmasLedger(id: number): Promise<Result> {
   await deleteLedgerEntry(id);
   revalidatePath('/staff/xmas/settlement');
   return { ok: true };
+}
+
+/** 音源が未提出の確定エントリーへ、提出ページのURLつきリマインドを送る。押した人の名前は必須。 */
+export async function sendXmasAudioReminders(staffName: string): Promise<{ ok: true; sent: number; failed: number } | { ok: false; error: string }> {
+  await requireStaff();
+  if (!staffName.trim()) return { ok: false, error: '送る人の名前を入れてください' };
+  const s = await getPartySettings(EV);
+  let sent = 0;
+  let failed = 0;
+  for (const { order, token } of await listEntriesMissingAudio(EV)) {
+    const ok = await sendPartyMail(order.email, buildAudioReminderEmail(order, token, s), 'audio-reminder');
+    if (ok) {
+      await markAudioReminded(order.id);
+      sent += 1;
+    } else {
+      failed += 1;
+    }
+    // Gmailの連続送信制限(421)を避ける(BF6の一斉送信と同じ間隔)
+    await new Promise((r) => setTimeout(r, 900));
+  }
+  console.log(`[party] audio reminders by staff: sent=${sent} failed=${failed}`);
+  revalidatePath('/staff/xmas');
+  return { ok: true, sent, failed };
 }

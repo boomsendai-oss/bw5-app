@@ -9,6 +9,10 @@ export async function runMigrations(c: Client): Promise<void> {
   // 既存テーブルの列追加 (冪等)
   // ============================================
   await addColumnIfMissing(c, 'instructors', 'salary_type', "TEXT DEFAULT 'per_lesson'");
+  // クリパ2026 出演エントリーの項目追加(本番は台帳 20261015_party_entry_details.sql)
+  await addColumnIfMissing(c, 'party_orders', 'team_kana', "TEXT NOT NULL DEFAULT ''");
+  await addColumnIfMissing(c, 'party_orders', 'audio_reminded_at', "TEXT NOT NULL DEFAULT ''");
+  await addColumnIfMissing(c, 'party_entry_members', 'grade', "TEXT NOT NULL DEFAULT ''");
   await addColumnIfMissing(c, 'instructors', 'monthly_fixed_amount', 'INTEGER DEFAULT 0');
   await addColumnIfMissing(c, 'instructors', 'birth_date', 'TEXT');
   await addColumnIfMissing(c, 'instructors', 'pin_hash', 'TEXT');

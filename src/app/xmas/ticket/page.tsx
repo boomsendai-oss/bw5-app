@@ -1,4 +1,4 @@
-// ⚠️ 公開ページ(認証なし)。理由: クリスマスパーティー2026の参加申込フォーム(外部の子も参加可)。
+// ⚠️ 公開ページ(認証なし)。理由: クリスマスパーティー2026のチケット予約フォーム(外部の子も参加可)。
 import Link from 'next/link';
 import { formatJstLabel } from '@/lib/party';
 import { getXmasContext } from '../actions';
@@ -15,7 +15,7 @@ export default async function XmasTicketPage() {
 
   return (
     <XmasShell>
-      <h1 className="text-center text-2xl font-black">参加申込(前売)</h1>
+      <h1 className="text-center text-2xl font-black">チケット予約(前売)</h1>
       {cardOpen || cashOpen ? (
         <TicketForm
           presalePrice={s.presalePrice}

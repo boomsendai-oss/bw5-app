@@ -16,6 +16,7 @@ import {
   type PartyStatus,
   type ValidatedEntry,
   type ValidatedTicket,
+  type EntryMember,
 } from '@/lib/party';
 
 const HOLD_MINUTES = 30;
@@ -37,9 +38,10 @@ export interface PartyOrder {
   peopleCount: number;
   infantCount: number;
   teamName: string;
+  teamKana: string;
   genre: string;
   memberCount: number;
-  members: string[];
+  members: EntryMember[];
   payMethod: PartyPayMethod;
   status: PartyStatus;
   unitPrice: number;
@@ -48,12 +50,13 @@ export interface PartyOrder {
   audioUrl: string;
   audioFilename: string;
   audioUploadedAt: string;
+  audioRemindedAt: string;
   staffNote: string;
   createdAt: string;
 }
 
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any -- DB行 */
-function rowToOrder(r: any, members: string[]): PartyOrder {
+function rowToOrder(r: any, members: EntryMember[]): PartyOrder {
   return {
     id: Number(r.id),
     eventKey: String(r.event_key),
@@ -66,6 +69,7 @@ function rowToOrder(r: any, members: string[]): PartyOrder {
     peopleCount: Number(r.people_count ?? 0),
     infantCount: Number(r.infant_count ?? 0),
     teamName: String(r.team_name ?? ''),
+    teamKana: String(r.team_kana ?? ''),
     genre: String(r.genre ?? ''),
     memberCount: Number(r.member_count ?? 0),
     members,
@@ -77,14 +81,15 @@ function rowToOrder(r: any, members: string[]): PartyOrder {
     audioUrl: String(r.audio_url ?? ''),
     audioFilename: String(r.audio_filename ?? ''),
     audioUploadedAt: String(r.audio_uploaded_at ?? ''),
+    audioRemindedAt: String(r.audio_reminded_at ?? ''),
     staffNote: String(r.staff_note ?? ''),
     createdAt: String(r.created_at),
   };
 }
 
-async function membersOf(orderId: number): Promise<string[]> {
-  const rows = await getAll('SELECT name FROM party_entry_members WHERE order_id = ? ORDER BY sort_order, id', [orderId]);
-  return rows.map((r) => String(r.name));
+async function membersOf(orderId: number): Promise<EntryMember[]> {
+  const rows = await getAll('SELECT name, grade FROM party_entry_members WHERE order_id = ? ORDER BY sort_order, id', [orderId]);
+  return rows.map((r) => ({ name: String(r.name), grade: String(r.grade ?? '') }));
 }
 
 // ---- 設定 ----
@@ -143,6 +148,7 @@ interface NewOrderRow {
   peopleCount: number;
   infantCount: number;
   teamName: string;
+  teamKana: string;
   genre: string;
   memberCount: number;
   payMethod: PartyPayMethod;
@@ -155,13 +161,13 @@ async function insertOrder(tx: Transaction, eventKey: string, o: NewOrderRow, to
   const isCard = o.payMethod === 'card';
   const res = await tx.execute({
     sql: `INSERT INTO party_orders (event_key, kind, buyer_name, buyer_kana, email, phone, is_member,
-      people_count, infant_count, team_name, genre, member_count, pay_method, status, unit_price, amount_total,
+      people_count, infant_count, team_name, team_kana, genre, member_count, pay_method, status, unit_price, amount_total,
       edit_token, expires_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       eventKey, o.kind, o.buyerName, o.buyerKana, o.email, o.phone,
       o.isMember == null ? null : o.isMember ? 1 : 0,
-      o.peopleCount, o.infantCount, o.teamName, o.genre, o.memberCount,
+      o.peopleCount, o.infantCount, o.teamName, o.teamKana, o.genre, o.memberCount,
       o.payMethod, isCard ? 'pending' : 'cash_due', o.unitPrice, o.amountTotal, token,
       isCard ? new Date(Date.now() + HOLD_MINUTES * 60 * 1000).toISOString() : '',
       now, now,
@@ -182,7 +188,7 @@ export async function createPartyTicket(eventKey: string, v: ValidatedTicket, s:
         {
           kind: 'ticket', buyerName: v.buyerName, buyerKana: v.buyerKana, email: v.email, phone: v.phone,
           isMember: v.isMember, peopleCount: v.peopleCount, infantCount: v.infantCount,
-          teamName: '', genre: '', memberCount: 0, payMethod: v.payMethod, unitPrice, amountTotal,
+          teamName: '', teamKana: '', genre: '', memberCount: 0, payMethod: v.payMethod, unitPrice, amountTotal,
         },
         token
       )
@@ -211,16 +217,16 @@ export async function createPartyEntry(eventKey: string, v: ValidatedEntry, s: P
         eventKey,
         {
           kind: 'entry', buyerName: v.buyerName, buyerKana: v.buyerKana, email: v.email, phone: v.phone,
-          isMember: null, peopleCount: 0, infantCount: 0, teamName: v.teamName, genre: v.genre,
+          isMember: null, peopleCount: 0, infantCount: 0, teamName: v.teamName, teamKana: v.teamKana, genre: v.genre,
           memberCount: v.members.length, payMethod: v.payMethod, unitPrice, amountTotal,
         },
         token
       );
       let sort = 0;
-      for (const name of v.members) {
+      for (const m of v.members) {
         await tx.execute({
-          sql: 'INSERT INTO party_entry_members (order_id, name, sort_order) VALUES (?, ?, ?)',
-          args: [id, name, sort++],
+          sql: 'INSERT INTO party_entry_members (order_id, name, grade, sort_order) VALUES (?, ?, ?, ?)',
+          args: [id, m.name, m.grade, sort++],
         });
       }
       return id;
@@ -252,13 +258,13 @@ export async function listPartyOrdersStaff(eventKey: string): Promise<PartyOrder
   await sweepExpiredPartyOrders();
   const rows = await getAll('SELECT * FROM party_orders WHERE event_key = ? ORDER BY id DESC', [eventKey]);
   const members = await getAll(
-    'SELECT m.order_id, m.name FROM party_entry_members m JOIN party_orders o ON o.id = m.order_id WHERE o.event_key = ? ORDER BY m.sort_order, m.id',
+    'SELECT m.order_id, m.name, m.grade FROM party_entry_members m JOIN party_orders o ON o.id = m.order_id WHERE o.event_key = ? ORDER BY m.sort_order, m.id',
     [eventKey]
   );
-  const byOrder = new Map<number, string[]>();
+  const byOrder = new Map<number, EntryMember[]>();
   for (const m of members) {
     const id = Number(m.order_id);
-    byOrder.set(id, [...(byOrder.get(id) ?? []), String(m.name)]);
+    byOrder.set(id, [...(byOrder.get(id) ?? []), { name: String(m.name), grade: String(m.grade ?? '') }]);
   }
   return rows.map((r) => rowToOrder(r, byOrder.get(Number(r.id)) ?? []));
 }
@@ -352,4 +358,36 @@ export async function savePartyAudio(token: string, url: string, filename: strin
     [url, filename.slice(0, 200), nowIso(), nowIso(), token]
   );
   return Number(r.rowsAffected ?? 0) > 0;
+}
+
+// ---- 音源の後日提出(リマインド・控えURLの再送) ----
+
+/** 確定済みで音源が未提出のエントリー(リマインド対象)。 */
+export async function listEntriesMissingAudio(eventKey: string): Promise<{ order: PartyOrder; token: string }[]> {
+  await sweepExpiredPartyOrders();
+  const rows = await getAll(
+    "SELECT * FROM party_orders WHERE event_key = ? AND kind = 'entry' AND status IN ('paid','cash_due') AND audio_url = '' ORDER BY id",
+    [eventKey]
+  );
+  const out: { order: PartyOrder; token: string }[] = [];
+  for (const r of rows) out.push({ order: rowToOrder(r, await membersOf(Number(r.id))), token: String(r.edit_token) });
+  return out;
+}
+
+export async function markAudioReminded(orderId: number): Promise<void> {
+  await execute('UPDATE party_orders SET audio_reminded_at = ?, updated_at = ? WHERE id = ?', [nowIso(), nowIso(), orderId]);
+}
+
+/** メールアドレスに紐づく確定済みの申込(控えURLの再送用)。呼び出し側は結果の有無を画面に出さないこと。 */
+export async function findConfirmedOrdersByEmail(eventKey: string, email: string): Promise<{ order: PartyOrder; token: string }[]> {
+  await sweepExpiredPartyOrders();
+  const rows = await getAll(
+    "SELECT * FROM party_orders WHERE event_key = ? AND lower(email) = lower(?) AND status IN ('paid','cash_due') ORDER BY id",
+    [eventKey, email.trim()]
+  );
+  const out: { order: PartyOrder; token: string }[] = [];
+  for (const r of rows) {
+    out.push({ order: rowToOrder(r, r.kind === 'entry' ? await membersOf(Number(r.id)) : []), token: String(r.edit_token) });
+  }
+  return out;
 }

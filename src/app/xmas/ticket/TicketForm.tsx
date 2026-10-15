@@ -1,6 +1,6 @@
 'use client';
 
-// 参加申込フォーム。合計は表示用に同じ計算関数で出す(請求額はサーバが再計算する)。
+// チケット予約フォーム。合計は表示用に同じ計算関数で出す(請求額はサーバが再計算する)。
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MAX_INFANTS, MAX_PEOPLE, XMAS_EVENT_INFO, ticketTotal, yen, DEFAULT_PARTY_SETTINGS } from '@/lib/party';
@@ -59,7 +59,7 @@ export default function TicketForm(p: {
         <Field label="お名前">
           <input className={inputCls} value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="例: 木村 太郎" autoComplete="name" />
         </Field>
-        <Field label="ふりがな" hint="当日、会場の名簿はふりがな順に並びます">
+        <Field label="ふりがな" hint="当日の受付は、このお名前で確認します">
           <input className={inputCls} value={buyerKana} onChange={(e) => setBuyerKana(e.target.value)} placeholder="例: きむら たろう" />
         </Field>
         <Field label="メールアドレス" hint="申込の控えが届きます">
@@ -134,7 +134,7 @@ export default function TicketForm(p: {
 
       {error && <Notice tone="error">{error}</Notice>}
       <button type="submit" disabled={busy} className={`mt-6 ${primaryBtnCls}`}>
-        {busy ? '送信中…' : payMethod === 'card' ? 'カード決済に進む' : '申し込む'}
+        {busy ? '送信中…' : payMethod === 'card' ? 'カード決済に進む' : '予約する'}
       </button>
     </form>
   );

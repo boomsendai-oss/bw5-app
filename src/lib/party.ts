@@ -262,16 +262,46 @@ export function validateTicketInput(input: TicketInput): ValidatedTicket | strin
   return { ...c, isMember: input.isMember === 'member', peopleCount: people, infantCount: infants };
 }
 
+/** 出演メンバーの学年区分(TARO 2026-10-15)。 */
+export const GRADES = [
+  ['g1_3', '小学1〜3年生'],
+  ['g4_6', '小学4〜6年生'],
+  ['jhs', '中学生'],
+  ['hs', '高校生'],
+  ['adult', 'それ以上'],
+] as const;
+export type GradeKey = (typeof GRADES)[number][0];
+
+export function gradeLabel(g: string): string {
+  return GRADES.find(([k]) => k === g)?.[1] ?? '';
+}
+
+/** 'あ(小学1〜3年生)、い(中学生)' 形式。学年が無い行は名前だけ。 */
+export function formatMembers(ms: { name: string; grade: string }[], sep = '、'): string {
+  return ms.map((m) => (gradeLabel(m.grade) ? `${m.name}(${gradeLabel(m.grade)})` : m.name)).join(sep);
+}
+
+function isGrade(v: unknown): v is GradeKey {
+  return GRADES.some(([k]) => k === v);
+}
+
+export interface EntryMember {
+  name: string;
+  grade: string;
+}
+
 export interface EntryInput extends ContactInput {
   teamName?: unknown;
+  teamKana?: unknown;
   genre?: unknown;
   members?: unknown;
 }
 
 export interface ValidatedEntry extends ValidatedContact {
   teamName: string;
+  teamKana: string;
   genre: string;
-  members: string[];
+  members: EntryMember[];
 }
 
 export const MIN_MEMBERS = 2;
@@ -280,16 +310,29 @@ export const MAX_MEMBERS = 20;
 export function validateEntryInput(input: EntryInput): ValidatedEntry | string {
   const teamName = String(input.teamName ?? '').trim();
   if (!teamName || teamName.length > 40) return 'チーム名を40文字以内で入力してください';
+  const teamKana = normalizeKana(String(input.teamKana ?? ''));
+  if (!teamKana || teamKana.length > 60 || !KANA_RE.test(teamKana)) {
+    return 'チーム名のふりがなをひらがなで入力してください';
+  }
   const genre = String(input.genre ?? '').trim();
   if (!genre || genre.length > 30) return 'ジャンルを30文字以内で入力してください';
-  const rawMembers = Array.isArray(input.members) ? input.members : [];
-  const members = rawMembers.map((m) => String(m ?? '').trim()).filter((m) => m.length > 0);
+  const raw = Array.isArray(input.members) ? input.members : [];
+  const members: EntryMember[] = [];
+  for (const m of raw) {
+    const name = String((m as { name?: unknown })?.name ?? '').trim();
+    if (!name) continue;
+    if (name.length > 50) return 'メンバーの名前は50文字以内で入力してください';
+    const grade = (m as { grade?: unknown })?.grade;
+    if (!isGrade(grade)) return `${name} さんの学年を選んでください`;
+    members.push({ name, grade });
+  }
   if (members.length < MIN_MEMBERS) return `メンバーは${MIN_MEMBERS}人以上で入力してください(1人での出演はできません)`;
   if (members.length > MAX_MEMBERS) return `メンバーは${MAX_MEMBERS}人までです`;
-  if (members.some((m) => m.length > 50)) return 'メンバーの名前は50文字以内で入力してください';
   const c = validateContact(input);
   if (typeof c === 'string') return c;
-  return { ...c, teamName, genre, members };
+  // 出演は後からのキャンセルで枠が空くと困るため、カード払いのみ(TARO 2026-10-15)
+  if (c.payMethod !== 'card') return '出演エントリーはカード払いのみです';
+  return { ...c, teamName, teamKana, genre, members };
 }
 
 // ---- 名簿・精算・表示 ----

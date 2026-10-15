@@ -1,7 +1,7 @@
 // スタッフ: 会場キャッシャー用の印刷名簿(ふりがなの50音順)。/staff/* 配下のためproxy認証で保護(規約4.5)。
 // 載せるのは確定分(支払済み・当日現金)だけ。印刷時はサイドバーなどを隠す。
 import StaffPageHeader from '@/components/StaffPageHeader';
-import { PARTY_EVENT_KEY, XMAS_EVENT_INFO, rosterRows, summarizePartyOrders, yen } from '@/lib/party';
+import { PARTY_EVENT_KEY, XMAS_EVENT_INFO, formatMembers, rosterRows, summarizePartyOrders, yen } from '@/lib/party';
 import { listPartyOrdersStaff } from '@/lib/partyDb';
 import PrintButton from './PrintButton';
 
@@ -62,9 +62,9 @@ export default async function StaffXmasRosterPage() {
                 <td className="py-1.5 text-xs">
                   {o.kind === 'entry' ? (
                     <>
-                      <b>出演: {o.teamName}</b>
+                      <b>出演: {o.teamName}({o.teamKana})</b>
                       <br />
-                      {o.members.join('、')}
+                      {formatMembers(o.members)}
                     </>
                   ) : (
                     <>参加{o.isMember === false ? '(会員以外)' : ''}</>

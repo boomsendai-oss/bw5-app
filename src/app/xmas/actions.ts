@@ -24,6 +24,7 @@ import {
   countHoldingTeams,
   createPartyEntry,
   createPartyTicket,
+  findConfirmedOrdersByEmail,
   getPartySettings,
   loadPartyOrderByToken,
   savePartyAudio,
@@ -31,7 +32,8 @@ import {
 } from '@/lib/partyDb';
 import { buildPartyCheckoutParams, buildPartyLineItems } from '@/lib/partyStripe';
 import { createBf6CheckoutSession } from '@/lib/bf6Stripe';
-import { sendPartyOrderEmail } from '@/lib/partyEmail';
+import { buildLinkResendEmail, sendPartyMail, sendPartyOrderEmail } from '@/lib/partyEmail';
+import { isValidEmail } from '@/lib/party';
 
 const EV = PARTY_EVENT_KEY;
 
@@ -175,4 +177,22 @@ export async function saveXmasAudio(token: string, url: string, filename: string
   }
   const ok = await savePartyAudio(token, url, filename);
   return ok ? { ok } : { ok: false, error: 'エントリーが確定していないため保存できません' };
+}
+
+/**
+ * 控えページのURLを登録メールアドレスへ送り直す(メールをなくした人・音源を後日出す人向け)。
+ * 登録があるかどうかは画面に出さない(他人のメールアドレスで申込の有無を確かめられないように)。
+ */
+export async function requestXmasLinkResend(email: string): Promise<{ ok: boolean; error?: string }> {
+  if (!(await checkRateLimit(`xmasresend:${await ip()}`, 5, 3600))) {
+    return { ok: false, error: '操作が多すぎます。しばらくしてからお試しください' };
+  }
+  const e = String(email ?? '').trim();
+  if (!isValidEmail(e)) return { ok: false, error: 'メールアドレスの形式が正しくありません' };
+  const items = await findConfirmedOrdersByEmail(EV, e);
+  if (items.length > 0) {
+    // 送り先は入力値ではなく、申込時に登録されたアドレス
+    await sendPartyMail(items[0].order.email, buildLinkResendEmail(items), 'resend');
+  }
+  return { ok: true };
 }

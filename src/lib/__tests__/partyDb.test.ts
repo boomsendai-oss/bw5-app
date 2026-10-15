@@ -24,7 +24,8 @@ const ticket = {
 };
 const entry = (team: string, payMethod: 'card' | 'cash' = 'cash') => ({
   buyerName: '代表', buyerKana: 'だいひょう', email: 'e@example.com', phone: '09011112222',
-  payMethod, teamName: team, genre: 'HIPHOP', members: ['あ', 'い', 'う'],
+  payMethod, teamName: team, teamKana: 'てすと', genre: 'HIPHOP',
+  members: [{ name: 'あ', grade: 'g1_3' }, { name: 'い', grade: 'jhs' }, { name: 'う', grade: 'adult' }],
 });
 
 beforeAll(async () => {
@@ -79,7 +80,9 @@ describe('出演エントリーの先着', () => {
     if (a.ok) {
       expect(a.amountTotal).toBe(12000); // 3人×(2000+2000)
       const o = await db.loadPartyOrderByToken(a.token);
-      expect(o?.members).toEqual(['あ', 'い', 'う']);
+      expect(o?.members.map((m) => m.name)).toEqual(['あ', 'い', 'う']);
+      expect(o?.members[1].grade).toBe('jhs');
+      expect(o?.teamKana).toBe('てすと');
     }
   });
   it('カード決済待ちが30分切れたら枠が空く', async () => {
@@ -135,5 +138,17 @@ describe('スタッフ操作と音源', () => {
     const tok = (await core.getOne('SELECT edit_token FROM party_orders WHERE id = ?', [a!.id])).edit_token as string;
     expect(await db.savePartyAudio(tok, 'https://x/b.mp3', 'b.mp3')).toBe(true);
     expect((await db.loadPartyOrderByToken(tok))?.audioFilename).toBe('b.mp3');
+  });
+});
+
+describe('音源の後日提出', () => {
+  it('未提出の確定エントリーだけがリマインド対象・メールで控えを探せる', async () => {
+    const missing = await db.listEntriesMissingAudio(EV);
+    expect(missing.map((m) => m.order.teamName).sort()).toEqual(['C']); // A は音源提出済み・B は期限切れ
+    await db.markAudioReminded(missing[0].order.id);
+    expect((await db.loadPartyOrderByToken(missing[0].token))?.audioRemindedAt).not.toBe('');
+    const found = await db.findConfirmedOrdersByEmail(EV, 'E@EXAMPLE.COM');
+    expect(found.length).toBeGreaterThan(0);
+    expect(await db.findConfirmedOrdersByEmail(EV, 'nobody@example.com')).toEqual([]);
   });
 });

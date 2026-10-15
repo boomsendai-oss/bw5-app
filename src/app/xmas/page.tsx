@@ -6,6 +6,8 @@ import { XMAS_EVENT_INFO, formatJstLabel, yen, type GateState } from '@/lib/part
 import { getXmasContext } from './actions';
 import { Panel, Row, XmasShell, greenBtnCls, primaryBtnCls } from './ui';
 import { XMAS_FAQ_STATIC, XMAS_MAP_URL, XMAS_PRIZE_LINE, XMAS_PROGRAM, XMAS_TIMETABLE } from './content';
+import GahakuQuiz from './GahakuQuiz';
+import ResendForm from './ResendForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +49,7 @@ export default async function XmasTopPage() {
   return (
     <XmasShell>
       <Image
-        src="/xmas/hero.jpg"
+        src="/xmas/hero-v2.jpg"
         alt="BOOM クリスマスパーティー 2026 12.19 SAT SPACE ZERO"
         width={1080}
         height={1350}
@@ -57,7 +59,7 @@ export default async function XmasTopPage() {
 
       {beforeOpen && (
         <div className="mt-6 -rotate-1 border-[3px] border-[#1a1410] bg-[#f4cf3e] p-3 text-center shadow-[4px_4px_0_#1a1410]">
-          <p className="text-sm font-black">参加申込・出演エントリーは</p>
+          <p className="text-sm font-black">チケット予約・出演エントリーは</p>
           <p className="text-2xl font-black">{formatJstLabel(s.openAt)} 受付開始</p>
           <p className="text-xs font-bold">出演は先着順です</p>
         </div>
@@ -65,20 +67,27 @@ export default async function XmasTopPage() {
 
       <Panel title="開催概要">
         <dl>
-          <Row k="日時" v={`${XMAS_EVENT_INFO.dateLabel} ${XMAS_EVENT_INFO.timeLabel}・入退場自由`} />
+          <Row
+            k="日時"
+            v={
+              <>
+                <span className="block text-base font-black">{XMAS_EVENT_INFO.dateLabel}</span>
+                <span className="block text-base font-black">{XMAS_EVENT_INFO.timeLabel}</span>
+                <Sub>入退場自由</Sub>
+              </>
+            }
+          />
           <Row
             k="会場"
             v={
               <>
-                {XMAS_EVENT_INFO.venue}
-                <br />
-                <span className="text-xs">{XMAS_EVENT_INFO.venueAddress}</span>
-                <br />
+                <span className="block text-base font-black">{XMAS_EVENT_INFO.venue}</span>
+                <Sub>{XMAS_EVENT_INFO.venueAddress}</Sub>
                 <a
                   href={XMAS_MAP_URL}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-xs font-black text-[#2f8a3e] underline"
+                  className="text-[11px] font-black text-[#2f8a3e] underline"
                 >
                   地図を開く
                 </a>
@@ -89,14 +98,31 @@ export default async function XmasTopPage() {
             k="入場料"
             v={
               <>
-                前売 {yen(s.presalePrice)} / 当日 {yen(s.doorPrice)}
-                <br />
-                <span className="text-xs">未就学児は無料・{XMAS_EVENT_INFO.drinkLabel}</span>
+                <span className="block text-base font-black">
+                  前売 {yen(s.presalePrice)} / 当日 {yen(s.doorPrice)}
+                </span>
+                <Sub>未就学児は無料・{XMAS_EVENT_INFO.drinkLabel}</Sub>
               </>
             }
           />
-          <Row k="対象" v="BOOMの生徒・保護者・お友達(会員以外もOK)" />
-          <Row k="バー" v={XMAS_EVENT_INFO.barLabel} />
+          <Row
+            k="対象"
+            v={
+              <>
+                <span className="block text-base font-black">誰でもOK</span>
+                <Sub>BOOMの生徒・保護者・お友達</Sub>
+              </>
+            }
+          />
+          <Row
+            k="バー"
+            v={
+              <>
+                <span className="block text-base font-black">お酒OK 🍻</span>
+                <Sub>バーカウンターでソフトドリンク・お酒を注文できます。みんなで乾杯しましょう</Sub>
+              </>
+            }
+          />
         </dl>
       </Panel>
 
@@ -115,26 +141,8 @@ export default async function XmasTopPage() {
       </Panel>
 
       <Panel title="画伯コーナー" tone="green">
-        <p className="text-sm font-black">去年の「画伯の絵を当てろ！ゲーム」より。これ、何に見えますか？</p>
-        <div className="mt-4 grid grid-cols-2 gap-4">
-          {[
-            { src: '/xmas/gahaku_cat.jpg', q: 'Q1', rot: '-rotate-3' },
-            { src: '/xmas/gahaku_pig.jpg', q: 'Q2', rot: 'rotate-2' },
-          ].map((g) => (
-            <figure
-              key={g.q}
-              className={`relative ${g.rot} border-[3px] border-[#1a1410] bg-white p-1.5 pb-3 shadow-[4px_4px_0_#1a1410]`}
-            >
-              <span
-                className="absolute -top-3 left-1/2 h-5 w-14 -translate-x-1/2 rotate-2 bg-[#f4cf3e]/80"
-                aria-hidden
-              />
-              <Image src={g.src} alt={`画伯の絵 ${g.q}`} width={800} height={1100} className="h-auto w-full" />
-              <figcaption className="mt-1 text-center text-lg font-black text-[#d4302a]">{g.q}</figcaption>
-            </figure>
-          ))}
-        </div>
-        <p className="mt-4 text-xs font-bold text-neutral-700">正解した人には賞品があります。</p>
+        <p className="text-sm font-black">去年の「画伯の絵を当てろ！ゲーム」の絵です。練習問題としてどうぞ。</p>
+        <GahakuQuiz />
       </Panel>
 
       <Panel title="タイムテーブル(予定)">
@@ -149,37 +157,34 @@ export default async function XmasTopPage() {
         <p className="mt-2 text-xs font-bold text-neutral-600">※時間は前後することがあります</p>
       </Panel>
 
-      <Panel title="参加申込(前売)">
-        <p className="text-sm font-bold">{stateLine(ticketState, s.openAt, ticketDeadline)}</p>
+      <Panel title="チケット予約(前売)">
+        <p className="text-sm font-black">{stateLine(ticketState, s.openAt, ticketDeadline)}</p>
         <p className="mt-1 text-xs font-bold text-neutral-600">
-          カード払い または 当日現金払い。締切後は当日券({yen(s.doorPrice)}
-          )を会場でお求めください。
+          前売 {yen(s.presalePrice)}。カード払い または 当日現金払いを選べます。締切後は当日券({yen(s.doorPrice)})を会場でお求めください。
         </p>
         {ticketOpen ? (
           <Link href="/xmas/ticket" className={`mt-4 ${primaryBtnCls}`}>
-            参加を申し込む
+            チケットを予約する
           </Link>
         ) : null}
       </Panel>
 
       <div className="relative">
         <Panel title="ショーケース出演エントリー" tone="green">
-          <p className="text-sm font-bold">{stateLine(ctx.entry, s.openAt, s.entryDeadline)}</p>
-          {ctx.entry === 'open' && (
-            <p className="mt-1 text-sm font-black text-[#d4302a]">残り {ctx.teamsLeft} チーム</p>
-          )}
+          <p className="text-sm font-black">{stateLine(ctx.entry, s.openAt, s.entryDeadline)}</p>
+          {ctx.entry === 'open' && <p className="mt-1 text-sm font-black text-[#d4302a]">残り {ctx.teamsLeft} チーム</p>}
           <ul className="mt-2 space-y-1 text-xs font-bold text-neutral-700">
             <li>
-              ・2人以上のチーム(1人での出演はなし)・
-              {XMAS_EVENT_INFO.showTimeLimit}・先着{s.teamCap}チーム
+              ・2人以上のチーム(1人での出演はなし)・{XMAS_EVENT_INFO.showTimeLimit}・先着{s.teamCap}チーム
             </li>
-            <li>・クラスや学年が違うメンバー、BOOMの生徒ではない友達もOK</li>
+            <li>・クラスや学年が違うメンバーでOK。BOOMの生徒ではない友達も参加OK</li>
             <li>
-              ・出演料 1人 {yen(s.performerFee)}(別途 入場料 {yen(s.presalePrice)}{' '}
-              がかかります。エントリーでまとめてお支払い・出演メンバーはパーティーの申込不要)
+              ・出演料 1人 {yen(s.performerFee)}(別途 入場料 {yen(s.presalePrice)} がかかります)。カード払いのみ。出演メンバーはチケット予約不要
             </li>
+            <li>・リハーサルの時間はありません</li>
+            <li>・出演順(第1部/第2部)は締切後に決めます。どちらでも出られるよう予定を空けておいてください</li>
             <li>
-              ・エントリー締切 {formatJstLabel(s.entryDeadline)} / 音源の提出締切 {formatJstLabel(s.audioDeadline)}
+              ・エントリー締切 {formatJstLabel(s.entryDeadline)} / 音源は後日提出でOK(締切 {formatJstLabel(s.audioDeadline)})
             </li>
           </ul>
           {ctx.entry === 'open' ? (
@@ -208,7 +213,18 @@ export default async function XmasTopPage() {
         </dl>
       </Panel>
 
+      <Panel title="控えのURLをもう一度送る">
+        <p className="text-xs font-bold text-neutral-700">
+          申込時のメールアドレスを入れると、控えページ(出演チームは音源の提出ページ)のURLを送り直します。
+        </p>
+        <ResendForm />
+      </Panel>
+
       <p className="mt-8 text-center text-xs font-bold text-neutral-600">お問い合わせは BOOM 公式LINE まで。</p>
     </XmasShell>
   );
+}
+
+function Sub({ children }: { children: React.ReactNode }) {
+  return <span className="block text-[11px] font-bold leading-snug text-neutral-600">{children}</span>;
 }

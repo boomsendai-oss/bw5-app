@@ -20,6 +20,7 @@ import {
   formatJstLabel,
   summarizePartyOrders,
   rosterRows,
+  gradeLabel,
   type PartySettings,
 } from '../party';
 
@@ -150,26 +151,48 @@ describe('validateTicketInput', () => {
 
 const baseEntry = {
   teamName: 'BOOM KIDS',
+  teamKana: 'ブーム キッズ',
   genre: 'HIPHOP',
   buyerName: '木村 太郎',
   buyerKana: 'きむら たろう',
   email: 'taro@example.com',
   phone: '09012345678',
-  members: ['あいう', 'かきく', ''],
-  payMethod: 'cash',
+  members: [
+    { name: 'あいう', grade: 'g1_3' },
+    { name: 'かきく', grade: 'jhs' },
+    { name: '', grade: '' },
+  ],
+  payMethod: 'card',
 };
 
 describe('validateEntryInput', () => {
-  it('空行のメンバーは捨てる', () => {
+  it('空行のメンバーは捨て、チーム名のふりがなはひらがなに直す', () => {
     const v = validateEntryInput(baseEntry);
-    expect(typeof v !== 'string' && v.members).toEqual(['あいう', 'かきく']);
+    expect(typeof v).toBe('object');
+    if (typeof v === 'string') return;
+    expect(v.members).toEqual([
+      { name: 'あいう', grade: 'g1_3' },
+      { name: 'かきく', grade: 'jhs' },
+    ]);
+    expect(v.teamKana).toBe('ぶーむ きっず');
   });
   it('2人未満はNG(1人での出演はなし)', () => {
-    expect(validateEntryInput({ ...baseEntry, members: ['ひとり'] })).toMatch(/2人以上/);
+    expect(validateEntryInput({ ...baseEntry, members: [{ name: 'ひとり', grade: 'hs' }] })).toMatch(/2人以上/);
   });
-  it('チーム名・ジャンル必須', () => {
+  it('チーム名・ふりがな・ジャンル必須', () => {
     expect(validateEntryInput({ ...baseEntry, teamName: '' })).toMatch(/チーム名/);
+    expect(validateEntryInput({ ...baseEntry, teamKana: 'boom' })).toMatch(/ふりがな/);
     expect(validateEntryInput({ ...baseEntry, genre: '' })).toMatch(/ジャンル/);
+  });
+  it('名前を書いたメンバーは学年も必須', () => {
+    expect(validateEntryInput({ ...baseEntry, members: [{ name: 'あ', grade: 'g1_3' }, { name: 'い', grade: '' }] })).toMatch(/学年/);
+  });
+  it('出演エントリーはカード払いのみ', () => {
+    expect(validateEntryInput({ ...baseEntry, payMethod: 'cash' })).toMatch(/カード/);
+  });
+  it('学年ラベル', () => {
+    expect(gradeLabel('g4_6')).toBe('小学4〜6年生');
+    expect(gradeLabel('adult')).toBe('それ以上');
   });
 });
 

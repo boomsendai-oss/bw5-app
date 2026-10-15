@@ -7,6 +7,7 @@ import {
   XMAS_EVENT_INFO,
   audioOpen,
   formatJstLabel,
+  formatMembers,
   formatPartyReceiptNo,
   partyStatusLabel,
   yen,
@@ -26,7 +27,10 @@ export default async function XmasMyPage({ searchParams }: { searchParams: Promi
     return (
       <XmasShell>
         <h1 className="text-center text-2xl font-black">申込が見つかりません</h1>
-        <Notice>URLが正しいかご確認ください。カード払いで30分以内に決済されなかった申込は無効になります。</Notice>
+        <Notice>
+          URLが正しいかご確認ください。カード払いで30分以内に決済されなかった申込は無効になります。控えのURLは
+          パーティーの案内ページの下から、もう一度メールで受け取れます。
+        </Notice>
         <Link href="/xmas" className={`mt-6 ${primaryBtnCls}`}>
           パーティーの案内へ
         </Link>
@@ -41,7 +45,7 @@ export default async function XmasMyPage({ searchParams }: { searchParams: Promi
     o.status === 'paid' || o.status === 'cash_due'
       ? isEntry
         ? 'エントリー完了！'
-        : 'お申し込みありがとうございます！'
+        : 'チケット予約完了！'
       : o.status === 'pending'
         ? 'あと少し：カード決済がまだです'
         : o.status === 'expired'
@@ -71,14 +75,14 @@ export default async function XmasMyPage({ searchParams }: { searchParams: Promi
         </Link>
       )}
 
-      <Panel title={isEntry ? 'エントリー内容' : '申込内容'} tone={isEntry ? 'green' : 'red'}>
+      <Panel title={isEntry ? 'エントリー内容' : '予約内容'} tone={isEntry ? 'green' : 'red'}>
         <dl>
           <Row k="状態" v={partyStatusLabel(o.status)} />
           <Row k="代表者" v={`${o.buyerName}(${o.buyerKana})`} />
           {isEntry ? (
             <>
-              <Row k="チーム" v={`${o.teamName}(${o.genre})`} />
-              <Row k="メンバー" v={`${o.memberCount}名: ${o.members.join('、')}`} />
+              <Row k="チーム" v={`${o.teamName}(${o.teamKana})・${o.genre}`} />
+              <Row k="メンバー" v={`${o.memberCount}名: ${formatMembers(o.members)}`} />
             </>
           ) : (
             <Row k="人数" v={`小学生以上 ${o.peopleCount}名${o.infantCount > 0 ? ` / 未就学児 ${o.infantCount}名(無料)` : ''}`} />
@@ -109,14 +113,16 @@ export default async function XmasMyPage({ searchParams }: { searchParams: Promi
       </Panel>
 
       {isEntry && confirmed && (
-        <Panel title="音源の提出" tone="green">
+        <Panel title="音源の提出(後日でOK)" tone="green">
           <p className="text-sm font-bold">
-            締切 {formatJstLabel(s.audioDeadline)}。持ち時間は{XMAS_EVENT_INFO.showTimeLimit}です。差し替えもできます。
+            音源ができたら、このページからアップロードしてください。締切は <b>{formatJstLabel(s.audioDeadline)}</b>。持ち時間は
+            {XMAS_EVENT_INFO.showTimeLimit}です。差し替えもできます。
+          </p>
+          <p className="mt-2 text-xs font-bold text-neutral-700">
+            このページのURLはメールでも届いています。あとで開けるよう、ブックマークかメールを保存しておいてください。
           </p>
           {o.audioFilename ? (
-            <p className="mt-2 rounded-lg border-[3px] border-[#1a1410] bg-white p-2 text-sm font-black">
-              提出済み: {o.audioFilename}
-            </p>
+            <p className="mt-2 rounded-lg border-[3px] border-[#1a1410] bg-white p-2 text-sm font-black">提出済み: {o.audioFilename}</p>
           ) : (
             <p className="mt-2 text-sm font-black text-[#d4302a]">まだ提出されていません</p>
           )}
@@ -125,6 +131,15 @@ export default async function XmasMyPage({ searchParams }: { searchParams: Promi
           ) : (
             <Notice>音源の提出は締め切りました。差し替えが必要な場合は公式LINEへご連絡ください。</Notice>
           )}
+        </Panel>
+      )}
+
+      {isEntry && confirmed && (
+        <Panel title="出演について">
+          <ul className="space-y-1 text-sm font-bold">
+            <li>・リハーサルの時間はありません</li>
+            <li>・出演順(第1部/第2部)は締切後に決めてお知らせします。どちらでも出られるよう予定を空けておいてください</li>
+          </ul>
         </Panel>
       )}
 

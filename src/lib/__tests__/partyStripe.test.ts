@@ -4,7 +4,7 @@ import { buildPartyLineItems, buildPartyCheckoutParams, parsePartyWebhookEvent }
 describe('buildPartyLineItems', () => {
   it('参加申込は 単価×人数 の1行', () => {
     expect(buildPartyLineItems({ kind: 'ticket', unitPrice: 2000, peopleCount: 3, memberCount: 0, teamName: '' })).toEqual([
-      { name: 'BOOM クリスマスパーティー 2026 入場料(前売)', unitAmount: 2000, qty: 3 },
+      { name: 'BOOM クリスマスパーティー 2026 入場チケット(前売)', unitAmount: 2000, qty: 3 },
     ]);
   });
   it('エントリーは 出演料+参加費 の単価×メンバー数', () => {

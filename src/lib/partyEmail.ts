@@ -6,18 +6,20 @@ import {
   XMAS_EVENT_INFO,
   formatJstLabel,
   formatPartyReceiptNo,
+  gradeLabel,
   yen,
   type PartySettings,
 } from '@/lib/party';
 import type { PartyOrder } from '@/lib/partyDb';
 
 const BASE_URL = 'https://bw5-app.vercel.app';
+const myUrl = (token: string) => `${BASE_URL}/xmas/my?t=${token}`;
 
 export function buildPartyOrderEmail(o: PartyOrder, token: string, s: PartySettings): { subject: string; text: string } {
   const no = formatPartyReceiptNo(o.id);
   const paid = o.status === 'paid';
   const isEntry = o.kind === 'entry';
-  const what = isEntry ? '出演エントリー' : '参加申込';
+  const what = isEntry ? '出演エントリー' : 'チケット予約';
   const subject = `【BOOMクリスマスパーティー2026】${what}${paid ? '完了' : '受付'}(受付番号 ${no})`;
 
   const L: string[] = [];
@@ -31,13 +33,14 @@ export function buildPartyOrderEmail(o: PartyOrder, token: string, s: PartySetti
   L.push(`■ 会場: ${XMAS_EVENT_INFO.venue}(${XMAS_EVENT_INFO.venueAddress})`);
   L.push('');
   if (isEntry) {
-    L.push(`■ チーム名: ${o.teamName}(${o.genre})`);
-    L.push(`■ メンバー(${o.memberCount}名): ${o.members.join('、')}`);
+    L.push(`■ チーム名: ${o.teamName}(${o.teamKana}) / ${o.genre}`);
+    L.push(`■ メンバー(${o.memberCount}名):`);
+    for (const m of o.members) L.push(`  ・${m.name}(${gradeLabel(m.grade)})`);
     L.push(`■ 出演料+入場料: ${yen(o.unitPrice)} × ${o.memberCount}名`);
-    L.push('  ※出演メンバーはパーティーへの参加申込は不要です(付き添いの保護者の方は参加申込をお願いします)');
+    L.push('  ※出演メンバーはチケット予約は不要です(付き添いの保護者の方はチケット予約をお願いします)');
   } else {
     L.push(`■ 参加人数: 小学生以上 ${o.peopleCount}名${o.infantCount > 0 ? ` / 未就学児 ${o.infantCount}名(無料)` : ''}`);
-    L.push(`■ 入場料(前売): ${yen(o.unitPrice)} × ${o.peopleCount}名`);
+    L.push(`■ 入場チケット(前売): ${yen(o.unitPrice)} × ${o.peopleCount}名`);
   }
   L.push('');
   L.push(`■ 合計: ${yen(o.amountTotal)}`);
@@ -52,13 +55,19 @@ export function buildPartyOrderEmail(o: PartyOrder, token: string, s: PartySetti
   L.push(`  会場のキャッシャーで「${o.buyerName}」のお名前をお伝えください。`);
   if (isEntry) {
     L.push('');
-    L.push('■ 音源の提出');
-    L.push(`  ${formatJstLabel(s.audioDeadline)} までに、下の控えページから音源ファイル(mp3など)をアップロードしてください。`);
-    L.push(`  持ち時間は${XMAS_EVENT_INFO.showTimeLimit}です。差し替えもできます。`);
+    L.push('■ 出演について');
+    L.push('  ・リハーサルの時間はありません');
+    L.push('  ・出演順(第1部/第2部)はエントリー締切後に決めてお知らせします。どちらでも出られるよう予定を空けておいてください');
+    L.push('');
+    L.push('■ 音源の提出(後日でOK)');
+    L.push(`  音源ができたら、${formatJstLabel(s.audioDeadline)} までに下の「提出ページ」からアップロードしてください。`);
+    L.push(`  持ち時間は${XMAS_EVENT_INFO.showTimeLimit}です。差し替えもできます。このメールは提出まで保存しておいてください。`);
+    L.push(`  ▼提出ページ`);
+    L.push(`  ${myUrl(token)}`);
   }
   L.push('');
-  L.push('■ 申込内容の確認' + (isEntry ? '・音源の提出' : ''));
-  L.push(`  ${BASE_URL}/xmas/my?t=${token}`);
+  L.push('■ 申込内容の確認');
+  L.push(`  ${myUrl(token)}`);
   L.push('');
   L.push('お申し込み後は、原則として返金はできません。');
   L.push('ご不明な点は BOOM 公式LINE までお問い合わせください。');
@@ -74,5 +83,53 @@ export async function sendPartyOrderEmail(o: PartyOrder, token: string, s: Party
   } catch (e) {
     // メール失敗で申込自体は失敗させない(控えページで確認できる)。PIIはログに出さない
     console.error('[party] order email failed', o.id, e instanceof Error ? e.message : e);
+  }
+}
+
+/** 音源が未提出のチームへのリマインド(スタッフ画面のボタンから送る)。 */
+export function buildAudioReminderEmail(o: PartyOrder, token: string, s: PartySettings): { subject: string; text: string } {
+  const L: string[] = [];
+  L.push(`${o.buyerName} 様`);
+  L.push('');
+  L.push(`${XMAS_EVENT_INFO.title} ショーケース出演チーム「${o.teamName}」の音源がまだ届いていません。`);
+  L.push(`${formatJstLabel(s.audioDeadline)} までに、下の提出ページからアップロードをお願いします。`);
+  L.push(`持ち時間は${XMAS_EVENT_INFO.showTimeLimit}です。`);
+  L.push('');
+  L.push('▼提出ページ');
+  L.push(myUrl(token));
+  L.push('');
+  L.push('すでに準備中の場合は、このメールは気にせず締切までに提出してください。');
+  L.push('ご不明な点は BOOM 公式LINE までお問い合わせください。');
+  L.push('');
+  L.push('BOOM DANCE SCHOOL');
+  return { subject: `【BOOMクリスマスパーティー2026】音源の提出のお願い(${o.teamName})`, text: L.join('\n') };
+}
+
+/** 控えページのURLを登録メールアドレスへ送り直す(メールをなくした人向け)。 */
+export function buildLinkResendEmail(items: { order: PartyOrder; token: string }[]): { subject: string; text: string } {
+  const L: string[] = [];
+  L.push(`${items[0].order.buyerName} 様`);
+  L.push('');
+  L.push(`${XMAS_EVENT_INFO.title}の申込の控えページをお送りします。`);
+  L.push('');
+  for (const { order, token } of items) {
+    const label = order.kind === 'entry' ? `出演エントリー「${order.teamName}」(音源の提出もここから)` : 'チケット予約';
+    L.push(`■ ${formatPartyReceiptNo(order.id)} ${label}`);
+    L.push(`  ${myUrl(token)}`);
+  }
+  L.push('');
+  L.push('お心当たりのない場合は、このメールは破棄してください。');
+  L.push('');
+  L.push('BOOM DANCE SCHOOL');
+  return { subject: '【BOOMクリスマスパーティー2026】申込の控えページ', text: L.join('\n') };
+}
+
+export async function sendPartyMail(to: string, mail: { subject: string; text: string }, tag: string): Promise<boolean> {
+  try {
+    await sendEmail({ to, subject: mail.subject, text: mail.text });
+    return true;
+  } catch (e) {
+    console.error(`[party] ${tag} email failed`, e instanceof Error ? e.message : e);
+    return false;
   }
 }

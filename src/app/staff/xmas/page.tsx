@@ -5,6 +5,7 @@ import {
   PARTY_EVENT_KEY,
   entryState,
   formatJstLabel,
+  formatMembers,
   formatPartyReceiptNo,
   partyStatusLabel,
   summarizePartyOrders,
@@ -15,6 +16,7 @@ import {
 } from '@/lib/party';
 import { countHoldingTeams, getPartySettings, listPartyOrdersStaff } from '@/lib/partyDb';
 import OrderActions from './OrderActions';
+import AudioReminderButton from './AudioReminderButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,7 +71,10 @@ export default async function StaffXmasPage() {
         </section>
 
         <section className="rounded-xl border border-sand-200 bg-white p-4">
-          <h2 className="text-sm font-bold text-navy-800">出演エントリー({entries.length}件)</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-bold text-navy-800">出演エントリー({entries.length}件)</h2>
+            <AudioReminderButton missing={entries.filter((o) => (o.status === 'paid' || o.status === 'cash_due') && !o.audioUrl).length} />
+          </div>
           {entries.length === 0 ? (
             <p className="mt-2 text-sm text-neutral-500">まだありません</p>
           ) : (
@@ -79,12 +84,12 @@ export default async function StaffXmasPage() {
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-mono text-xs text-neutral-500">{formatPartyReceiptNo(o.id)}</span>
                     <span className="font-bold text-navy-800">{o.teamName}</span>
-                    <span className="text-xs text-neutral-600">{o.genre}</span>
+                    <span className="text-xs text-neutral-600">{o.teamKana}・{o.genre}</span>
                     <StatusBadge status={o.status} />
                     <span className="text-sm text-navy-800">{yen(o.amountTotal)}({o.payMethod === 'card' ? 'カード' : '当日現金'})</span>
                   </div>
                   <p className="mt-1 text-sm text-neutral-700">
-                    {o.memberCount}名: {o.members.join('、')}
+                    {o.memberCount}名: {formatMembers(o.members)}
                   </p>
                   <p className="text-xs text-neutral-500">
                     代表 {o.buyerName}({o.buyerKana}) {o.phone} {o.email}
@@ -96,7 +101,9 @@ export default async function StaffXmasPage() {
                         {o.audioFilename || 'ダウンロード'}
                       </a>
                     ) : (
-                      <span className="font-semibold text-red-600">未提出</span>
+                      <span className="font-semibold text-red-600">
+                        未提出{o.audioRemindedAt ? `(リマインド送信済み ${o.audioRemindedAt.slice(5, 10).replace('-', '/')})` : ''}
+                      </span>
                     )}
                   </p>
                   <OrderActions id={o.id} status={o.status} note={o.staffNote} />

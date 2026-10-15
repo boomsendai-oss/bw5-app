@@ -27,7 +27,7 @@ export default async function XmasEntryPage() {
     <XmasShell>
       <h1 className="text-center text-2xl font-black">ショーケース出演エントリー</h1>
       <p className="mt-2 text-center text-sm font-bold">
-        2人以上のチーム・{XMAS_EVENT_INFO.showTimeLimit}・先着順
+        2人以上のチーム・{XMAS_EVENT_INFO.showTimeLimit}・先着順・カード払いのみ
       </p>
       {ctx.entry === 'open' ? (
         <EntryForm
