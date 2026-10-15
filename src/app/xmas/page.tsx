@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { XMAS_EVENT_INFO, formatJstLabel, jstLocalToMs, yen, type GateState } from '@/lib/party';
 import Countdown from './Countdown';
+import FloatingCta from './FloatingCta';
 import { getXmasContext } from './actions';
 import { Panel, PreviewBanner, Row, XmasShell, greenBtnCls, primaryBtnCls } from './ui';
 import { XMAS_FAQ_STATIC, XMAS_MAP_URL, XMAS_PRIZE_LINE, XMAS_PROGRAM, XMAS_TIMETABLE } from './content';
@@ -77,9 +78,9 @@ export default async function XmasTopPage({ searchParams }: { searchParams: Prom
         </div>
       )}
       {!beforeOpen && (ctx.ticketCash === 'open' || ctx.entry === 'open') && (
-        <div className="mt-6 grid gap-3 border-[3px] border-[#1a1410] bg-[#f4cf3e] p-3 shadow-[4px_4px_0_#1a1410]">
-          {ctx.ticketCash === 'open' && <Countdown label="チケット(前売)の締切まで" targetMs={cashDeadlineMs} />}
-          {ctx.entry === 'open' && <Countdown label="出演エントリーの締切まで" targetMs={entryDeadlineMs} tone="green" />}
+        <div className="mt-6 flex flex-wrap justify-center gap-x-4 gap-y-1 border-[3px] border-[#1a1410] bg-[#f4cf3e] px-3 py-2 text-sm font-black shadow-[4px_4px_0_#1a1410]">
+          {ctx.ticketCash === 'open' && <DaysLeft label="前売の締切まで" remainingMs={cashDeadlineMs - ctx.nowMs} />}
+          {ctx.entry === 'open' && <DaysLeft label="出演エントリーの締切まで" remainingMs={entryDeadlineMs - ctx.nowMs} />}
         </div>
       )}
 
@@ -243,10 +244,27 @@ export default async function XmasTopPage({ searchParams }: { searchParams: Prom
       </Link>
 
       <p className="mt-8 text-center text-xs font-bold text-neutral-600">お問い合わせは BOOM 公式LINE まで。</p>
+      {/* 下に浮かぶボタンの分だけ余白を空け、最後の文が隠れないようにする */}
+      {(ticketOpen || ctx.entry === 'open') && <div className="h-24" aria-hidden />}
+      <FloatingCta
+        ticketHref={ticketOpen ? `/xmas/ticket${q}` : undefined}
+        entryHref={ctx.entry === 'open' ? `/xmas/entry${q}` : undefined}
+      />
     </XmasShell>
   );
 }
 
 function Sub({ children }: { children: React.ReactNode }) {
   return <span className="block text-[11px] font-bold leading-snug text-neutral-600">{children}</span>;
+}
+
+/** 受付中の締切は「あと○日」だけ出す(秒まで出すのは受付開始前のカウントダウンだけ)。 */
+function DaysLeft({ label, remainingMs }: { label: string; remainingMs: number }) {
+  if (remainingMs <= 0) return null;
+  const days = Math.floor(remainingMs / 86_400_000);
+  return (
+    <span>
+      {label} {days >= 1 ? <span className="text-lg text-[#d4302a]">あと{days}日</span> : <span className="text-lg text-[#d4302a]">本日まで</span>}
+    </span>
+  );
 }

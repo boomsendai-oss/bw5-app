@@ -53,6 +53,8 @@ export interface XmasPublicContext {
   teamsLeft: number;
   entryUnit: number;
   preview: boolean;
+  /** 表示の基準時刻(サーバ) */
+  nowMs: number;
 }
 
 /** 公開: 料金・受付状態・残りチーム数(いずれも公開情報)。名簿・PIIは含まない。 */
@@ -71,6 +73,7 @@ export async function getXmasContext(preview?: string): Promise<XmasPublicContex
     teamsLeft: Math.max(0, settings.teamCap - holding),
     entryUnit: entryUnitPrice(settings),
     preview: isPreview,
+    nowMs: now.getTime(),
   };
 }
 
