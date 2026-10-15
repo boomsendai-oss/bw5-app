@@ -18,7 +18,7 @@ export default function ResendForm() {
     setBusy(false);
     setMsg(
       r.ok
-        ? { tone: 'info', text: 'お申し込みが確認できたアドレスには、控えのURLを送りました。届かない場合は公式LINEへご連絡ください。' }
+        ? { tone: 'info', text: '申込が確認できたアドレスに、確認ページのURLを送りました。数分たっても届かない場合は公式LINEへご連絡ください。' }
         : { tone: 'error', text: r.error ?? '送れませんでした' }
     );
   }
@@ -38,7 +38,7 @@ export default function ResendForm() {
         disabled={busy}
         className="shrink-0 rounded-lg border-[3px] border-[#1a1410] bg-[#1a1410] px-3 text-sm font-black text-white disabled:opacity-50"
       >
-        {busy ? '送信中' : '送る'}
+        {busy ? '送信中' : 'URLを送る'}
       </button>
       {msg && (
         <div className="basis-full">

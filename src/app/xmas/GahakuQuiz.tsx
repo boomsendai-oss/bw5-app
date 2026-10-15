@@ -11,11 +11,13 @@ interface Question {
   src: string;
   rot: string;
   answer: string;
+  /** 答えが出たときのひとこと(TARO 2026-10-15) */
+  quip: string;
 }
 
 const QUESTIONS: Question[] = [
-  { q: 'Q1', src: '/xmas/gahaku_cat.jpg', rot: '-rotate-2', answer: 'くまのプーさん' },
-  { q: 'Q2', src: '/xmas/gahaku_pig.jpg', rot: 'rotate-2', answer: 'ロバ' },
+  { q: 'Q1', src: '/xmas/gahaku_cat.jpg', rot: '-rotate-2', answer: 'くまのプーさん', quip: 'うそでしょ……' },
+  { q: 'Q2', src: '/xmas/gahaku_pig.jpg', rot: 'rotate-2', answer: 'ロバ', quip: '信じられない……' },
 ];
 
 type Result = '' | 'ok' | 'ng';
@@ -56,9 +58,12 @@ function QuizCard({ item }: { item: Question }) {
         </button>
       </form>
       {result === 'ok' && (
-        <p className="mt-2 -rotate-2 border-[3px] border-[#1a1410] bg-[#2f8a3e] py-1 text-center text-lg font-black text-white shadow-[3px_3px_0_#1a1410]">
-          正解！
-        </p>
+        <div className="mt-2 text-center">
+          <p className="-rotate-2 border-[3px] border-[#1a1410] bg-[#2f8a3e] py-1 text-lg font-black text-white shadow-[3px_3px_0_#1a1410]">
+            正解！
+          </p>
+          <Answer item={item} />
+        </div>
       )}
       {result === 'ng' && (
         <div className="mt-2 text-center">
@@ -66,9 +71,7 @@ function QuizCard({ item }: { item: Question }) {
             不正解…
           </p>
           {revealed ? (
-            <p className="mt-1 text-sm font-black">
-              答え: <span className="text-[#d4302a]">{item.answer}</span>
-            </p>
+            <Answer item={item} />
           ) : (
             <button type="button" onClick={() => setRevealed(true)} className="mt-1 text-xs font-black underline">
               答えを見る
@@ -77,6 +80,17 @@ function QuizCard({ item }: { item: Question }) {
         </div>
       )}
     </div>
+  );
+}
+
+function Answer({ item }: { item: Question }) {
+  return (
+    <>
+      <p className="mt-1 text-sm font-black">
+        答え: <span className="text-[#d4302a]">{item.answer}</span>
+      </p>
+      <p className="mt-0.5 -rotate-3 text-base font-black text-[#1a1410]">{item.quip}</p>
+    </>
   );
 }
 

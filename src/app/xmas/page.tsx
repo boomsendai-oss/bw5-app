@@ -49,7 +49,7 @@ export default async function XmasTopPage() {
   return (
     <XmasShell>
       <Image
-        src="/xmas/hero-v5.jpg"
+        src="/xmas/hero-v6.jpg"
         alt="BOOM クリスマスパーティー 2026 12.19 SAT SPACE ZERO"
         width={1080}
         height={1350}
@@ -192,6 +192,9 @@ export default async function XmasTopPage() {
               出演エントリーする
             </Link>
           ) : null}
+          <a href="#confirm" className="mt-3 block text-center text-xs font-black underline">
+            エントリー済みのチームの音源提出はこちら
+          </a>
         </Panel>
         <Image
           src="/xmas/kun_point.png"
@@ -213,12 +216,18 @@ export default async function XmasTopPage() {
         </dl>
       </Panel>
 
-      <Panel title="控えのURLをもう一度送る">
-        <p className="text-xs font-bold text-neutral-700">
-          申込時のメールアドレスを入れると、控えページ(出演チームは音源の提出ページ)のURLを送り直します。
-        </p>
-        <ResendForm />
-      </Panel>
+      <div id="confirm" className="scroll-mt-4">
+        <Panel title="申込の確認・音源の提出">
+          <p className="text-sm font-bold">
+            申込のあとに届くメールに「確認ページ」のURLがあります。予約内容の確認と、出演チームの音源の提出は、そのページからできます。
+          </p>
+          <p className="mt-3 text-xs font-black">メールが見つからないとき</p>
+          <p className="text-xs font-bold text-neutral-700">
+            申込時のメールアドレスを入れてください。確認ページのURLを、もう一度メールで送ります。
+          </p>
+          <ResendForm />
+        </Panel>
+      </div>
 
       <p className="mt-8 text-center text-xs font-bold text-neutral-600">お問い合わせは BOOM 公式LINE まで。</p>
     </XmasShell>

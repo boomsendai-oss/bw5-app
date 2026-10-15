@@ -111,7 +111,7 @@ export function buildLinkResendEmail(items: { order: PartyOrder; token: string }
   const L: string[] = [];
   L.push(`${items[0].order.buyerName} 様`);
   L.push('');
-  L.push(`${XMAS_EVENT_INFO.title}の申込の控えページをお送りします。`);
+  L.push(`${XMAS_EVENT_INFO.title}の申込の確認ページをお送りします。`);
   L.push('');
   for (const { order, token } of items) {
     const label = order.kind === 'entry' ? `出演エントリー「${order.teamName}」(音源の提出もここから)` : 'チケット予約';
@@ -122,7 +122,7 @@ export function buildLinkResendEmail(items: { order: PartyOrder; token: string }
   L.push('お心当たりのない場合は、このメールは破棄してください。');
   L.push('');
   L.push('BOOM DANCE SCHOOL');
-  return { subject: '【BOOMクリスマスパーティー2026】申込の控えページ', text: L.join('\n') };
+  return { subject: '【BOOMクリスマスパーティー2026】申込の確認ページ', text: L.join('\n') };
 }
 
 export async function sendPartyMail(to: string, mail: { subject: string; text: string }, tag: string): Promise<boolean> {
