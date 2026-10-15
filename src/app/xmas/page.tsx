@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { XMAS_EVENT_INFO, formatJstLabel, jstLocalToMs, yen, type GateState } from '@/lib/party';
 import Countdown from './Countdown';
 import FloatingCta from './FloatingCta';
+import { MicVocal, Ticket } from 'lucide-react';
 import { getXmasContext } from './actions';
 import { Panel, PreviewBanner, Row, XmasShell, greenBtnCls, primaryBtnCls } from './ui';
 import { XMAS_FAQ_STATIC, XMAS_MAP_URL, XMAS_PRIZE_LINE, XMAS_PROGRAM, XMAS_TIMETABLE } from './content';
@@ -182,7 +183,8 @@ export default async function XmasTopPage({ searchParams }: { searchParams: Prom
           前売 {yen(s.presalePrice)}。カード払い または 当日現金払いを選べます。締切後は当日券({yen(s.doorPrice)})を会場でお求めください。
         </p>
         {ticketOpen ? (
-          <Link href={`/xmas/ticket${q}`} className={`mt-4 ${primaryBtnCls}`}>
+          <Link href={`/xmas/ticket${q}`} className={`mt-4 flex items-center justify-center gap-2 ${primaryBtnCls}`}>
+            <Ticket className="size-6" strokeWidth={2.5} aria-hidden />
             チケットを予約する
           </Link>
         ) : null}
@@ -207,7 +209,8 @@ export default async function XmasTopPage({ searchParams }: { searchParams: Prom
             </li>
           </ul>
           {ctx.entry === 'open' ? (
-            <Link href={`/xmas/entry${q}`} className={`mt-4 ${greenBtnCls}`}>
+            <Link href={`/xmas/entry${q}`} className={`mt-4 flex items-center justify-center gap-2 ${greenBtnCls}`}>
+              <MicVocal className="size-6" strokeWidth={2.5} aria-hidden />
               出演エントリーする
             </Link>
           ) : null}
