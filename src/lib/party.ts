@@ -46,7 +46,7 @@ export const DEFAULT_PARTY_SETTINGS: PartySettings = {
 export const XMAS_EVENT_INFO = {
   title: 'BOOM クリスマスパーティー 2026',
   dateLabel: '2026年12月19日(土)',
-  timeLabel: '11:30〜16:30(予定)',
+  timeLabel: '11:00〜16:00(予定)',
   venue: 'SPACE ZERO',
   venueAddress: '仙台市青葉区本町1丁目9-23(GOATスタジオビル内)',
   drinkLabel: '1ドリンク ¥600(会場のキャッシャーで別途お支払い)',
