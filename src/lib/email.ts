@@ -18,7 +18,8 @@ const transporter = GMAIL_APP_PASSWORD
     })
   : null;
 
-const FROM = `BOOM BW5 <${GMAIL_USER}>`;
+// 差出人名(2026-10-15 TARO: 「BOOM BW5」→「BOOM DANCE SCHOOL」。全イベント・物販のメール共通)
+const FROM = `BOOM DANCE SCHOOL <${GMAIL_USER}>`;
 const ADMIN_BCC = 'boom.sendai@gmail.com';
 
 async function sendMail(opts: { to: string; subject: string; html: string }): Promise<void> {
