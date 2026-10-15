@@ -17,7 +17,7 @@ export const maxDuration = 60;
 //
 // 実行が終わったら notify の有無にかかわらず必ず呼ばれ、最終成功時刻を記録する。
 // メールは notify=true のときだけ送る(「何も来ない＝正常」)。
-// 最終成功時刻はまだ story-watchdog の見張り対象に入れていない(記録だけ)。
+// 止まったことは story-watchdog 側のデッドマンスイッチが鳴らす(evaluateMemberTagFreshness)。
 const TARO_EMAIL = 'boom.sendai@gmail.com';
 const SUBJECT_PREFIX = '[BOOM] Lステップ 入会タグ';
 const MAX_BODY = 20_000;

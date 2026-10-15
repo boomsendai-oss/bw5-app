@@ -31,17 +31,16 @@ export type ShiftSyncFreshness = {
   message: string | null;
 };
 
-/**
- * @param lastOkAt settings('lstep_shift_sync_last_ok') に入っているISO文字列。無ければ null
- * @param now 現在時刻
- */
-export function evaluateShiftSyncFreshness(lastOkAt: string | null, now: Date): ShiftSyncFreshness {
+/** Lステップに書き込む毎日1回のジョブ(GitHub Actions)。止まったときの文言だけが違う */
+type DailyJob = { name: string; workflow: string };
+
+function evaluateDailyJobFreshness(lastOkAt: string | null, now: Date, job: DailyJob): ShiftSyncFreshness {
   if (!lastOkAt) {
     return {
       stale: true,
       hours: null,
       message:
-        'Lステップのシフト同期が一度も成功していません。boom-events-hub の lstep-shift-sync ワークフローを確認してください。',
+        `${job.name}が一度も成功していません。boom-events-hub の ${job.workflow} ワークフローを確認してください。`,
     };
   }
 
@@ -50,7 +49,7 @@ export function evaluateShiftSyncFreshness(lastOkAt: string | null, now: Date): 
     return {
       stale: true,
       hours: null,
-      message: `Lステップのシフト同期の最終成功時刻を解釈できませんでした (${lastOkAt})。`,
+      message: `${job.name}の最終成功時刻を解釈できませんでした (${lastOkAt})。`,
     };
   }
 
@@ -63,8 +62,27 @@ export function evaluateShiftSyncFreshness(lastOkAt: string | null, now: Date): 
     stale: true,
     hours,
     message:
-      `Lステップのシフト同期が${hours}時間成功していません。` +
-      'GitHub Actions (boom-events-hub / lstep-shift-sync) の実行結果と、' +
+      `${job.name}が${hours}時間成功していません。` +
+      `GitHub Actions (boom-events-hub / ${job.workflow}) の実行結果と、` +
       'Lステップのセッションが切れていないかを確認してください。',
   };
+}
+
+/**
+ * @param lastOkAt settings('lstep_shift_sync_last_ok') に入っているISO文字列。無ければ null
+ * @param now 現在時刻
+ */
+export function evaluateShiftSyncFreshness(lastOkAt: string | null, now: Date): ShiftSyncFreshness {
+  return evaluateDailyJobFreshness(lastOkAt, now, { name: 'Lステップのシフト同期', workflow: 'lstep-shift-sync' });
+}
+
+/**
+ * 入会タグの自動付与(2026-10-15〜・毎朝5:30JST)。こちらも付けた日しかメールを出さない。
+ * 止まると、入会した人にも体験後フォローのクーポン案内が届き続ける。
+ * 判定の幅はシフト同期と同じ(毎日1回・GHのcron遅れを吸収して2日連続の失敗で鳴らす)。
+ *
+ * @param lastOkAt settings('lstep_member_tag_last_ok') に入っているISO文字列。無ければ null
+ */
+export function evaluateMemberTagFreshness(lastOkAt: string | null, now: Date): ShiftSyncFreshness {
+  return evaluateDailyJobFreshness(lastOkAt, now, { name: 'Lステップ入会タグの自動付与', workflow: 'lstep-member-tag' });
 }
