@@ -3,6 +3,13 @@
 // 収支台帳のスタッフ操作。/staff/* 配下のためproxyの認証で保護される(規約4.5)。
 import { revalidatePath } from 'next/cache';
 import { addLedgerEntry, updateLedgerEntry, deleteLedgerEntry } from '@/lib/eventLedgerDb';
+import { isAuthorizedServer } from '@/lib/eventAuth';
+
+// proxyはcookieの有無しか見ないため、Server Action は毎回セッションを本検証する(規約4.5)。
+// ⚠️ /bf6/crew からは呼ばれない(crewが使うのは reception/control の actions のみ)。
+async function requireStaff(): Promise<void> {
+  if (!(await isAuthorizedServer())) throw new Error('Unauthorized');
+}
 
 function refresh() {
   revalidatePath('/staff/bf6/ledger');
@@ -18,6 +25,7 @@ export async function staffAddLedger(input: {
   collected: boolean;
   note: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireStaff();
   const label = input.label.trim();
   if (!label) return { ok: false, error: '項目名を入力してください' };
   const qty = Number.isFinite(input.qty) && input.qty > 0 ? Math.floor(input.qty) : 1;
@@ -40,11 +48,13 @@ export async function staffAddLedger(input: {
 }
 
 export async function staffToggleLedgerCollected(id: number, collected: boolean): Promise<void> {
+  await requireStaff();
   await updateLedgerEntry(id, { collected });
   refresh();
 }
 
 export async function staffDeleteLedger(id: number): Promise<void> {
+  await requireStaff();
   await deleteLedgerEntry(id);
   refresh();
 }

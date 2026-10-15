@@ -11,6 +11,8 @@ import { listBf6Qualifiers } from '@/lib/bf6QualifierDb';
 import { filterForBracketDraw, QUALIFIER_COUNT } from '@/lib/bf6Qualifier';
 import { ReceptionClient } from './ReceptionClient';
 import type { Bf6DrawPhase } from '@/lib/bf6Draw';
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +21,8 @@ export default async function StaffBf6ReceptionPage({
 }: {
   searchParams: Promise<{ phase?: string; d?: string }>;
 }) {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   // d = 開いておく部門のタブ(端末ごとに担当部門を固定できる)
   const { phase: raw, d } = await searchParams;
   const phase: Bf6DrawPhase = raw === 'bracket' ? 'bracket' : 'block';

@@ -5,6 +5,8 @@ import { calcBf6Remaining, getBf6Settings, getBf6Usage } from '@/lib/bf6Db';
 import { listWaitlist } from '@/lib/bf6WaitlistDb';
 import { formatOfferDeadline } from '@/lib/bf6Waitlist';
 import { ExpireButton, OfferButton } from './OfferButton';
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +19,8 @@ const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
 };
 
 export default async function StaffBf6WaitlistPage() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const [settings, usage] = await Promise.all([getBf6Settings(), getBf6Usage()]);
   const remaining = calcBf6Remaining(settings, usage);
   const lists = await Promise.all(BF6_DIVISIONS.map((d) => listWaitlist(d.key)));

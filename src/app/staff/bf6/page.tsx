@@ -5,12 +5,16 @@ import { BF6_DIVISIONS } from '@/lib/bf6';
 import { calcBf6Remaining, getBf6Settings, getBf6Usage, listBf6OrdersStaff } from '@/lib/bf6Db';
 import { getBf6Finance } from '@/lib/eventLedgerDb';
 import { listBf6StreamViewers } from '@/lib/bf6StreamDb';
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 
 export default async function StaffBf6Page() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const [settings, usage, orders, { finance }, viewers] = await Promise.all([
     getBf6Settings(),
     getBf6Usage(),

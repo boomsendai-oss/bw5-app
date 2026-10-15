@@ -2,10 +2,14 @@
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { countBf7Notify, listBf7Notify } from '@/lib/bf7Db';
 import { BF7_DIVISIONS } from '@/lib/bf7';
+import { redirect } from 'next/navigation';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StaffBf7Page() {
+  // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
+  if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   const [counts, rows] = await Promise.all([countBf7Notify(), listBf7Notify()]);
   const label = (k: string) => BF7_DIVISIONS.find((d) => d.key === k)?.label ?? k;
 
