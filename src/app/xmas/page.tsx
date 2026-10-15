@@ -56,16 +56,18 @@ export default async function XmasTopPage() {
             }
           />
           <Row k="対象" v="BOOMの生徒・保護者・お友達(会員以外もOK)" />
+          <Row k="お昼" v="持ち込みOK(会場で食べられます)・入退場自由" />
         </dl>
       </Panel>
 
       <Panel title="企画" tone="green">
         <ul className="space-y-1 text-sm font-bold">
-          <li>★ 各種ゲーム大会(賞品あり)</li>
-          <li>★ プレゼント配り</li>
+          <li>★ スマブラ大会(賞品あり)</li>
+          <li>★ じゃんけん大会(プレゼントあり)</li>
           <li>★ 画伯の絵を当てろ！ゲーム</li>
           <li>★ プチダンスバトル大会</li>
           <li>★ ダンスショーケース</li>
+          <li>★ DJタイム・フリータイム</li>
         </ul>
         <p className="mt-2 text-xs font-bold text-neutral-600">※内容は変わる場合があります</p>
       </Panel>
