@@ -13,8 +13,10 @@
 import { normalizeKana } from './linkSuggest';
 
 export const ELIGIBLE_MEMBER_TYPES = ['regular', 'college', 'ticket'] as const;
-/** これ未満の年齢の会員は、体験予約したLINEアカウントを保護者のものとみなす */
-export const GUARDIAN_AGE_BELOW = 18;
+/** この年齢以上は本人のLINEとみなす */
+export const ADULT_AGE = 18;
+/** この年齢以下で保護者名の記入が無くても、自分のLINEで予約することはまず無いので保護者とみなす */
+export const CHILD_AGE_MAX = 12;
 
 export type TagKind = 'member' | 'guardian';
 
@@ -33,6 +35,8 @@ export type TrialRow = {
   applicant_name: string | null;
   applicant_name_kana: string | null;
   applicant_age: number | null;
+  /** 体験予約の友だち情報にある保護者名(lstep_friends.parent_name)。記入があれば保護者のLINE */
+  parent_name: string | null;
 };
 
 export type Target = { lstepId: string; kind: TagKind; memberRefs: string[]; source: 'link' | 'trial' };
@@ -95,12 +99,23 @@ export function decideTargets(
       review.push({ lstepId: t.lstep_id, memberRef: m.hacomono_member_id, reason: '体験予約と会員の氏名かカナが一致しない' });
       continue;
     }
+    // 本人のLINEか保護者のLINEか。年齢だけで決めると、中高生が自分のLINEで予約した場合に
+    // 保護者扱いになり、あとで本人/保護者で分けて送るときに作り直しになる(TARO指摘 2026-10-15)。
+    // 保護者名の記入 > 年齢 の順で決め、決めきれない中高生は人に回す。
     const age = ageOn(m.birthday, today) ?? t.applicant_age;
-    if (age == null) {
-      review.push({ lstepId: t.lstep_id, memberRef: m.hacomono_member_id, reason: '年齢が分からず本人か保護者か決められない' });
+    let kind: TagKind | null = null;
+    if (normalizeName(t.parent_name) !== '') kind = 'guardian';
+    else if (age != null && age >= ADULT_AGE) kind = 'member';
+    else if (age != null && age <= CHILD_AGE_MAX) kind = 'guardian';
+    if (!kind) {
+      review.push({
+        lstepId: t.lstep_id, memberRef: m.hacomono_member_id,
+        reason: age == null ? '年齢が分からず本人か保護者か決められない'
+          : '中高生で保護者名の記入が無い＝本人のLINEか保護者のLINEか決められない',
+      });
       continue;
     }
-    add(t.lstep_id, age < GUARDIAN_AGE_BELOW ? 'guardian' : 'member', m.hacomono_member_id, 'trial');
+    add(t.lstep_id, kind, m.hacomono_member_id, 'trial');
   }
 
   // 自動で付けるアカウントは要確認から外す(別の会員経由で確定している)

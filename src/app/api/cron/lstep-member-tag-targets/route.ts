@@ -36,9 +36,10 @@ export async function GET(req: NextRequest) {
     `SELECT member_id, lstep_id, relation, confidence FROM member_lstep_links`,
   )) as LinkRow[];
   const trials = (await getAll(
-    `SELECT lstep_id, enrolled_member_id, applicant_name, applicant_name_kana, applicant_age
-       FROM trial_records
-      WHERE enrolled_member_id IS NOT NULL AND lstep_id IS NOT NULL AND lstep_id <> ''`,
+    `SELECT t.lstep_id, t.enrolled_member_id, t.applicant_name, t.applicant_name_kana, t.applicant_age,
+            f.parent_name
+       FROM trial_records t LEFT JOIN lstep_friends f ON f.lstep_id = t.lstep_id
+      WHERE t.enrolled_member_id IS NOT NULL AND t.lstep_id IS NOT NULL AND t.lstep_id <> ''`,
   )) as TrialRow[];
 
   const { targets, review } = decideTargets({ members, links, trials, today: todayJst() });

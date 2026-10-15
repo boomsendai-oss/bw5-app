@@ -54,8 +54,8 @@ describe('decideTargets', () => {
       members: [kid, member(2)],
       links: [],
       trials: [
-        { lstep_id: 'K', enrolled_member_id: 1, applicant_name: '佐藤花子', applicant_name_kana: 'さとう はなこ', applicant_age: 10 },
-        { lstep_id: 'X', enrolled_member_id: 2, applicant_name: '山田 次郎', applicant_name_kana: 'ヤマダ タロウ2', applicant_age: 36 },
+        { lstep_id: 'K', enrolled_member_id: 1, applicant_name: '佐藤花子', applicant_name_kana: 'さとう はなこ', applicant_age: 10, parent_name: null },
+        { lstep_id: 'X', enrolled_member_id: 2, applicant_name: '山田 次郎', applicant_name_kana: 'ヤマダ タロウ2', applicant_age: 36, parent_name: null },
       ],
       today: TODAY,
     });
@@ -66,7 +66,7 @@ describe('decideTargets', () => {
   it('大人の体験予約は本人用', () => {
     const r = decideTargets({
       members: [member(1)], links: [],
-      trials: [{ lstep_id: 'A', enrolled_member_id: 1, applicant_name: '山田太郎1', applicant_name_kana: 'ヤマダタロウ1', applicant_age: null }],
+      trials: [{ lstep_id: 'A', enrolled_member_id: 1, applicant_name: '山田太郎1', applicant_name_kana: 'ヤマダタロウ1', applicant_age: null, parent_name: null }],
       today: TODAY,
     });
     expect(r.targets[0]).toMatchObject({ lstepId: 'A', kind: 'member' });
@@ -94,5 +94,24 @@ describe('decideTargets', () => {
       trials: [], today: TODAY,
     });
     expect(r.review).toEqual([]);
+  });
+
+  it('保護者名の記入があれば年齢によらず保護者用', () => {
+    const r = decideTargets({
+      members: [member(1, { birthday: '2010-01-01' })], links: [],
+      trials: [{ lstep_id: 'A', enrolled_member_id: 1, applicant_name: '山田太郎1', applicant_name_kana: 'ヤマダタロウ1', applicant_age: 16, parent_name: 'ヤマダ ハナコ' }],
+      today: TODAY,
+    });
+    expect(r.targets[0]).toMatchObject({ lstepId: 'A', kind: 'guardian' });
+  });
+
+  it('中高生で保護者名の記入が無ければ自動では決めず人に回す', () => {
+    const r = decideTargets({
+      members: [member(1, { birthday: '2010-01-01' })], links: [],
+      trials: [{ lstep_id: 'A', enrolled_member_id: 1, applicant_name: '山田太郎1', applicant_name_kana: 'ヤマダタロウ1', applicant_age: 16, parent_name: null }],
+      today: TODAY,
+    });
+    expect(r.targets).toEqual([]);
+    expect(r.review[0].reason).toMatch(/中高生/);
   });
 });
