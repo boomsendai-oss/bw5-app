@@ -16,6 +16,7 @@ import { getPartySettings, loadPartyOrderByToken } from '@/lib/partyDb';
 import { Notice, Panel, Row, XmasShell, primaryBtnCls } from '../ui';
 import CheckoutButton from './CheckoutButton';
 import AudioUpload from './AudioUpload';
+import { SHOWCASE_ORDER_NOTE } from '../content';
 
 export const dynamic = 'force-dynamic';
 
@@ -138,7 +139,7 @@ export default async function XmasMyPage({ searchParams }: { searchParams: Promi
         <Panel title="出演について">
           <ul className="space-y-1 text-sm font-bold">
             <li>・リハーサルの時間はありません</li>
-            <li>・出演順(第1部/第2部)は締切後に決めてお知らせします。どちらでも出られるよう予定を空けておいてください</li>
+            <li>・{SHOWCASE_ORDER_NOTE}</li>
           </ul>
         </Panel>
       )}

@@ -2,19 +2,21 @@
 import Link from 'next/link';
 import { formatJstLabel } from '@/lib/party';
 import { getXmasContext } from '../actions';
-import { Notice, XmasShell } from '../ui';
+import { Notice, PreviewBanner, XmasShell } from '../ui';
 import TicketForm from './TicketForm';
 
 export const dynamic = 'force-dynamic';
 
-export default async function XmasTicketPage() {
-  const ctx = await getXmasContext();
+export default async function XmasTicketPage({ searchParams }: { searchParams: Promise<{ preview?: string }> }) {
+  const { preview } = await searchParams;
+  const ctx = await getXmasContext(preview);
   const s = ctx.settings;
   const cardOpen = ctx.ticketCard === 'open';
   const cashOpen = ctx.ticketCash === 'open';
 
   return (
     <XmasShell>
+      {ctx.preview && <PreviewBanner />}
       <h1 className="text-center text-2xl font-black">チケット予約(前売)</h1>
       {cardOpen || cashOpen ? (
         <TicketForm

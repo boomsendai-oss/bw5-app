@@ -2,10 +2,12 @@
 // 表示するのは公開情報(日時・料金・企画・受付状態・残りチーム数)だけで、申込者の情報は出さない。
 import Link from 'next/link';
 import Image from 'next/image';
-import { XMAS_EVENT_INFO, formatJstLabel, yen, type GateState } from '@/lib/party';
+import { XMAS_EVENT_INFO, formatJstLabel, jstLocalToMs, yen, type GateState } from '@/lib/party';
+import Countdown from './Countdown';
 import { getXmasContext } from './actions';
-import { Panel, Row, XmasShell, greenBtnCls, primaryBtnCls } from './ui';
+import { Panel, PreviewBanner, Row, XmasShell, greenBtnCls, primaryBtnCls } from './ui';
 import { XMAS_FAQ_STATIC, XMAS_MAP_URL, XMAS_PRIZE_LINE, XMAS_PROGRAM, XMAS_TIMETABLE } from './content';
+import { SHOWCASE_ORDER_NOTE } from './content';
 import GahakuQuiz from './GahakuQuiz';
 
 export const dynamic = 'force-dynamic';
@@ -25,13 +27,18 @@ function stateLine(state: GateState, openAt: string, deadline: string): string {
   }
 }
 
-export default async function XmasTopPage() {
-  const ctx = await getXmasContext();
+export default async function XmasTopPage({ searchParams }: { searchParams: Promise<{ preview?: string }> }) {
+  const { preview } = await searchParams;
+  const ctx = await getXmasContext(preview);
+  const q = ctx.preview ? `?preview=${preview}` : '';
   const s = ctx.settings;
   const ticketOpen = ctx.ticketCard === 'open' || ctx.ticketCash === 'open';
   const ticketState: GateState = ticketOpen ? 'open' : ctx.ticketCash;
   const ticketDeadline = ctx.ticketCash === 'open' ? s.ticketCashDeadline : s.ticketCardDeadline;
   const beforeOpen = ctx.ticketCash === 'before' && s.openAt;
+  const openMs = jstLocalToMs(s.openAt);
+  const cashDeadlineMs = (jstLocalToMs(s.ticketCashDeadline) ?? 0) + 60_000;
+  const entryDeadlineMs = (jstLocalToMs(s.entryDeadline) ?? 0) + 60_000;
 
   const faq = [
     {
@@ -47,6 +54,7 @@ export default async function XmasTopPage() {
 
   return (
     <XmasShell>
+      {ctx.preview && <PreviewBanner />}
       <Image
         src="/xmas/hero-v6.jpg"
         alt="BOOM クリスマスパーティー 2026 12.19 SAT SPACE ZERO"
@@ -60,7 +68,18 @@ export default async function XmasTopPage() {
         <div className="mt-6 -rotate-1 border-[3px] border-[#1a1410] bg-[#f4cf3e] p-3 text-center shadow-[4px_4px_0_#1a1410]">
           <p className="text-sm font-black">チケット予約・出演エントリーは</p>
           <p className="text-2xl font-black">{formatJstLabel(s.openAt)} 受付開始</p>
-          <p className="text-xs font-bold">出演は先着順です</p>
+          {openMs != null && (
+            <div className="mt-2">
+              <Countdown label="受付開始まで" targetMs={openMs} />
+            </div>
+          )}
+          <p className="mt-2 text-xs font-bold">出演は先着順です</p>
+        </div>
+      )}
+      {!beforeOpen && (ctx.ticketCash === 'open' || ctx.entry === 'open') && (
+        <div className="mt-6 grid gap-3 border-[3px] border-[#1a1410] bg-[#f4cf3e] p-3 shadow-[4px_4px_0_#1a1410]">
+          {ctx.ticketCash === 'open' && <Countdown label="チケット(前売)の締切まで" targetMs={cashDeadlineMs} />}
+          {ctx.entry === 'open' && <Countdown label="出演エントリーの締切まで" targetMs={entryDeadlineMs} tone="green" />}
         </div>
       )}
 
@@ -162,7 +181,7 @@ export default async function XmasTopPage() {
           前売 {yen(s.presalePrice)}。カード払い または 当日現金払いを選べます。締切後は当日券({yen(s.doorPrice)})を会場でお求めください。
         </p>
         {ticketOpen ? (
-          <Link href="/xmas/ticket" className={`mt-4 ${primaryBtnCls}`}>
+          <Link href={`/xmas/ticket${q}`} className={`mt-4 ${primaryBtnCls}`}>
             チケットを予約する
           </Link>
         ) : null}
@@ -181,13 +200,13 @@ export default async function XmasTopPage() {
               ・出演料 1人 {yen(s.performerFee)}(別途 入場料 {yen(s.presalePrice)} がかかります)。カード払いのみ。出演メンバーはチケット予約不要
             </li>
             <li>・リハーサルの時間はありません</li>
-            <li>・出演順(第1部/第2部)は締切後に決めます。どちらでも出られるよう予定を空けておいてください</li>
+            <li>・{SHOWCASE_ORDER_NOTE}</li>
             <li>
               ・エントリー締切 {formatJstLabel(s.entryDeadline)} / 音源は後日提出でOK(締切 {formatJstLabel(s.audioDeadline)})
             </li>
           </ul>
           {ctx.entry === 'open' ? (
-            <Link href="/xmas/entry" className={`mt-4 ${greenBtnCls}`}>
+            <Link href={`/xmas/entry${q}`} className={`mt-4 ${greenBtnCls}`}>
               出演エントリーする
             </Link>
           ) : null}

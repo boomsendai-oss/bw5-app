@@ -11,6 +11,7 @@ import {
   type PartySettings,
 } from '@/lib/party';
 import type { PartyOrder } from '@/lib/partyDb';
+import { SHOWCASE_ORDER_NOTE } from '@/app/xmas/content';
 
 // 恒久ドメイン(2026-10-15〜)。bw5-app.vercel.app も引き続き同じページを開ける
 const BASE_URL = 'https://event.boom-sendai.com';
@@ -58,7 +59,7 @@ export function buildPartyOrderEmail(o: PartyOrder, token: string, s: PartySetti
     L.push('');
     L.push('■ 出演について');
     L.push('  ・リハーサルの時間はありません');
-    L.push('  ・出演順(第1部/第2部)はエントリー締切後に決めてお知らせします。どちらでも出られるよう予定を空けておいてください');
+    L.push(`  ・${SHOWCASE_ORDER_NOTE}`);
     L.push('');
     L.push('■ 音源の提出(後日でOK)');
     L.push(`  音源ができたら、${formatJstLabel(s.audioDeadline)} までに下の「提出ページ」からアップロードしてください。`);

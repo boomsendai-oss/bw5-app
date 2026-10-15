@@ -89,3 +89,12 @@ export function Field({ label, hint, error, children }: { label: string; hint?: 
 
 /** エラーがある入力欄は赤枠にする。 */
 export const errCls = (err?: string) => (err ? ' !border-[#d4302a] ring-2 ring-[#d4302a]/30' : '');
+
+/** プレビュー表示中の帯(実際には申し込めないことをはっきり出す)。 */
+export function PreviewBanner() {
+  return (
+    <p className="mb-4 rounded-lg border-[3px] border-dashed border-[#1a1410] bg-white p-2 text-center text-xs font-black text-[#d4302a]">
+      プレビュー表示中:受付開始後の画面の見え方を確認するためのページです。ここからは申し込めません
+    </p>
+  );
+}

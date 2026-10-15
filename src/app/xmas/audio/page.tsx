@@ -6,6 +6,7 @@ import { PARTY_EVENT_KEY, XMAS_EVENT_INFO, audioOpen, formatJstLabel } from '@/l
 import { getPartySettings } from '@/lib/partyDb';
 import { Notice, Panel, XmasShell } from '../ui';
 import AudioLookup from './AudioLookup';
+import { SHOWCASE_ORDER_NOTE } from '../content';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,11 +23,11 @@ export default async function XmasAudioPage() {
           <li>・音源の提出締切:{formatJstLabel(s.audioDeadline)}</li>
           <li>・持ち時間は{XMAS_EVENT_INFO.showTimeLimit}</li>
           <li>・リハーサルの時間はありません</li>
-          <li>・出演順(第1部/第2部)は締切後に決めてお知らせします。どちらでも出られるよう予定を空けておいてください</li>
+          <li>・{SHOWCASE_ORDER_NOTE}</li>
         </ul>
       </Panel>
 
-      <Panel title="音源を提出する">
+      <Panel title="音源の提出">
         {open ? (
           <AudioLookup />
         ) : (

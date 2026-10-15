@@ -87,7 +87,8 @@ export default function AudioLookup() {
 
   return (
     <form onSubmit={submit}>
-      <Field label="メールアドレス または チーム名" hint="どちらか一つでOK。エントリー時のメールアドレスか、チーム名(ひらがな・カタカナどちらでも)">
+      <p className="text-center text-xl font-black">どのチームの音源を提出しますか？</p>
+      <Field label="メールアドレス または チーム名を入力してください" hint="どちらか一つでOK。エントリー時のメールアドレスか、チーム名(ひらがな・カタカナどちらでも)">
         <input
           className={inputCls}
           value={query}
@@ -98,7 +99,7 @@ export default function AudioLookup() {
       </Field>
       {error && <Notice tone="error">{error}</Notice>}
       <button type="submit" disabled={busy} className={`mt-5 ${greenBtnCls}`}>
-        {busy ? '探しています…' : 'チームを探す'}
+        {busy ? '確認しています…' : '音源を提出する'}
       </button>
     </form>
   );

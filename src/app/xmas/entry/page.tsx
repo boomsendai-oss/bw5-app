@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { XMAS_EVENT_INFO, formatJstLabel } from '@/lib/party';
 import { getXmasContext } from '../actions';
-import { Notice, XmasShell } from '../ui';
+import { Notice, PreviewBanner, XmasShell } from '../ui';
 import EntryForm from './EntryForm';
 
 export const dynamic = 'force-dynamic';
 
-export default async function XmasEntryPage() {
-  const ctx = await getXmasContext();
+export default async function XmasEntryPage({ searchParams }: { searchParams: Promise<{ preview?: string }> }) {
+  const { preview } = await searchParams;
+  const ctx = await getXmasContext(preview);
   const s = ctx.settings;
 
   const closedMsg =
@@ -25,6 +26,7 @@ export default async function XmasEntryPage() {
 
   return (
     <XmasShell>
+      {ctx.preview && <PreviewBanner />}
       <h1 className="text-center text-2xl font-black">ショーケース出演エントリー</h1>
       <p className="mt-2 text-center text-sm font-bold">
         2人以上のチーム・{XMAS_EVENT_INFO.showTimeLimit}・先着順・カード払いのみ

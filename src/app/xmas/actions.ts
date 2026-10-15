@@ -36,6 +36,7 @@ import { createBf6CheckoutSession } from '@/lib/bf6Stripe';
 import { buildAudioReceivedEmail, sendPartyMail, sendPartyOrderEmail } from '@/lib/partyEmail';
 import { makeAudioTicket } from '@/lib/partyAudioTicket';
 import { resolveAudioCredential } from '@/lib/partyAudio';
+import { isXmasPreview } from '@/lib/partyPreview';
 
 const EV = PARTY_EVENT_KEY;
 
@@ -51,20 +52,25 @@ export interface XmasPublicContext {
   entry: GateState;
   teamsLeft: number;
   entryUnit: number;
+  preview: boolean;
 }
 
 /** 公開: 料金・受付状態・残りチーム数(いずれも公開情報)。名簿・PIIは含まない。 */
-export async function getXmasContext(): Promise<XmasPublicContext> {
+export async function getXmasContext(preview?: string): Promise<XmasPublicContext> {
   const settings = await getPartySettings(EV);
   const holding = await countHoldingTeams(EV);
   const now = new Date();
+  // プレビュー鍵つきのときだけ、受付開始前でも「受付中の画面」を表示する(表示のみ。申込の判定は本物の設定で行う)
+  const isPreview = isXmasPreview(EV, preview);
+  const gateSettings = isPreview ? { ...settings, openAt: '2000-01-01T00:00', suspended: false } : settings;
   return {
     settings,
-    ticketCard: ticketCardState(settings, now),
-    ticketCash: ticketCashState(settings, now),
-    entry: entryState(settings, now, holding),
+    ticketCard: ticketCardState(gateSettings, now),
+    ticketCash: ticketCashState(gateSettings, now),
+    entry: entryState(gateSettings, now, holding),
     teamsLeft: Math.max(0, settings.teamCap - holding),
     entryUnit: entryUnitPrice(settings),
+    preview: isPreview,
   };
 }
 

@@ -8,6 +8,7 @@ import { GRADES, GRADE_SHORT, MAX_MEMBERS, MIN_MEMBERS, yen } from '@/lib/party'
 import { startXmasCheckout, submitXmasEntry } from '../actions';
 import { Field, Notice, Panel, errCls, greenBtnCls, inputCls } from '../ui';
 import { useFieldErrors } from '../useFieldErrors';
+import { SHOWCASE_ORDER_NOTE } from '../content';
 
 const GENRES = ['HIPHOP', 'JAZZ', 'HOUSE', 'GIRLS', 'BREAKIN', 'LOCK', 'POP', 'WAACK', 'K-POP', 'MIX'];
 
@@ -90,7 +91,7 @@ export default function EntryForm(p: {
         <ul className="space-y-1 text-sm font-bold">
           <li>・リハーサルの時間はありません</li>
           <li>
-            ・出演順(第1部/第2部)はエントリー締切後に決めてお知らせします。どちらでも出られるよう予定を空けておいてください
+            ・{SHOWCASE_ORDER_NOTE}
           </li>
           <li>・音源は後日でOK。エントリー後に届くメールの「提出ページ」から {p.audioDeadline} までに出してください</li>
         </ul>
