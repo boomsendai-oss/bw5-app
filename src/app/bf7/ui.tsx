@@ -71,3 +71,124 @@ export function ComingSoon({ note }: { note?: string }) {
     </div>
   );
 }
+
+// ===== ここから申込フォーム(/bf7/entry・/bf7/ticket ほか)用。vol.6の部品を青に振ったもの =====
+
+/**
+ * 入力欄。⚠️ 文字色と背景色を必ずセットで書く(bodyの既定文字色が白で、
+ * 片方だけだと打った文字が見えなくなる事故が過去に何度も起きた)。
+ */
+export const inputCls =
+  'w-full rounded-xl border-2 border-neutral-800 bg-neutral-900 px-3.5 py-3 text-base text-white placeholder:text-neutral-500 focus:border-sky-500 focus:outline-none';
+
+/** エラー時は赤枠にする入力欄クラス(エラーは青にしない)。 */
+export function inputClsWith(error?: string): string {
+  return error ? `${inputCls} !border-red-500` : inputCls;
+}
+
+export const btnPrimaryCls =
+  'bg-gradient-to-b from-sky-400 via-sky-500 to-blue-700 text-white ring-1 ring-blue-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.35),inset_0_-2px_0_rgba(0,0,0,0.35),0_10px_25px_-5px_rgba(14,165,233,0.5)]';
+export const btnDarkCls =
+  'bg-gradient-to-b from-neutral-700 via-neutral-800 to-black text-white ring-1 ring-neutral-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_10px_25px_-5px_rgba(0,0,0,0.6)]';
+
+/** 申込ページの黒帯ヒーロー。 */
+export function Bf7Hero({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <header className="bg-neutral-950 px-4 pb-6 pt-8 text-white">
+      {/* 主催スクールへの導線。別タブなので申込フォーム記入中でも入力は消えない */}
+      <a
+        href="https://boom-sendai.com/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-block text-[11px] font-bold tracking-[0.25em] text-neutral-400 hover:text-white"
+      >
+        BOOM DANCE SCHOOL PRESENTS
+      </a>
+      <p className="mt-1 text-lg font-black italic leading-none">
+        BOOMER&apos;S FIGHT!!! <span className="text-sky-400">vol.7</span>
+      </p>
+      <h1 className="mt-4 text-4xl font-black italic tracking-tight">
+        {title}
+        <span className="ml-1 text-sky-400">.</span>
+      </h1>
+      {subtitle && <p className="mt-1.5 text-sm font-bold text-neutral-300">{subtitle}</p>}
+      <div className="mt-4 h-1 w-16 bg-sky-500" />
+    </header>
+  );
+}
+
+export function Bf7Card({ label, children }: { label?: string; children: ReactNode }) {
+  return (
+    <div className="rounded-2xl bg-gradient-to-b from-neutral-900 to-neutral-950 p-4 ring-1 ring-neutral-700/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_20px_rgba(0,0,0,0.35)]">
+      {label && <p className="mb-2 text-[11px] font-black uppercase tracking-widest text-sky-400">{label}</p>}
+      {children}
+    </div>
+  );
+}
+
+export function Bf7SectionTitle({ no, title, note }: { no?: string; title: string; note?: string }) {
+  return (
+    <div className="mb-3 flex items-baseline gap-2.5">
+      {no && (
+        <span className="flex h-7 w-7 shrink-0 translate-y-0.5 items-center justify-center bg-sky-600 text-sm font-black italic text-white">
+          {no}
+        </span>
+      )}
+      <div>
+        <h2 className="text-lg font-black text-white">{title}</h2>
+        {note && <p className="text-xs text-neutral-400">{note}</p>}
+      </div>
+    </div>
+  );
+}
+
+export function Bf7Field({
+  label,
+  required,
+  hint,
+  error,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  hint?: string;
+  error?: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-bold text-neutral-200">
+        {label} {required && <span className="text-sky-400">*</span>}
+      </span>
+      {hint && <span className="block text-xs text-neutral-400">{hint}</span>}
+      <div className="mt-1.5">{children}</div>
+      {error && <span className="mt-1 block text-xs font-bold text-red-400">⚠ {error}</span>}
+    </label>
+  );
+}
+
+export function Bf7NumberSelect({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  return (
+    <select value={value} onChange={(e) => onChange(Number(e.target.value))} className={inputCls}>
+      {Array.from({ length: 11 }, (_, n) => (
+        <option key={n} value={n}>{n}枚</option>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * 出場者の集合時刻。vol.7はタイムテーブル未確定(2026-10-20時点)。
+ * ⚠️ 決まっていない時刻を書かない。確定したらここだけ直す(全フォーム共通)。
+ */
+export function Bf7CallTimeNotice() {
+  return (
+    <div className="mx-4 mt-4 rounded-2xl border border-sky-500/50 bg-sky-950/30 p-4">
+      <p className="text-sm font-black text-sky-300">当日の集合時刻について</p>
+      <p className="mt-1 text-xs leading-relaxed text-neutral-300">
+        集合時刻・タイムテーブルは決まり次第、ご登録のメールアドレスとイベントページでお知らせします。
+        受付で<span className="font-bold text-white">組み合わせ抽選(くじ引き)</span>を行う予定です。
+      </p>
+    </div>
+  );
+}

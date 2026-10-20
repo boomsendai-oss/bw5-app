@@ -13,6 +13,9 @@ import { handleBf6StreamPurchase } from '@/lib/bf6StreamDb';
 import { parsePartyWebhookEvent } from '@/lib/partyStripe';
 import { applyPartyWebhookEvent, getPartySettings } from '@/lib/partyDb';
 import { sendPartyOrderEmail } from '@/lib/partyEmail';
+import { parseBf7WebhookEvent } from '@/lib/bf7Stripe';
+import { applyBf7WebhookEvent } from '@/lib/bf7EntryDb';
+import { sendBf7OrderEmail } from '@/lib/bf7Email';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +38,26 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'invalid payload' }, { status: 400 });
   }
+  // BOOMER'S FIGHT!!! vol.7(metadata.bf7_order_id)も同じ相乗り方式。
+  // vol.6の判定(metadata.order_id)より前に振り分け、vol.6側で order_not_found を出させない。
+  const bf7Ev = parseBf7WebhookEvent(event);
+  if (bf7Ev) {
+    try {
+      const r = await applyBf7WebhookEvent(bf7Ev, payload);
+      if (r.status === 'paid') {
+        if (r.amountMismatch) console.error('[bf7] amount mismatch on order', bf7Ev.orderId, 'stripe:', bf7Ev.amountTotal);
+        await sendBf7OrderEmail(r.order, r.editToken);
+      } else if (r.status === 'order_not_found') {
+        console.error('[bf7] webhook order not found. order:', bf7Ev.orderId);
+      }
+      return NextResponse.json({ received: true, result: `bf7_${r.status}` });
+    } catch (e) {
+      // 500でStripeが自動リトライ(冪等なので再適用は安全)
+      console.error('[bf7] webhook apply failed', e instanceof Error ? e.message : e);
+      return NextResponse.json({ error: 'apply failed' }, { status: 500 });
+    }
+  }
+
   // パーティー申込(クリパ2026〜・metadata.party_order_id)も同じ相乗り方式。
   // BF6の判定(metadata.order_id)より前に振り分け、BF6側で order_not_found を出させない。
   const partyEv = parsePartyWebhookEvent(event);

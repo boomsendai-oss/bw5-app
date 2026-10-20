@@ -92,16 +92,20 @@ export function calcTicketUnitPrice(
   itemType: 'ticket_adult' | 'ticket_child',
   payMethod: Bf6PayMethod,
   pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing,
-  today: string = todayJst()
+  today: string = todayJst(),
+  eventDate: string = BF6_EVENT_DATE
 ): number {
   if (itemType === 'ticket_child') return pricing.ticketChild;
-  if (isBf6EventDayOrLater(today)) return pricing.ticketAdultOnsite;
+  if (isBf6EventDayOrLater(today, eventDate)) return pricing.ticketAdultOnsite;
   return payMethod === 'prepaid' ? pricing.ticketAdultPrepaid : pricing.ticketAdultOnsite;
 }
 
-/** 開催日(JST)以降か。この日からは観覧チケットに前売価格が無い。 */
-export function isBf6EventDayOrLater(today: string = todayJst()): boolean {
-  return today >= BF6_EVENT_DATE;
+/**
+ * 開催日(JST)以降か。この日からは観覧チケットに前売価格が無い。
+ * eventDate を渡すと別の回(vol.7など)でも使える。既定はvol.6。
+ */
+export function isBf6EventDayOrLater(today: string = todayJst(), eventDate: string = BF6_EVENT_DATE): boolean {
+  return today >= eventDate;
 }
 
 const yenText = (n: number) => `¥${n.toLocaleString()}`;
@@ -124,11 +128,12 @@ export interface Bf6PayMethodNote {
 /** /bf6/ticket(観覧チケットのみ)の支払い方法の説明。 */
 export function bf6TicketPayMethodNote(
   pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing,
-  today: string = todayJst()
+  today: string = todayJst(),
+  eventDate: string = BF6_EVENT_DATE
 ): Bf6PayMethodNote {
-  const adult = calcTicketUnitPrice('ticket_adult', 'prepaid', pricing, today);
-  const child = calcTicketUnitPrice('ticket_child', 'prepaid', pricing, today);
-  if (isBf6EventDayOrLater(today)) {
+  const adult = calcTicketUnitPrice('ticket_adult', 'prepaid', pricing, today, eventDate);
+  const child = calcTicketUnitPrice('ticket_child', 'prepaid', pricing, today, eventDate);
+  if (isBf6EventDayOrLater(today, eventDate)) {
     // 当日は事前も当日も同額。割引が無いので「おトク」とは言わない
     return {
       discountBadge: false,
@@ -146,12 +151,13 @@ export function bf6TicketPayMethodNote(
 /** /bf6/entry(エントリー+観覧の同時購入)の支払い方法の説明。 */
 export function bf6EntryPayMethodNote(
   pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing,
-  today: string = todayJst()
+  today: string = todayJst(),
+  eventDate: string = BF6_EVENT_DATE
 ): Bf6PayMethodNote {
   const entryOff = `エントリー料(出場者1人につき${yenText(pricing.prepaidDiscount)}引き)`;
-  const adult = calcTicketUnitPrice('ticket_adult', 'prepaid', pricing, today);
-  const child = calcTicketUnitPrice('ticket_child', 'prepaid', pricing, today);
-  if (isBf6EventDayOrLater(today)) {
+  const adult = calcTicketUnitPrice('ticket_adult', 'prepaid', pricing, today, eventDate);
+  const child = calcTicketUnitPrice('ticket_child', 'prepaid', pricing, today, eventDate);
+  if (isBf6EventDayOrLater(today, eventDate)) {
     // 観覧の前売は消えるが、エントリー料の¥500引きは日付で変わらないのでバッジは残す
     return {
       discountBadge: true,
@@ -216,7 +222,8 @@ export function calcOrderTotal(
   cart: Bf6Cart,
   payMethod: Bf6PayMethod,
   pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing,
-  today: string = todayJst()
+  today: string = todayJst(),
+  eventDate: string = BF6_EVENT_DATE
 ): number {
   const entryTotal = cart.entries.reduce(
     (sum, e) => sum + calcEntryFee(e.divisions.length, payMethod, pricing),
@@ -224,8 +231,8 @@ export function calcOrderTotal(
   );
   return (
     entryTotal +
-    cart.adultTickets * calcTicketUnitPrice('ticket_adult', payMethod, pricing, today) +
-    cart.childTickets * calcTicketUnitPrice('ticket_child', payMethod, pricing, today) +
+    cart.adultTickets * calcTicketUnitPrice('ticket_adult', payMethod, pricing, today, eventDate) +
+    cart.childTickets * calcTicketUnitPrice('ticket_child', payMethod, pricing, today, eventDate) +
     (cart.streamTickets ?? 0) * pricing.stream
   );
 }
@@ -318,6 +325,27 @@ export function isKatakanaText(v: string): boolean {
 export function isValidBf6Email(v: string): boolean {
   const s = v.trim();
   return /^\S+@\S+\.\S+$/.test(s) && s.length <= 100;
+}
+
+/**
+ * Instagramのアカウント名を正規化する。@の有無・前後や途中の空白・URL貼り付けを吸収する。
+ * 空なら空文字。形が正しいかは isValidInstagramHandle で見る。
+ */
+export function normalizeInstagramHandle(raw: string): string {
+  let s = (raw ?? '').trim();
+  if (!s) return '';
+  s = s.replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/[/?#].*$/, '');
+  s = s.replace(/[\s　]/g, '').replace(/^[@＠]+/, '');
+  return s ? `@${s}` : '';
+}
+
+/**
+ * Instagramで実際に使える形か(半角英数字・ピリオド・アンダーバー、30文字まで)。
+ * ⚠️ vol.6では「@b-boy_am_0918」(ハイフン)や「@nodoka—-1002」(全角ダッシュ)が
+ *    そのまま登録され、結果発表の投稿でタグ付けできなかった(2026-09-27)。
+ */
+export function isValidInstagramHandle(handle: string): boolean {
+  return /^@[A-Za-z0-9._]{1,30}$/.test(handle);
 }
 
 export function isValidBf6Phone(v: string): boolean {
@@ -530,9 +558,10 @@ export function validateBf6Order(input: Bf6OrderInput): ValidatedBf6Order | stri
       return `小中学生部門は小学生・中学生のみエントリーできます(${dancerName} さん)`;
     }
 
-    let instagram = (e?.instagram ?? '').trim();
-    if (instagram && !instagram.startsWith('@')) instagram = `@${instagram}`;
-    if (instagram.length > 50) return 'Instagramアカウントが長すぎます(50文字以内)';
+    const instagram = normalizeInstagramHandle(e?.instagram ?? '');
+    if (instagram && !isValidInstagramHandle(instagram)) {
+      return `${dancerName} さんのInstagramアカウント「${instagram}」は使えない文字が入っています。半角の英数字・ピリオド(.)・アンダーバー(_)だけで入力してください`;
+    }
 
     const genre = (e?.genre ?? '').trim();
     if (!genre) return `${dancerName} さんのエントリージャンルを入力してください`;
@@ -599,7 +628,8 @@ export function buildBf6OrderItems(
   order: ValidatedBf6Order,
   payMethod: Bf6PayMethod,
   pricing: Bf6Pricing = DEFAULT_BF6_SETTINGS.pricing,
-  today: string = todayJst()
+  today: string = todayJst(),
+  eventDate: string = BF6_EVENT_DATE
 ): Bf6OrderItemRow[] {
   const items: Bf6OrderItemRow[] = order.entries.map((e) => ({
     itemType: 'entry' as const,
@@ -623,14 +653,14 @@ export function buildBf6OrderItems(
     items.push({
       itemType: 'ticket_adult', ...emptyPerformer,
       qty: order.adultTickets,
-      unitAmount: calcTicketUnitPrice('ticket_adult', payMethod, pricing, today),
+      unitAmount: calcTicketUnitPrice('ticket_adult', payMethod, pricing, today, eventDate),
     });
   }
   if (order.childTickets > 0) {
     items.push({
       itemType: 'ticket_child', ...emptyPerformer,
       qty: order.childTickets,
-      unitAmount: calcTicketUnitPrice('ticket_child', payMethod, pricing, today),
+      unitAmount: calcTicketUnitPrice('ticket_child', payMethod, pricing, today, eventDate),
     });
   }
   if (order.streamTickets > 0) {
@@ -644,6 +674,6 @@ export function buildBf6OrderItems(
 }
 
 /** 受付番号の表記(完了画面・完了メール・スタッフ画面で共通)。 */
-export function formatReceiptNo(orderId: number): string {
-  return `BF6-${String(orderId).padStart(3, '0')}`;
+export function formatReceiptNo(orderId: number, prefix: string = 'BF6'): string {
+  return `${prefix}-${String(orderId).padStart(3, '0')}`;
 }
