@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeSrc, summarizeBw6, summarizeUserAgent, validateDetails, validatePress } from '@/lib/bw6Interest';
+import { srcLabel, normalizeSrc, summarizeBw6, summarizeUserAgent, validateDetails, validatePress } from '@/lib/bw6Interest';
 
 const DEV = 'a1b2c3d4-e5f6-4a7b-8c9d-0123456789ab';
 
@@ -25,6 +25,13 @@ describe('normalizeSrc', () => {
     expect(normalizeSrc('')).toBe('direct');
     expect(normalizeSrc('IG')).toBe('ig');
     expect(normalizeSrc('tiktok')).toBe('other');
+  });
+  it('MOCCHINページの接頭辞を保ったまま正規化する', () => {
+    expect(normalizeSrc('mocchin_line')).toBe('mocchin_line');
+    expect(normalizeSrc('mocchin_')).toBe('mocchin_direct');
+    expect(normalizeSrc('mocchin_tiktok')).toBe('mocchin_other');
+    expect(srcLabel('mocchin_ig')).toBe('MOCCHINページ／Instagram');
+    expect(srcLabel('line')).toBe('公式LINE配信');
   });
 });
 

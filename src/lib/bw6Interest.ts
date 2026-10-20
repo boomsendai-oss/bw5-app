@@ -13,9 +13,15 @@ export const BW6_KIND_LABEL: Record<Bw6Kind, string> = {
 
 /** 流入元。配信ごとに `?src=` を付けて出し分ける。これ以外の値は 'other' に丸める */
 export const BW6_SRCS = ['line', 'ig', 'hacomono', 'qr', 'group', 'hp', 'direct', 'other'] as const;
-export type Bw6Src = (typeof BW6_SRCS)[number];
+type Bw6BaseSrc = (typeof BW6_SRCS)[number];
+/**
+ * 記録する流入元のキー。MOCCHINスペシャルナンバー専用ページ(/bw6/mocchin)から押された分は
+ * `mocchin_` を頭に付けて区別する（例: mocchin_line）。メインLP(/bw6)の値は従来どおり（後方互換）。
+ */
+export type Bw6Src = Bw6BaseSrc | `mocchin_${Bw6BaseSrc}`;
+export const BW6_PAGE_PREFIX = 'mocchin_';
 
-export const BW6_SRC_LABEL: Record<Bw6Src, string> = {
+export const BW6_SRC_LABEL: Record<Bw6BaseSrc, string> = {
   line: '公式LINE配信',
   ig: 'Instagram',
   hacomono: 'HACOMONO',
@@ -46,9 +52,22 @@ function clean(v: unknown, max: number): string {
 }
 
 export function normalizeSrc(v: unknown): Bw6Src {
-  const s = str(v).trim().toLowerCase();
-  if (!s) return 'direct';
-  return (BW6_SRCS as readonly string[]).includes(s) ? (s as Bw6Src) : 'other';
+  let s = str(v).trim().toLowerCase();
+  let prefix = '';
+  if (s.startsWith(BW6_PAGE_PREFIX)) {
+    prefix = BW6_PAGE_PREFIX;
+    s = s.slice(BW6_PAGE_PREFIX.length);
+  }
+  const base: Bw6BaseSrc = !s ? 'direct' : (BW6_SRCS as readonly string[]).includes(s) ? (s as Bw6BaseSrc) : 'other';
+  return `${prefix}${base}` as Bw6Src;
+}
+
+/** 集計画面の表示名（MOCCHINページ分は頭に付ける） */
+export function srcLabel(src: string): string {
+  const mocchin = src.startsWith(BW6_PAGE_PREFIX);
+  const base = (mocchin ? src.slice(BW6_PAGE_PREFIX.length) : src) as Bw6BaseSrc;
+  const label = BW6_SRC_LABEL[base] ?? base;
+  return mocchin ? `MOCCHINページ／${label}` : label;
 }
 
 /** user-agent は端末の種類が分かる程度に縮める(個人の特定に使わない) */
@@ -111,7 +130,7 @@ export async function recordPress(p: PressInput, userAgent: string, now = new Da
      ON CONFLICT(device_id) DO UPDATE SET
        kind = excluded.kind,
        press_count = bw6_interest.press_count + 1,
-       src = CASE WHEN bw6_interest.src IN ('direct', 'other') THEN excluded.src ELSE bw6_interest.src END,
+       src = CASE WHEN bw6_interest.src IN ('direct', 'other', 'mocchin_direct', 'mocchin_other') THEN excluded.src ELSE bw6_interest.src END,
        updated_at = excluded.updated_at`,
     [p.deviceId, p.kind, p.kind, p.src, summarizeUserAgent(userAgent), ts, ts],
   );

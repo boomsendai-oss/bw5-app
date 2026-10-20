@@ -4,7 +4,7 @@ import StaffPageHeader from '@/components/StaffPageHeader';
 import {
   BW6_AGE_LABEL,
   BW6_KIND_LABEL,
-  BW6_SRC_LABEL,
+  srcLabel,
   listBw6Interest,
   summarizeBw6,
   type Bw6AgeGroup,
@@ -40,7 +40,7 @@ export default async function StaffBw6InterestPage() {
 
         <section className="rounded-xl border border-sand-200 bg-white p-4">
           <h2 className="text-sm font-bold text-navy-800">流入元別</h2>
-          <p className="mt-1 text-xs text-neutral-500">URLの ?src= で判定。最初に来た経路で数える</p>
+          <p className="mt-1 text-xs text-neutral-500">URLの ?src= で判定。最初に来た経路で数える。「MOCCHINページ／」はスペシャルナンバー専用ページ(/bw6/mocchin)で押された分</p>
           {sum.bySrc.length === 0 ? (
             <p className="mt-2 text-sm text-neutral-500">まだありません</p>
           ) : (
@@ -57,7 +57,7 @@ export default async function StaffBw6InterestPage() {
                 {sum.bySrc.map((s) => (
                   <tr key={s.src} className="border-b border-sand-100">
                     <td className="py-1.5">
-                      {BW6_SRC_LABEL[s.src] ?? s.src} <span className="text-xs text-neutral-400">{s.src}</span>
+                      {srcLabel(s.src)} <span className="text-xs text-neutral-400">{s.src}</span>
                     </td>
                     <td className="py-1.5 text-right tabular-nums">{s.want}</td>
                     <td className="py-1.5 text-right tabular-nums">{s.curious}</td>
@@ -89,7 +89,7 @@ export default async function StaffBw6InterestPage() {
                     {BW6_KIND_LABEL[r.kind]}
                   </span>
                   <span className="text-xs text-neutral-400">
-                    {BW6_SRC_LABEL[r.src] ?? r.src} ・ {jst(r.updatedAt)}
+                    {srcLabel(r.src)} ・ {jst(r.updatedAt)}
                   </span>
                 </li>
               ))}
@@ -104,7 +104,7 @@ export default async function StaffBw6InterestPage() {
               <li key={r.id} className="flex flex-wrap gap-x-3 py-1.5">
                 <span className="tabular-nums text-neutral-500">{jst(r.createdAt)}</span>
                 <span>{BW6_KIND_LABEL[r.kind]}</span>
-                <span className="text-neutral-500">{BW6_SRC_LABEL[r.src] ?? r.src}</span>
+                <span className="text-neutral-500">{srcLabel(r.src)}</span>
                 <span className="text-neutral-400">{r.userAgent}</span>
                 {r.pressCount > 1 && <span className="text-neutral-400">押し直し{r.pressCount - 1}回</span>}
                 {r.firstKind !== r.kind && <span className="text-neutral-400">最初は「{BW6_KIND_LABEL[r.firstKind]}」</span>}
