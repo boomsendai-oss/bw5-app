@@ -7,6 +7,7 @@ import type { Transaction } from '@libsql/client';
 import { execute, getAll, getOne, withWriteTx } from '@/lib/db';
 import { generateEditToken } from '@/lib/eventSignup';
 import {
+  entryTotal,
   entryUnitPrice,
   partySettingsToRows,
   resolvePartySettings,
@@ -207,7 +208,7 @@ export async function createPartyEntry(eventKey: string, v: ValidatedEntry, s: P
   await sweepExpiredPartyOrders();
   const token = generateEditToken();
   const unitPrice = entryUnitPrice(s);
-  const amountTotal = unitPrice * v.members.length;
+  const amountTotal = entryTotal(v.members.length, s, v.ticketCount);
   try {
     const orderId = await withWriteTx(async (tx) => {
       const cnt = await tx.execute({
@@ -220,7 +221,7 @@ export async function createPartyEntry(eventKey: string, v: ValidatedEntry, s: P
         eventKey,
         {
           kind: 'entry', buyerName: v.buyerName, buyerKana: v.buyerKana, email: v.email, phone: v.phone,
-          isMember: null, peopleCount: 0, infantCount: 0, teamName: v.teamName, teamKana: v.teamKana, genre: v.genre,
+          isMember: null, peopleCount: v.ticketCount, infantCount: 0, teamName: v.teamName, teamKana: v.teamKana, genre: v.genre,
           memberCount: v.members.length, payMethod: v.payMethod, unitPrice, amountTotal,
         },
         token

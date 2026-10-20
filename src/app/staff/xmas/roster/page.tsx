@@ -71,14 +71,18 @@ export default async function StaffXmasRosterPage() {
                       <br />
                       {formatMembers(o.members)}
                       <br />
-                      <span className="text-[10px]">※入場は各自のチケットで確認</span>
+                      <span className="text-[10px]">
+                        {o.peopleCount >= o.memberCount
+                          ? '入場チケット込み'
+                          : `※入場チケット${o.peopleCount}枚込み・残り${o.memberCount - o.peopleCount}名は各自のチケットで確認`}
+                      </span>
                     </>
                   ) : (
                     <>参加{o.isMember === false ? '(会員以外)' : ''}</>
                   )}
                 </td>
                 <td className="py-1.5 text-right">
-                  {o.kind === 'entry' ? `出演${o.memberCount}名` : `${o.peopleCount}名`}
+                  {o.kind === 'entry' ? `出演${o.memberCount}名(入場${o.peopleCount})` : `${o.peopleCount}名`}
                   {o.infantCount > 0 && (
                     <>
                       <br />

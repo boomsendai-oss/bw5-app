@@ -132,8 +132,13 @@ export function entryUnitPrice(s: PartySettings): number {
   return s.performerFee;
 }
 
-export function entryTotal(memberCount: number, s: PartySettings): number {
-  return memberCount * entryUnitPrice(s);
+/**
+ * 出演エントリーの合計 = 出演料×メンバー数 + 入場チケット(前売)×まとめ買いの枚数。
+ * 入場チケットはエントリーと同じ決済でまとめて買える(TARO 2026-10-20)。先にチケットを
+ * 予約済みのメンバーの分は枚数を減らせるので、二重払いにはならない。
+ */
+export function entryTotal(memberCount: number, s: PartySettings, ticketCount = 0): number {
+  return memberCount * entryUnitPrice(s) + ticketCount * s.presalePrice;
 }
 
 // ---- 設定(party_settings の key-value)の解釈 ----
@@ -325,6 +330,8 @@ export interface EntryInput extends ContactInput {
   teamKana?: unknown;
   genre?: unknown;
   members?: unknown;
+  /** 入場チケットのまとめ買い枚数(0〜メンバー数) */
+  ticketCount?: unknown;
 }
 
 export interface ValidatedEntry extends ValidatedContact {
@@ -332,6 +339,7 @@ export interface ValidatedEntry extends ValidatedContact {
   teamKana: string;
   genre: string;
   members: EntryMember[];
+  ticketCount: number;
 }
 
 export const MIN_MEMBERS = 2;
@@ -358,11 +366,16 @@ export function validateEntryInput(input: EntryInput): ValidatedEntry | string {
   }
   if (members.length < MIN_MEMBERS) return `メンバーは${MIN_MEMBERS}人以上で入力してください(1人での出演はできません)`;
   if (members.length > MAX_MEMBERS) return `メンバーは${MAX_MEMBERS}人までです`;
+  const tc = input.ticketCount ?? 0;
+  const ticketCount = typeof tc === 'number' ? tc : Number(String(tc).trim());
+  if (!Number.isInteger(ticketCount) || ticketCount < 0 || ticketCount > members.length) {
+    return `入場チケットの枚数は0〜${members.length}枚で選んでください`;
+  }
   const c = validateContact(input);
   if (typeof c === 'string') return c;
   // 出演は後からのキャンセルで枠が空くと困るため、カード払いのみ(TARO 2026-10-15)
   if (c.payMethod !== 'card') return '出演エントリーはカード払いのみです';
-  return { ...c, teamName, teamKana, genre, members };
+  return { ...c, teamName, teamKana, genre, members, ticketCount };
 }
 
 // ---- 名簿・精算・表示 ----
@@ -480,6 +493,8 @@ export function summarizePartyOrders(orders: SummarizableOrder[]): PartySummary 
     } else {
       s.teams += 1;
       s.performers += o.memberCount;
+      // エントリーと一緒に買った入場チケット(出演者の分)も来場者として数える
+      s.people += o.peopleCount;
     }
     if (o.status === 'paid') s.cardPaid += o.amountTotal;
     else s.cashDue += o.amountTotal;

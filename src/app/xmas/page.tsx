@@ -53,7 +53,7 @@ export default async function XmasTopPage({ searchParams }: { searchParams: Prom
     },
     {
       q: '出演する人もチケットは必要ですか？',
-      a: `必要です。出演料(1人${yen(s.performerFee)})とは別に、出演メンバーも1人ずつチケット予約をお願いします。先にチケットを予約していた人は、そのまま出演エントリーできます。`,
+      a: `必要です。出演料(1人${yen(s.performerFee)})とは別に、出演メンバーも1人ずつ入場チケット(前売${yen(s.presalePrice)})が必要です。出演エントリーのときに一緒に買えます。先にチケットを予約していたメンバーの分は、エントリーのときに枚数を減らしてください。`,
     },
     {
       q: '前売の締切を過ぎたら？',
@@ -218,7 +218,7 @@ export default async function XmasTopPage({ searchParams }: { searchParams: Prom
             </li>
             <li>・クラスや学年が違うメンバーでOK。BOOMの生徒ではない友達も参加OK</li>
             <li>
-              ・出演料 1人 {yen(s.performerFee)}(カード払いのみ)。入場には、出演メンバーも1人ずつチケット予約が必要です(出演料とは別)
+              ・出演料 1人 {yen(s.performerFee)}(カード払いのみ)。入場には、出演メンバーも1人ずつ入場チケット(前売{yen(s.presalePrice)})が必要です。エントリーのときに一緒に買えます
             </li>
             <li>・リハーサルの時間はありません</li>
             <li>・{SHOWCASE_ORDER_NOTE}</li>

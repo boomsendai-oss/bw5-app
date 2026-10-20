@@ -3,14 +3,22 @@ import { buildPartyLineItems, buildPartyCheckoutParams, parsePartyWebhookEvent }
 
 describe('buildPartyLineItems', () => {
   it('参加申込は 単価×人数 の1行', () => {
-    expect(buildPartyLineItems({ kind: 'ticket', unitPrice: 2000, peopleCount: 3, memberCount: 0, teamName: '' })).toEqual([
+    expect(buildPartyLineItems({ kind: 'ticket', unitPrice: 2000, peopleCount: 3, memberCount: 0, teamName: '', amountTotal: 6000 })).toEqual([
       { name: 'BOOM クリスマスパーティー 2026 入場チケット(前売)', unitAmount: 2000, qty: 3 },
     ]);
   });
   it('エントリーは 出演料 の単価×メンバー数', () => {
-    expect(buildPartyLineItems({ kind: 'entry', unitPrice: 2000, peopleCount: 0, memberCount: 4, teamName: 'BOOM KIDS' })).toEqual([
+    expect(buildPartyLineItems({ kind: 'entry', unitPrice: 2000, peopleCount: 0, memberCount: 4, teamName: 'BOOM KIDS', amountTotal: 8000 })).toEqual([
       { name: 'ショーケース出演料 BOOM KIDS', unitAmount: 2000, qty: 4 },
     ]);
+  });
+  it('エントリーで入場チケットもまとめ買いした分は2行目(単価は保存済みの合計から逆算・合計が一致)', () => {
+    const items = buildPartyLineItems({ kind: 'entry', unitPrice: 2000, peopleCount: 2, memberCount: 3, teamName: 'A', amountTotal: 10000 });
+    expect(items).toEqual([
+      { name: 'ショーケース出演料 A', unitAmount: 2000, qty: 3 },
+      { name: 'BOOM クリスマスパーティー 2026 入場チケット(前売・出演メンバー分)', unitAmount: 2000, qty: 2 },
+    ]);
+    expect(items.reduce((t, i) => t + i.unitAmount * i.qty, 0)).toBe(10000);
   });
 });
 

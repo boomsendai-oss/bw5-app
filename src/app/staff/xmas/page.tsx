@@ -95,7 +95,7 @@ export default async function StaffXmasPage() {
                     <span className="text-sm text-navy-800">{yen(o.amountTotal)}({o.payMethod === 'card' ? 'カード' : '当日現金'})</span>
                   </div>
                   <p className="mt-1 text-sm text-neutral-700">
-                    {o.memberCount}名: {formatMembers(o.members)}
+                    {o.memberCount}名: {formatMembers(o.members)} ・ 入場チケット{o.peopleCount}枚
                   </p>
                   <p className="text-xs text-neutral-500">
                     代表 {o.buyerName}({o.buyerKana}) {o.phone} {o.email}

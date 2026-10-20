@@ -123,6 +123,10 @@ describe('金額は設定値から計算', () => {
     expect(entryTotal(4, OPEN)).toBe(8000);
     expect(entryTotal(4, { ...OPEN, performerFee: 1500 })).toBe(6000);
   });
+  it('エントリーで入場チケットもまとめ買いすると 出演料×人数+前売×枚数', () => {
+    expect(entryTotal(3, OPEN, 3)).toBe(12000);
+    expect(entryTotal(3, OPEN, 1)).toBe(8000);
+  });
 });
 
 const baseTicket = {
@@ -188,6 +192,15 @@ describe('validateEntryInput', () => {
       { name: 'かきく', grade: 'jhs' },
     ]);
     expect(v.teamKana).toBe('ぶーむ きっず');
+  });
+  it('入場チケットのまとめ買いは0〜メンバー数(省略時は0)', () => {
+    const v0 = validateEntryInput(baseEntry);
+    expect(typeof v0 === 'object' && v0.ticketCount).toBe(0);
+    const v2 = validateEntryInput({ ...baseEntry, ticketCount: 2 });
+    expect(typeof v2 === 'object' && v2.ticketCount).toBe(2);
+    expect(validateEntryInput({ ...baseEntry, ticketCount: 3 })).toMatch(/0〜2枚/);
+    expect(validateEntryInput({ ...baseEntry, ticketCount: -1 })).toMatch(/入場チケット/);
+    expect(validateEntryInput({ ...baseEntry, ticketCount: 1.5 })).toMatch(/入場チケット/);
   });
   it('2人未満はNG(1人での出演はなし)', () => {
     expect(validateEntryInput({ ...baseEntry, members: [{ name: 'ひとり', grade: 'hs' }] })).toMatch(/2人以上/);

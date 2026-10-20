@@ -1,6 +1,7 @@
 'use client';
 
-// 出演エントリーフォーム。合計 = メンバー数 × 出演料(入場は出演者もチケット予約で別に払う)。請求額はサーバが再計算する。
+// 出演エントリーフォーム。合計 = メンバー数 × 出演料 + 入場チケット(前売)×まとめ買いの枚数。請求額はサーバが再計算する。
+// 入場チケットは最初メンバー数と同じ枚数にしておき、先に予約済みのメンバーがいれば減らしてもらう(TARO 2026-10-20)。
 // 出演はカード払いのみ(後からのキャンセルで枠が空くと困るため・TARO 2026-10-15)。
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -41,9 +42,12 @@ export default function EntryForm(p: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const fe = useFieldErrors();
+  // 入場チケットの枚数。触るまではメンバー数に合わせて自動で増減する
+  const [ticketPick, setTicketPick] = useState<number | null>(null);
 
   const filled = members.filter((m) => m.name.trim()).length;
-  const total = filled * p.entryUnit;
+  const tickets = ticketPick == null ? filled : Math.min(ticketPick, filled);
+  const total = filled * p.entryUnit + tickets * p.presalePrice;
 
   function setMember(i: number, patch: Partial<MemberRow>) {
     setMembers((prev) => prev.map((m, j) => (j === i ? { ...m, ...patch } : m)));
@@ -62,6 +66,7 @@ export default function EntryForm(p: {
       teamKana,
       genre,
       members,
+      ticketCount: tickets,
       buyerName,
       buyerKana,
       email,
@@ -205,15 +210,53 @@ export default function EntryForm(p: {
         </Field>
       </Panel>
 
+      <Panel title="出演メンバーの入場チケット" tone="red">
+        <p className="text-sm font-bold">
+          入場には、出演メンバーも1人ずつ入場チケット(前売{yen(p.presalePrice)})が必要です。ここで一緒に買えます。
+        </p>
+        <p className="mt-1 text-xs font-bold text-neutral-700">
+          すでにチケットを予約したメンバーがいる場合は、その人数分だけ減らしてください。付き添いの保護者の方のチケットは、チケット予約のページからお申し込みください。
+        </p>
+        <div className="mt-3 flex items-center justify-center gap-4">
+          <button
+            type="button"
+            onClick={() => setTicketPick(Math.max(0, tickets - 1))}
+            disabled={tickets <= 0}
+            className="h-12 w-12 rounded-full border-[3px] border-[#1a1410] bg-white text-2xl font-black text-[#1a1410] disabled:opacity-30"
+            aria-label="入場チケットを1枚減らす"
+          >
+            −
+          </button>
+          <p className="min-w-[7rem] text-center text-2xl font-black text-[#1a1410]">
+            {tickets} <span className="text-base">枚</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setTicketPick(Math.min(filled, tickets + 1))}
+            disabled={tickets >= filled}
+            className="h-12 w-12 rounded-full border-[3px] border-[#1a1410] bg-white text-2xl font-black text-[#1a1410] disabled:opacity-30"
+            aria-label="入場チケットを1枚増やす"
+          >
+            ＋
+          </button>
+        </div>
+        <p className="mt-2 text-center text-xs font-bold text-neutral-700">メンバー {filled}人中 {tickets}人分</p>
+      </Panel>
+
       <Panel title="お支払い(カードのみ)" tone="green">
         <div className="rounded-lg border-[3px] border-[#1a1410] bg-[#f4cf3e] p-3 text-center">
           <p className="text-sm font-black">
-            出演料 1人 {yen(p.entryUnit)} × メンバー {filled}人
+            出演料 {yen(p.entryUnit)} × {filled}人
+          </p>
+          <p className="text-sm font-black">
+            入場チケット {yen(p.presalePrice)} × {tickets}枚
           </p>
           <p className="text-3xl font-black">{yen(total)}</p>
-          <p className="text-xs font-bold">
-            入場には、出演メンバーも1人ずつチケット予約(前売{yen(p.presalePrice)})が必要です。出演料とは別にお支払いください
-          </p>
+          {tickets < filled && (
+            <p className="text-xs font-bold">
+              残りの {filled - tickets}人分の入場チケットは、チケット予約のページで予約してください(予約済みならそのままでOK)
+            </p>
+          )}
         </div>
         <p className="mt-3 text-xs font-bold text-neutral-700">
           出演エントリーはカード払いのみです。30分以内に決済が完了すると、エントリーが確定します。

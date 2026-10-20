@@ -13,6 +13,7 @@ import {
   yen,
 } from '@/lib/party';
 import { getPartySettings, loadPartyOrderByToken } from '@/lib/partyDb';
+import { Ticket } from 'lucide-react';
 import { Notice, Panel, Row, XmasShell, primaryBtnCls } from '../ui';
 import CheckoutButton from './CheckoutButton';
 import AudioUpload from './AudioUpload';
@@ -84,6 +85,7 @@ export default async function XmasMyPage({ searchParams }: { searchParams: Promi
             <>
               <Row k="チーム" v={`${o.teamName}(${o.teamKana})・${o.genre}`} />
               <Row k="メンバー" v={`${o.memberCount}名: ${formatMembers(o.members)}`} />
+              <Row k="入場チケット" v={`${o.peopleCount}枚(メンバー${o.memberCount}名中)`} />
             </>
           ) : (
             <Row k="人数" v={`小学生以上 ${o.peopleCount}名${o.infantCount > 0 ? ` / 未就学児 ${o.infantCount}名(無料)` : ''}`} />
@@ -112,6 +114,24 @@ export default async function XmasMyPage({ searchParams }: { searchParams: Promi
           </p>
         )}
       </Panel>
+
+      {isEntry && confirmed && (
+        <Panel title="出演メンバーの入場チケット" tone="red">
+          {o.peopleCount >= o.memberCount ? (
+            <p className="text-sm font-bold">出演メンバー全員分の入場チケットはお支払い済みです。</p>
+          ) : (
+            <p className="text-sm font-black text-[#d4302a]">
+              入場には、出演メンバーも1人ずつ入場チケットが必要です。まだ {o.memberCount - o.peopleCount}人分がこの申込に入っていません。
+              チケットを予約していないメンバーは、下のボタンから予約してください。
+            </p>
+          )}
+          <p className="mt-1 text-xs font-bold text-neutral-700">付き添いの保護者の方のチケットも、下のボタンから予約できます。</p>
+          <Link href="/xmas/ticket" className={`mt-3 flex items-center justify-center gap-2 ${primaryBtnCls}`}>
+            <Ticket className="size-6" strokeWidth={2.5} aria-hidden />
+            入場チケットを予約する
+          </Link>
+        </Panel>
+      )}
 
       {isEntry && confirmed && (
         <Panel title="音源の提出(後日でOK)" tone="green">

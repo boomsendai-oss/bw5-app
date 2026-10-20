@@ -39,7 +39,16 @@ export function buildPartyOrderEmail(o: PartyOrder, token: string, s: PartySetti
     L.push(`■ メンバー(${o.memberCount}名):`);
     for (const m of o.members) L.push(`  ・${m.name}(${gradeLabel(m.grade)})`);
     L.push(`■ 出演料: ${yen(o.unitPrice)} × ${o.memberCount}名`);
-    L.push('  ※入場には、出演メンバーも1人ずつチケット予約が必要です(出演料とは別)。まだの方はこちらから:');
+    if (o.peopleCount > 0) {
+      // 入場チケットの単価は保存済みの合計から逆算する(申込時の値段のまま)
+      const ticketUnit = (o.amountTotal - o.unitPrice * o.memberCount) / o.peopleCount;
+      L.push(`■ 入場チケット(前売・出演メンバー分): ${yen(ticketUnit)} × ${o.peopleCount}枚`);
+    }
+    if (o.peopleCount < o.memberCount) {
+      L.push(`  ※入場には、出演メンバーも1人ずつ入場チケットが必要です。この申込に入っていない ${o.memberCount - o.peopleCount}人分は、まだ予約していなければこちらから:`);
+    } else {
+      L.push('  ※出演メンバー全員分の入場チケットを含みます。付き添いの保護者の方のチケットはこちらから:');
+    }
     L.push(`  ${BASE_URL}/xmas/ticket`);
   } else {
     L.push(`■ 参加人数: 小学生以上 ${o.peopleCount}名${o.infantCount > 0 ? ` / 未就学児 ${o.infantCount}名(無料)` : ''}`);

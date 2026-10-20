@@ -26,6 +26,7 @@ const entry = (team: string, payMethod: 'card' | 'cash' = 'cash') => ({
   buyerName: '代表', buyerKana: 'だいひょう', email: 'e@example.com', phone: '09011112222',
   payMethod, teamName: team, teamKana: 'てすと', genre: 'HIPHOP',
   members: [{ name: 'あ', grade: 'g1_3' }, { name: 'い', grade: 'jhs' }, { name: 'う', grade: 'adult' }],
+  ticketCount: 0,
 });
 
 beforeAll(async () => {
@@ -71,15 +72,16 @@ describe('参加申込', () => {
 describe('出演エントリーの先着', () => {
   it('上限(2)に達したら3チーム目は断る', async () => {
     const s = await db.getPartySettings(EV); // teamCap=2
-    const a = await db.createPartyEntry(EV, entry('A'), s);
+    const a = await db.createPartyEntry(EV, { ...entry('A'), ticketCount: 2 }, s);
     const b = await db.createPartyEntry(EV, entry('B', 'card'), s);
     expect(a.ok && b.ok).toBe(true);
     const c = await db.createPartyEntry(EV, entry('C'), s);
     expect(c.ok).toBe(false);
     if (!c.ok) expect(c.error).toMatch(/定員/);
     if (a.ok) {
-      expect(a.amountTotal).toBe(6000); // 3人×出演料2000(入場はチケットで別)
+      expect(a.amountTotal).toBe(10000); // 3人×出演料2000 + 入場チケット2枚×2000
       const o = await db.loadPartyOrderByToken(a.token);
+      expect(o?.peopleCount).toBe(2);
       expect(o?.members.map((m) => m.name)).toEqual(['あ', 'い', 'う']);
       expect(o?.members[1].grade).toBe('jhs');
       expect(o?.teamKana).toBe('てすと');

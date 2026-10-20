@@ -43,8 +43,18 @@ describe('buildPartyOrderEmail', () => {
     expect(m.text).toContain('音源の提出(後日でOK)');
     expect(m.text).toContain('12/12(土) 23:59');
     expect(m.text).toContain('¥8,000');
-    expect(m.text).toContain('出演メンバーも1人ずつチケット予約が必要');
+    expect(m.text).toContain('出演メンバーも1人ずつ入場チケットが必要');
+    expect(m.text).toContain('この申込に入っていない 2人分');
     expect(m.text).toContain('https://event.boom-sendai.com/xmas/ticket');
+  });
+  it('エントリー: 入場チケットを全員分まとめ買い', () => {
+    const m = buildPartyOrderEmail(
+      { ...base, kind: 'entry', teamName: 'BOOM KIDS', teamKana: 'ぶーむきっず', genre: 'HIPHOP', memberCount: 2, members: [{ name: 'あ', grade: 'g1_3' }, { name: 'い', grade: 'hs' }], unitPrice: 2000, amountTotal: 8000, peopleCount: 2, infantCount: 0, isMember: null },
+      'tok',
+      S
+    );
+    expect(m.text).toContain('■ 入場チケット(前売・出演メンバー分): ¥2,000 × 2枚');
+    expect(m.text).toContain('出演メンバー全員分の入場チケットを含みます');
   });
 });
 

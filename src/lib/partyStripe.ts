@@ -16,11 +16,22 @@ export interface PartyOrderForCheckout {
   peopleCount: number;
   memberCount: number;
   teamName: string;
+  amountTotal: number;
+}
+
+/** エントリーと一緒に買った入場チケット1枚の値段(保存済みの合計から逆算=申込時の値段のまま)。 */
+export function entryTicketUnit(o: PartyOrderForCheckout): number {
+  if (o.kind !== 'entry' || o.peopleCount <= 0) return 0;
+  return (o.amountTotal - o.unitPrice * o.memberCount) / o.peopleCount;
 }
 
 export function buildPartyLineItems(o: PartyOrderForCheckout): PartyCheckoutLineItem[] {
   if (o.kind === 'entry') {
-    return [{ name: `ショーケース出演料 ${o.teamName}`, unitAmount: o.unitPrice, qty: o.memberCount }];
+    const items = [{ name: `ショーケース出演料 ${o.teamName}`, unitAmount: o.unitPrice, qty: o.memberCount }];
+    if (o.peopleCount > 0) {
+      items.push({ name: `${XMAS_EVENT_INFO.title} 入場チケット(前売・出演メンバー分)`, unitAmount: entryTicketUnit(o), qty: o.peopleCount });
+    }
+    return items;
   }
   return [{ name: `${XMAS_EVENT_INFO.title} 入場チケット(前売)`, unitAmount: o.unitPrice, qty: o.peopleCount }];
 }
