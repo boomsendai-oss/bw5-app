@@ -119,6 +119,41 @@ export function buildAudioReminderEmail(o: PartyOrder, token: string, s: PartySe
   return { subject: `【BOOMクリスマスパーティー2026】音源の提出のお願い(${o.teamName})`, text: L.join('\n') };
 }
 
+/**
+ * 出演チームへ「出演メンバーも入場チケットが必要」のお願い(スタッフ画面のボタンから送る)。
+ * 文面はTARO確認済み(2026-10-20)。エントリーと一緒に買った入場チケットが足りないチームが対象。
+ */
+export function buildEntryTicketNoticeEmail(o: PartyOrder, s: PartySettings): { subject: string; text: string } {
+  const missing = Math.max(0, o.memberCount - o.peopleCount);
+  const L: string[] = [];
+  L.push(`${o.buyerName} 様`);
+  L.push('');
+  L.push(`${XMAS_EVENT_INFO.title} ショーケースへの出演エントリー、ありがとうございます。`);
+  L.push('出演メンバーの入場チケットについてお知らせします。');
+  L.push('');
+  L.push(`当日の入場には、出演メンバーも1人ずつ入場チケット(前売 ${yen(s.presalePrice)})が必要です。`);
+  if (o.peopleCount === 0) {
+    L.push('エントリーでお支払いいただいたのは出演料のみで、入場チケットは含まれていません。');
+  } else {
+    L.push(`エントリーと一緒にお支払いいただいた入場チケットは ${o.peopleCount}枚です。`);
+  }
+  L.push('');
+  L.push(`■ チーム:${o.teamName}(メンバー${o.memberCount}名)`);
+  L.push(`■ 入場チケット:前売 ${yen(s.presalePrice)}/1人`);
+  L.push(`  ${formatJstLabel(s.ticketCardDeadline)} まで。カード払い、または当日現金払いを選べます`);
+  L.push('');
+  L.push(o.peopleCount === 0 ? 'こちらから、メンバー全員分の予約をお願いします。' : `こちらから、残り${missing}人分の予約をお願いします。`);
+  L.push(`${BASE_URL}/xmas/ticket`);
+  L.push('');
+  L.push('※すでに予約済みのメンバーの分は不要です。');
+  L.push('※付き添いの保護者の方も、入場チケットの予約をお願いします。');
+  L.push('');
+  L.push('ご不明な点は BOOM 公式LINE までお問い合わせください。');
+  L.push('');
+  L.push('BOOM DANCE SCHOOL');
+  return { subject: `【BOOMクリスマスパーティー2026】出演メンバーの入場チケットのお願い(${o.teamName})`, text: L.join('\n') };
+}
+
 /** 控えページのURLを登録メールアドレスへ送り直す(メールをなくした人向け)。 */
 export function buildLinkResendEmail(items: { order: PartyOrder; token: string }[]): { subject: string; text: string } {
   const L: string[] = [];

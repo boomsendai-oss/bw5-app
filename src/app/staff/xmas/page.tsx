@@ -15,9 +15,10 @@ import {
   yen,
   type GateState,
 } from '@/lib/party';
-import { countHoldingTeams, getPartySettings, listPartyOrdersStaff } from '@/lib/partyDb';
+import { ENTRY_TICKET_NOTICE_MARK, countHoldingTeams, getPartySettings, listPartyOrdersStaff } from '@/lib/partyDb';
 import OrderActions from './OrderActions';
 import AudioReminderButton from './AudioReminderButton';
+import EntryTicketNoticeButton from './EntryTicketNoticeButton';
 
 import { redirect } from 'next/navigation';
 import { isAuthorizedServer } from '@/lib/eventAuth';
@@ -80,6 +81,16 @@ export default async function StaffXmasPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-bold text-navy-800">出演エントリー({entries.length}件)</h2>
             <AudioReminderButton missing={entries.filter((o) => (o.status === 'paid' || o.status === 'cash_due') && !o.audioUrl).length} />
+            <EntryTicketNoticeButton
+              missing={
+                entries.filter(
+                  (o) =>
+                    (o.status === 'paid' || o.status === 'cash_due') &&
+                    o.peopleCount < o.memberCount &&
+                    !(o.staffNote ?? '').includes(ENTRY_TICKET_NOTICE_MARK)
+                ).length
+              }
+            />
           </div>
           {entries.length === 0 ? (
             <p className="mt-2 text-sm text-neutral-500">まだありません</p>

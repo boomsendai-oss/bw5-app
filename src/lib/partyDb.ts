@@ -437,6 +437,17 @@ export async function listEntriesMissingAudio(eventKey: string): Promise<{ order
   return out;
 }
 
+/** 入場チケットのお願いメールを送った印。staff_note に追記する(同じチームへ二重に送らない)。 */
+export const ENTRY_TICKET_NOTICE_MARK = '[入場チケット案内送信済';
+
+export async function markEntryTicketNoticed(orderId: number, staffName: string): Promise<void> {
+  const note = `${ENTRY_TICKET_NOTICE_MARK} ${nowIso().slice(0, 10)} ${staffName}]`;
+  await execute(
+    "UPDATE party_orders SET staff_note = CASE WHEN staff_note IS NULL OR staff_note = '' THEN ? ELSE staff_note || ' ' || ? END, updated_at = ? WHERE id = ?",
+    [note, note, nowIso(), orderId]
+  );
+}
+
 export async function markAudioReminded(orderId: number): Promise<void> {
   await execute('UPDATE party_orders SET audio_reminded_at = ?, updated_at = ? WHERE id = ?', [nowIso(), nowIso(), orderId]);
 }
