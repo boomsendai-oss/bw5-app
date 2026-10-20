@@ -215,3 +215,16 @@ describe('音源提出ページの照合(メールアドレスかチーム名)',
     expect(await db.savePartyAudioById(999999, 'https://x/z.mp3', 'z.mp3')).toBe(false);
   });
 });
+
+describe('控えメールのまとめ送り直し', () => {
+  it('印を付けた申込は次から対象外', async () => {
+    const before = await db.listConfirmedOrdersForResend(EV);
+    expect(before.length).toBeGreaterThan(0);
+    expect(before.every(({ token }) => /^[0-9a-f]{20,64}$/.test(token))).toBe(true);
+    const first = before[0].order.id;
+    await db.appendPartyStaffMark(first, db.CONFIRMATION_RESENT_MARK, 'テスト');
+    const after = await db.listConfirmedOrdersForResend(EV);
+    expect(after.map(({ order }) => order.id)).not.toContain(first);
+    expect(after.length).toBe(before.length - 1);
+  });
+});
