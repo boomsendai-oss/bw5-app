@@ -18,6 +18,37 @@ const transporter = GMAIL_APP_PASSWORD
     })
   : null;
 
+/** メール送信の鍵(GMAIL_APP_PASSWORD)が設定されているか。未設定だと sendEmail は黙って何もしない */
+export function isMailConfigured(): boolean {
+  return transporter !== null;
+}
+
+/**
+ * Gmail SMTP にログインできるかだけ確かめる(メールは1通も送らない)。
+ * 2026-10-16、Googleのパスワード変更でアプリパスワードが無効になり、全メールが黙って失敗し続けた。
+ * /api/cron/mail-health が毎朝これを呼んで、壊れていたら Pushover で知らせる。
+ * エラー文は nodemailer のもの(応答コードと文言)だけで、パスワードは含まれない。
+ */
+export async function verifyMailTransport(
+  timeoutMs = 20_000,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!transporter) return { ok: false, error: 'GMAIL_APP_PASSWORD が未設定です' };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      transporter.verify(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`SMTP接続が${timeoutMs / 1000}秒で応答しませんでした`)), timeoutMs);
+      }),
+    ]);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 // 差出人名(2026-10-15 TARO: 「BOOM BW5」→「BOOM DANCE SCHOOL」。全イベント・物販のメール共通)
 const FROM = `BOOM DANCE SCHOOL <${GMAIL_USER}>`;
 const ADMIN_BCC = 'boom.sendai@gmail.com';
