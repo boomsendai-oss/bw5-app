@@ -1,6 +1,7 @@
 // 講師欄(reel_draft.instructor)は1人とは限らない。
 //   「K@TTSU / AOI」 … 2人担当のクラス(多賀城HOUSE)
 //   「TARO & Ryuki」 … 合同ナンバー(GRAFFITI)
+//   「KOKEKO | TARO」 … HACOMONOの担当講師欄(区切りが縦棒)
 // 共同投稿もキャプションの講師行も、この全員を相手にする。
 //
 // ⚠️ 講師名に「@」が入る(K@TTSU)ので、区切り文字に @ を使わないこと。
@@ -10,7 +11,7 @@
 /** 「K@TTSU / AOI」「TARO & Ryuki」→ ['K@TTSU','AOI'] / ['TARO','Ryuki'] */
 export function splitInstructorNames(raw: string | null | undefined): string[] {
   return String(raw ?? '')
-    .split(/[\/／&＆,，、]|\s+と\s+/)
+    .split(/[\/／&＆,，、|｜]|\s+と\s+/)
     .map((s) => s.trim())
     .filter(Boolean);
 }
