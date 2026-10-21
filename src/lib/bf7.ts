@@ -101,7 +101,8 @@ export const HIRO_CREDITS: { label: string; body: string }[] = [
   },
   {
     label: 'CHOREOGRAPHER / LIVE',
-    body: 'THE RAMPAGE from EXILE TRIBE／PSYCHIC FEVER from EXILE TRIBE／Full Of Harmony／MASAYA from LL BROTHERS／SWEEP',
+    // 並びは本人の指定で F.O.H・LLB masaya を THE RAMPAGE より前に(2026-10-21)
+    body: 'Full Of Harmony／MASAYA from LL BROTHERS／THE RAMPAGE from EXILE TRIBE／PSYCHIC FEVER from EXILE TRIBE／SWEEP',
   },
   { label: 'TV / MAGAZINE', body: 'MTV「ダンスディライト」CM／NIGHT CRUISING／スーパーチャンプル／D.D.D／DANCE STYLE' },
   {
