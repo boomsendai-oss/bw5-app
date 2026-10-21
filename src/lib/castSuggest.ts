@@ -1,3 +1,4 @@
+import { splitInstructorNames } from './instructorNames';
 /**
  * CAST候補(TARO 2026-08-18設計)。ソースはリール種別で完全に分ける:
  *   クラスリール   = 撮影回の受講者。動画の撮影日時(com.apple.quicktime.creationdate)から
@@ -36,13 +37,15 @@ export function pickLessonForShot(
 ): AttendLesson | null {
   if (lessons.length === 0) return null;
   // ① 講師で絞れるなら先に絞る(複数クラスが同時間帯に重なっていても取り違えない)
-  const want = normStaff(instructor);
+  // 講師が2人のクラスは、下書き側「TARO & KOKEKO」とHACOMONO側「KOKEKO | TARO」で並びも区切りも違う。
+  // 文字列まるごとで比べると一致せず、同時刻の別クラスの受講者を拾っていた
+  // (2026-10-21: 長町WS初級のリールに Ryuki HIPHOP 初級の受講者が出た)。1人ずつに分けて、誰か1人でも重なればその講師のクラスとみなす。
+  const wantNames = splitInstructorNames(instructor).map(normStaff).filter(Boolean);
   let scope = lessons;
-  if (want) {
+  if (wantNames.length > 0) {
     const byStaff = lessons.filter((l) => {
-      const got = normStaff(l.staff);
-      if (!got) return false;
-      return got === want || got.includes(want) || want.includes(got);
+      const gotNames = splitInstructorNames(l.staff).map(normStaff).filter(Boolean);
+      return gotNames.some((g) => wantNames.some((w) => g === w || g.includes(w) || w.includes(g)));
     });
     if (byStaff.length > 0) scope = byStaff;
   }

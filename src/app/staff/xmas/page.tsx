@@ -15,9 +15,11 @@ import {
   yen,
   type GateState,
 } from '@/lib/party';
-import { countHoldingTeams, getPartySettings, listPartyOrdersStaff } from '@/lib/partyDb';
+import { CONFIRMATION_RESENT_MARK, ENTRY_TICKET_NOTICE_MARK, countHoldingTeams, getPartySettings, listPartyOrdersStaff } from '@/lib/partyDb';
 import OrderActions from './OrderActions';
 import AudioReminderButton from './AudioReminderButton';
+import EntryTicketNoticeButton from './EntryTicketNoticeButton';
+import ConfirmationResendButton from './ConfirmationResendButton';
 
 import { redirect } from 'next/navigation';
 import { isAuthorizedServer } from '@/lib/eventAuth';
@@ -60,6 +62,18 @@ export default async function StaffXmasPage() {
         }
       />
       <div className="mx-auto max-w-5xl space-y-6 p-4">
+        <section className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sand-200 bg-white p-4">
+          <p className="text-xs text-neutral-600">
+            控えメールのまとめ送り直し(メール設定を直したあとに使う・送った申込には印が付き二度は送らない)
+          </p>
+          <ConfirmationResendButton
+            missing={
+              orders.filter(
+                (o) => (o.status === 'paid' || o.status === 'cash_due') && !(o.staffNote ?? '').includes(CONFIRMATION_RESENT_MARK)
+              ).length
+            }
+          />
+        </section>
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Card label="参加申込" value={`${sum.ticketOrders}件`} sub={`小学生以上${sum.people}人・未就学${sum.infants}人`} />
           <Card label="出演チーム" value={`${sum.teams} / ${s.teamCap}`} sub={`出演者${sum.performers}人`} />
@@ -80,6 +94,16 @@ export default async function StaffXmasPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-sm font-bold text-navy-800">出演エントリー({entries.length}件)</h2>
             <AudioReminderButton missing={entries.filter((o) => (o.status === 'paid' || o.status === 'cash_due') && !o.audioUrl).length} />
+            <EntryTicketNoticeButton
+              missing={
+                entries.filter(
+                  (o) =>
+                    (o.status === 'paid' || o.status === 'cash_due') &&
+                    o.peopleCount < o.memberCount &&
+                    !(o.staffNote ?? '').includes(ENTRY_TICKET_NOTICE_MARK)
+                ).length
+              }
+            />
           </div>
           {entries.length === 0 ? (
             <p className="mt-2 text-sm text-neutral-500">まだありません</p>

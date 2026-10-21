@@ -437,8 +437,48 @@ export async function listEntriesMissingAudio(eventKey: string): Promise<{ order
   return out;
 }
 
+/** 入場チケットのお願いメールを送った印。staff_note に追記する(同じチームへ二重に送らない)。 */
+export const ENTRY_TICKET_NOTICE_MARK = '[入場チケット案内送信済';
+
+export async function markEntryTicketNoticed(orderId: number, staffName: string): Promise<void> {
+  const note = `${ENTRY_TICKET_NOTICE_MARK} ${nowIso().slice(0, 10)} ${staffName}]`;
+  await execute(
+    "UPDATE party_orders SET staff_note = CASE WHEN staff_note IS NULL OR staff_note = '' THEN ? ELSE staff_note || ' ' || ? END, updated_at = ? WHERE id = ?",
+    [note, note, nowIso(), orderId]
+  );
+}
+
 export async function markAudioReminded(orderId: number): Promise<void> {
   await execute('UPDATE party_orders SET audio_reminded_at = ?, updated_at = ? WHERE id = ?', [nowIso(), nowIso(), orderId]);
+}
+
+/** 控えメールをまとめて送り直した印(staff_note)。同じ申込へ二重に送らない。 */
+export const CONFIRMATION_RESENT_MARK = '[控えメール再送済';
+
+/**
+ * 確定済みでまだ控えメールを送り直していない申込(スタッフ用・トークン付き)。
+ * 2026-10-20: Googleのパスワード変更でアプリパスワードが無効になり、10/18の申込の控えメールが
+ * 1通も届いていなかった。設定を直したあとに送り直すため。
+ */
+export async function listConfirmedOrdersForResend(eventKey: string): Promise<{ order: PartyOrder; token: string }[]> {
+  await sweepExpiredPartyOrders();
+  const rows = await getAll(
+    "SELECT * FROM party_orders WHERE event_key = ? AND status IN ('paid','cash_due') AND instr(COALESCE(staff_note, ''), ?) = 0 ORDER BY id",
+    [eventKey, CONFIRMATION_RESENT_MARK]
+  );
+  const out: { order: PartyOrder; token: string }[] = [];
+  for (const r of rows) {
+    out.push({ order: rowToOrder(r, r.kind === 'entry' ? await membersOf(Number(r.id)) : []), token: String(r.edit_token) });
+  }
+  return out;
+}
+
+export async function appendPartyStaffMark(orderId: number, mark: string, staffName: string): Promise<void> {
+  const note = `${mark} ${nowIso().slice(0, 10)} ${staffName}]`;
+  await execute(
+    "UPDATE party_orders SET staff_note = CASE WHEN staff_note IS NULL OR staff_note = '' THEN ? ELSE staff_note || ' ' || ? END, updated_at = ? WHERE id = ?",
+    [note, note, nowIso(), orderId]
+  );
 }
 
 /** メールアドレスに紐づく確定済みの申込(控えURLの再送用)。呼び出し側は結果の有無を画面に出さないこと。 */

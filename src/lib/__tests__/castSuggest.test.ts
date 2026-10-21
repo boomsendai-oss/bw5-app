@@ -74,3 +74,26 @@ describe('pickLessonForShot — 講師で絞る(TARO 2026-09-08の実害)', () =
     expect(pickLessonForShot(d2, '12:10', 'K@TTSU / AOI')?.program).toBe('多賀城 HOUSE');
   });
 });
+
+describe('pickLessonForShot: 講師が2人のクラス(2026-10-21の実害)', () => {
+  const S = (start: string, end: string, program: string, staff: string) => ({ start, end, program, staff });
+  // 10/8 19:00 は同時刻に2クラス。長町WSの動画(講師欄「TARO & KOKEKO」)に
+  // Ryukiのクラスの受講者が出ていた。HACOMONO側の表記は「KOKEKO | TARO」。
+  const day = [
+    S('18:00', '19:00', '長町 HIPHOP 入門', 'KOKEKO | TARO'),
+    S('19:00', '20:30', 'Ryuki HIPHOP 初級', 'Ryuki'),
+    S('19:00', '20:30', '長町 HIPHOP 初級', 'KOKEKO | TARO'),
+  ];
+
+  it('並びも区切りも違う2人講師の表記を同じ人たちと判定する', () => {
+    expect(pickLessonForShot(day, '20:30', 'TARO & KOKEKO')?.program).toBe('長町 HIPHOP 初級');
+  });
+
+  it('講師1人の指定でも、2人担当のクラスに当たる', () => {
+    expect(pickLessonForShot(day, '20:30', 'KOKEKO')?.program).toBe('長町 HIPHOP 初級');
+  });
+
+  it('別の講師なら今まで通りその講師のクラス', () => {
+    expect(pickLessonForShot(day, '20:30', 'Ryuki')?.program).toBe('Ryuki HIPHOP 初級');
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPartyOrderEmail, buildAudioReminderEmail, buildLinkResendEmail } from '../partyEmail';
+import { buildPartyOrderEmail, buildAudioReminderEmail, buildLinkResendEmail, buildEntryTicketNoticeEmail } from '../partyEmail';
 import { DEFAULT_PARTY_SETTINGS } from '../party';
 import type { PartyOrder } from '../partyDb';
 
@@ -83,5 +83,22 @@ describe('音源の受付お知らせ', () => {
     expect(m.text).toContain('song.mp3');
     expect(m.text).toContain('/xmas/audio');
     expect(m.text).toContain('身に覚えのない');
+  });
+});
+
+describe('buildEntryTicketNoticeEmail', () => {
+  it('入場チケット0枚のチーム: TARO確認済みの文面', () => {
+    const m = buildEntryTicketNoticeEmail({ ...base, kind: 'entry', buyerName: '代表', teamName: 'Astra', memberCount: 3, peopleCount: 0 }, S);
+    expect(m.subject).toBe('【BOOMクリスマスパーティー2026】出演メンバーの入場チケットのお願い(Astra)');
+    expect(m.text).toContain('出演メンバーの入場チケットについてお知らせします。');
+    expect(m.text).toContain('エントリーでお支払いいただいたのは出演料のみで、入場チケットは含まれていません。');
+    expect(m.text).toContain('■ チーム:Astra(メンバー3名)');
+    expect(m.text).toContain('こちらから、メンバー全員分の予約をお願いします。');
+    expect(m.text).toContain('https://event.boom-sendai.com/xmas/ticket');
+    expect(m.text).not.toContain('念のため');
+  });
+  it('一部だけまとめ買いしたチームは残りの人数', () => {
+    const m = buildEntryTicketNoticeEmail({ ...base, kind: 'entry', teamName: 'A', memberCount: 3, peopleCount: 1 }, S);
+    expect(m.text).toContain('こちらから、残り2人分の予約をお願いします。');
   });
 });

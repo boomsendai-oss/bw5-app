@@ -59,6 +59,11 @@ const JOBS = [
   { every: 5, path: '/api/cron/inbox-alert', label: 'inbox-alert' },
   { at: '08:00', path: '/api/cron/inbox-alert-digest', label: 'inbox-digest' },
   { at: '08:10', path: '/api/cron/inbox-alert-digest', label: 'inbox-digest-retry' },
+
+  // ── メール送信の健康診断(2026-10-20)。Gmail SMTPにログインできるかだけ確かめ、ダメならPushoverで知らせる。
+  // 2026-10-16にGoogleのパスワード変更でアプリパスワードが無効になり、アプリのメールが全部止まったのに
+  // 障害通知もメール頼みで誰も気づけなかったための再発防止。メールは送らないので何度撃っても害はない。
+  { at: '07:30', path: '/api/cron/mail-health', label: 'mail-health' },
 ];
 
 /** UTCのepochミリ秒 → JSTの 'HH:MM' */

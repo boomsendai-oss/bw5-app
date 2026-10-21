@@ -17,9 +17,15 @@ import {
   setPartyOrderStatusStaff,
   setPartyStaffNote,
   listEntriesMissingAudio,
+  listPartyOrdersStaff,
   markAudioReminded,
+  markEntryTicketNoticed,
+  ENTRY_TICKET_NOTICE_MARK,
+  CONFIRMATION_RESENT_MARK,
+  appendPartyStaffMark,
+  listConfirmedOrdersForResend,
 } from '@/lib/partyDb';
-import { buildAudioReminderEmail, sendPartyMail } from '@/lib/partyEmail';
+import { buildAudioReminderEmail, buildEntryTicketNoticeEmail, buildPartyOrderEmail, sendPartyMail } from '@/lib/partyEmail';
 import { addLedgerEntry, deleteLedgerEntry, listLedger } from '@/lib/eventLedgerDb';
 
 const EV = PARTY_EVENT_KEY;
@@ -167,6 +173,61 @@ export async function sendXmasAudioReminders(staffName: string): Promise<{ ok: t
     await new Promise((r) => setTimeout(r, 900));
   }
   console.log(`[party] audio reminders by staff: sent=${sent} failed=${failed}`);
+  revalidatePath('/staff/xmas');
+  return { ok: true, sent, failed };
+}
+
+/** 入場チケットのお願いを送る対象: 確定済みの出演エントリーで、まとめ買いの入場チケットがメンバー数より少なく、まだ送っていないチーム。 */
+function needsEntryTicketNotice(o: { kind: string; status: string; peopleCount: number; memberCount: number; staffNote: string }): boolean {
+  return (
+    o.kind === 'entry' &&
+    (o.status === 'paid' || o.status === 'cash_due') &&
+    o.peopleCount < o.memberCount &&
+    !(o.staffNote ?? '').includes(ENTRY_TICKET_NOTICE_MARK)
+  );
+}
+
+export async function sendXmasEntryTicketNotices(staffName: string): Promise<{ ok: true; sent: number; failed: number } | { ok: false; error: string }> {
+  await requireStaff();
+  if (!staffName.trim()) return { ok: false, error: '送る人の名前を入れてください' };
+  const s = await getPartySettings(EV);
+  let sent = 0;
+  let failed = 0;
+  for (const o of (await listPartyOrdersStaff(EV)).filter(needsEntryTicketNotice)) {
+    const ok = await sendPartyMail(o.email, buildEntryTicketNoticeEmail(o, s), 'entry-ticket-notice');
+    if (ok) {
+      await markEntryTicketNoticed(o.id, staffName.trim());
+      sent += 1;
+    } else {
+      failed += 1;
+    }
+    await new Promise((r) => setTimeout(r, 900));
+  }
+  console.log(`[party] entry ticket notices by staff: sent=${sent} failed=${failed}`);
+  revalidatePath('/staff/xmas');
+  return { ok: true, sent, failed };
+}
+
+/** 確定済みの申込へ控えメールをまとめて送り直す(送った申込には印を付け、二度は送らない)。 */
+export async function resendXmasConfirmations(staffName: string): Promise<{ ok: true; sent: number; failed: number } | { ok: false; error: string }> {
+  await requireStaff();
+  if (!staffName.trim()) return { ok: false, error: '送る人の名前を入れてください' };
+  const s = await getPartySettings(EV);
+  let sent = 0;
+  let failed = 0;
+  for (const { order, token } of await listConfirmedOrdersForResend(EV)) {
+    const ok = await sendPartyMail(order.email, buildPartyOrderEmail(order, token, s), 'confirmation-resend');
+    if (ok) {
+      await appendPartyStaffMark(order.id, CONFIRMATION_RESENT_MARK, staffName.trim());
+      sent += 1;
+    } else {
+      failed += 1;
+      // 1通目から失敗するならメール設定が直っていない。残りを送り続けても同じなので止める
+      if (sent === 0) break;
+    }
+    await new Promise((r) => setTimeout(r, 900));
+  }
+  console.log(`[party] confirmation resend by staff: sent=${sent} failed=${failed}`);
   revalidatePath('/staff/xmas');
   return { ok: true, sent, failed };
 }

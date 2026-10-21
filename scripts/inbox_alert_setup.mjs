@@ -12,7 +12,7 @@
 //       一致した時だけ GMAIL_ALERT_REFRESH_TOKEN_<BOOM|NITROASH|TARO> に登録する(ログインを待つのは最大9分)。
 //       client で --keys を使った時は、gmail にも同じ --keys を渡す(別のクライアントで取った鍵は、登録したクライアントでは使えない)
 //   client と gmail は、使うOAuthクライアントの JSON のパスと client_id の末尾6文字を表示する(取り違えに気づくため。シークレットは出さない)
-//   node scripts/inbox_alert_setup.mjs set <PUSHOVER_USER_KEY|PUSHOVER_TOKEN_BOOM|PUSHOVER_TOKEN_NITROASH|PUSHOVER_TOKEN_TARO>
+//   node scripts/inbox_alert_setup.mjs set <PUSHOVER_USER_KEY|PUSHOVER_TOKEN_BOOM|PUSHOVER_TOKEN_NITROASH|PUSHOVER_TOKEN_TARO|GMAIL_APP_PASSWORD>
 //       値を貼り付けて登録する(入力は画面に表示しない)。TAROが自分のターミナルで実行する
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -23,7 +23,8 @@ import readline from 'node:readline';
 import { loopbackLogin } from './lib/google_oauth_loopback.mjs';
 
 const SUFFIX = { boom: 'BOOM', nitroash: 'NITROASH', taro: 'TARO' };
-const SETTABLE = ['PUSHOVER_USER_KEY', 'PUSHOVER_TOKEN_BOOM', 'PUSHOVER_TOKEN_NITROASH', 'PUSHOVER_TOKEN_TARO'];
+// GMAIL_APP_PASSWORD = アプリのメール送信(boom.sendaiのアプリパスワード)。Googleのパスワードを変えると無効になるので、年1回ここで入れ直す
+const SETTABLE = ['PUSHOVER_USER_KEY', 'PUSHOVER_TOKEN_BOOM', 'PUSHOVER_TOKEN_NITROASH', 'PUSHOVER_TOKEN_TARO', 'GMAIL_APP_PASSWORD'];
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** --keys を省いた時に使う、boom所有のOAuthクライアント */
 const DEFAULT_KEYS = join(homedir(), '.gmail-mcp', 'gcp-oauth.keys.json');
@@ -133,7 +134,9 @@ function hiddenPrompt(question) {
 async function setFlow(name) {
   if (!SETTABLE.includes(name)) usage();
   assertVercelLinked();
-  const value = await hiddenPrompt(`${name} の値を貼り付けて Enter（画面には表示されません）: `);
+  const raw = await hiddenPrompt(`${name} の値を貼り付けて Enter（画面には表示されません）: `);
+  // Googleのアプリパスワードは「abcd efgh ijkl mnop」と空白入りで表示される。空白は不要なので取る
+  const value = name === 'GMAIL_APP_PASSWORD' ? raw.replace(/\s+/g, '') : raw;
   if (!value) throw new Error('値が空でした。登録していません');
   vercelEnvSet(name, value);
 }
