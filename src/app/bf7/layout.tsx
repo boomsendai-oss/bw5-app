@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 export const metadata: Metadata = {
   title: "BOOMER'S FIGHT!!! vol.7 | 2027.1.30(土) SSM 9階ホール",
   description:
-    '2027.1.30(土) SSM 9階ホール / BOOM DANCE SCHOOL主催ダンスバトル。スペシャルゲスト Hiro(MIDDLE FILTER)。ウェイトリスト受付中!',
+    '2027.1.30(土) SSM 9階ホール / BOOM DANCE SCHOOL主催ダンスバトル。スペシャルゲスト HIRO(MIDDLE FILTER)。ウェイトリスト受付中!',
   icons: {
     // vol.6は「B6」の赤いクローム。vol.7は「BF7」の青いクロームにする(TARO 2026-09-25)
     icon: [
@@ -17,13 +17,13 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "BOOMER'S FIGHT!!! vol.7",
-    description: '2027.1.30(土) SSM 9階ホール / スペシャルゲスト Hiro(MIDDLE FILTER)',
+    description: '2027.1.30(土) SSM 9階ホール / スペシャルゲスト HIRO(MIDDLE FILTER)',
     type: 'website',
   },
   twitter: {
     card: 'summary',
     title: "BOOMER'S FIGHT!!! vol.7",
-    description: '2027.1.30(土) SSM 9階ホール / スペシャルゲスト Hiro(MIDDLE FILTER)',
+    description: '2027.1.30(土) SSM 9階ホール / スペシャルゲスト HIRO(MIDDLE FILTER)',
   },
 };
 

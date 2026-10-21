@@ -186,23 +186,24 @@ export default function Bf7Client() {
         </p>
       </section>
 
-      {/* スペシャルゲスト。写真・経歴は本人からもらったもの(2026-09-25) */}
+      {/* スペシャルゲスト。写真・経歴は本人からもらったもの(2026-09-25)。
+          ⚠️表記は本人の指定で「HIRO」(Hiroではない)・「牽引し広めつづける」(2026-10-21) */}
       <section className="mt-8 overflow-hidden rounded-2xl border border-sky-500/30 bg-gradient-to-b from-sky-500/10 to-transparent">
         <div className="flex items-stretch gap-3 px-5 pt-5">
           <div className="flex-1 pb-4">
             <p className="text-xs font-black tracking-[0.22em] text-sky-300">SPECIAL GUEST</p>
-            <p className="mt-2 text-4xl font-black leading-none text-white">Hiro</p>
+            <p className="mt-2 text-4xl font-black leading-none text-white">HIRO</p>
             <p className="mt-2 text-sm font-bold text-neutral-300">MIDDLE FILTER</p>
             <p className="mt-1 text-xs font-bold tracking-[0.14em] text-sky-300">FROM OSAKA</p>
             <p className="mt-3 text-xs leading-relaxed text-neutral-300">
-              90年代より大阪を拠点に活動。MIDDLE SCHOOL(new jack swing / 90s HIPHOP)を広めつづける、唯一無二の伝道師的存在。
+              90年代より大阪を拠点に活動。MIDDLE SCHOOL(new jack swing / 90s HIPHOP)を牽引し広めつづける、唯一無二の伝道師的存在。
               国内・海外のイベント、SHOW、WORKSHOP、振付、コンテスト審査まで幅広く活動している。
             </p>
           </div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/bf7/guest-hiro.webp"
-            alt="Hiro (MIDDLE FILTER)"
+            alt="HIRO (MIDDLE FILTER)"
             className="w-[42%] max-w-[210px] self-end object-contain object-bottom"
           />
         </div>
