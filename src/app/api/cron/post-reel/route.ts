@@ -4,6 +4,7 @@ import { nowUtcIso } from '@/lib/dateJst';
 import { configured as igConfigured, publishReel, parseCollaborators, listRecentMedia, refreshTokenIfStale } from '@/lib/instagram';
 import { notifyTaro } from '@/lib/notify';
 import { resolveMediaUrl } from '@/lib/mediaUrl';
+import { refreshStageCastForQueue } from '@/lib/stageCast';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -68,10 +69,29 @@ export async function POST(req: NextRequest) {
   const videoUrl = resolveMediaUrl(String(due.video_path), origin);
   const coverUrl = due.cover_path ? resolveMediaUrl(String(due.cover_path), origin) : undefined;
 
+  const collaborators = parseCollaborators(due.collaborators as string | null);
+
+  // 発表会リールは、投稿の直前に出演者のタグ(CAST)を名簿の最新状態で入れ直す。
+  // 予約は数か月先まで入れておくが、出演者のハンドル登録はその後も順次増えるため
+  // (TARO 2026-10-21: 出演者のLINEグループで登録を促す)。「載せないで」と言われた人は外れる。
+  // ここで失敗しても投稿は止めない(予約時のキャプションのまま出す)。
+  let caption = String(due.caption);
+  let castAdded: string[] = [];
+  let castRemoved: string[] = [];
   try {
-    const collaborators = parseCollaborators(due.collaborators as string | null);
+    const r = await refreshStageCastForQueue(due.id, caption, collaborators);
+    if (r) {
+      caption = r.caption;
+      castAdded = r.added;
+      castRemoved = r.removed;
+    }
+  } catch (e) {
+    console.warn(`CAST最新化に失敗(予約時のキャプションで投稿を続行): ${e instanceof Error ? e.message : e}`);
+  }
+
+  try {
     const { mediaId, permalink, collaboratorsApplied, collaboratorsDropped } =
-      await publishReel(videoUrl, String(due.caption), coverUrl, collaborators);
+      await publishReel(videoUrl, caption, coverUrl, collaborators);
     await execute(
       `UPDATE reel_queue SET status = 'posted', ig_media_id = ?, permalink = ?, posted_at = ?, updated_at = ? WHERE id = ?`,
       [mediaId, permalink ?? null, nowUtcIso(), nowUtcIso(), due.id]
@@ -89,6 +109,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true, posted: true, id: due.id, mediaId, permalink,
       collaborators: collaboratorsApplied, collaboratorsDropped,
+      castAdded, castRemoved,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
