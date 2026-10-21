@@ -12,6 +12,12 @@ import { countEntriesByDivision, divisionRemaining, ticketRemaining, type Bf6Div
 import { DEFAULT_BF7_SETTINGS, buildBf7OrderItems, type Bf7Settings } from '@/lib/bf7Entry';
 
 const HOLD_MINUTES = 30;
+
+/**
+ * スタッフが受付前に「確認用モード」で送ったテスト申込の印(bf7_orders.note)。
+ * 定員の計算と公開エントリーリストには数えない(消し忘れても本番の数字を汚さない)。
+ */
+export const BF7_STAFF_TEST_NOTE = 'スタッフ確認用テスト';
 const DIVISIONS: Bf6Division[] = ['beginner', 'kids', 'general'];
 
 function nowIso(): string {
@@ -99,7 +105,7 @@ function aggregateUsage(rows: UsageRow[]): Bf7Usage {
 }
 
 const HOLDING_STATUSES = "('paid','cash_due','pending')";
-const USAGE_SQL = `SELECT i.item_type, i.divisions, i.qty FROM bf7_order_items i JOIN bf7_orders o ON o.id = i.order_id WHERE o.payment_status IN ${HOLDING_STATUSES}`;
+const USAGE_SQL = `SELECT i.item_type, i.divisions, i.qty FROM bf7_order_items i JOIN bf7_orders o ON o.id = i.order_id WHERE o.payment_status IN ${HOLDING_STATUSES} AND COALESCE(o.note, '') != '${BF7_STAFF_TEST_NOTE}'`;
 
 /** 枠を消費している利用状況(確定+仮押さえ)。 */
 export async function getBf7Usage(): Promise<Bf7Usage> {
@@ -195,7 +201,7 @@ export interface PublicBf7Entry {
 export async function getPublicBf7Entries(): Promise<PublicBf7Entry[]> {
   await sweepExpiredBf7Orders();
   const rows = await getAll(
-    "SELECT i.dancer_name, i.genre, i.rep, i.divisions FROM bf7_order_items i JOIN bf7_orders o ON o.id = i.order_id WHERE i.item_type = 'entry' AND o.payment_status IN ('paid','cash_due') ORDER BY i.id ASC"
+    `SELECT i.dancer_name, i.genre, i.rep, i.divisions FROM bf7_order_items i JOIN bf7_orders o ON o.id = i.order_id WHERE i.item_type = 'entry' AND o.payment_status IN ('paid','cash_due') AND COALESCE(o.note, '') != '${BF7_STAFF_TEST_NOTE}' ORDER BY i.id ASC`
   );
   return rows.map((r) => ({
     dancerName: String(r.dancer_name),
@@ -281,6 +287,11 @@ export async function loadBf7OrderByToken(token: string): Promise<OwnBf7Order | 
 }
 
 /** Checkout Session作成後にIDを控える(突合・再入場用)。 */
+/** 確認用モードのテスト申込に印を付ける。 */
+export async function markBf7StaffTestOrder(editToken: string): Promise<void> {
+  await execute('UPDATE bf7_orders SET note = ?, updated_at = ? WHERE edit_token = ?', [BF7_STAFF_TEST_NOTE, nowIso(), editToken]);
+}
+
 export async function saveBf7StripeSession(orderId: number, sessionId: string): Promise<void> {
   await execute('UPDATE bf7_orders SET stripe_session_id = ?, updated_at = ? WHERE id = ?', [sessionId, nowIso(), orderId]);
 }

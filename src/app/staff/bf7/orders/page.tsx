@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { BF6_DIVISIONS, bf6DivisionLabel } from '@/lib/bf6';
 import { formatBf7ReceiptNo, formatJpDate, isBf7EntryAccepting, isBf7TicketAccepting } from '@/lib/bf7Entry';
-import { calcBf7Remaining, getBf7Settings, getBf7Usage, listBf7OrdersStaff } from '@/lib/bf7EntryDb';
+import { BF7_STAFF_TEST_NOTE, calcBf7Remaining, getBf7Settings, getBf7Usage, listBf7OrdersStaff } from '@/lib/bf7EntryDb';
 import { isAuthorizedServer } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
@@ -29,7 +29,8 @@ export default async function StaffBf7OrdersPage() {
   const entryAccepting = isBf7EntryAccepting(settings);
   const ticketAccepting = isBf7TicketAccepting(settings);
 
-  const confirmed = orders.filter((o) => ['paid', 'cash_due'].includes(o.paymentStatus));
+  // 確認用モードのテスト申込は集計に入れない(一覧には「テスト」と出す)
+  const confirmed = orders.filter((o) => ['paid', 'cash_due'].includes(o.paymentStatus) && o.note !== BF7_STAFF_TEST_NOTE);
   const paidTotal = confirmed.filter((o) => o.paymentStatus === 'paid').reduce((s, o) => s + o.amountTotal, 0);
   const cashDueTotal = confirmed.filter((o) => o.paymentStatus === 'cash_due').reduce((s, o) => s + o.amountTotal, 0);
   const entryCount = confirmed.flatMap((o) => o.items).filter((i) => i.itemType === 'entry').length;
@@ -92,7 +93,12 @@ export default async function StaffBf7OrdersPage() {
                 {orders.map((o) => (
                   <tr key={o.orderId} className="border-t border-sand-200 align-top text-navy-900">
                     <td className="px-3 py-2 font-bold tabular-nums">{formatBf7ReceiptNo(o.orderId)}</td>
-                    <td className="px-3 py-2 text-neutral-700">{STATUS_LABEL[o.paymentStatus] ?? o.paymentStatus}</td>
+                    <td className="px-3 py-2 text-neutral-700">
+                      {STATUS_LABEL[o.paymentStatus] ?? o.paymentStatus}
+                      {o.note === BF7_STAFF_TEST_NOTE && (
+                        <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-bold text-amber-800">テスト</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2">
                       <p className="font-bold">{o.buyerName}</p>
                       <p className="text-xs text-neutral-500">{o.email} / {o.phone}</p>

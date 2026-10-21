@@ -192,3 +192,13 @@ export function Bf7CallTimeNotice() {
     </div>
   );
 }
+
+/** 受付前にスタッフが画面を確認しているときの帯。一般の人には出ない。 */
+export function Bf7PreviewBanner() {
+  return (
+    <div className="bg-amber-400 px-4 py-2.5 text-center text-xs font-black text-neutral-950">
+      確認用モード(スタッフのログイン中だけ表示・一般の方には「受付前」と出ます)
+      <span className="block font-bold">送れるのは「当日会場でお支払い」だけ。テスト申込は定員・エントリーリストに数えません</span>
+    </div>
+  );
+}

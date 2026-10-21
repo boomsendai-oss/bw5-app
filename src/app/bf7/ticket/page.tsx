@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { getBf7Context, submitBf7Order, startBf7Checkout, type Bf7PublicContext } from '../order-actions';
 import { isValidBf6Email, isValidBf6Phone } from '@/lib/bf6';
 import { bf7TicketPayMethodNote, calcBf7OrderTotal, calcBf7TicketUnitPrice, formatJpDate } from '@/lib/bf7Entry';
-import { Bf7Card, Bf7Field, Bf7Hero, Bf7NumberSelect, Bf7SectionTitle, Bf7Shell, inputCls, inputClsWith } from '../ui';
+import { Bf7Card, Bf7Field, Bf7Hero, Bf7NumberSelect, Bf7SectionTitle, Bf7Shell, inputCls, inputClsWith, Bf7PreviewBanner } from '../ui';
 
 const TOKEN_KEY = 'bf7_order_token';
 const yen = (n: number) => `¥${n.toLocaleString()}`;
@@ -43,7 +43,9 @@ export default function Bf7TicketPage() {
 
   useEffect(() => {
     (async () => {
-      setCtx(await getBf7Context());
+      const c = await getBf7Context();
+      setCtx(c);
+      if (c.preview) setPayMethod('onsite');
       setLoading(false);
     })();
   }, []);
@@ -123,7 +125,7 @@ export default function Bf7TicketPage() {
 
   if (step === 'confirm' || step === 'pay') {
     return (
-      <Shell>
+      <Shell preview={ctx.preview}>
         <Bf7Hero
           title={step === 'confirm' ? 'CONFIRM' : 'ONE MORE STEP'}
           subtitle={step === 'confirm' ? '入力内容の確認' : '申込を受け付けました'}
@@ -174,7 +176,7 @@ export default function Bf7TicketPage() {
   }
 
   return (
-    <Shell>
+    <Shell preview={ctx.preview}>
       <Bf7Hero title="TICKET" subtitle="観覧チケット / 2027.1.30 SAT — SSM 9階ホール" />
       <div className="px-4 py-6">
         <p className="mb-5 text-xs text-neutral-400">未就学児と出場者本人は無料です。残り{ctx.remaining.tickets}枚</p>
@@ -226,7 +228,7 @@ export default function Bf7TicketPage() {
           <Bf7SectionTitle no="3" title="お支払い方法" />
           <div className="space-y-2">
             <label className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 bg-neutral-900 p-4 ${payMethod === 'prepaid' ? 'border-sky-600 bg-sky-950/40' : 'border-neutral-800'}`}>
-              <input type="radio" checked={payMethod === 'prepaid'} onChange={() => setPayMethod('prepaid')} className="h-5 w-5 accent-sky-600" />
+              <input type="radio" checked={payMethod === 'prepaid'} disabled={ctx.preview} onChange={() => setPayMethod('prepaid')} className="h-5 w-5 accent-sky-600" />
               <span className="flex-1">
                 <span className="font-black text-white">事前カード決済</span>
                 {payNote.discountBadge && (
@@ -279,6 +281,11 @@ export default function Bf7TicketPage() {
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return <Bf7Shell>{children}</Bf7Shell>;
+function Shell({ children, preview }: { children: React.ReactNode; preview?: boolean }) {
+  return (
+    <Bf7Shell>
+      {preview && <Bf7PreviewBanner />}
+      {children}
+    </Bf7Shell>
+  );
 }

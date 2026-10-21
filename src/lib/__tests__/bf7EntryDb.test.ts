@@ -74,6 +74,20 @@ describe('vol.7の申込', () => {
     await db.setBf7Setting('capacity', JSON.stringify({ general: 32 }));
   });
 
+  it('確認用モードのテスト申込は、定員にも公開エントリーリストにも数えない', async () => {
+    const before = await db.getBf7Usage();
+    const listBefore = (await db.getPublicBf7Entries()).length;
+    const r = await db.createBf7Order(order({ email: 'staff-test@example.com', payMethod: 'onsite' }));
+    if (!r.ok) throw new Error(r.error);
+    await db.markBf7StaffTestOrder(r.editToken);
+    const own = await db.loadBf7OrderByToken(r.editToken);
+    expect(own?.paymentStatus).toBe('cash_due');
+    expect(await db.getBf7Usage()).toEqual(before);
+    expect((await db.getPublicBf7Entries()).length).toBe(listBefore);
+    const staff = await db.listBf7OrdersStaff();
+    expect(staff.find((o) => o.orderId === r.orderId)?.note).toBe(db.BF7_STAFF_TEST_NOTE);
+  });
+
   it('vol.6の記録(bf_orders)には書き込まない', async () => {
     const rows = await core.getAll('SELECT COUNT(*) AS n FROM bf_orders');
     expect(Number(rows[0].n)).toBe(0);

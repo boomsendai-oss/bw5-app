@@ -26,7 +26,7 @@ import {
   type Bf6Division,
 } from '@/lib/bf6';
 import { bf7EntryPayMethodNote, calcBf7OrderTotal, calcBf7TicketUnitPrice, formatJpDate } from '@/lib/bf7Entry';
-import { Bf7Hero, Bf7CallTimeNotice, Bf7Card, Bf7SectionTitle, Bf7Field, Bf7NumberSelect, Bf7Shell, inputCls, inputClsWith } from '../ui';
+import { Bf7Hero, Bf7CallTimeNotice, Bf7Card, Bf7SectionTitle, Bf7Field, Bf7NumberSelect, Bf7Shell, inputCls, inputClsWith, Bf7PreviewBanner } from '../ui';
 
 const TOKEN_KEY = 'bf7_order_token';
 
@@ -84,7 +84,9 @@ export default function Bf7EntryPage() {
 
   useEffect(() => {
     (async () => {
-      setCtx(await getBf7Context());
+      const c = await getBf7Context();
+      setCtx(c);
+      if (c.preview) setPayMethod('onsite');
       setLoading(false);
     })();
   }, []);
@@ -242,7 +244,7 @@ export default function Bf7EntryPage() {
       </div>
     );
     return (
-      <Shell>
+      <Shell preview={ctx.preview}>
         <Bf7Hero
           title={step === 'confirm' ? 'CONFIRM' : 'ONE MORE STEP'}
           subtitle={step === 'confirm' ? '入力内容の確認' : '申込を受け付けました'}
@@ -324,7 +326,7 @@ export default function Bf7EntryPage() {
 
   // ===== 入力画面 =====
   return (
-    <Shell>
+    <Shell preview={ctx.preview}>
       <Bf7Hero title="BATTLE ENTRY" subtitle="バトルエントリー / 2027.1.30 SAT — SSM 9階ホール" />
       <Bf7CallTimeNotice />
       <div className="px-4 py-6">
@@ -501,7 +503,7 @@ export default function Bf7EntryPage() {
           <Bf7SectionTitle no="4" title="お支払い方法" />
           <div className="space-y-2">
             <label className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 bg-neutral-900 p-4 ${payMethod === 'prepaid' ? 'border-sky-600 bg-sky-950/40' : 'border-neutral-800'}`}>
-              <input type="radio" checked={payMethod === 'prepaid'} onChange={() => setPayMethod('prepaid')} className="h-5 w-5 accent-sky-600" />
+              <input type="radio" checked={payMethod === 'prepaid'} disabled={ctx.preview} onChange={() => setPayMethod('prepaid')} className="h-5 w-5 accent-sky-600" />
               <span className="flex-1">
                 <span className="font-black text-white">事前カード決済</span>
                 {payNote.discountBadge && (
@@ -591,6 +593,11 @@ export default function Bf7EntryPage() {
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return <Bf7Shell>{children}</Bf7Shell>;
+function Shell({ children, preview }: { children: React.ReactNode; preview?: boolean }) {
+  return (
+    <Bf7Shell>
+      {preview && <Bf7PreviewBanner />}
+      {children}
+    </Bf7Shell>
+  );
 }

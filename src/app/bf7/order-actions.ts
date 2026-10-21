@@ -5,8 +5,11 @@
 // PII対策(M22): 名簿は getPublicBf7Entries(公開列=ダンサーネーム/ジャンル/REP/部門のみ)に限定。
 // 本名・電話・メール・IGを返す公開経路は作らない。個別閲覧は edit_token 完全一致の1件のみ。
 // 送信はIP単位のレート制限。金額は必ずサーバ側で再計算する。
+// 確認用モード: 受付前でも、スタッフとしてログイン中(isAuthorizedServer=サーバ側で署名検証)なら
+// 申込画面を表示し、当日現金に限ってテスト申込を通す。カードは本物の請求になるので通さない。
+// テスト申込には印を付け、定員と公開エントリーリストに数えない(bf7EntryDb の BF7_STAFF_TEST_NOTE)。
 import { headers } from 'next/headers';
-import { checkRateLimit } from '@/lib/eventAuth';
+import { checkRateLimit, isAuthorizedServer } from '@/lib/eventAuth';
 import { validateBf6Order, type Bf6OrderInput, type Bf6Pricing, type Bf6Division } from '@/lib/bf6';
 import { bf7SalesGateError, isBf7EntryAccepting, isBf7TicketAccepting } from '@/lib/bf7Entry';
 import {
@@ -16,6 +19,7 @@ import {
   getBf7Usage,
   getPublicBf7Entries,
   loadBf7OrderByToken,
+  markBf7StaffTestOrder,
   saveBf7StripeSession,
   type PublicBf7Entry,
 } from '@/lib/bf7EntryDb';
@@ -41,6 +45,8 @@ export interface Bf7PublicContext {
   ticketDeadline: string;
   /** サーバ基準の今日(JST)。端末の時計ズレで表示と請求が食い違わないように使う */
   today: string;
+  /** 受付前だがスタッフのログイン中なので、確認のために画面を開いている */
+  preview: boolean;
 }
 
 // 公開: 料金・残枠・受付状態(いずれも公開情報)を返す。名簿・PIIは含まない。
@@ -48,9 +54,12 @@ export async function getBf7Context(): Promise<Bf7PublicContext> {
   const settings = await getBf7Settings();
   const usage = await getBf7Usage();
   const today = todayJst();
+  const entryAccepting = isBf7EntryAccepting(settings, today);
+  const ticketAccepting = isBf7TicketAccepting(settings, today);
+  const staff = !(entryAccepting && ticketAccepting) && (await isAuthorizedServer());
   return {
-    entryOpen: isBf7EntryAccepting(settings, today),
-    ticketOpen: isBf7TicketAccepting(settings, today),
+    entryOpen: entryAccepting || staff,
+    ticketOpen: ticketAccepting || staff,
     pricing: settings.pricing,
     capacity: settings.capacity,
     remaining: calcBf7Remaining(settings, usage),
@@ -59,6 +68,7 @@ export async function getBf7Context(): Promise<Bf7PublicContext> {
     ticketStart: settings.ticketStart,
     ticketDeadline: settings.ticketDeadline,
     today,
+    preview: staff,
   };
 }
 
@@ -75,9 +85,15 @@ export async function submitBf7Order(payload: Bf6OrderInput): Promise<Bf7SubmitR
   const validated = validateBf6Order(payload);
   if (typeof validated === 'string') return { ok: false, error: validated };
   const gateError = bf7SalesGateError(validated, settings);
-  if (gateError) return { ok: false, error: gateError };
+  // 受付前・締切後でも、スタッフの確認用テスト(当日現金のみ)は通す
+  const staffTest = Boolean(gateError) && (await isAuthorizedServer());
+  if (gateError && !staffTest) return { ok: false, error: gateError };
+  if (staffTest && validated.payMethod !== 'onsite') {
+    return { ok: false, error: '確認用モードではカード決済は選べません(本物の請求になるため)。「当日会場でお支払い」で試してください' };
+  }
   const created = await createBf7Order(validated);
   if (!created.ok) return { ok: false, error: created.error };
+  if (staffTest) await markBf7StaffTestOrder(created.editToken);
   if (validated.payMethod === 'onsite') {
     // 当日現金は申込した時点で確定=このタイミングで受付メールを送る(カードはWebhookで決済確定時)
     const order = await loadBf7OrderByToken(created.editToken);
