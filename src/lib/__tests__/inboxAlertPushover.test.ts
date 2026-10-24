@@ -89,6 +89,11 @@ describe('sendPushover', () => {
     expect(seen.body?.has('url')).toBe(false);
     expect(seen.body?.has('timestamp')).toBe(false);
   });
+  it('priority を指定した時だけ高優先度で送る(メロジョイ在庫見張り)', async () => {
+    const { seen, fake } = capture({ status: 1 });
+    await sendPushover('a', 'u', { title: 't', message: 'm', priority: 1 }, fake);
+    expect(seen.body?.get('priority')).toBe('1');
+  });
   it('Pushoverが受け付けなければ例外にする(次回に再送するため)', async () => {
     const { fake } = capture({ status: 0, errors: ['user key is invalid'] }, 400);
     await expect(sendPushover('a', 'u', { title: 't', message: 'm' }, fake)).rejects.toThrow('pushover 400');

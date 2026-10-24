@@ -23,6 +23,7 @@ import {
   Hash,
   type LucideIcon,
   Gift,
+  Bell,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
@@ -175,6 +176,12 @@ const CARDS: CardDef[] = [
     icon: Gift,
     title: 'クリスマスパーティー2026',
     description: '参加申込・出演エントリー・名簿・精算(12/19開催)',
+  },
+  {
+    href: '/staff/mellojoy',
+    icon: Bell,
+    title: 'メロジョイ 在庫見張り',
+    description: 'クリパ景品用。公式ストアの今の在庫と入荷・売り切れの記録(入荷時はPushoverで通知)',
   },
   {
     href: '/staff/bf6',

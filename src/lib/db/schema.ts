@@ -1064,6 +1064,37 @@ export function getSchemaStatements(): InStatement[] {
       sql: `CREATE INDEX IF NOT EXISTS idx_event_signup_audit_event ON event_signup_audit (event_id)`,
       args: [],
     },
+    // メロジョイ在庫見張り(本番は台帳 20261024_mellojoy_watch.sql)
+    {
+      sql: `CREATE TABLE IF NOT EXISTS mellojoy_watch_state (
+      variant_id TEXT PRIMARY KEY,
+      product_title TEXT,
+      variant_title TEXT,
+      handle TEXT,
+      price TEXT,
+      available INTEGER,
+      last_change_at TEXT,
+      last_seen_at TEXT,
+      variant_updated_at TEXT
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS mellojoy_watch_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      at TEXT,
+      kind TEXT,
+      variant_id TEXT,
+      product_title TEXT,
+      price TEXT,
+      detail TEXT
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_mellojoy_watch_events_at ON mellojoy_watch_events (at)`,
+      args: [],
+    },
     // BW6プレ告知LPの「出てみたい」記録(本番は台帳 20261015_bw6_interest.sql)
     {
       sql: `CREATE TABLE IF NOT EXISTS bw6_interest (

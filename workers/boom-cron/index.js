@@ -64,7 +64,37 @@ const JOBS = [
   // 2026-10-16にGoogleのパスワード変更でアプリパスワードが無効になり、アプリのメールが全部止まったのに
   // 障害通知もメール頼みで誰も気づけなかったための再発防止。メールは送らないので何度撃っても害はない。
   { at: '07:30', path: '/api/cron/mail-health', label: 'mail-health' },
+
+  // ── メロジョイ在庫見張り(2026-10-24 TAROの依頼)。クリパ景品用のスクイーズ玩具(公式ストア)。
+  // ストアは毎日12:00に在庫更新・入荷は数秒〜数分で売り切れるので、11:56〜12:30は毎分見る。
+  // 遅れて入る入荷も拾うため12:45と13:30に1回ずつ。入荷したらアプリがPushover(高優先度)でTAROのiPhoneへ知らせる。
+  // ⚠️ 読むだけ(公開JSONを1回GETするだけ)。カート投入・購入は一切しない。1日37回なのでストアにも軽い。
+  { from: '11:56', to: '12:30', every: 1, path: '/api/cron/mellojoy-watch', label: 'mellojoy-noon' },
+  { at: '12:45', path: '/api/cron/mellojoy-watch', label: 'mellojoy-1245' },
+  { at: '13:30', path: '/api/cron/mellojoy-watch', label: 'mellojoy-1330' },
 ];
+
+/**
+ * この分に撃つ仕事か。
+ * - at: 'HH:MM' … その時刻ちょうど
+ * - every: N … 毎時 N分おき(分が N で割り切れる時)
+ * - from/to + every … JSTの同じ日の from〜to(両端を含む)の間だけ every 分おき(2026-10-24 メロジョイ見張りで追加)。
+ *   'HH:MM' は文字列のまま大小比較できる。日をまたぐ窓(23:50〜00:10 等)は未対応。
+ */
+function isDue(job, hhmm) {
+  if (job.at) return job.at === hhmm;
+  if (!job.every) return false;
+  if (job.from && hhmm < job.from) return false;
+  if (job.to && hhmm > job.to) return false;
+  return Number(hhmm.slice(3)) % job.every === 0;
+}
+
+/** 動作確認画面(GET /)用の1行 */
+function describeJob(j) {
+  if (j.at) return `${j.at} ${j.label}`;
+  const win = j.from || j.to ? `${j.from ?? '00:00'}-${j.to ?? '23:59'} ` : '';
+  return `${win}every ${j.every}m ${j.label}`;
+}
 
 /** UTCのepochミリ秒 → JSTの 'HH:MM' */
 function jstHhmm(epochMs) {
@@ -171,8 +201,7 @@ function now2() { return new Date().toISOString().slice(0, 16); }
 export default {
   async scheduled(event, env, ctx) {
     const hhmm = jstHhmm(event.scheduledTime);
-    const minute = Number(hhmm.slice(3));
-    const due = JOBS.filter((j) => j.at === hhmm || (j.every && minute % j.every === 0));
+    const due = JOBS.filter((j) => isDue(j, hhmm));
     if (due.length === 0) return;
     ctx.waitUntil(Promise.all(due.map((j) => runJob(j, env))));
   },
@@ -195,7 +224,7 @@ export default {
     return Response.json({
       now_jst: jstHhmm(Date.now()),
       app: env.APP_ORIGIN,
-      jobs: JOBS.map((j) => (j.every ? `every ${j.every}m ${j.label}` : `${j.at} ${j.label}`)),
+      jobs: JOBS.map(describeJob),
     });
   },
 };

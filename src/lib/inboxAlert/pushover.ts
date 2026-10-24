@@ -20,6 +20,11 @@ export type PushoverMessage = {
   url_title?: string;
   /** 通知に表示する時刻(秒)。再送でも「いつ届いたメールか」が分かるよう、受信時刻を入れる */
   timestamp?: number;
+  /**
+   * 優先度。省略時は通常(0)=おやすみモード中は鳴らさない(受信箱アラートはこれ)。
+   * 1=高優先度(おやすみモードでも鳴る)。メロジョイ在庫見張りのように「今すぐ見ないと意味がない」通知だけで使う
+   */
+  priority?: -2 | -1 | 0 | 1;
 };
 
 /** From ヘッダーの表示名。無ければドメインだけ(お客さんのメールアドレスをロック画面に出さないため) */
@@ -102,7 +107,7 @@ export async function sendPushover(
     user: userKey,
     title: msg.title,
     message: msg.message,
-    priority: '0',
+    priority: String(msg.priority ?? 0),
   });
   if (msg.url) body.set('url', msg.url);
   if (msg.url_title) body.set('url_title', msg.url_title);
