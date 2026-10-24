@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getBf6Context, submitBf6Order, startBf6Checkout, type Bf6PublicContext } from '../actions';
-import { calcOrderTotal, calcTicketUnitPrice, isValidBf6Email, isValidBf6Phone } from '@/lib/bf6';
+import { bf6TicketPayMethodNote, calcOrderTotal, calcTicketUnitPrice, isValidBf6Email, isValidBf6Phone } from '@/lib/bf6';
 import { Bf6Card, Bf6Field, Bf6Hero, Bf6NumberSelect, Bf6SectionTitle, Bf6Shell, inputCls, inputClsWith } from '../ui';
 
 const TOKEN_KEY = 'bf6_order_token';
@@ -47,18 +47,22 @@ export default function Bf6TicketPage() {
   }, []);
 
   const pricing = ctx?.pricing;
+  // 前売/当日の切り替えはサーバ基準の日付で行う(端末の時計を信用しない)
+  const today = ctx?.today;
   const total = useMemo(() => {
     if (!pricing) return 0;
-    return calcOrderTotal({ entries: [], adultTickets, childTickets }, payMethod, pricing);
-  }, [pricing, adultTickets, childTickets, payMethod]);
+    return calcOrderTotal({ entries: [], adultTickets, childTickets }, payMethod, pricing, today);
+  }, [pricing, today, adultTickets, childTickets, payMethod]);
   const totalOther = useMemo(() => {
     if (!pricing) return 0;
     return calcOrderTotal(
       { entries: [], adultTickets, childTickets },
       payMethod === 'prepaid' ? 'onsite' : 'prepaid',
-      pricing
+      pricing,
+      today
     );
-  }, [pricing, adultTickets, childTickets, payMethod]);
+  }, [pricing, today, adultTickets, childTickets, payMethod]);
+  const payNote = useMemo(() => bf6TicketPayMethodNote(pricing, today), [pricing, today]);
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -200,10 +204,10 @@ export default function Bf6TicketPage() {
           <Bf6SectionTitle no="2" title="枚数" />
           <Bf6Card>
             <div className="grid grid-cols-2 gap-4">
-              <Bf6Field label={`大人 ${pricing ? `${yen(calcTicketUnitPrice('ticket_adult', payMethod, pricing))}/枚` : ''}`}>
+              <Bf6Field label={`大人 ${pricing ? `${yen(calcTicketUnitPrice('ticket_adult', payMethod, pricing, today))}/枚` : ''}`}>
                 <Bf6NumberSelect value={adultTickets} onChange={setAdultTickets} />
               </Bf6Field>
-              <Bf6Field label={`小学生 ${pricing ? `${yen(calcTicketUnitPrice('ticket_child', payMethod, pricing))}/枚` : ''}`}>
+              <Bf6Field label={`小学生 ${pricing ? `${yen(calcTicketUnitPrice('ticket_child', payMethod, pricing, today))}/枚` : ''}`}>
                 <Bf6NumberSelect value={childTickets} onChange={setChildTickets} />
               </Bf6Field>
             </div>
@@ -217,10 +221,10 @@ export default function Bf6TicketPage() {
               <input type="radio" checked={payMethod === 'prepaid'} onChange={() => setPayMethod('prepaid')} className="h-5 w-5 accent-red-600" />
               <span className="flex-1">
                 <span className="font-black text-white">事前カード決済</span>
-                <span className="ml-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">おトク</span>
-                <span className="block text-xs text-neutral-400">
-                  大人は¥2,000(当日現金だと¥2,500)。小学生は一律¥1,000(割引対象外)
-                </span>
+                {payNote.discountBadge && (
+                  <span className="ml-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">おトク</span>
+                )}
+                <span className="block text-xs text-neutral-400">{payNote.prepaid}</span>
               </span>
             </label>
             <label className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 bg-neutral-900 p-4 ${payMethod === 'onsite' ? 'border-red-600 bg-red-950/40' : 'border-neutral-800'}`}>

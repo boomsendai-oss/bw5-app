@@ -1,4 +1,5 @@
 // スタッフ: vol.7 ウェイトリストの一覧。/staff/* 配下なのでproxy認証で保護(規約4.5)。
+import Link from 'next/link';
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { countBf7Notify, listBf7Notify } from '@/lib/bf7Db';
 import { BF7_DIVISIONS } from '@/lib/bf7';
@@ -18,6 +19,11 @@ export default async function StaffBf7Page() {
       <StaffPageHeader
         title="BF7 ウェイトリスト"
         description="vol.7(2027/1/30)のエントリー開始を知らせる名簿"
+        rightExtra={
+          <Link href="/staff/bf7/orders" className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs font-bold text-navy-700 hover:bg-sand-50">
+            申込一覧へ
+          </Link>
+        }
       />
       <div className="mx-auto max-w-3xl space-y-5 p-4">
         <div className="grid grid-cols-4 gap-2">

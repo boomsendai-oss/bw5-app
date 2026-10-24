@@ -8,12 +8,15 @@
 import { headers } from 'next/headers';
 import { checkRateLimit } from '@/lib/eventAuth';
 import {
+  bf6SalesGateError,
   isPastDeadlineJst,
   validateBf6Order,
   type Bf6OrderInput,
   type Bf6Pricing,
   type Bf6Division,
 } from '@/lib/bf6';
+import { todayJst } from '@/lib/dateJst';
+import { getBf6StreamConfig } from '@/lib/bf6StreamDb';
 import {
   calcBf6Remaining,
   countBf6SsmFreeOrders,
@@ -49,6 +52,11 @@ export interface Bf6PublicContext {
   remaining: { divisions: Record<Bf6Division, number>; tickets: number };
   entryDeadline: string;
   ticketDeadline: string;
+  /**
+   * サーバ基準のJSTの今日。料金の出し分け(前売/当日)は端末の時計ではなくこれで行う。
+   * クライアントの時計がズレていると、画面の金額と請求額が食い違うため。
+   */
+  today: string;
 }
 
 // 公開: 料金・残枠・受付状態(いずれも公開情報)を返す。名簿・PIIは含まない。
@@ -64,6 +72,7 @@ export async function getBf6Context(): Promise<Bf6PublicContext> {
     remaining,
     entryDeadline: settings.entryDeadline,
     ticketDeadline: settings.ticketDeadline,
+    today: todayJst(),
   };
 }
 
@@ -79,13 +88,16 @@ export async function submitBf6Order(payload: Bf6OrderInput): Promise<Bf6SubmitR
   const settings = await getBf6Settings();
   const validated = validateBf6Order(payload);
   if (typeof validated === 'string') return { ok: false, error: validated };
-  const isEntry = validated.entries.length > 0;
-  if (isEntry && (!settings.entryOpen || isPastDeadlineJst(settings.entryDeadline))) {
-    return { ok: false, error: '現在エントリーは受け付けていません' };
-  }
-  if (!isEntry && (!settings.ticketOpen || isPastDeadlineJst(settings.ticketDeadline))) {
-    return { ok: false, error: '現在観覧チケットの販売は行っていません' };
-  }
+  // カートの中身ごとに、それぞれの受付だけを見る(配信を観覧の締切に相乗りさせない)
+  const streamCfg = validated.streamTickets > 0 ? await getBf6StreamConfig() : null;
+  const gateError = bf6SalesGateError(validated, {
+    entryOpen: settings.entryOpen,
+    entryDeadline: settings.entryDeadline,
+    ticketOpen: settings.ticketOpen,
+    ticketDeadline: settings.ticketDeadline,
+    streamOpen: streamCfg?.open ?? false,
+  });
+  if (gateError) return { ok: false, error: gateError };
   const created = await createBf6Order(validated);
   if (!created.ok) return { ok: false, error: created.error };
   if (validated.payMethod === 'onsite') {

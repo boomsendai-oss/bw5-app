@@ -6,6 +6,7 @@ import { pickLessonForShot, normalizeIgHandle, normalizeJaName, type CastSuggest
 import { nextReelSlotIso } from '@/lib/reelSlot';
 // 講師欄は複数人のことがある(「K@TTSU / AOI」「TARO & Ryuki」)。共同投稿とキャプションの講師行で共用。
 import { resolveInstructorHandles } from '@/lib/instructorNames';
+import { computeStageCast, mIdFromDriveName, MEMBER_HANDLE_SQL, PERFORMER_SQL } from '@/lib/stageCast';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -200,59 +201,16 @@ export async function GET(req: NextRequest) {
     const review = rows.filter((r) => r.status === 'review');
     const stageRows = review.filter((r) => isStage(r.kind));
     if (stageRows.length > 0) {
-      const perf = await getAll('SELECT id, m_id, name, instagram_handle, handle_mother, handle_father FROM performers');
-      // ハンドルの正本は会員名簿の3枠(2026-08-17移行済・performersのハンドル列はほぼ空)。
-      // 出演者名簿は「誰が出たか」のリストとして使い、ハンドルは氏名の正規化一致で会員名簿から引く。
-      // 同名2人は照合しない(誤タグ防止=unknown側に出す)。
-      const members = await getAll(
-        `SELECT id, full_name,
-                COALESCE(NULLIF(trim(instagram_handle), ''),
-                         NULLIF(trim(instagram_handle_mother), ''),
-                         NULLIF(trim(instagram_handle_father), '')) AS handle,
-                CASE WHEN NULLIF(trim(instagram_handle), '') IS NOT NULL THEN 'self'
-                     WHEN NULLIF(trim(instagram_handle_mother), '') IS NOT NULL THEN 'mother'
-                     WHEN NULLIF(trim(instagram_handle_father), '') IS NOT NULL THEN 'father'
-                END AS owner_kind
-           FROM boom_members`
-      );
-      const memberByName = new Map<string, { id: number; handle: string | null; ownerKind: string | null } | 'DUP'>();
-      for (const m of members) {
-        const k = normalizeJaName(String(m.full_name));
-        memberByName.set(k, memberByName.has(k) ? 'DUP' : {
-          id: Number(m.id),
-          handle: m.handle ? String(m.handle) : null,
-          ownerKind: m.owner_kind ? String(m.owner_kind) : null,
-        });
-      }
+      // 計算の正本は lib/stageCast.ts。投稿直前のCAST最新化(cron/post-reel)と同じ関数を使い、
+      // 「画面の候補」と「実際に付くタグ」がズレないようにする。
+      const perf = await getAll(PERFORMER_SQL);
+      const members = await getAll(MEMBER_HANDLE_SQL);
       for (const d of stageRows) {
-        const m = String(d.drive_name ?? '').match(/^M(\d+)/);
-        if (!m) continue;
-        const mid = 'M' + parseInt(m[1], 10);
+        const mid = mIdFromDriveName(d.drive_name);
+        if (!mid) continue;
         const ps = perf.filter((x) => String(x.m_id) === mid);
         if (ps.length === 0) continue;
-        const known: CastSuggest['known'] = [];
-        const unknown: CastSuggest['unknown'] = [];
-        for (const x of ps) {
-          // 非会員の出演者(外部ゲスト・講師の家族など)は boom_members に置き場が無いため
-          // performers 側の3枠に入れる。会員側と同じく 本人 > 母 > 父 の優先度で選ぶ。
-          const ownPick = [
-            [x.instagram_handle, ''],
-            [x.handle_mother, '（母）'],
-            [x.handle_father, '（父）'],
-          ].find(([h]) => h && String(h).trim()) as [unknown, string] | undefined;
-          const own = ownPick ? String(ownPick[0]).trim() : '';
-          const hit = memberByName.get(normalizeJaName(String(x.name)));
-          if (own) {
-            known.push({ kind: 'performer', id: Number(x.id), name: String(x.name) + ownPick![1], handle: own });
-          } else if (hit && hit !== 'DUP' && hit.handle) {
-            const label = hit.ownerKind === 'mother' ? '（母）' : hit.ownerKind === 'father' ? '（父）' : '';
-            known.push({ kind: 'member', id: hit.id, name: String(x.name) + label, handle: hit.handle });
-          } else if (hit && hit !== 'DUP') {
-            unknown.push({ kind: 'member', id: hit.id, name: String(x.name) });
-          } else {
-            unknown.push({ kind: 'performer', id: Number(x.id), name: String(x.name) });
-          }
-        }
+        const { known, unknown } = computeStageCast(ps, members);
         castSuggestById[String(d.id)] = { source: 'この演目の出演者名簿', known, unknown };
       }
     }

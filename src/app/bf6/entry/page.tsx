@@ -14,6 +14,7 @@ import {
   BF6_DIVISIONS,
   BF6_GRADE_OPTIONS,
   bf6DivisionLabel,
+  bf6EntryPayMethodNote,
   bf6GradeLabel,
   calcEntryFee,
   calcOrderTotal,
@@ -95,15 +96,21 @@ export default function Bf6EntryPage() {
   }, []);
 
   const pricing = ctx?.pricing;
+  // 前売/当日の切り替えはサーバ基準の日付で行う(端末の時計を信用しない)
+  const today = ctx?.today;
   const cart = useMemo(
     () => ({ entries: rows.map((r) => ({ divisions: r.divisions })), adultTickets, childTickets }),
     [rows, adultTickets, childTickets]
   );
-  const total = useMemo(() => (pricing ? calcOrderTotal(cart, payMethod, pricing) : 0), [pricing, cart, payMethod]);
-  const totalOther = useMemo(
-    () => (pricing ? calcOrderTotal(cart, payMethod === 'prepaid' ? 'onsite' : 'prepaid', pricing) : 0),
-    [pricing, cart, payMethod]
+  const total = useMemo(
+    () => (pricing ? calcOrderTotal(cart, payMethod, pricing, today) : 0),
+    [pricing, today, cart, payMethod]
   );
+  const totalOther = useMemo(
+    () => (pricing ? calcOrderTotal(cart, payMethod === 'prepaid' ? 'onsite' : 'prepaid', pricing, today) : 0),
+    [pricing, today, cart, payMethod]
+  );
+  const payNote = useMemo(() => bf6EntryPayMethodNote(pricing, today), [pricing, today]);
 
   function updateRow(i: number, patch: Partial<PerformerRow>) {
     setRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -502,10 +509,10 @@ export default function Bf6EntryPage() {
           <Bf6SectionTitle no="3" title="観覧チケットも一緒に購入" note={`出場者本人と未就学児は無料 / 残り${ctx.remaining.tickets}枚`} />
           <Bf6Card>
             <div className="grid grid-cols-2 gap-4">
-              <Bf6Field label={`大人 ${pricing ? `${yen(calcTicketUnitPrice('ticket_adult', payMethod, pricing))}/枚` : ''}`}>
+              <Bf6Field label={`大人 ${pricing ? `${yen(calcTicketUnitPrice('ticket_adult', payMethod, pricing, today))}/枚` : ''}`}>
                 <Bf6NumberSelect value={adultTickets} onChange={setAdultTickets} />
               </Bf6Field>
-              <Bf6Field label={`小学生 ${pricing ? `${yen(calcTicketUnitPrice('ticket_child', payMethod, pricing))}/枚` : ''}`}>
+              <Bf6Field label={`小学生 ${pricing ? `${yen(calcTicketUnitPrice('ticket_child', payMethod, pricing, today))}/枚` : ''}`}>
                 <Bf6NumberSelect value={childTickets} onChange={setChildTickets} />
               </Bf6Field>
             </div>
@@ -519,11 +526,10 @@ export default function Bf6EntryPage() {
               <input type="radio" checked={payMethod === 'prepaid'} onChange={() => setPayMethod('prepaid')} className="h-5 w-5 accent-red-600" />
               <span className="flex-1">
                 <span className="font-black text-white">事前カード決済</span>
-                <span className="ml-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">おトク</span>
-                <span className="block text-xs text-neutral-400">
-                  割引対象: エントリー料(出場者1人につき¥500引き)と大人観覧(事前¥2,000/当日¥2,500)。
-                  小学生観覧は一律¥1,000(割引対象外)
-                </span>
+                {payNote.discountBadge && (
+                  <span className="ml-2 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-bold text-white">おトク</span>
+                )}
+                <span className="block text-xs text-neutral-400">{payNote.prepaid}</span>
               </span>
             </label>
             <label className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 bg-neutral-900 p-4 ${payMethod === 'onsite' ? 'border-red-600 bg-red-950/40' : 'border-neutral-800'}`}>
@@ -545,7 +551,7 @@ export default function Bf6EntryPage() {
                     <span>
                       エントリー {r.dancerName.trim() || `出場者${i + 1}`}({r.divisions.length}部門)
                       {payMethod === 'prepaid' && (
-                        <span className="ml-1 whitespace-nowrap text-xs text-red-400">¥500引き適用</span>
+                        <span className="ml-1 whitespace-nowrap text-xs text-red-400">{yen(pricing.prepaidDiscount)}引き適用</span>
                       )}
                     </span>
                     <span className="font-bold text-white">{yen(calcEntryFee(r.divisions.length, payMethod, pricing))}</span>
@@ -554,17 +560,17 @@ export default function Bf6EntryPage() {
               )}
               {adultTickets > 0 && (
                 <li className="flex items-baseline justify-between gap-2 text-neutral-300">
-                  <span>観覧 大人 {yen(calcTicketUnitPrice('ticket_adult', payMethod, pricing))} × {adultTickets}枚</span>
-                  <span className="font-bold text-white">{yen(calcTicketUnitPrice('ticket_adult', payMethod, pricing) * adultTickets)}</span>
+                  <span>観覧 大人 {yen(calcTicketUnitPrice('ticket_adult', payMethod, pricing, today))} × {adultTickets}枚</span>
+                  <span className="font-bold text-white">{yen(calcTicketUnitPrice('ticket_adult', payMethod, pricing, today) * adultTickets)}</span>
                 </li>
               )}
               {childTickets > 0 && (
                 <li className="flex items-baseline justify-between gap-2 text-neutral-300">
                   <span>
-                    観覧 小学生 {yen(calcTicketUnitPrice('ticket_child', payMethod, pricing))} × {childTickets}枚
+                    観覧 小学生 {yen(calcTicketUnitPrice('ticket_child', payMethod, pricing, today))} × {childTickets}枚
                     <span className="ml-1 text-xs text-neutral-400">(一律)</span>
                   </span>
-                  <span className="font-bold text-white">{yen(calcTicketUnitPrice('ticket_child', payMethod, pricing) * childTickets)}</span>
+                  <span className="font-bold text-white">{yen(calcTicketUnitPrice('ticket_child', payMethod, pricing, today) * childTickets)}</span>
                 </li>
               )}
             </ul>

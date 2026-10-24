@@ -67,7 +67,7 @@ export default async function Bf7Page() {
           </Bf7DetailBlock>
 
           <Bf7DetailBlock en="JUDGE / DJ / MC" ja="審査員・DJ・MC">
-            <ComingSoon note="スペシャルゲストは Hiro(MIDDLE FILTER / 大阪)。審査員・DJ・MCは決まり次第お知らせします。" />
+            <ComingSoon note="スペシャルゲストは HIRO(MIDDLE FILTER / 大阪)。審査員・DJ・MCは決まり次第お知らせします。" />
           </Bf7DetailBlock>
         </div>
       </section>
