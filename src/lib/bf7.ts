@@ -98,13 +98,13 @@ export const HIRO_CREDITS: { label: string; body: string }[] = [
   { label: 'TEAM CONTEST', body: 'JAPAN DANCE DELIGHT vol.16 final 3rd place／JAPAN DANCE DELIGHT FINALIST(vol.11 / 16 / 17 / 19 / 20 / 30)' },
   {
     label: 'SOLO / 2on2 BATTLE',
-    body: 'LIVING LARGE HIPHOP 優勝(2004)／ULTIMATE 1000 HOUSE SOLO 優勝(2016)／ぐだぐだナイトスペシャル 優勝(2012・2016)',
+    body: 'LIVING LARGE hiphop solo battle 優勝(2004)／ULTIMATE 1000 house solo battle 優勝(2016)／ぐだぐだナイトスペシャル 優勝(2012・2016)',
   },
   {
     label: 'CHOREOGRAPHER / LIVE',
     // 並びは本人の指定で F.O.H・MASAYA を THE RAMPAGE より前に(2026-10-21)。
     // 「L L brother s」の小文字とスペースは本人指定のまま(2026-10-22・直さないこと)
-    body: 'Full Of Harmony／MASAYA from L L brother s／THE RAMPAGE from EXILE TRIBE／PSYCHIC FEVER from EXILE TRIBE／SWEEP',
+    body: 'choreography / Full Of Harmony／MASAYA from L L brother s／THE RAMPAGE from EXILE TRIBE／PSYCHIC FEVER from EXILE TRIBE／SWEEP',
   },
   { label: 'TV / MAGAZINE', body: 'MTV「ダンスディライト」CM／NIGHT CRUISING／スーパーチャンプル／D.D.D／DANCE STYLE' },
   {
