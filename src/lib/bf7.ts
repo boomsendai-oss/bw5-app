@@ -98,7 +98,7 @@ export const HIRO_CREDITS: { label: string; body: string }[] = [
   { label: 'CONTEST', body: 'JAPAN DANCE DELIGHT vol.16 final 3rd place／JAPAN DANCE DELIGHT FINALIST(vol.11 / 16 / 17 / 19 / 20 / 30)' },
   {
     label: 'BATTLE',
-    body: 'LIVING LARGE hiphop solo battle 優勝(2004)／ULTIMATE 1000 house solo battle 優勝(2016)／ぐだぐだナイトスペシャル 優勝(2012・2016)',
+    body: 'LIVING LARGE hiphop solo 優勝(2004)／ULTIMATE 1000 house solo 優勝(2016)／THE GAME 2005 HIPHOP 2nd place／ぐだぐだナイトスペシャル 優勝(2012・2016)',
   },
   {
     label: 'CHOREOGRAPHY',
