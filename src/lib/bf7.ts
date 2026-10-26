@@ -94,7 +94,8 @@ export function isBf7TeaserVisible(now: Date = new Date()): boolean {
 
 /** ゲストの経歴(本人提供 2026-09-25)から抜粋。ページでは「プロフィール」を押すと開く */
 export const HIRO_CREDITS: { label: string; body: string }[] = [
-  { label: 'TEAM CONTEST', body: 'JAPAN DANCE DELIGHT ファイナリスト(vol.11 / 16 / 17 / 19 / 20 / 30)' },
+  // vol.16 の3位は本人の指摘で追加(2026-10-26「プロフィールの頭が抜けていた」)
+  { label: 'TEAM CONTEST', body: 'JAPAN DANCE DELIGHT vol.16 final 3rd place／JAPAN DANCE DELIGHT FINALIST(vol.11 / 16 / 17 / 19 / 20 / 30)' },
   {
     label: 'SOLO / 2on2 BATTLE',
     body: 'LIVING LARGE HIPHOP 優勝(2004)／ULTIMATE 1000 HOUSE SOLO 優勝(2016)／ぐだぐだナイトスペシャル 優勝(2012・2016)',
