@@ -2,9 +2,10 @@
 // 見た目は告知画像(BF7_WS告知)と同じ「時間割表」の形にそろえる:
 //   左=濃い青の時間の列 / 右=クラス名 → 正式な説明 → 番号付きの対象Step
 // WSの告知画像のQRコードは /bf7#workshop に飛ぶので、id="workshop" を外さないこと。
-import { BF7_WORKSHOP } from '@/lib/bf7';
+// ⚠️ BF7_WORKSHOP_DETAILS_PUBLIC=false の間は、プレ告知で出した情報(日時・会場・時間)だけを出す。
+import { BF7_WORKSHOP, BF7_WORKSHOP_DETAILS_PUBLIC } from '@/lib/bf7';
 import { formatJpDate } from '@/lib/bf7Entry';
-import { Bf7SectionHead } from './ui';
+import { Bf7SectionHead, ComingSoon } from './ui';
 import ScrollToHash from './ScrollToHash';
 
 const yen = (n: number) => n.toLocaleString();
@@ -56,6 +57,12 @@ export default function WorkshopSection() {
               <span className="mt-1 text-2xl font-black italic leading-none md:text-3xl">{c.start}</span>
               <span className="mt-1 text-xs font-bold text-white/85">〜{c.end}</span>
             </div>
+            {!BF7_WORKSHOP_DETAILS_PUBLIC ? (
+              <div className="flex flex-col justify-center px-4 py-3.5">
+                <p className="text-lg font-black text-white">{c.no === '1ST' ? '1本目' : '2本目'}</p>
+                <p className="mt-1 text-xs font-bold tracking-[0.12em] text-sky-300">内容は近日公開</p>
+              </div>
+            ) : (
             <div className="px-4 py-3.5">
               <h3 className="text-xl font-black italic leading-tight tracking-tight text-white md:text-2xl">{c.title}</h3>
               <p className="mt-2 text-[13px] font-bold leading-relaxed text-neutral-300">{c.description}</p>
@@ -78,10 +85,18 @@ export default function WorkshopSection() {
                 </div>
               )}
             </div>
+            )}
           </article>
         ))}
       </div>
 
+      {!BF7_WORKSHOP_DETAILS_PUBLIC && (
+        <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
+          <ComingSoon note="ワークショップの内容・料金・お申込みについては、別途ご案内します。" />
+        </div>
+      )}
+
+      {BF7_WORKSHOP_DETAILS_PUBLIC && (<>
       {/* 料金(一般価格のみ) */}
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div className="rounded-2xl border border-neutral-700 bg-neutral-900 px-2 py-3 text-center">
@@ -115,6 +130,7 @@ export default function WorkshopSection() {
           お申込みは受付開始日から、このページでできるようになります。
         </p>
       </div>
+      </>)}
     </section>
   );
 }

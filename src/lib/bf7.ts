@@ -140,6 +140,13 @@ export function pickBf7Faqs<T extends { q: string }>(faqs: T[]): T[] {
  * ⚠️ 対象Stepは3つ。3つ目は HIROさんの意向で「???」と伏せる(当日のレベルで4つ目をやることはあるが告知しない)。
  * 料金は一般価格のみ(サイトは誰でも見るため。会員価格は会員向けLINEでだけ案内・TARO 10/25)。
  */
+/**
+ * WSの詳細(クラス名・内容・Step・料金・定員・受付開始日)をサイトに出すか。
+ * ⚠️ 2026-10-26 TARO「内容はまだ言えない。プレ告知で出した情報(日にち・会場・時間)だけにして」→ false。
+ *    WSの告知(内部→外部)を出すときに true にする。
+ */
+export const BF7_WORKSHOP_DETAILS_PUBLIC = false;
+
 export const BF7_WORKSHOP = {
   date: '2027-01-31',
   dateLabel: '2027.1.31 SUN',
