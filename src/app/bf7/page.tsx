@@ -2,12 +2,14 @@
 //
 // 9/26のBF6会場でvol.7を発表するのに合わせて先に出しておくページ(TARO 2026-09-24)。
 // 構成はvol.6のトップと同じ並び(ヒーロー → DETAIL → ENTRY → ENTRY LIST → FAQ → PRESENTED BY)。
+// vol.7はゲスト紹介のすぐ後に 1/31 HIRO WORKSHOP の欄を入れる(2026-10-26 TARO)。
 // ⚠️ まだ決まっていない項目は ComingSoon で「決まり次第お知らせ」とだけ出す。
 //    仮の時間・料金・部門をそれらしく書かないこと(TARO方針)。
 import type { Metadata } from 'next';
 import { getBf6Faqs } from '@/lib/bf6Db';
 import { pickBf7Faqs } from '@/lib/bf7';
 import Bf7Client from './Bf7Client';
+import WorkshopSection from './WorkshopSection';
 import { Bf7DetailBlock, Bf7SectionHead, Bf7Shell, ComingSoon } from './ui';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +30,9 @@ export default async function Bf7Page() {
   return (
     <Bf7Shell>
       <Bf7Client />
+
+      {/* WORKSHOP(1/31) — WS告知画像のQRは /bf7#workshop に飛ぶ */}
+      <WorkshopSection />
 
       {/* DETAIL */}
       <section className="px-4 pt-8">

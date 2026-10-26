@@ -131,3 +131,42 @@ export const BF7_FAQ_ALLOW = [
 export function pickBf7Faqs<T extends { q: string }>(faqs: T[]): T[] {
   return faqs.filter((f) => BF7_FAQ_ALLOW.some((k) => f.q.includes(k)));
 }
+
+/**
+ * 1/31 HIRO WORKSHOP の告知内容(告知サイト /bf7 の WORKSHOP 欄の正本)。
+ *
+ * ⚠️ 説明文・クラス名・ステップ名は HIROさん/おっちゃんの正式な文面のまま(2026-10-25〜26 3人トーク)。
+ *    言い換え・要約・大文字小文字の変更をしないこと(TARO「修正が入ると大変なので削らない」)。
+ * ⚠️ 対象Stepは3つ。3つ目は HIROさんの意向で「???」と伏せる(当日のレベルで4つ目をやることはあるが告知しない)。
+ * 料金は一般価格のみ(サイトは誰でも見るため。会員価格は会員向けLINEでだけ案内・TARO 10/25)。
+ */
+export const BF7_WORKSHOP = {
+  date: '2027-01-31',
+  dateLabel: '2027.1.31 SUN',
+  venue: 'エル・パーク仙台 フィットネススタジオ',
+  address: '仙台市青葉区一番町4-11-1 141ビル 5・6階',
+  access: '地下鉄南北線 勾当台公園駅 南1番出口から地下道でつながっています',
+  capacity: 25,
+  /** 一般受付の開始日(会員の先行受付は会員向けにだけ案内する) */
+  openFrom: '2026-11-23',
+  price: { one: 4000, two: 7000 },
+  classes: [
+    {
+      no: '1ST',
+      start: '13:30',
+      end: '15:00',
+      title: 'REGULAR CLASS',
+      description: 'リズムトレーニング、STEP、ROUTINEレクチャーのクラス',
+      steps: [] as string[],
+    },
+    {
+      no: '2ND',
+      start: '15:15',
+      end: '16:45',
+      title: 'BASIC STEP PREMIUM',
+      description:
+        'テーマとして特定したStepを細かな体の使い方や質感、バリエーション等をレクチャー。振り付けは行わず、徹底的にStepを深掘りするクラス。',
+      steps: ['Robo Cop', 'The Skate (chicken&twist)', '???'],
+    },
+  ],
+} as const;

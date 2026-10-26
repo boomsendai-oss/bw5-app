@@ -25,12 +25,13 @@ export function Bf7Shell({ children }: { children: ReactNode }) {
 }
 
 /** セクションの見出し。青クロームの画像(vol.6の見出しを青に振り直したもの)を置く */
-export function Bf7SectionHead({ en, ja, img }: { en: string; ja?: string; img?: string }) {
+/** wide=文字数の多い見出し(WORKSHOP など)。横幅を広げて、ほかの見出しと文字の高さをそろえる */
+export function Bf7SectionHead({ en, ja, img, wide = false }: { en: string; ja?: string; img?: string; wide?: boolean }) {
   return (
     <div className="mb-5 pt-2 text-center">
       {img ? (
         /* eslint-disable-next-line @next/next/no-img-element -- 生成済みの静的画像 */
-        <img src={img} alt={en} className="mx-auto w-full max-w-[160px] md:max-w-[220px]" />
+        <img src={img} alt={en} className={`mx-auto w-full ${wide ? 'max-w-[195px] md:max-w-[265px]' : 'max-w-[160px] md:max-w-[220px]'}`} />
       ) : (
         <h2 className="text-3xl font-black italic tracking-tight text-white md:text-5xl">
           {en}
