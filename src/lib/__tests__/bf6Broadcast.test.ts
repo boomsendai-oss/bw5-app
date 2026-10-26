@@ -158,7 +158,7 @@ describe('vol.7 ウェイトリストの案内(2026-10-05 TARO承認)', () => {
     const b = t!.body;
     expect(b).toContain('2027年1月30日(土)');
     expect(b).toContain('仙台スクールオブミュージック&ダンス専門学校 9階ホール');
-    expect(b).toContain('Hiro（MIDDLE FILTER／大阪）');
+    expect(b).toContain('HIRO（MIDDLE FILTER／大阪）'); // 表記は本人指定の HIRO(2026-10-21)
     expect(b).toContain('2026年11月30日');
     expect(b).toContain('https://boomersfight.vercel.app/bf7');
     expect(b).toContain('申し込みではありません');
