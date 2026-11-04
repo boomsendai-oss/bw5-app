@@ -57,7 +57,8 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
       return;
     }
     setDone(r);
-    window.scrollTo({ top: 0 });
+    // 完了の表示はページ下の方(料金・日程の下)に出るので、そこまで移す
+    requestAnimationFrame(() => document.getElementById('mocchin-done')?.scrollIntoView({ block: 'start' }));
   }
 
   if (done) return <DoneView d={done} />;
@@ -181,7 +182,7 @@ function Choice({ on, label, onClick, disabled }: { on: boolean; label: string; 
 
 function DoneView({ d }: { d: Done }) {
   return (
-    <div>
+    <div id="mocchin-done" className="scroll-mt-4">
       <Panel title="申込を受け付けました">
         <p className="text-sm font-bold">申込番号</p>
         <p className="text-4xl font-black text-[#19F2D6]">{d.no}</p>
