@@ -172,6 +172,12 @@ const CARDS: CardDef[] = [
     description: 'プレ告知LPの「出てみたい／気になる」の数・流入元・名前を入れた人',
   },
   {
+    href: '/staff/mocchin',
+    icon: PartyPopper,
+    title: 'BW6 MOCCHINナンバー 申込',
+    description: 'スペシャルナンバーの申込一覧・入金チェック・CSV(会員先行11/8〜)',
+  },
+  {
     href: '/staff/xmas',
     icon: Gift,
     title: 'クリスマスパーティー2026',

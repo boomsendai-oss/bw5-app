@@ -1117,6 +1117,35 @@ export function getSchemaStatements(): InStatement[] {
       sql: `CREATE INDEX IF NOT EXISTS idx_bw6_interest_kind ON bw6_interest (kind, src)`,
       args: [],
     },
+    // BW6スペシャルナンバー by MOCCHIN の申込(本番は台帳 20261104_mocchin_entries.sql)
+    {
+      sql: `CREATE TABLE IF NOT EXISTS mocchin_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      status TEXT NOT NULL DEFAULT 'active',
+      name TEXT NOT NULL,
+      kana TEXT NOT NULL,
+      age TEXT NOT NULL,
+      guardian_name TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL,
+      email TEXT NOT NULL,
+      is_member INTEGER NOT NULL DEFAULT 0,
+      member_no TEXT NOT NULL DEFAULT '',
+      dance_history TEXT NOT NULL DEFAULT '',
+      class_number TEXT NOT NULL DEFAULT 'undecided',
+      note TEXT NOT NULL DEFAULT '',
+      paid INTEGER NOT NULL DEFAULT 0,
+      paid_at TEXT NOT NULL DEFAULT '',
+      staff_note TEXT NOT NULL DEFAULT '',
+      applied_on TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE INDEX IF NOT EXISTS idx_mocchin_entries_status ON mocchin_entries (status, id)`,
+      args: [],
+    },
     // パーティー申込(クリスマスパーティー2026〜・本番は台帳 20261014_party_tables.sql)
     {
       sql: `CREATE TABLE IF NOT EXISTS party_orders (
