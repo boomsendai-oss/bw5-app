@@ -75,6 +75,9 @@ export function formatBf7WsDate(ymd: string): string {
   return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日(${WEEK[d.getUTCDay()]})`;
 }
 
+/** 受講できる地域の案内。告知(画像・投稿文)には書かず、申込フォームにだけ出す(HIRO 2026-11-05) */
+export const BF7_WS_AREA_NOTICE = '東北・北陸の方のみ受講でき、今回はその他の地域の方は受講できません。';
+
 export interface Bf7WsInput {
   name: string;
   kana: string;
@@ -87,6 +90,8 @@ export interface Bf7WsInput {
   payMethod: string;
   note: string;
   agreed: boolean;
+  /** 東北・北陸に住んでいることの確認(HIRO 2026-11-05: 今回の受講は東北・北陸の方のみ) */
+  inArea: boolean;
 }
 
 export interface ValidatedBf7Ws {
@@ -132,6 +137,7 @@ export function validateBf7WsInput(raw: Bf7WsInput): { ok: true; value: Validate
   if (!(BF7_WS_COURSES as readonly string[]).includes(raw.course)) e.course = '受講するクラスを選んでください';
   if (raw.payMethod !== 'prepaid' && raw.payMethod !== 'transfer') e.payMethod = 'お支払い方法を選んでください';
   if (raw.agreed !== true) e.agreed = 'キャンセルについて確認してチェックしてください';
+  if (raw.inArea !== true) e.inArea = '東北・北陸にお住まいの方のみお申し込みいただけます。お住まいの地域を確認してチェックしてください';
 
   if (Object.keys(e).length > 0) return { ok: false, errors: e };
   return {

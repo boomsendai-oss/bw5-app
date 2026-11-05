@@ -30,6 +30,7 @@ const input = (o: Partial<Bf7WsInput> = {}): Bf7WsInput => ({
   payMethod: 'transfer',
   note: '',
   agreed: true,
+  inArea: true,
   ...o,
 });
 
@@ -108,6 +109,12 @@ describe('入力チェック', () => {
     const v = validateBf7WsInput(input({ isMember: null, course: '', payMethod: '', agreed: false }));
     expect(v.ok).toBe(false);
     if (!v.ok) expect(Object.keys(v.errors).sort()).toEqual(['agreed', 'course', 'isMember', 'payMethod']);
+  });
+
+  it('東北・北陸在住の確認にチェックがないと申し込めない', () => {
+    const v = validateBf7WsInput(input({ inArea: false }));
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(Object.keys(v.errors)).toEqual(['inArea']);
   });
 
   it('18歳未満は保護者の名前が要る', () => {

@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { BF7_WORKSHOP } from '@/lib/bf7';
 import {
+  BF7_WS_AREA_NOTICE,
   BF7_WS_CARD_TEST_AMOUNT,
   bf7WsCourseUses,
   bf7WsPrice,
@@ -35,6 +36,7 @@ export default function WorkshopForm({ memberOnly, remaining, preview = false }:
   const [payMethod, setPayMethod] = useState<'prepaid' | 'transfer' | ''>('');
   const [note, setNote] = useState('');
   const [agreed, setAgreed] = useState(false);
+  const [inArea, setInArea] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [fe, setFe] = useState<Bf7WsFieldErrors>({});
@@ -58,7 +60,7 @@ export default function WorkshopForm({ memberOnly, remaining, preview = false }:
     e.preventDefault();
     setBusy(true);
     setError('');
-    const r = await submitBf7Ws({ name, kana, age, guardianName, phone, email, isMember, course, payMethod, note, agreed });
+    const r = await submitBf7Ws({ name, kana, age, guardianName, phone, email, isMember, course, payMethod, note, agreed, inArea });
     if (!r.ok) {
       setBusy(false);
       setError(r.error);
@@ -78,6 +80,17 @@ export default function WorkshopForm({ memberOnly, remaining, preview = false }:
 
   return (
     <form onSubmit={submit} noValidate className="space-y-5 px-4 pt-5">
+      {/* 受講できる地域。入力を始める前に必ず目に入るよう、フォームの先頭に置く */}
+      <div className="rounded-2xl border-2 border-sky-400 bg-sky-500/10 p-4">
+        <p className="text-base font-black leading-snug text-white">東北・北陸の方のみ受講可能</p>
+        <p className="mt-1 text-xs font-bold leading-relaxed text-neutral-300">{BF7_WS_AREA_NOTICE}</p>
+        <label className="mt-3 flex items-start gap-3 text-sm font-bold text-white">
+          <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-sky-500" checked={inArea} onChange={(e) => (setInArea(e.target.checked), clear('inArea'))} />
+          <span>東北・北陸に住んでいます</span>
+        </label>
+        {fe.inArea && <p className="mt-1 text-xs font-bold text-red-400">⚠ {fe.inArea}</p>}
+      </div>
+
       <Group title="BOOM会員ですか？" error={fe.isMember}>
         <div className="grid grid-cols-2 gap-2">
           <Choice on={isMember === true} onClick={() => (setIsMember(true), clear('isMember'))}>
