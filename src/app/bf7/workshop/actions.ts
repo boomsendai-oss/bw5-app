@@ -107,7 +107,8 @@ export async function startBf7WsCheckout(token: string): Promise<Bf7WsCheckoutRe
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'boomersfight.vercel.app';
   const proto = h.get('x-forwarded-proto') ?? 'https';
   const completeUrl = `${proto}://${host}/bf7/workshop/complete?t=${token}`;
-  const classes = bf7WsClassLines(order.first, order.second).map((c) => c.split(' ')[0]).join('・');
+  // 決済画面でも「何本目・何時から」が分かるようにする
+  const classes = bf7WsClassLines(order.first, order.second).map((c) => c.split(' ').slice(0, 2).join(' ')).join('・');
 
   try {
     const session = await createBf7WsCheckoutSession(

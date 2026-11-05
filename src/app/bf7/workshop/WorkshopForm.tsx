@@ -51,7 +51,7 @@ export default function WorkshopForm({ memberOnly, remaining, preview = false }:
   const courses: Array<{ key: Bf7WsCourse; label: string; time: string; title: string; left: number }> = [
     { key: 'first', label: '1本目', time: `${c1.start}〜${c1.end}`, title: c1.title, left: remaining.first },
     { key: 'second', label: '2本目', time: `${c2.start}〜${c2.end}`, title: c2.title, left: remaining.second },
-    { key: 'both', label: '2本とも', time: `${c1.start}〜${c2.end}`, title: '2本受講', left: Math.min(remaining.first, remaining.second) },
+    { key: 'both', label: '2本とも', time: `${c1.start}〜${c2.end}`, title: `${c1.title} ＋ ${c2.title}`, left: Math.min(remaining.first, remaining.second) },
   ];
 
   async function submit(e: React.FormEvent) {
@@ -107,10 +107,12 @@ export default function WorkshopForm({ memberOnly, remaining, preview = false }:
                 }`}
               >
                 <span>
-                  <span className="block text-base font-black italic leading-tight text-white">{c.title}</span>
-                  <span className="mt-0.5 block text-xs font-bold text-neutral-300">
-                    {c.label} ・ {c.time}
+                  {/* 分かりやすさ優先で「何本目・何時から」を先に大きく出し、クラス名はその下に(TARO 2026-11-05) */}
+                  <span className="block text-lg font-black leading-tight text-white">
+                    {c.label}
+                    <span className="ml-2 tabular-nums">{c.time}</span>
                   </span>
+                  <span className="mt-1 block text-xs font-bold text-sky-300">{c.title}</span>
                   {full ? (
                     <span className="mt-1 block text-xs font-black text-red-400">満員</span>
                   ) : (
