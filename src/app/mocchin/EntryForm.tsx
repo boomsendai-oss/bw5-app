@@ -3,12 +3,15 @@
 // 申込フォーム。送信後は同じ画面で申込番号と振込先を出す(同じ内容をメールでも送る)。
 // 会員の先行期間(11/8〜11/14)は「会員以外」を選べないようにする。判定はサーバ側でも必ず行う。
 import { useState } from 'react';
+import Link from 'next/link';
 import {
   CLASS_NUMBER_LABEL,
   CLASS_NUMBER_OPTIONS,
   MOCCHIN_BANK,
   MOCCHIN_OPEN_START,
   MOCCHIN_PROMISES,
+  PAY_METHODS,
+  PAY_METHOD_LABEL,
   PAYMENT_PLANS,
   PAYMENT_PLAN_LABEL,
   formatJpDate,
@@ -18,6 +21,7 @@ import {
   type FieldErrors,
 } from '@/lib/mocchinEntry';
 import { submitMocchinEntry, type MocchinSubmitResult } from './actions';
+import CheckoutButton from './CheckoutButton';
 import { Field, Notice, Panel, btnCls, errCls, inputCls } from './ui';
 
 type Done = Extract<MocchinSubmitResult, { ok: true }>;
@@ -34,6 +38,7 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
   const [danceHistory, setDanceHistory] = useState('');
   const [classNumber, setClassNumber] = useState('');
   const [paymentPlan, setPaymentPlan] = useState('');
+  const [payMethod, setPayMethod] = useState('');
   const [note, setNote] = useState('');
   const [agreed, setAgreed] = useState<boolean[]>(MOCCHIN_PROMISES.map(() => false));
   const [busy, setBusy] = useState(false);
@@ -48,7 +53,7 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
     setBusy(true);
     setError('');
     const r = await submitMocchinEntry(
-      { name, kana, age, guardianName, phone, email, isMember, memberNo, danceHistory, classNumber, paymentPlan, note, agreed },
+      { name, kana, age, guardianName, phone, email, isMember, memberNo, danceHistory, classNumber, paymentPlan, payMethod, note, agreed },
       preview
     );
     setBusy(false);
@@ -129,7 +134,6 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
       <Panel title="お支払い方法">
         <p className="text-xs font-bold text-white/80">
           {isMember === false ? 'BOOM会員以外の方の金額です。' : isMember === true ? 'BOOM会員の方の金額です。' : 'BOOM会員の方の金額です(会員以外の方は、上で選ぶと金額が変わります)。'}
-          お支払いは銀行振込です。
         </p>
         <div className="mt-3 space-y-2">
           {PAYMENT_PLANS.map((k) => (
@@ -154,6 +158,13 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
           ))}
         </div>
         {fe.paymentPlan && <p className="mt-2 text-xs font-black text-[#FF4DB8]">⚠ {fe.paymentPlan}</p>}
+        <Field label="銀行振込とカード、どちらで払いますか？" hint="カードの手数料はかかりません。分割の場合、2回目からは変えることもできます" error={fe.payMethod}>
+          <div className="grid grid-cols-2 gap-2">
+            {PAY_METHODS.map((k) => (
+              <Choice key={k} on={payMethod === k} onClick={() => (setPayMethod(k), clear('payMethod'))} label={PAY_METHOD_LABEL[k]} />
+            ))}
+          </div>
+        </Field>
       </Panel>
 
       <Panel title="参加の約束">
@@ -182,7 +193,12 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
         </Field>
       </Panel>
 
-      <Notice>振込先は、申込のあとに表示します。同じ内容をメールでもお送りします。</Notice>
+      <Notice>
+        お支払いの案内は、申込のあとに表示します。同じ内容をメールでもお送りします。
+        <Link href="/mocchin/legal" target="_blank" className="mt-1 block text-xs underline">
+          特定商取引法に基づく表記
+        </Link>
+      </Notice>
       {error && <Notice tone="error">{error}</Notice>}
       <button type="submit" className={`${btnCls} mt-6`} disabled={busy}>
         {busy ? '送信中…' : '申し込む'}
@@ -218,6 +234,12 @@ function DoneView({ d }: { d: Done }) {
           </p>
         )}
       </Panel>
+      {d.payMethod === 'card' && (
+        <Panel title="カードでのお支払い">
+          <p className="text-sm font-bold">最初のお支払い：{d.steps[0].label} {yen(d.steps[0].amount)}</p>
+          <CheckoutButton token={d.payToken} label={`カードで ${yen(d.steps[0].amount)} を支払う`} />
+        </Panel>
+      )}
       <Panel title="お支払い">
         <dl className="space-y-1 text-sm font-bold">
           {d.steps.map((s) => (
@@ -226,7 +248,8 @@ function DoneView({ d }: { d: Done }) {
               <span className="block text-xs text-white/80">{formatJpDate(s.due)} まで</span>
             </div>
           ))}
-          <div className="pt-2">
+          <div className="pt-2 text-[#19F2D6]">銀行振込の振込先</div>
+          <div>
             {MOCCHIN_BANK.bank} {MOCCHIN_BANK.branch}
             <br />
             {MOCCHIN_BANK.type} {MOCCHIN_BANK.number}

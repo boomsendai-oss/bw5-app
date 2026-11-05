@@ -12,10 +12,14 @@ import {
   mocchinPaySteps,
   mocchinRemindSteps,
   buildMocchinReminderEmail,
+  buildMocchinCardPaidEmail,
+  mocchinNextStep,
+  mocchinPayUrl,
   mocchinTransferPrefix,
   validateMocchinInput,
   type MocchinInput,
 } from '../mocchinEntry';
+import { buildMocchinCheckoutFormParams, parseMocchinWebhookEvent } from '../mocchinStripe';
 
 const base: MocchinInput = {
   name: '山田 花子',
@@ -29,6 +33,7 @@ const base: MocchinInput = {
   danceHistory: '',
   classNumber: 'undecided',
   paymentPlan: 'lesson_three',
+  payMethod: 'card',
   note: '',
   agreed: MOCCHIN_PROMISES.map(() => true),
 };
@@ -153,16 +158,50 @@ describe('mocchinRemindSteps', () => {
     expect(mocchinRemindSteps({ ...e, paid: false, appliedOn: '2026-12-12' }, '2026-12-12')).toEqual([]);
   });
   it('お知らせメールに金額・期限・振込名義の頭が入る', () => {
-    const m = buildMocchinReminderEmail({ id: 2, name: 'A', steps: mocchinPaySteps('lesson_two', true, '2026-11-08').slice(1, 2) });
+    const m = buildMocchinReminderEmail({ id: 2, name: 'A', payToken: 'tok', steps: mocchinPaySteps('lesson_two', true, '2026-11-08').slice(1, 2) });
     expect(m.text).toContain('18,000円');
     expect(m.text).toContain('1月10日(日)');
     expect(m.text).toContain('MC002');
+    expect(m.text).toContain(mocchinPayUrl('tok'));
+  });
+});
+
+describe('カード決済', () => {
+  it('銀行振込かカードの未選択はNG', () => {
+    const r = validateMocchinInput({ ...base, payMethod: '' });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.payMethod).toBeTruthy();
+  });
+  it('次に払う回は未入金で一番早い回。全部済みなら null', () => {
+    const steps = mocchinPaySteps('lesson_two', true, '2026-11-08');
+    expect(mocchinNextStep(steps, new Set())?.step).toBe(0);
+    expect(mocchinNextStep(steps, new Set([0]))?.step).toBe(1);
+    expect(mocchinNextStep(steps, new Set([0, 1, 2]))).toBeNull();
+  });
+  it('決済の依頼に申込番号と回が入る', () => {
+    const p = buildMocchinCheckoutFormParams({ itemName: 'x', amount: 15000, successUrl: 'a', cancelUrl: 'b', customerEmail: 'c@d.e', entryId: 7, step: 2, expiresAtEpochSec: 1 });
+    expect(p.get('metadata[mocchin_entry_id]')).toBe('7');
+    expect(p.get('metadata[mocchin_step]')).toBe('2');
+    expect(p.get('line_items[0][price_data][unit_amount]')).toBe('15000');
+  });
+  it('MOCCHIN以外の通知は拾わない', () => {
+    const ev = { id: 'evt', type: 'checkout.session.completed', data: { object: { id: 'cs', amount_total: 15000, metadata: { mocchin_entry_id: '7', mocchin_step: '0' } } } };
+    expect(parseMocchinWebhookEvent(ev)).toMatchObject({ entryId: 7, step: 0, amountTotal: 15000 });
+    expect(parseMocchinWebhookEvent({ id: 'e', type: 't', data: { object: { metadata: { order_id: '1' } } } })).toBeNull();
+    expect(parseMocchinWebhookEvent({ id: 'e', type: 't', data: { object: { metadata: { mocchin_entry_id: '7' } } } })).toBeNull();
+  });
+  it('完了メールに残りのお支払いが出る。全部済みなら完了と出る', () => {
+    const steps = mocchinPaySteps('lesson_two', true, '2026-11-08');
+    const m = buildMocchinCardPaidEmail({ id: 1, name: 'A', payToken: 'tok', step: steps[0], remaining: steps.slice(1) });
+    expect(m.text).toContain('15,000円');
+    expect(m.text).toContain('レッスン代 2回目');
+    expect(buildMocchinCardPaidEmail({ id: 1, name: 'A', payToken: 'tok', step: steps[2], remaining: [] }).text).toContain('すべて完了');
   });
 });
 
 describe('buildMocchinEmail', () => {
   it('申込番号・振込名義の頭・会員のレッスン代を含む', () => {
-    const m = buildMocchinEmail({ id: 3, name: '山田 花子', appliedOn: '2026-11-08', isMember: true, paymentPlan: 'lesson_three', overCapacity: false });
+    const m = buildMocchinEmail({ id: 3, name: '山田 花子', appliedOn: '2026-11-08', isMember: true, paymentPlan: 'lesson_three', payMethod: 'transfer', payToken: 'abc', overCapacity: false });
     expect(m.subject).toContain('MC-003');
     expect(m.text).toContain('MC003');
     expect(m.text).toContain('15,000円');
@@ -171,7 +210,7 @@ describe('buildMocchinEmail', () => {
     expect(m.text).not.toContain('オーディション');
   });
   it('会員以外は7,000円・定員超えはオーディションの案内', () => {
-    const m = buildMocchinEmail({ id: 31, name: 'A', appliedOn: '2026-11-20', isMember: false, paymentPlan: 'full', overCapacity: true });
+    const m = buildMocchinEmail({ id: 31, name: 'A', appliedOn: '2026-11-20', isMember: false, paymentPlan: 'full', payMethod: 'card', payToken: 'abc', overCapacity: true });
     expect(m.text).toContain('57,000円');
     expect(m.text).toContain('オーディション');
   });
@@ -183,7 +222,7 @@ describe('mocchinCsv', () => {
       {
         id: 1, createdAt: '11/8 10:00', name: '山田', kana: 'ヤマダ', age: '20', guardianName: '', phone: '090', email: 'a@b.c',
         isMember: true, memberNo: '', danceHistory: '', classNumber: 'yes', note: 'A,B\nC', paid: true, status: 'active',
-        paymentPlan: 'lesson_two', lessonPaid: '1', appliedOn: '2026-11-08',
+        paymentPlan: 'lesson_two', lessonPaid: '1', appliedOn: '2026-11-08', payMethod: 'card',
       },
     ]);
     const [head, line] = csv.split('\n');

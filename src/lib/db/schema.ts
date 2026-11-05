@@ -1141,7 +1141,24 @@ export function getSchemaStatements(): InStatement[] {
       updated_at TEXT NOT NULL,
       payment_plan TEXT NOT NULL DEFAULT 'lesson_once',
       lesson_paid TEXT NOT NULL DEFAULT '',
-      reminded TEXT NOT NULL DEFAULT ''
+      reminded TEXT NOT NULL DEFAULT '',
+      pay_method TEXT NOT NULL DEFAULT 'transfer',
+      pay_token TEXT NOT NULL DEFAULT '',
+      card_steps TEXT NOT NULL DEFAULT '',
+      checkout_session_id TEXT NOT NULL DEFAULT '',
+      checkout_step INTEGER NOT NULL DEFAULT -1
+    )`,
+      args: [],
+    },
+    {
+      sql: `CREATE TABLE IF NOT EXISTS mocchin_payments (
+      stripe_event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      stripe_session_id TEXT NOT NULL DEFAULT '',
+      entry_id INTEGER,
+      step INTEGER,
+      amount INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
     )`,
       args: [],
     },

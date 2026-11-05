@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     const steps = mocchinRemindSteps(e, today);
     if (steps.length === 0) continue;
     try {
-      const mail = buildMocchinReminderEmail({ id: e.id, name: e.name, steps });
+      const mail = buildMocchinReminderEmail({ id: e.id, name: e.name, payToken: e.payToken, steps });
       await sendEmail({ to: e.email, subject: mail.subject, text: mail.text });
       await markMocchinReminded(e.id, e.reminded, steps.map((s) => s.step));
       sent++;

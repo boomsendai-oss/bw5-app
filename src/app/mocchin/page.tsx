@@ -62,7 +62,7 @@ export default async function MocchinPage({ searchParams }: { searchParams: Prom
             </dd>
           </div>
         </dl>
-        <p className="mt-2 text-xs font-bold text-white/80">お支払いは銀行振込です。一括か分割(最大3回)を、申込時に選べます。</p>
+        <p className="mt-2 text-xs font-bold text-white/80">お支払いは銀行振込かカードです。一括か分割(最大3回)を、申込時に選べます。</p>
       </Panel>
 
       <Panel title="日程・会場">

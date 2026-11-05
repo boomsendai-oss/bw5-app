@@ -20,6 +20,9 @@ import { parseBf7WsWebhookEvent } from '@/lib/bf7WorkshopStripe';
 import { applyBf7WsWebhookEvent } from '@/lib/bf7WorkshopDb';
 import { buildBf7WsEmail } from '@/lib/bf7Workshop';
 import { sendEmail } from '@/lib/email';
+import { buildMocchinCardPaidEmail } from '@/lib/mocchinEntry';
+import { applyMocchinWebhookEvent } from '@/lib/mocchinEntryDb';
+import { parseMocchinWebhookEvent } from '@/lib/mocchinStripe';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +45,34 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'invalid payload' }, { status: 400 });
   }
+  // BW6 MOCCHINナンバー(metadata.mocchin_entry_id)も同じ相乗り方式。
+  const mocchinEv = parseMocchinWebhookEvent(event);
+  if (mocchinEv) {
+    let r;
+    try {
+      r = await applyMocchinWebhookEvent(mocchinEv);
+    } catch (e) {
+      // 500でStripeが自動リトライ(入金の記録は冪等なので再適用は安全)
+      console.error('[mocchin] webhook apply failed', e instanceof Error ? e.message : e);
+      return NextResponse.json({ error: 'apply failed' }, { status: 500 });
+    }
+    if (r.status === 'paid') {
+      if (r.amountMismatch) console.error('[mocchin] amount mismatch on entry', mocchinEv.entryId, 'stripe:', mocchinEv.amountTotal);
+      try {
+        const mail = buildMocchinCardPaidEmail({ id: r.entry.id, name: r.entry.name, payToken: r.entry.payToken, step: r.step, remaining: r.remaining });
+        await sendEmail({ to: r.entry.email, subject: mail.subject, text: mail.text });
+      } catch (e) {
+        // 入金は反映済み。メールだけ失敗してもリトライさせない
+        console.error('[mocchin] mail failed. entry:', mocchinEv.entryId, e instanceof Error ? e.message : e);
+      }
+    } else if (r.status === 'already_paid') {
+      console.error('[mocchin] card payment for already-paid step (refund check). entry:', mocchinEv.entryId, 'step:', mocchinEv.step);
+    } else if (r.status === 'entry_not_found' || r.status === 'step_not_found') {
+      console.error('[mocchin] webhook target not found.', r.status, 'entry:', mocchinEv.entryId, 'step:', mocchinEv.step);
+    }
+    return NextResponse.json({ received: true, result: `mocchin_${r.status}` });
+  }
+
   // BF7 HIRO ワークショップ(metadata.bf7_ws_order_id)も同じ相乗り方式。
   const bf7WsEv = parseBf7WsWebhookEvent(event);
   if (bf7WsEv) {
