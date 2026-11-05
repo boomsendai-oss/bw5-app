@@ -118,7 +118,7 @@ export default async function Bf7WorkshopCompletePage({ searchParams }: { search
             <p className="text-sm text-neutral-200">{BF7_WORKSHOP.venue}</p>
             <p className="text-xs text-neutral-400">{BF7_WORKSHOP.address}</p>
             {order.isMember && (
-              <p className="mt-3 text-xs text-neutral-400">※会員料金は会員ご本人のみです。会員でないことが分かった場合は、差額をお支払いいただきます。</p>
+              <p className="mt-3 text-xs text-neutral-400">※会員料金は、BOOM会員ご本人様に適用されます。会員情報を確認のうえ、差額が生じる場合はご連絡いたします。</p>
             )}
           </Bf7Card>
         )}

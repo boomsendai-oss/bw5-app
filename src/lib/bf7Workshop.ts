@@ -243,7 +243,7 @@ export function buildBf7WsEmail(p: {
   L.push('【受講料】');
   L.push(p.paid ? `${yenBf7Ws(p.amountTotal)}(お支払い済み)` : yenBf7Ws(p.amountTotal));
   if (p.isMember) {
-    L.push('※会員料金は会員ご本人のみです。会員でないことが分かった場合は、差額をお支払いいただきます。');
+    L.push('※会員料金は、BOOM会員ご本人様に適用されます。会員情報を確認のうえ、差額が生じる場合はご連絡いたします。');
   }
   if (!p.paid) {
     L.push('');
