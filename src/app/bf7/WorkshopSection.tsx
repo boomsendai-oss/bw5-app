@@ -2,17 +2,23 @@
 // 見た目は告知画像(BF7_WS告知)と同じ「時間割表」の形にそろえる:
 //   左=濃い青の時間の列 / 右=クラス名 → 正式な説明 → 番号付きの対象Step
 // WSの告知画像のQRコードは /bf7#workshop に飛ぶので、id="workshop" を外さないこと。
-// ⚠️ BF7_WORKSHOP_DETAILS_PUBLIC=false の間は、プレ告知で出した情報(日時・会場・時間)だけを出す。
-import { BF7_WORKSHOP, BF7_WORKSHOP_DETAILS_PUBLIC } from '@/lib/bf7';
-import { formatJpDate } from '@/lib/bf7Entry';
-import { Bf7SectionHead, ComingSoon } from './ui';
+// ⚠️ 会員の先行受付が始まるまでは、プレ告知で出した情報(日時・会場・時間)だけを出す(スタッフのログイン中は確認のため全部出す)。
+import Link from 'next/link';
+import { BF7_WORKSHOP, isBf7WorkshopDetailsPublic } from '@/lib/bf7';
+import { bf7WsGate, formatBf7WsDate } from '@/lib/bf7Workshop';
+import { todayJst } from '@/lib/dateJst';
+import { isAuthorizedServer } from '@/lib/eventAuth';
+import { Bf7SectionHead, ComingSoon, btnPrimaryCls } from './ui';
 import ScrollToHash from './ScrollToHash';
 
 const yen = (n: number) => n.toLocaleString();
 const MAP_URL = 'https://www.google.com/maps/search/?api=1&query=%E3%82%A8%E3%83%AB%E3%83%BB%E3%83%91%E3%83%BC%E3%82%AF%E4%BB%99%E5%8F%B0';
 
-export default function WorkshopSection() {
+export default async function WorkshopSection() {
   const ws = BF7_WORKSHOP;
+  const today = todayJst();
+  const gate = bf7WsGate(today);
+  const showDetails = isBf7WorkshopDetailsPublic(today) || (await isAuthorizedServer());
   return (
     <section id="workshop" className="scroll-mt-6 px-4 pt-10">
       <ScrollToHash id="workshop" />
@@ -57,7 +63,7 @@ export default function WorkshopSection() {
               <span className="mt-1 text-2xl font-black italic leading-none md:text-3xl">{c.start}</span>
               <span className="mt-1 text-xs font-bold text-white/85">〜{c.end}</span>
             </div>
-            {!BF7_WORKSHOP_DETAILS_PUBLIC ? (
+            {!showDetails ? (
               <div className="flex flex-col justify-center px-4 py-3.5">
                 <p className="text-lg font-black text-white">{c.no === '1ST' ? '1本目' : '2本目'}</p>
                 <p className="mt-1 text-xs font-bold tracking-[0.12em] text-sky-300">内容は近日公開</p>
@@ -90,13 +96,13 @@ export default function WorkshopSection() {
         ))}
       </div>
 
-      {!BF7_WORKSHOP_DETAILS_PUBLIC && (
+      {!showDetails && (
         <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
           <ComingSoon note="ワークショップの内容・料金・お申込みについては、別途ご案内します。" />
         </div>
       )}
 
-      {BF7_WORKSHOP_DETAILS_PUBLIC && (<>
+      {showDetails && (<>
       {/* 料金(一般価格のみ) */}
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div className="rounded-2xl border border-neutral-700 bg-neutral-900 px-2 py-3 text-center">
@@ -122,14 +128,30 @@ export default function WorkshopSection() {
           <p className="text-xs font-black tracking-[0.18em] text-sky-300">定員</p>
           <p className="text-sm font-bold text-white">各クラス {ws.capacity}名(先着順)</p>
         </div>
-        <div className="mt-3 flex items-baseline justify-between gap-3 border-t border-neutral-800 pt-3">
-          <p className="text-xs font-black tracking-[0.18em] text-sky-300">受付開始</p>
-          <p className="text-sm font-bold text-white">{formatJpDate(ws.openFrom)} 〜</p>
-        </div>
-        <p className="mt-3 text-xs leading-relaxed text-neutral-400">
-          お申込みは受付開始日から、このページでできるようになります。
-        </p>
+        {gate !== 'open' && gate !== 'closed' && (
+          <div className="mt-3 flex items-baseline justify-between gap-3 border-t border-neutral-800 pt-3">
+            <p className="text-xs font-black tracking-[0.18em] text-sky-300">受付開始</p>
+            <p className="text-sm font-bold text-white">{formatBf7WsDate(ws.openFrom)} 〜</p>
+          </div>
+        )}
       </div>
+
+      {gate === 'closed' ? (
+        <p className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-center text-sm font-bold text-neutral-300">お申込みの受付は終了しました</p>
+      ) : (
+        (gate !== 'before' || showDetails) && (
+          <div className="mt-4">
+            <Link href="/bf7/workshop" className={`block w-full rounded-2xl py-4 text-center text-lg font-black active:scale-[0.99] ${btnPrimaryCls}`}>
+              {gate === 'open' ? 'ワークショップに申し込む' : 'BOOM会員の方はこちらから申込'}
+            </Link>
+            {gate !== 'open' && (
+              <p className="mt-2 text-center text-xs text-neutral-400">
+                ただいま BOOM会員の方の先行受付期間です。一般の方は {formatBf7WsDate(ws.openFrom)} から
+              </p>
+            )}
+          </div>
+        )
+      )}
       </>)}
     </section>
   );

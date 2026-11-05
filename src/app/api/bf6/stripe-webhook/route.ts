@@ -16,6 +16,10 @@ import { sendPartyOrderEmail } from '@/lib/partyEmail';
 import { parseBf7WebhookEvent } from '@/lib/bf7Stripe';
 import { applyBf7WebhookEvent } from '@/lib/bf7EntryDb';
 import { sendBf7OrderEmail } from '@/lib/bf7Email';
+import { parseBf7WsWebhookEvent } from '@/lib/bf7WorkshopStripe';
+import { applyBf7WsWebhookEvent } from '@/lib/bf7WorkshopDb';
+import { buildBf7WsEmail } from '@/lib/bf7Workshop';
+import { sendEmail } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +42,33 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'invalid payload' }, { status: 400 });
   }
+  // BF7 HIRO ワークショップ(metadata.bf7_ws_order_id)も同じ相乗り方式。
+  const bf7WsEv = parseBf7WsWebhookEvent(event);
+  if (bf7WsEv) {
+    let r;
+    try {
+      r = await applyBf7WsWebhookEvent(bf7WsEv);
+    } catch (e) {
+      // 500でStripeが自動リトライ(冪等なので再適用は安全)
+      console.error('[bf7ws] webhook apply failed', e instanceof Error ? e.message : e);
+      return NextResponse.json({ error: 'apply failed' }, { status: 500 });
+    }
+    if (r.status === 'paid') {
+      if (r.amountMismatch) console.error('[bf7ws] amount mismatch on order', bf7WsEv.orderId, 'stripe:', bf7WsEv.amountTotal);
+      try {
+        const o = r.order;
+        const mail = buildBf7WsEmail({ id: o.id, name: o.name, first: o.first, second: o.second, amountTotal: o.amountTotal, payMethod: o.payMethod, isMember: o.isMember, paid: true, appliedOn: o.appliedOn });
+        await sendEmail({ to: o.email, subject: mail.subject, text: mail.text });
+      } catch (e) {
+        // 決済は反映済み。メールだけ失敗してもリトライさせない(リトライしても重複扱いで送られない)
+        console.error('[bf7ws] mail failed. order:', bf7WsEv.orderId, e instanceof Error ? e.message : e);
+      }
+    } else if (r.status === 'order_not_found') {
+      console.error('[bf7ws] webhook order not found. order:', bf7WsEv.orderId);
+    }
+    return NextResponse.json({ received: true, result: `bf7ws_${r.status}` });
+  }
+
   // BOOMER'S FIGHT!!! vol.7(metadata.bf7_order_id)も同じ相乗り方式。
   // vol.6の判定(metadata.order_id)より前に振り分け、vol.6側で order_not_found を出させない。
   const bf7Ev = parseBf7WebhookEvent(event);

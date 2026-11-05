@@ -20,9 +20,14 @@ export default async function StaffBf7Page() {
         title="BF7 ウェイトリスト"
         description="vol.7(2027/1/30)のエントリー開始を知らせる名簿"
         rightExtra={
-          <Link href="/staff/bf7/orders" className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs font-bold text-navy-700 hover:bg-sand-50">
-            申込一覧へ
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/staff/bf7/workshop" className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs font-bold text-navy-700 hover:bg-sand-50">
+              HIRO WS 申込
+            </Link>
+            <Link href="/staff/bf7/orders" className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs font-bold text-navy-700 hover:bg-sand-50">
+              申込一覧へ
+            </Link>
+          </div>
         }
       />
       <div className="mx-auto max-w-3xl space-y-5 p-4">

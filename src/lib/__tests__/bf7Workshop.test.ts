@@ -1,10 +1,11 @@
 // 1/31 HIRO WORKSHOP の告知内容。HIROさん側の正式な文面・表記がずれていないことを確かめる。
 import { describe, it, expect } from 'vitest';
-import { BF7_WORKSHOP, BF7_WORKSHOP_DETAILS_PUBLIC } from '../bf7';
+import { BF7_WORKSHOP, isBf7WorkshopDetailsPublic } from '../bf7';
 
 describe('BF7_WORKSHOP', () => {
-  it('WSの詳細はまだサイトに出さない(プレ告知の情報だけ・TARO 10/26)', () => {
-    expect(BF7_WORKSHOP_DETAILS_PUBLIC).toBe(false);
+  it('WSの詳細は会員の先行受付の日までサイトに出さない(それまではプレ告知の情報だけ・TARO 10/26)', () => {
+    expect(isBf7WorkshopDetailsPublic('2026-11-22')).toBe(false);
+    expect(isBf7WorkshopDetailsPublic('2026-11-23')).toBe(true);
   });
 
   it('クラスは2本で、時間は 13:30〜15:00 / 15:15〜16:45', () => {
@@ -24,6 +25,7 @@ describe('BF7_WORKSHOP', () => {
 
   it('料金は一般価格・定員は各25名', () => {
     expect(BF7_WORKSHOP.price).toEqual({ one: 4000, two: 7000 });
+    expect(BF7_WORKSHOP.memberPrice).toEqual({ one: 3500, two: 6000 });
     expect(BF7_WORKSHOP.capacity).toBe(25);
   });
 });
