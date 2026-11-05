@@ -11,7 +11,7 @@ import { buildBreakdownByOrder, type CashLine } from './bf6Cash';
 import { getBf6Settings } from './bf6Db';
 import { toOrderLine } from './bf6CashDb';
 import { sendEmail } from './email';
-import { nowUtcIso } from './dateJst';
+import { nowUtcIso, todayJst } from './dateJst';
 
 /**
  * 宛先の範囲。テンプレートごとに変える。
@@ -25,7 +25,7 @@ import { nowUtcIso } from './dateJst';
  *              vol.7 の案内(2026-10-05 TARO承認)用。登録済みの人に重ねて送らないため、
  *              送信する瞬間の登録状況で除く。
  */
-export type Bf6BroadcastAudience = 'entrants' | 'all' | 'cash_due' | 'entrants_not_bf7';
+export type Bf6BroadcastAudience = 'entrants' | 'all' | 'cash_due' | 'entrants_not_bf7' | 'bf7_waitlist';
 
 export type Bf6BroadcastTemplate = {
   key: string;
@@ -40,6 +40,8 @@ export type Bf6BroadcastTemplate = {
    * (⚠️ Vercelの関数からは public/ のファイルを直接読めないため)。
    */
   attachments?: Bf6BroadcastAttachment[];
+  /** この日(JST・YYYY-MM-DD)より前は送れない。受付開始の案内を早押ししないため */
+  notBefore?: string;
 };
 
 export type Bf6BroadcastAttachment = { filename: string; path: string };
@@ -266,6 +268,25 @@ https://boomersfight.vercel.app/bf7
 今後このようなご案内が不要な方は、このメールにその旨ご返信ください。
 BOOM DANCE SCHOOL`;
 
+// ⚠️ 金額は本文に書かない(bf7_settings で変わるのでページに任せる)。末尾の配信停止の一文を消さないこと
+const BF7_ENTRY_OPEN_INFO = `エントリーの受付を開始しました。
+
+■ 日程　2027年1月30日(土)
+■ 会場　仙台スクールオブミュージック&ダンス専門学校 9階ホール
+■ スペシャルゲスト　HIRO（MIDDLE FILTER／大阪）
+
+各部門とも定員があり、先着順です。
+
+▼ バトルエントリー
+https://boomersfight.vercel.app/bf7/entry
+
+▼ 部門・料金・観覧チケット
+https://boomersfight.vercel.app/bf7
+
+──────────
+今後このようなご案内が不要な方は、このメールにその旨ご返信ください。
+BOOM DANCE SCHOOL`;
+
 export const BF6_BROADCAST_TEMPLATES: Bf6BroadcastTemplate[] = [
   {
     key: 'call-time-1',
@@ -316,6 +337,24 @@ export const BF6_BROADCAST_TEMPLATES: Bf6BroadcastTemplate[] = [
     audience: 'entrants_not_bf7',
     audienceNote:
       'vol.6 にバトルエントリーした方のうち、vol.7 のウェイトリストにまだ登録していない方。観覧・配信のみの購入者には送りません。',
+  },
+  {
+    key: 'bf7-entry-open-waitlist',
+    label: 'vol.7 エントリー受付開始(ウェイトリスト)',
+    subject: "【BOOMER'S FIGHT!!! vol.7】エントリー受付を開始しました",
+    body: `BOOMER'S FIGHT!!! vol.7 のウェイトリストにご登録いただいた皆さまへ\n\n${BF7_ENTRY_OPEN_INFO}`,
+    audience: 'bf7_waitlist',
+    audienceNote: 'vol.7 のウェイトリストに登録した方全員。',
+    notBefore: '2026-11-30',
+  },
+  {
+    key: 'bf7-entry-open-bf6',
+    label: 'vol.7 エントリー受付開始(vol.6 出場者)',
+    subject: "【BOOMER'S FIGHT!!! vol.7】エントリー受付を開始しました",
+    body: `BOOMER'S FIGHT!!! vol.6 にエントリーいただいた皆さまへ\n\n${BF7_ENTRY_OPEN_INFO}`,
+    audience: 'entrants_not_bf7',
+    audienceNote: 'vol.6 にバトルエントリーした方のうち、vol.7 のウェイトリストに登録していない方。ウェイトリストの方に重ねて届きません。',
+    notBefore: '2026-11-30',
   },
 ];
 
@@ -371,10 +410,11 @@ export function buildBf6Broadcast(key: string): {
   body: string;
   audience: Bf6BroadcastAudience;
   attachments: Bf6BroadcastAttachment[];
+  notBefore?: string;
 } {
   const t = BF6_BROADCAST_TEMPLATES.find((x) => x.key === key);
   if (!t) throw new Error(`未知の一斉メールテンプレート: ${key}`);
-  return { subject: t.subject, body: t.body, audience: t.audience, attachments: t.attachments ?? [] };
+  return { subject: t.subject, body: t.body, audience: t.audience, attachments: t.attachments ?? [], notBefore: t.notBefore };
 }
 
 /**
@@ -439,6 +479,10 @@ export function excludeWaitlisted(emails: string[], waitlisted: string[]): strin
 export async function getBf6BroadcastRecipients(
   audience: Bf6BroadcastAudience = 'entrants'
 ): Promise<string[]> {
+  if (audience === 'bf7_waitlist') {
+    const rows = await getAll('SELECT DISTINCT email FROM bf7_notify ORDER BY email');
+    return rows.map((r) => String(r.email));
+  }
   if (audience === 'entrants_not_bf7') {
     const entrants = await getBf6BroadcastRecipients('entrants');
     const wl = await getAll('SELECT email FROM bf7_notify').catch(() => []);
@@ -495,7 +539,8 @@ export type Bf6BroadcastResult = {
  * 1件ずつ送り、個別の失敗で全体を止めない。
  */
 export async function sendBf6Broadcast(key: string): Promise<Bf6BroadcastResult> {
-  const { subject, body, audience, attachments: attachmentList } = buildBf6Broadcast(key);
+  const { subject, body, audience, attachments: attachmentList, notBefore } = buildBf6Broadcast(key);
+  if (notBefore && todayJst() < notBefore) throw new Error(`このメールは${notBefore}より前には送れません`);
   const now = nowUtcIso();
   // 添付は送信済みの記録を作る前に取る(取れないまま「送信済み」にならないように)
   const attachments = await loadBroadcastAttachments(attachmentList);

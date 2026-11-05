@@ -14,6 +14,7 @@ import {
   bf6SalesGateError,
   bf6TicketPayMethodNote,
   buildBf6OrderItems,
+  calcEntryFee,
   calcOrderTotal,
   calcTicketUnitPrice,
   formatReceiptNo,
@@ -153,6 +154,26 @@ export function isBf7EntryAccepting(s: Pick<Bf7Settings, 'entryOpen' | 'entrySta
 
 export function isBf7TicketAccepting(s: Pick<Bf7Settings, 'ticketOpen' | 'ticketStart' | 'ticketDeadline'>, today: string = todayJst()): boolean {
   return s.ticketOpen && !(s.ticketStart && today < s.ticketStart) && !isPastDeadlineOn(s.ticketDeadline, today);
+}
+
+/**
+ * 受付を始めたか(告知ページの切り替え用)。締切を過ぎても true のまま=ウェイトリストの表示には戻さない。
+ * エントリーと観覧は開閉を別に持つので、どちらかが開いていれば始まった扱いにする。
+ */
+export function isBf7SalesStarted(
+  s: Pick<Bf7Settings, 'entryOpen' | 'entryStart' | 'ticketOpen' | 'ticketStart'>,
+  today: string = todayJst()
+): boolean {
+  return (s.entryOpen && !(s.entryStart && today < s.entryStart)) || (s.ticketOpen && !(s.ticketStart && today < s.ticketStart));
+}
+
+/** 告知ページの料金表。金額は請求と同じ calcEntryFee から作る(ページに直書きしない)。 */
+export function bf7EntryFeeRows(pricing: Bf6Pricing = DEFAULT_BF7_SETTINGS.pricing): { label: string; onsite: number; prepaid: number }[] {
+  return [1, 2, 3].map((n) => ({
+    label: `${n}部門`,
+    onsite: calcEntryFee(n, 'onsite', pricing),
+    prepaid: calcEntryFee(n, 'prepaid', pricing),
+  }));
 }
 
 /** 受付番号の表記(BF7-001)。 */

@@ -6,9 +6,12 @@
 // 見た目はvol.6のフライヤー系(黒地・クローム)を踏襲しつつ、色はオレンジ→青
 // (TARO 2026-09-24「クローム調は同じで、色だけ変えてイメージを変える」)。
 // 並び順は ウェイトリスト → カウントダウン → ゲスト(TARO 2026-09-25)。
+// 受付が始まったら、ウェイトリストとカウントダウンは申込ボタンに置き換える。
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { BF7_DIVISIONS, BF7_ENTRY_OPEN_AT, HIRO_CREDITS, countdownTo } from '@/lib/bf7';
 import { submitBf7Notify } from './actions';
+import { btnDarkCls, btnPrimaryCls } from './ui';
 
 const inputCls =
   'w-full rounded-xl border-2 border-neutral-800 bg-neutral-900 px-3.5 py-3 text-base text-white placeholder:text-neutral-500 focus:border-sky-500 focus:outline-none';
@@ -22,7 +25,15 @@ function Unit({ n, label }: { n: number; label: string }) {
   );
 }
 
-export default function Bf7Client() {
+export default function Bf7Client({
+  salesStarted = false,
+  entryOpen = false,
+  ticketOpen = false,
+}: {
+  salesStarted?: boolean;
+  entryOpen?: boolean;
+  ticketOpen?: boolean;
+}) {
   // 初期描画はサーバと合わせるため null。マウント後に時計を動かす(ハイドレーションのズレ防止)
   const [left, setLeft] = useState<ReturnType<typeof countdownTo> | null>(null);
   useEffect(() => {
@@ -70,7 +81,29 @@ export default function Bf7Client() {
       </div>
       <p className="mt-1 text-xs text-neutral-500">仙台スクールオブミュージック&amp;ダンス専門学校</p>
 
+      {salesStarted && (
+        <section className="mt-8">
+          {entryOpen || ticketOpen ? (
+            <div className="space-y-3">
+              {entryOpen && (
+                <Link href="/bf7/entry" className={`flex h-20 w-full items-center justify-center rounded-2xl text-xl font-black active:scale-[0.99] md:text-2xl ${btnPrimaryCls}`}>
+                  バトルエントリー
+                </Link>
+              )}
+              {ticketOpen && (
+                <Link href="/bf7/ticket" className={`flex h-16 w-full items-center justify-center rounded-2xl text-lg font-black active:scale-[0.99] ${btnDarkCls}`}>
+                  観覧チケット
+                </Link>
+              )}
+            </div>
+          ) : (
+            <p className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-center text-sm font-bold text-neutral-300">受付は終了しました</p>
+          )}
+        </section>
+      )}
+
       {/* ウェイトリスト。カウントダウンより上に置く */}
+      {!salesStarted && (<>
       <section className="mt-8">
         <div className="text-center">
           <h2 className="text-3xl font-black italic tracking-tight text-white md:text-4xl">
@@ -172,7 +205,8 @@ export default function Bf7Client() {
         {left === null ? (
           <p className="mt-3 text-sm text-neutral-400">読み込み中…</p>
         ) : left.done ? (
-          <p className="mt-3 text-xl font-black text-white">エントリー受付中です</p>
+          // 受付中かどうかはサーバが決める。この表示が出るのは受付が始まる直前か、開いたままの画面だけ
+          <p className="mt-3 text-xl font-black text-white">まもなく受付を開始します</p>
         ) : (
           <div className="mt-3 flex flex-wrap gap-2">
             <Unit n={left.days} label="DAYS" />
@@ -185,6 +219,7 @@ export default function Bf7Client() {
           エントリー受付は2026年11月30日からの予定です。日程・料金・部門の詳細は決まり次第お知らせします。
         </p>
       </section>
+      </>)}
 
       {/* スペシャルゲスト。写真・経歴は本人からもらったもの(2026-09-25)。
           ⚠️表記は本人の指定で「HIRO」(Hiroではない)・「牽引し広めつづける」(2026-10-21) */}

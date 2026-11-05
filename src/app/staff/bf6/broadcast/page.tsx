@@ -1,4 +1,5 @@
 // スタッフ: BF6 エントリー者への一斉メール。/staff/* 配下のためproxy認証で保護(規約4.5)。
+import { todayJst } from '@/lib/dateJst';
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { BF6_BROADCAST_TEMPLATES, getBf6BroadcastRecipients, getCashDueRecipients, listBf6Broadcasts, listBf6BroadcastFailures, fillBroadcastVars, type Bf6BroadcastAudience } from '@/lib/bf6Broadcast';
 import { SendButton } from './SendButton';
@@ -12,13 +13,14 @@ export default async function StaffBf6BroadcastPage() {
   // proxyはcookieの有無しか見ないため、個人情報を出す前にセッションを本検証する(規約4.5)
   if (!(await isAuthorizedServer())) redirect('/staff/events/login');
   // 宛先の範囲はテンプレートごとに違う(当日の段取り=エントリー者だけ / 配信の案内=全員)
-  const [entrants, all, cashDue, history, failures, notOnBf7] = await Promise.all([
+  const [entrants, all, cashDue, history, failures, notOnBf7, bf7Waitlist] = await Promise.all([
     getBf6BroadcastRecipients('entrants'),
     getBf6BroadcastRecipients('all'),
     getCashDueRecipients(),
     listBf6Broadcasts(),
     listBf6BroadcastFailures(),
     getBf6BroadcastRecipients('entrants_not_bf7'),
+    getBf6BroadcastRecipients('bf7_waitlist'),
   ]);
   const failedOf = (key: string) => failures.find((f) => f.key === key)?.failed ?? 0;
   const countOf = (a: Bf6BroadcastAudience) =>
@@ -28,7 +30,9 @@ export default async function StaffBf6BroadcastPage() {
         ? cashDue.length
         : a === 'entrants_not_bf7'
           ? notOnBf7.length
-          : entrants.length;
+          : a === 'bf7_waitlist'
+            ? bf7Waitlist.length
+            : entrants.length;
   // 差し込みのあるメールは、実際に届く形が分からないと承認できない。1人目の中身で見せる。
   const previewOf = (t: { body: string; audience: Bf6BroadcastAudience }) =>
     t.audience === 'cash_due' && cashDue.length > 0
@@ -73,7 +77,11 @@ export default async function StaffBf6BroadcastPage() {
               {previewOf(t)}
             </pre>
             <div className="mt-4">
-              <SendButton templateKey={t.key} count={countOf(t.audience)} alreadySent={sentKeys.has(t.key)} />
+              {t.notBefore && todayJst() < t.notBefore ? (
+                <p className="rounded-lg bg-sand-50 px-3 py-2 text-xs font-bold text-neutral-600">{t.notBefore} から送れます</p>
+              ) : (
+                <SendButton templateKey={t.key} count={countOf(t.audience)} alreadySent={sentKeys.has(t.key)} />
+              )}
               {failedOf(t.key) > 0 && (
                 <div className="mt-3">
                   <RetryButton templateKey={t.key} failed={failedOf(t.key)} />

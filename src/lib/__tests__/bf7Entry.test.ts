@@ -5,10 +5,12 @@ import {
   buildBf7OrderItems,
   calcBf7OrderTotal,
   calcBf7TicketUnitPrice,
+  bf7EntryFeeRows,
   bf7TicketPayMethodNote,
   formatBf7ReceiptNo,
   formatJpDate,
   isBf7EntryAccepting,
+  isBf7SalesStarted,
 } from '../bf7Entry';
 import { calcEntryFee, validateBf6Order } from '../bf6';
 
@@ -81,4 +83,24 @@ describe('受付の開閉', () => {
 describe('表記', () => {
   it('受付番号はBF7-001の形', () => expect(formatBf7ReceiptNo(7)).toBe('BF7-007'));
   it('日付は月/日(曜)', () => expect(formatJpDate('2026-11-30')).toBe('11/30(月)'));
+});
+
+describe('告知ページの切り替え', () => {
+  const base = { entryOpen: true, entryStart: '2026-11-30', ticketOpen: true, ticketStart: '2026-11-30' };
+
+  it('受付開始日の前は始まらない・当日から始まる', () => {
+    expect(isBf7SalesStarted(base, '2026-11-29')).toBe(false);
+    expect(isBf7SalesStarted(base, '2026-11-30')).toBe(true);
+  });
+
+  it('スイッチが閉のままなら開始日を過ぎても始まらない(既定は閉)', () => {
+    expect(isBf7SalesStarted(DEFAULT_BF7_SETTINGS, '2026-12-01')).toBe(false);
+  });
+
+  it('料金表は請求と同じ計算', () => {
+    for (const [i, r] of bf7EntryFeeRows(P).entries()) {
+      expect(r.onsite).toBe(calcEntryFee(i + 1, 'onsite', P));
+      expect(r.prepaid).toBe(calcEntryFee(i + 1, 'prepaid', P));
+    }
+  });
 });

@@ -21,6 +21,9 @@ export default async function StaffBf7Page() {
         description="vol.7(2027/1/30)のエントリー開始を知らせる名簿"
         rightExtra={
           <div className="flex flex-wrap gap-2">
+            <Link href="/staff/bf6/broadcast" className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs font-bold text-navy-900 hover:bg-sand-100">
+              一斉メール
+            </Link>
             <Link href="/staff/bf7/workshop" className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs font-bold text-navy-700 hover:bg-sand-50">
               HIRO WS 申込
             </Link>

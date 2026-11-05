@@ -72,7 +72,7 @@ describe('オンライン配信の案内テンプレート', () => {
 describe('宛先の範囲', () => {
   it('テンプレートごとに宛先の範囲が決まっている', () => {
     for (const t of BF6_BROADCAST_TEMPLATES) {
-      expect(['entrants', 'all', 'cash_due', 'entrants_not_bf7']).toContain(t.audience);
+      expect(['entrants', 'all', 'cash_due', 'entrants_not_bf7', 'bf7_waitlist']).toContain(t.audience);
       expect(t.audienceNote.length).toBeGreaterThan(0);
     }
   });
@@ -179,5 +179,22 @@ describe('excludeWaitlisted', () => {
 
   it('ウェイトリストが空なら全員に送る', () => {
     expect(excludeWaitlisted(['a@x.jp'], [])).toEqual(['a@x.jp']);
+  });
+});
+
+describe('vol.7 エントリー受付開始の案内', () => {
+  const keys = ['bf7-entry-open-waitlist', 'bf7-entry-open-bf6'];
+
+  it('宛先が重ならない(ウェイトリスト / vol.6出場者のうち未登録)', () => {
+    expect(buildBf6Broadcast(keys[0]).audience).toBe('bf7_waitlist');
+    expect(buildBf6Broadcast(keys[1]).audience).toBe('entrants_not_bf7');
+  });
+
+  it.each(keys)('%s は受付開始日より前に送れず、金額を書かず、配信停止の案内がある', (key) => {
+    const b = buildBf6Broadcast(key);
+    expect(b.notBefore).toBe('2026-11-30');
+    expect(b.body).toContain('https://boomersfight.vercel.app/bf7/entry');
+    expect(b.body).toContain('不要な方は');
+    expect(b.body).not.toMatch(/[¥￥]\d/);
   });
 });
