@@ -11,7 +11,7 @@ import {
   paidStepSet,
   yen,
 } from '@/lib/mocchinEntry';
-import { loadMocchinEntryByToken } from '@/lib/mocchinEntryDb';
+import { isMocchinTestEntry, loadMocchinEntryByToken, mocchinCardAmount } from '@/lib/mocchinEntryDb';
 import CheckoutButton from '../CheckoutButton';
 import { Notice, Panel, Shell } from '../ui';
 
@@ -53,7 +53,8 @@ export default async function MocchinPayPage({ searchParams }: { searchParams: P
         <>
           <Panel title="カードで支払う">
             <p className="text-sm font-bold">次のお支払い：{next.label} {yen(next.amount)}</p>
-            <CheckoutButton token={e.payToken} label={`カードで ${yen(next.amount)} を支払う`} />
+            {isMocchinTestEntry(e) && <p className="mt-1 text-sm font-black text-[#FF4DB8]">動作確認の申込なので、カードの請求は{yen(mocchinCardAmount(e, next))}です</p>}
+            <CheckoutButton token={e.payToken} label={`カードで ${yen(mocchinCardAmount(e, next))} を支払う`} />
             <p className="mt-2 text-xs font-bold text-white/75">カードの手数料はかかりません。お支払いのあと、反映まで少し時間がかかることがあります。</p>
           </Panel>
           <Panel title="銀行振込で支払う">
