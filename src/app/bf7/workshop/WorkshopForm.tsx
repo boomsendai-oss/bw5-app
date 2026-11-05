@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { BF7_WORKSHOP } from '@/lib/bf7';
 import {
+  BF7_WS_CARD_TEST_AMOUNT,
   bf7WsCourseUses,
   bf7WsPrice,
   yenBf7Ws,
@@ -21,7 +22,7 @@ import { startBf7WsCheckout, submitBf7Ws } from './actions';
 /** 残りが少なくなったら数を出す */
 const LOW_LEFT = 5;
 
-export default function WorkshopForm({ memberOnly, remaining }: { memberOnly: boolean; remaining: Bf7WsRemaining }) {
+export default function WorkshopForm({ memberOnly, remaining, preview = false }: { memberOnly: boolean; remaining: Bf7WsRemaining; preview?: boolean }) {
   const router = useRouter();
   const [name, setName] = useState('');
   const [kana, setKana] = useState('');
@@ -185,7 +186,13 @@ export default function WorkshopForm({ memberOnly, remaining }: { memberOnly: bo
       {error && <p className="rounded-xl bg-red-950/40 p-3 text-sm font-bold text-red-400">{error}</p>}
 
       <button type="submit" disabled={busy} className={`w-full rounded-2xl py-4 text-lg font-black active:scale-[0.99] disabled:opacity-50 ${btnPrimaryCls}`}>
-        {busy ? '送信中…' : course && isMember !== null ? `申し込む(${yenBf7Ws(bf7WsPrice(course, isMember))})` : '申し込む'}
+        {busy
+          ? '送信中…'
+          : preview && payMethod === 'prepaid'
+            ? `テスト決済に進む(${yenBf7Ws(BF7_WS_CARD_TEST_AMOUNT)})`
+            : course && isMember !== null
+              ? `申し込む(${yenBf7Ws(bf7WsPrice(course, isMember))})`
+              : '申し込む'}
       </button>
     </form>
   );

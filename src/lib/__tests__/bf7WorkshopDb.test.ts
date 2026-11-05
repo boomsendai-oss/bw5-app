@@ -40,6 +40,19 @@ const order = (o: Partial<ValidatedBf7Ws> = {}): ValidatedBf7Ws => ({
 });
 
 describe('申込の流れ', () => {
+  it('確認用モードのカードだけ¥100で、本番の申込と銀行振込のテストは通常の料金', async () => {
+    const card = await db.createBf7WsOrder(order({ payMethod: 'prepaid', course: 'both' }), null, true);
+    const transfer = await db.createBf7WsOrder(order({ course: 'both' }), null, true);
+    const real = await db.createBf7WsOrder(order({ payMethod: 'prepaid', course: 'both' }), null, false);
+    if (!card.ok || !transfer.ok || !real.ok) throw new Error('create failed');
+    expect(card.amountTotal).toBe(100);
+    expect(transfer.amountTotal).toBe(7000);
+    expect(real.amountTotal).toBe(7000);
+    await db.cancelBf7WsOrder(card.id);
+    await db.cancelBf7WsOrder(transfer.id);
+    await db.cancelBf7WsOrder(real.id);
+  });
+
   it('テスト申込は定員に数えない', async () => {
     const before = await db.getBf7WsRemaining();
     const r = await db.createBf7WsOrder(order(), null, true);

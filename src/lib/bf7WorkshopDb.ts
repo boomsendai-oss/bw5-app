@@ -8,6 +8,7 @@ import type { Transaction } from '@libsql/client';
 import { generateEditToken } from '@/lib/eventSignup';
 import { nowUtcIso, todayJst } from '@/lib/dateJst';
 import {
+  BF7_WS_CARD_TEST_AMOUNT,
   bf7WsCapacityError,
   bf7WsCourseUses,
   bf7WsPrice,
@@ -120,7 +121,8 @@ export type CreateBf7WsResult =
 export async function createBf7WsOrder(v: ValidatedBf7Ws, memberResult: Bf7WsMemberCheck | null, isTest: boolean): Promise<CreateBf7WsResult> {
   await sweepExpiredBf7Ws();
   const use = bf7WsCourseUses(v.course);
-  const amountTotal = bf7WsPrice(v.course, v.isMember);
+  // 確認用モードのカードは少額で試す(受付開始前にスタッフだけが通れる経路)
+  const amountTotal = isTest && v.payMethod === 'prepaid' ? BF7_WS_CARD_TEST_AMOUNT : bf7WsPrice(v.course, v.isMember);
   const token = generateEditToken();
   const now = nowUtcIso();
   const appliedOn = todayJst();

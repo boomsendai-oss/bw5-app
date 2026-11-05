@@ -31,6 +31,9 @@ export function bf7WsPrice(course: Bf7WsCourse, isMember: boolean): number {
   return course === 'both' ? p.two : p.one;
 }
 
+/** スタッフの確認用モードでカードを選んだときの金額(本物の請求なので、動作確認に足りる最小限にする) */
+export const BF7_WS_CARD_TEST_AMOUNT = 100;
+
 /** 振込先(BOOMの事業用口座。MOCCHINナンバーと同じ) */
 export const BF7_WS_BANK = MOCCHIN_BANK;
 

@@ -4,7 +4,7 @@
 // /bf7/workshop の公開フォームが叩く。
 // PII対策: 申込を読み出す公開経路は作らない(個別閲覧は edit_token 完全一致の1件のみ)。送信はIP単位のレート制限。
 // ⚠️ 会員データとの照合結果は返さない(名前を入れて会員かどうかを調べられてしまうため)。結果はスタッフ画面だけに出す。
-// 金額はサーバ側で決める。確認用モード: 受付前でもスタッフのログイン中はテスト申込を通す(銀行振込のみ・定員に数えない)。
+// 金額はサーバ側で決める。確認用モード: 受付前でもスタッフのログイン中はテスト申込を通す(定員に数えない・カードは本物の請求なので¥100で試す)。
 import { headers } from 'next/headers';
 import { checkRateLimit, isAuthorizedServer } from '@/lib/eventAuth';
 import { todayJst } from '@/lib/dateJst';
@@ -48,9 +48,6 @@ export async function submitBf7Ws(input: Bf7WsInput): Promise<Bf7WsSubmitResult>
   const gateErr = bf7WsGateError(bf7WsGate(todayJst()), v.value.isMember);
   const isTest = Boolean(gateErr) && (await isAuthorizedServer());
   if (gateErr && !isTest) return { ok: false, error: gateErr };
-  if (isTest && v.value.payMethod !== 'transfer') {
-    return { ok: false, error: '確認用モードではカード決済は選べません(本物の請求になるため)。「銀行振込」で試してください' };
-  }
 
   // 照合に失敗しても申込は止めない(スタッフの確認に回す)
   let memberResult: Bf7WsMemberCheck | null = null;
@@ -115,7 +112,7 @@ export async function startBf7WsCheckout(token: string): Promise<Bf7WsCheckoutRe
   try {
     const session = await createBf7WsCheckoutSession(
       buildBf7WsCheckoutFormParams({
-        itemName: `HIRO WORKSHOP 2027/1/31(${classes})`,
+        itemName: `${order.isTest ? '【動作確認】' : ''}HIRO WORKSHOP 2027/1/31(${classes})`,
         amount: order.amountTotal,
         successUrl: completeUrl,
         cancelUrl: completeUrl,
