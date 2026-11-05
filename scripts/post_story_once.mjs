@@ -1,5 +1,6 @@
 // 単発ストーリー即時投稿（臨時告知用: 休講・代講・時間変更など）
 // 使い方: node scripts/post_story_once.mjs --image-url https://bw5-app.vercel.app/stories/extra/xxx.png
+//   メンションを付けるとき: --mentions taro_bsb,occhan.88 (全員で失敗したら1件ずつ試し、載せられない人だけ外す)
 // 朝の定時cronとは独立。トークンは本番settingsから(post_reel_once.mjsと同方式)
 import { createClient } from '@libsql/client';
 import { readFileSync } from 'fs';
@@ -8,6 +9,7 @@ const args = process.argv.slice(2);
 const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
 const IMAGE_URL = opt('--image-url');
 if (!IMAGE_URL) { console.error('--image-url が必要です'); process.exit(1); }
+const MENTIONS = (opt('--mentions') ?? '').split(',').map((m) => m.trim().replace(/^@/, '')).filter(Boolean);
 
 for (const line of readFileSync(new URL('../.env.production.local', import.meta.url), 'utf8').split('\n')) {
   const m = line.match(/^(TURSO_[A-Z_]+)=(.*)$/);
@@ -20,13 +22,26 @@ const IG_USER = (await get('instagram_ig_user_id'))?.trim();
 if (!TOKEN || !IG_USER) { console.error('トークン未設定'); process.exit(1); }
 const G = 'https://graph.instagram.com/v21.0';
 
-const createRes = await fetch(`${G}/${IG_USER}/media`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ media_type: 'STORIES', image_url: IMAGE_URL, access_token: TOKEN }),
-});
-const createJson = await createRes.json();
-if (!createRes.ok || !createJson.id) { console.error('コンテナ作成失敗:', JSON.stringify(createJson)); process.exit(1); }
+async function createContainer(mentions) {
+  const body = { media_type: 'STORIES', image_url: IMAGE_URL, access_token: TOKEN };
+  if (mentions.length) body.user_tags = mentions.map((username) => ({ username }));
+  const res = await fetch(`${G}/${IG_USER}/media`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const json = await res.json();
+  return res.ok && json.id ? { id: json.id } : { error: json };
+}
+
+let applied = MENTIONS;
+const failed = [];
+let createJson = await createContainer(MENTIONS);
+if (!createJson.id && MENTIONS.length) {
+  applied = [];
+  for (const m of MENTIONS) {
+    const r = await createContainer([...applied, m]);
+    if (r.id) { createJson = r; applied.push(m); } else failed.push(m);
+  }
+}
+if (!createJson.id) { console.error('コンテナ作成失敗:', JSON.stringify(createJson.error)); process.exit(1); }
+if (MENTIONS.length) console.log('メンション:', applied.join(','), failed.length ? `/ 載せられなかった: ${failed.join(',')}` : '');
 console.log('コンテナ作成OK:', createJson.id);
 
 let status = '';
