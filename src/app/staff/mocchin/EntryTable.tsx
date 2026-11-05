@@ -4,7 +4,7 @@
 // 文字色は必ず明示する(bodyの既定が白のため・規約11)。
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { CLASS_NUMBER_LABEL, PAYMENT_PLAN_LABEL, formatMocchinNo, mocchinCsv, mocchinPaySteps, paidStepSet, yen, type ClassNumberPlan, type PaymentPlan } from '@/lib/mocchinEntry';
+import { CLASS_NUMBER_LABEL, PAY_METHOD_LABEL, PAYMENT_PLAN_LABEL, formatMocchinNo, parseSteps, mocchinCsv, mocchinPaySteps, paidStepSet, yen, type ClassNumberPlan, type PayMethod, type PaymentPlan } from '@/lib/mocchinEntry';
 import type { MocchinEntry } from '@/lib/mocchinEntryDb';
 import { saveCapacityAction, setStatusAction, toggleLessonPaidAction, togglePaidAction } from './actions';
 
@@ -109,7 +109,7 @@ export default function EntryTable({ rows, capacity, today }: { rows: MocchinEnt
                     {r.staffNote && <span className="block text-brand-700">[スタッフ] {r.staffNote}</span>}
                   </td>
                   <td className="py-1.5">
-                    <span className="mb-1 block max-w-[12rem] text-xs text-neutral-500">{PAYMENT_PLAN_LABEL[r.paymentPlan as PaymentPlan] ?? r.paymentPlan}</span>
+                    <span className="mb-1 block max-w-[12rem] text-xs text-neutral-500">{PAYMENT_PLAN_LABEL[r.paymentPlan as PaymentPlan] ?? r.paymentPlan}・{PAY_METHOD_LABEL[r.payMethod as PayMethod] ?? r.payMethod}希望</span>
                     {mocchinPaySteps(r.paymentPlan, r.isMember, r.appliedOn).map((s) => {
                       const done = paidStepSet(r.paid, r.lessonPaid).has(s.step);
                       const late = !done && r.status === 'active' && today > s.due;
@@ -123,7 +123,7 @@ export default function EntryTable({ rows, capacity, today }: { rows: MocchinEnt
                               run(() => (s.step === 0 ? togglePaidAction(r.id, e.target.checked) : toggleLessonPaidAction(r.id, s.step, e.target.checked)))
                             }
                           />
-                          {s.label} {yen(s.amount)}（{s.due.slice(5).replace('-', '/')}まで{late ? '・期限切れ' : ''}）
+                          {s.label} {yen(s.amount)}（{s.due.slice(5).replace('-', '/')}まで{late ? '・期限切れ' : ''}）{parseSteps(r.cardSteps).includes(s.step) ? ' カード' : ''}
                         </label>
                       );
                     })}
