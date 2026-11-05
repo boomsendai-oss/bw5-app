@@ -1,12 +1,12 @@
 'use client';
 
-// 申込一覧の表。入金済み・取消の切り替え、定員の変更、CSVの書き出し。
+// 申込一覧の表。支払い回ごとの入金チェック・取消の切り替え、定員の変更、CSVの書き出し。
 // 文字色は必ず明示する(bodyの既定が白のため・規約11)。
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { CLASS_NUMBER_LABEL, formatMocchinNo, mocchinCsv, type ClassNumberPlan } from '@/lib/mocchinEntry';
+import { CLASS_NUMBER_LABEL, PAYMENT_PLAN_LABEL, formatMocchinNo, mocchinCsv, mocchinPaySteps, paidStepSet, yen, type ClassNumberPlan, type PaymentPlan } from '@/lib/mocchinEntry';
 import type { MocchinEntry } from '@/lib/mocchinEntryDb';
-import { saveCapacityAction, setStatusAction, togglePaidAction } from './actions';
+import { saveCapacityAction, setStatusAction, toggleLessonPaidAction, togglePaidAction } from './actions';
 
 function jst(iso: string): string {
   const d = new Date(iso);
@@ -14,7 +14,7 @@ function jst(iso: string): string {
   return d.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-export default function EntryTable({ rows, capacity }: { rows: MocchinEntry[]; capacity: number }) {
+export default function EntryTable({ rows, capacity, today }: { rows: MocchinEntry[]; capacity: number; today: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [cap, setCap] = useState(String(capacity));
@@ -68,7 +68,7 @@ export default function EntryTable({ rows, capacity }: { rows: MocchinEntry[]; c
         <p className="mt-4 text-sm text-neutral-500">まだ申込はありません</p>
       ) : (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[1100px] text-sm">
             <thead>
               <tr className="border-b border-sand-200 text-left text-xs text-neutral-500">
                 <th className="py-1">番号</th>
@@ -109,15 +109,24 @@ export default function EntryTable({ rows, capacity }: { rows: MocchinEntry[]; c
                     {r.staffNote && <span className="block text-brand-700">[スタッフ] {r.staffNote}</span>}
                   </td>
                   <td className="py-1.5">
-                    <label className="inline-flex items-center gap-1 whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        checked={r.paid}
-                        disabled={pending}
-                        onChange={(e) => run(() => togglePaidAction(r.id, e.target.checked))}
-                      />
-                      {r.paid ? '入金済' : '未入金'}
-                    </label>
+                    <span className="mb-1 block max-w-[12rem] text-xs text-neutral-500">{PAYMENT_PLAN_LABEL[r.paymentPlan as PaymentPlan] ?? r.paymentPlan}</span>
+                    {mocchinPaySteps(r.paymentPlan, r.isMember, r.appliedOn).map((s) => {
+                      const done = paidStepSet(r.paid, r.lessonPaid).has(s.step);
+                      const late = !done && r.status === 'active' && today > s.due;
+                      return (
+                        <label key={s.step} className={`flex items-center gap-1 whitespace-nowrap text-xs ${late ? 'font-bold text-red-600' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={done}
+                            disabled={pending}
+                            onChange={(e) =>
+                              run(() => (s.step === 0 ? togglePaidAction(r.id, e.target.checked) : toggleLessonPaidAction(r.id, s.step, e.target.checked)))
+                            }
+                          />
+                          {s.label} {yen(s.amount)}（{s.due.slice(5).replace('-', '/')}まで{late ? '・期限切れ' : ''}）
+                        </label>
+                      );
+                    })}
                   </td>
                   <td className="py-1.5">
                     <button

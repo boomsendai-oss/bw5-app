@@ -2,7 +2,7 @@
 // 公開フォーム: src/app/mocchin / スタッフ一覧: src/app/staff/mocchin
 import { execute, getAll, getOne } from '@/lib/db';
 import { nowUtcIso, todayJst } from '@/lib/dateJst';
-import { MOCCHIN_DEFAULT_CAPACITY, type ValidatedMocchin } from '@/lib/mocchinEntry';
+import { MOCCHIN_DEFAULT_CAPACITY, parseSteps, type ValidatedMocchin } from '@/lib/mocchinEntry';
 
 /** 設定は party_settings に置く(クリパと同じ置き場・event_key で分ける) */
 export const MOCCHIN_SETTINGS_KEY = 'bw6_mocchin';
@@ -26,6 +26,9 @@ export interface MocchinEntry {
   staffNote: string;
   appliedOn: string;
   createdAt: string;
+  paymentPlan: string;
+  lessonPaid: string;
+  reminded: string;
 }
 
 function toEntry(r: Record<string, unknown>): MocchinEntry {
@@ -48,6 +51,9 @@ function toEntry(r: Record<string, unknown>): MocchinEntry {
     staffNote: String(r.staff_note ?? ''),
     appliedOn: String(r.applied_on ?? ''),
     createdAt: String(r.created_at ?? ''),
+    paymentPlan: String(r.payment_plan ?? ''),
+    lessonPaid: String(r.lesson_paid ?? ''),
+    reminded: String(r.reminded ?? ''),
   };
 }
 
@@ -75,9 +81,9 @@ export async function createMocchinEntry(v: ValidatedMocchin): Promise<{ id: num
   const appliedOn = todayJst();
   const r = await execute(
     `INSERT INTO mocchin_entries
-      (name, kana, age, guardian_name, phone, email, is_member, member_no, dance_history, class_number, note, applied_on, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [v.name, v.kana, v.age, v.guardianName, v.phone, v.email, v.isMember ? 1 : 0, v.memberNo, v.danceHistory, v.classNumber, v.note, appliedOn, now, now]
+      (name, kana, age, guardian_name, phone, email, is_member, member_no, dance_history, class_number, payment_plan, note, applied_on, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [v.name, v.kana, v.age, v.guardianName, v.phone, v.email, v.isMember ? 1 : 0, v.memberNo, v.danceHistory, v.classNumber, v.paymentPlan, v.note, appliedOn, now, now]
   );
   return { id: Number(r.lastInsertRowid), appliedOn };
 }
@@ -91,6 +97,24 @@ export async function setMocchinPaid(id: number, paid: boolean): Promise<boolean
   const now = nowUtcIso();
   const r = await execute('UPDATE mocchin_entries SET paid = ?, paid_at = ?, updated_at = ? WHERE id = ?', [paid ? 1 : 0, paid ? now : '', now, id]);
   return Number(r.rowsAffected) > 0;
+}
+
+/** レッスン代の分割の入金(step=1〜)を付け外しする */
+export async function setMocchinLessonPaid(id: number, step: number, paid: boolean): Promise<boolean> {
+  const row = await getOne('SELECT lesson_paid FROM mocchin_entries WHERE id = ?', [id]);
+  if (!row) return false;
+  const set = new Set(parseSteps(String(row.lesson_paid ?? '')));
+  if (paid) set.add(step);
+  else set.delete(step);
+  const value = [...set].sort((a, b) => a - b).join(',');
+  const r = await execute('UPDATE mocchin_entries SET lesson_paid = ?, updated_at = ? WHERE id = ?', [value, nowUtcIso(), id]);
+  return Number(r.rowsAffected) > 0;
+}
+
+/** お知らせメールを送った回を記録する(同じ回を二重に送らないため) */
+export async function markMocchinReminded(id: number, reminded: string, steps: number[]): Promise<void> {
+  const value = [...new Set([...parseSteps(reminded), ...steps])].sort((a, b) => a - b).join(',');
+  await execute('UPDATE mocchin_entries SET reminded = ?, updated_at = ? WHERE id = ?', [value, nowUtcIso(), id]);
 }
 
 export async function setMocchinStatus(id: number, status: 'active' | 'cancelled'): Promise<boolean> {

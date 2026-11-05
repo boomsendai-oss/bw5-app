@@ -5,6 +5,7 @@ import { isXmasPreview } from '@/lib/partyPreview';
 import {
   MOCCHIN_DEADLINE,
   MOCCHIN_FEE,
+  MOCCHIN_LESSON_DAYS,
   MOCCHIN_LESSON_FEE_GUEST,
   MOCCHIN_LESSON_FEE_MEMBER,
   MOCCHIN_MEMBER_START,
@@ -45,7 +46,7 @@ export default async function MocchinPage({ searchParams }: { searchParams: Prom
           <div>
             <dt className="text-[#19F2D6]">参加費</dt>
             <dd>
-              {yen(MOCCHIN_FEE)}(申込後に銀行振込)
+              {yen(MOCCHIN_FEE)}
               <span className="block text-xs text-white/75">
                 クラスのナンバーにも出る場合は、その参加費が別にかかります
               </span>
@@ -56,11 +57,12 @@ export default async function MocchinPage({ searchParams }: { searchParams: Prom
             <dd>
               1日 {yen(MOCCHIN_LESSON_FEE_MEMBER)}(2レッスン分・1レッスンあたり{yen(MOCCHIN_LESSON_FEE_MEMBER / 2)})
               <span className="block text-xs text-white/75">
-                BOOM会員以外の方は1日{yen(MOCCHIN_LESSON_FEE_GUEST)}。各日、当日のお支払いです
+                BOOM会員以外の方は1日{yen(MOCCHIN_LESSON_FEE_GUEST)}。全{MOCCHIN_LESSON_DAYS}日分のお支払いです
               </span>
             </dd>
           </div>
         </dl>
+        <p className="mt-2 text-xs font-bold text-white/80">お支払いは銀行振込です。一括か分割(最大3回)を、申込時に選べます。</p>
       </Panel>
 
       <Panel title="日程・会場">

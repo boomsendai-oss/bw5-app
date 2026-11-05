@@ -4,7 +4,7 @@
 // 覆われているが、proxyはDBを見られないため isAuthorizedServer() による本検証をここで必ず行う(規約4.5)。
 import { revalidatePath } from 'next/cache';
 import { isAuthorizedServer } from '@/lib/eventAuth';
-import { saveMocchinCapacity, setMocchinPaid, setMocchinStaffNote, setMocchinStatus } from '@/lib/mocchinEntryDb';
+import { saveMocchinCapacity, setMocchinLessonPaid, setMocchinPaid, setMocchinStaffNote, setMocchinStatus } from '@/lib/mocchinEntryDb';
 
 async function requireStaff(): Promise<void> {
   if (!(await isAuthorizedServer())) throw new Error('Unauthorized');
@@ -15,6 +15,14 @@ type Result = { ok: true } | { ok: false; error: string };
 export async function togglePaidAction(id: number, paid: boolean): Promise<Result> {
   await requireStaff();
   if (!(await setMocchinPaid(id, paid))) return { ok: false, error: '見つかりません' };
+  revalidatePath('/staff/mocchin');
+  return { ok: true };
+}
+
+export async function toggleLessonPaidAction(id: number, step: number, paid: boolean): Promise<Result> {
+  await requireStaff();
+  if (!Number.isInteger(step) || step < 1 || step > 3) return { ok: false, error: '回の指定が正しくありません' };
+  if (!(await setMocchinLessonPaid(id, step, paid))) return { ok: false, error: '見つかりません' };
   revalidatePath('/staff/mocchin');
   return { ok: true };
 }
