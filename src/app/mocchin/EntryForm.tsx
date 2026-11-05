@@ -7,13 +7,13 @@ import {
   CLASS_NUMBER_LABEL,
   CLASS_NUMBER_OPTIONS,
   MOCCHIN_BANK,
-  MOCCHIN_FEE,
-  MOCCHIN_LESSON_FEE_GUEST,
-  MOCCHIN_LESSON_FEE_MEMBER,
   MOCCHIN_OPEN_START,
   MOCCHIN_PROMISES,
+  PAYMENT_PLANS,
+  PAYMENT_PLAN_LABEL,
   formatJpDate,
   isMinor,
+  mocchinPaySteps,
   yen,
   type FieldErrors,
 } from '@/lib/mocchinEntry';
@@ -33,6 +33,7 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
   const [memberNo, setMemberNo] = useState('');
   const [danceHistory, setDanceHistory] = useState('');
   const [classNumber, setClassNumber] = useState('');
+  const [paymentPlan, setPaymentPlan] = useState('');
   const [note, setNote] = useState('');
   const [agreed, setAgreed] = useState<boolean[]>(MOCCHIN_PROMISES.map(() => false));
   const [busy, setBusy] = useState(false);
@@ -47,7 +48,7 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
     setBusy(true);
     setError('');
     const r = await submitMocchinEntry(
-      { name, kana, age, guardianName, phone, email, isMember, memberNo, danceHistory, classNumber, note, agreed },
+      { name, kana, age, guardianName, phone, email, isMember, memberNo, danceHistory, classNumber, paymentPlan, note, agreed },
       preview
     );
     setBusy(false);
@@ -125,6 +126,36 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
         <p className="mt-2 text-xs font-bold text-white/75">クラスのナンバーに出る場合は、その参加費が別にかかります</p>
       </Panel>
 
+      <Panel title="お支払い方法">
+        <p className="text-xs font-bold text-white/80">
+          {isMember === false ? 'BOOM会員以外の方の金額です。' : isMember === true ? 'BOOM会員の方の金額です。' : 'BOOM会員の方の金額です(会員以外の方は、上で選ぶと金額が変わります)。'}
+          お支払いは銀行振込です。
+        </p>
+        <div className="mt-3 space-y-2">
+          {PAYMENT_PLANS.map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => (setPaymentPlan(k), clear('paymentPlan'))}
+              className={`block w-full rounded-lg border-2 p-3 text-left ${
+                paymentPlan === k ? 'border-[#19F2D6] bg-[#19F2D6] text-black' : 'border-white/40 bg-black text-white'
+              }`}
+            >
+              <span className="block text-sm font-black">{PAYMENT_PLAN_LABEL[k]}</span>
+              <span className="mt-1 block text-xs font-bold">
+                {/* 1回目の期限は申込日で決まるので、選ぶ画面では「申込後7日以内」と出す */}
+                {mocchinPaySteps(k, isMember !== false, '2026-11-08').map((s) => (
+                  <span key={s.step} className="block">
+                    {s.label}：{yen(s.amount)}（{s.step === 0 ? '申込から7日以内' : `${formatJpDate(s.due)}まで`}）
+                  </span>
+                ))}
+              </span>
+            </button>
+          ))}
+        </div>
+        {fe.paymentPlan && <p className="mt-2 text-xs font-black text-[#FF4DB8]">⚠ {fe.paymentPlan}</p>}
+      </Panel>
+
       <Panel title="参加の約束">
         <div className="space-y-3">
           {MOCCHIN_PROMISES.map((p, i) => (
@@ -151,12 +182,7 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
         </Field>
       </Panel>
 
-      <Notice>
-        参加費 {yen(MOCCHIN_FEE)} は、申込のあとに表示される振込先へお振込みください。
-        <span className="block">
-          レッスン代は1日{yen(MOCCHIN_LESSON_FEE_MEMBER)}(会員以外の方は{yen(MOCCHIN_LESSON_FEE_GUEST)})で、各日当日のお支払いです。
-        </span>
-      </Notice>
+      <Notice>振込先は、申込のあとに表示します。同じ内容をメールでもお送りします。</Notice>
       {error && <Notice tone="error">{error}</Notice>}
       <button type="submit" className={`${btnCls} mt-6`} disabled={busy}>
         {busy ? '送信中…' : '申し込む'}
@@ -192,10 +218,14 @@ function DoneView({ d }: { d: Done }) {
           </p>
         )}
       </Panel>
-      <Panel title="参加費のお振込み">
+      <Panel title="お支払い">
         <dl className="space-y-1 text-sm font-bold">
-          <div>金額：{yen(MOCCHIN_FEE)}</div>
-          <div>期限：{formatJpDate(d.payDeadline)} まで</div>
+          {d.steps.map((s) => (
+            <div key={s.step}>
+              {s.label}：{yen(s.amount)}
+              <span className="block text-xs text-white/80">{formatJpDate(s.due)} まで</span>
+            </div>
+          ))}
           <div className="pt-2">
             {MOCCHIN_BANK.bank} {MOCCHIN_BANK.branch}
             <br />
@@ -214,9 +244,6 @@ function DoneView({ d }: { d: Done }) {
         {d.mailed
           ? '同じ内容をメールでお送りしました。届かない場合は、この画面をスクリーンショットで保存してください。'
           : 'メールの送信に失敗しました。この画面をスクリーンショットで保存してください。'}
-        <span className="block">
-          レッスン代は1日{yen(d.isMember ? MOCCHIN_LESSON_FEE_MEMBER : MOCCHIN_LESSON_FEE_GUEST)}で、各日当日のお支払いです。
-        </span>
       </Notice>
     </div>
   );

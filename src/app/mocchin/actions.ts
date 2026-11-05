@@ -13,16 +13,17 @@ import {
   formatMocchinNo,
   mocchinGate,
   mocchinGateError,
-  mocchinPayDeadline,
+  mocchinPaySteps,
   mocchinTransferPrefix,
   validateMocchinInput,
   type FieldErrors,
   type MocchinInput,
+  type MocchinPayStep,
 } from '@/lib/mocchinEntry';
 import { MOCCHIN_SETTINGS_KEY, countActiveMocchin, createMocchinEntry, getMocchinCapacity, setMocchinStaffNote } from '@/lib/mocchinEntryDb';
 
 export type MocchinSubmitResult =
-  | { ok: true; no: string; transferPrefix: string; payDeadline: string; isMember: boolean; overCapacity: boolean; mailed: boolean }
+  | { ok: true; no: string; transferPrefix: string; steps: MocchinPayStep[]; overCapacity: boolean; mailed: boolean }
   | { ok: false; error: string; fieldErrors?: FieldErrors };
 
 async function ip(): Promise<string> {
@@ -52,7 +53,7 @@ export async function submitMocchinEntry(input: MocchinInput, preview?: string):
 
   let mailed = true;
   try {
-    const mail = buildMocchinEmail({ id, name: v.value.name, appliedOn, isMember: v.value.isMember, overCapacity });
+    const mail = buildMocchinEmail({ id, name: v.value.name, appliedOn, isMember: v.value.isMember, paymentPlan: v.value.paymentPlan, overCapacity });
     await sendEmail({ to: v.value.email, subject: mail.subject, text: mail.text });
   } catch (e) {
     // メールが送れなくても申込は保存済み。完了画面に振込先を出すので、その旨だけ伝える
@@ -64,8 +65,7 @@ export async function submitMocchinEntry(input: MocchinInput, preview?: string):
     ok: true,
     no: formatMocchinNo(id),
     transferPrefix: mocchinTransferPrefix(id),
-    payDeadline: mocchinPayDeadline(appliedOn),
-    isMember: v.value.isMember,
+    steps: mocchinPaySteps(v.value.paymentPlan, v.value.isMember, appliedOn),
     overCapacity,
     mailed,
   };

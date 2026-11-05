@@ -1138,7 +1138,10 @@ export function getSchemaStatements(): InStatement[] {
       staff_note TEXT NOT NULL DEFAULT '',
       applied_on TEXT NOT NULL,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      payment_plan TEXT NOT NULL DEFAULT 'lesson_once',
+      lesson_paid TEXT NOT NULL DEFAULT '',
+      reminded TEXT NOT NULL DEFAULT ''
     )`,
       args: [],
     },

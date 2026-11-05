@@ -3,11 +3,17 @@
 //
 // 決定の正本: boom-events-hub docs/decisions/2026-10-06_mocchin-number-plan.md(10/29 料金見直し)
 // 受付: 11/8〜11/14 = BOOM会員の先行申込(会員かどうかは自己申告) / 11/15〜12/13 = 誰でも(TARO 2026-11-03)
-// 参加費は申込時に銀行振込。レッスン代は各日の当日払い(フォームでは案内だけ)。
+// 支払いは銀行振込。申込時に4択(全額一括／レッスン代を一括・2回・3回)で選ぶ(TARO 2026-11-05)。
+// レッスン代は全6日分。休んでも減らない(来た日だけ払う形だと収入が読めないため)。
 
 export const MOCCHIN_FEE = 15000;
 export const MOCCHIN_LESSON_FEE_MEMBER = 6000;
 export const MOCCHIN_LESSON_FEE_GUEST = 7000;
+export const MOCCHIN_LESSON_DAYS = 6;
+/** レッスン代の分割の期限(1回目は初日1/17の1週間前。最終は3/6より前に終える) */
+export const MOCCHIN_LESSON_DUES = ['2027-01-10', '2027-02-10', '2027-03-01'] as const;
+/** お知らせメールを送る日(期限の何日前か) */
+export const MOCCHIN_REMIND_DAYS_BEFORE = 3;
 /** 定員の初期値(20〜30名)。超えても受付は続け、オーディション/キャンセル待ちの案内を出す */
 export const MOCCHIN_DEFAULT_CAPACITY = 30;
 
@@ -38,7 +44,17 @@ export const MOCCHIN_PROMISES = [
   '原則、全日程に参加します',
   '参加できない日がある場合は、必ず事前にBOOMの先生(TARO・KEIKO)に相談します',
   '参加費は返金できないことを了承します',
+  'レッスン代は全6日分のお支払いです。お休みしたり途中でやめたりしても、返金・減額はないことを了承します',
 ] as const;
+
+export const PAYMENT_PLANS = ['full', 'lesson_once', 'lesson_two', 'lesson_three'] as const;
+export type PaymentPlan = (typeof PAYMENT_PLANS)[number];
+export const PAYMENT_PLAN_LABEL: Record<PaymentPlan, string> = {
+  full: '全額を一括',
+  lesson_once: '参加費のあと、レッスン代を一括',
+  lesson_two: '参加費のあと、レッスン代を2回に分ける',
+  lesson_three: '参加費のあと、レッスン代を3回に分ける',
+};
 
 export const CLASS_NUMBER_OPTIONS = ['yes', 'no', 'undecided'] as const;
 export type ClassNumberPlan = (typeof CLASS_NUMBER_OPTIONS)[number];
@@ -81,6 +97,69 @@ export function mocchinPayDeadline(appliedOn: string): string {
   return d < MOCCHIN_DEADLINE ? d : MOCCHIN_DEADLINE;
 }
 
+export interface MocchinPayStep {
+  /** 0=申込後の1回目(参加費または全額) / 1〜=レッスン代の分割 */
+  step: number;
+  label: string;
+  amount: number;
+  due: string;
+}
+
+/** 支払い方法ごとの「いつ・いくら」。金額と期限はここだけで決める */
+export function mocchinPaySteps(planRaw: string, isMember: boolean, appliedOn: string): MocchinPayStep[] {
+  const plan: PaymentPlan = (PAYMENT_PLANS as readonly string[]).includes(planRaw) ? (planRaw as PaymentPlan) : 'lesson_once';
+  const lessonTotal = (isMember ? MOCCHIN_LESSON_FEE_MEMBER : MOCCHIN_LESSON_FEE_GUEST) * MOCCHIN_LESSON_DAYS;
+  const first = mocchinPayDeadline(appliedOn);
+  if (plan === 'full') {
+    return [{ step: 0, label: '参加費＋レッスン代(全6日分)', amount: MOCCHIN_FEE + lessonTotal, due: first }];
+  }
+  const times = plan === 'lesson_three' ? 3 : plan === 'lesson_two' ? 2 : 1;
+  const steps: MocchinPayStep[] = [{ step: 0, label: '参加費', amount: MOCCHIN_FEE, due: first }];
+  for (let i = 0; i < times; i++) {
+    steps.push({
+      step: i + 1,
+      label: times === 1 ? 'レッスン代(全6日分)' : `レッスン代 ${i + 1}回目`,
+      amount: lessonTotal / times,
+      due: MOCCHIN_LESSON_DUES[i],
+    });
+  }
+  return steps;
+}
+
+/** 'lesson_paid' / 'reminded' 列('1,2' 形式)を読む */
+export function parseSteps(s: string): number[] {
+  if (!s.trim()) return [];
+  return s
+    .split(',')
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n >= 0);
+}
+
+/** 入金済みの回(0=paid列 / 1〜=lesson_paid列) */
+export function paidStepSet(paid: boolean, lessonPaid: string): Set<number> {
+  const set = new Set(parseSteps(lessonPaid));
+  if (paid) set.add(0);
+  return set;
+}
+
+/**
+ * 今日お知らせメールを送る回。未入金で、期限の3日前〜期限当日で、まだ送っていないもの。
+ * 期限の3日前より後に申し込んだ人の1回目は、申込直後の控えメールがあるので送らない。
+ */
+export function mocchinRemindSteps(
+  e: { paymentPlan: string; isMember: boolean; appliedOn: string; paid: boolean; lessonPaid: string; reminded: string },
+  today: string
+): MocchinPayStep[] {
+  const paid = paidStepSet(e.paid, e.lessonPaid);
+  const sent = new Set(parseSteps(e.reminded));
+  return mocchinPaySteps(e.paymentPlan, e.isMember, e.appliedOn).filter((s) => {
+    const from = addDays(s.due, -MOCCHIN_REMIND_DAYS_BEFORE);
+    if (paid.has(s.step) || sent.has(s.step)) return false;
+    if (today < from || today > s.due) return false;
+    return e.appliedOn < from;
+  });
+}
+
 const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
 /** 'YYYY-MM-DD' → '11月15日(日)' */
 export function formatJpDate(ymd: string): string {
@@ -99,6 +178,7 @@ export interface MocchinInput {
   memberNo: string;
   danceHistory: string;
   classNumber: string;
+  paymentPlan: string;
   note: string;
   agreed: boolean[];
 }
@@ -114,6 +194,7 @@ export interface ValidatedMocchin {
   memberNo: string;
   danceHistory: string;
   classNumber: ClassNumberPlan;
+  paymentPlan: PaymentPlan;
   note: string;
 }
 
@@ -147,6 +228,7 @@ export function validateMocchinInput(raw: MocchinInput): { ok: true; value: Vali
   const danceHistory = clean(raw.danceHistory, 300);
   const note = clean(raw.note, 500);
   const classNumber = clean(raw.classNumber, 20);
+  const paymentPlan = clean(raw.paymentPlan, 20);
 
   if (!name) e.name = 'お名前を入力してください';
   if (!kana) e.kana = 'フリガナを入力してください';
@@ -157,6 +239,7 @@ export function validateMocchinInput(raw: MocchinInput): { ok: true; value: Vali
   if (!EMAIL_RE.test(email)) e.email = 'メールアドレスを正しく入力してください';
   if (raw.isMember === null) e.isMember = 'BOOM会員かどうかを選んでください';
   if (!(CLASS_NUMBER_OPTIONS as readonly string[]).includes(classNumber)) e.classNumber = 'クラスのナンバーに出る予定かを選んでください';
+  if (!(PAYMENT_PLANS as readonly string[]).includes(paymentPlan)) e.paymentPlan = 'お支払い方法を選んでください';
   if (!Array.isArray(raw.agreed) || raw.agreed.length !== MOCCHIN_PROMISES.length || raw.agreed.some((a) => a !== true)) {
     e.agreed = '参加の約束をすべて確認してチェックしてください';
   }
@@ -175,6 +258,7 @@ export function validateMocchinInput(raw: MocchinInput): { ok: true; value: Vali
       memberNo,
       danceHistory,
       classNumber: classNumber as ClassNumberPlan,
+      paymentPlan: paymentPlan as PaymentPlan,
       note,
     },
   };
@@ -192,16 +276,45 @@ export function mocchinGateError(gate: MocchinGate, isMember: boolean): string |
 
 export const yen = (n: number) => `${n.toLocaleString('ja-JP')}円`;
 
+function pushBankLines(L: string[], id: number): void {
+  L.push('【振込先】');
+  L.push(`${MOCCHIN_BANK.bank} ${MOCCHIN_BANK.branch} ${MOCCHIN_BANK.type} ${MOCCHIN_BANK.number}`);
+  L.push(`口座名義: ${MOCCHIN_BANK.holder}`);
+  L.push(`※振込名義の前に、申込番号「${mocchinTransferPrefix(id)}」を付けてください`);
+  L.push(`  (例: ${mocchinTransferPrefix(id)} ヤマダハナコ)`);
+  L.push('※振込手数料はご負担をお願いします');
+}
+
+/** 期限前のお知らせメール(まだ入金が確認できていない回) */
+export function buildMocchinReminderEmail(p: { id: number; name: string; steps: MocchinPayStep[] }): { subject: string; text: string } {
+  const no = formatMocchinNo(p.id);
+  const L: string[] = [];
+  L.push(`${p.name} 様`);
+  L.push('');
+  L.push('BW6 スペシャルナンバー by MOCCHIN のお支払い期限が近づいています。');
+  L.push('');
+  L.push(`■ 申込番号: ${no}`);
+  for (const s of p.steps) L.push(`・${s.label}: ${yen(s.amount)}(${formatJpDate(s.due)} まで)`);
+  L.push('');
+  pushBankLines(L, p.id);
+  L.push('');
+  L.push('行き違いでお振込み済みの場合は、ご容赦ください。');
+  L.push('ご不明な点は、BOOMの公式LINEからお問い合わせください。');
+  L.push('');
+  L.push('BOOM ダンススクール');
+  return { subject: `【BOOM】お支払い期限のお知らせ BW6 スペシャルナンバー by MOCCHIN(${no})`, text: L.join('\n') };
+}
+
 /** 申込完了メール(控え＋振込のご案内) */
 export function buildMocchinEmail(p: {
   id: number;
   name: string;
   appliedOn: string;
   isMember: boolean;
+  paymentPlan: string;
   overCapacity: boolean;
 }): { subject: string; text: string } {
   const no = formatMocchinNo(p.id);
-  const lesson = p.isMember ? MOCCHIN_LESSON_FEE_MEMBER : MOCCHIN_LESSON_FEE_GUEST;
   const L: string[] = [];
   L.push(`${p.name} 様`);
   L.push('');
@@ -210,17 +323,12 @@ export function buildMocchinEmail(p: {
   L.push('');
   L.push(`■ 申込番号: ${no}`);
   L.push('');
-  L.push('【参加費のお振込み】');
-  L.push(`金額: ${yen(MOCCHIN_FEE)}`);
-  L.push(`期限: ${formatJpDate(mocchinPayDeadline(p.appliedOn))} まで`);
-  L.push(`振込先: ${MOCCHIN_BANK.bank} ${MOCCHIN_BANK.branch} ${MOCCHIN_BANK.type} ${MOCCHIN_BANK.number}`);
-  L.push(`口座名義: ${MOCCHIN_BANK.holder}`);
-  L.push(`※振込名義の前に、申込番号「${mocchinTransferPrefix(p.id)}」を付けてください`);
-  L.push(`  (例: ${mocchinTransferPrefix(p.id)} ヤマダハナコ)`);
-  L.push('※振込手数料はご負担をお願いします');
+  L.push(`【お支払い】${PAYMENT_PLAN_LABEL[p.paymentPlan as PaymentPlan] ?? ''}`);
+  for (const s of mocchinPaySteps(p.paymentPlan, p.isMember, p.appliedOn)) {
+    L.push(`・${s.label}: ${yen(s.amount)}(${formatJpDate(s.due)} まで)`);
+  }
   L.push('');
-  L.push('【レッスン代】');
-  L.push(`1日 ${yen(lesson)}(90分のレッスン×2本)。各日、当日のお支払いです。`);
+  pushBankLines(L, p.id);
   L.push('');
   L.push('【日程・会場】');
   for (const s of MOCCHIN_SCHEDULE) L.push(`${s.date} ${s.time} ${s.venue}`);
@@ -257,19 +365,23 @@ export function mocchinCsv(
     note: string;
     paid: boolean;
     status: string;
+    paymentPlan: string;
+    lessonPaid: string;
+    appliedOn: string;
   }>
 ): string {
   const esc = (v: string | number) => {
     const s = String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const head = ['申込番号', '申込日時', '状態', '入金', 'お名前', 'フリガナ', '年齢/学年', '保護者', '電話', 'メール', '会員', '会員番号', 'ダンス歴', 'クラスのナンバー', '備考'];
+  const head = ['申込番号', '申込日時', '状態', '支払い方法', '入金', 'お名前', 'フリガナ', '年齢/学年', '保護者', '電話', 'メール', '会員', '会員番号', 'ダンス歴', 'クラスのナンバー', '備考'];
   const lines = rows.map((r) =>
     [
       formatMocchinNo(r.id),
       r.createdAt,
       r.status === 'cancelled' ? '取消' : '有効',
-      r.paid ? '入金済' : '未入金',
+      PAYMENT_PLAN_LABEL[r.paymentPlan as PaymentPlan] ?? r.paymentPlan,
+      `${paidStepSet(r.paid, r.lessonPaid).size}/${mocchinPaySteps(r.paymentPlan, r.isMember, r.appliedOn).length}回`,
       r.name,
       r.kana,
       r.age,
