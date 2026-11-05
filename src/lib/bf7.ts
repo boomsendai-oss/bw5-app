@@ -144,7 +144,7 @@ export function pickBf7Faqs<T extends { q: string }>(faqs: T[]): T[] {
 /**
  * WSの詳細(クラス名・内容・Step・料金・定員・受付開始日)をサイトに出すか。
  * ⚠️ 2026-10-26 TARO「内容はまだ言えない。プレ告知で出した情報(日にち・会場・時間)だけにして」。
- *    クラス名・料金などを出すのは会員の先行受付の日から(isBf7WorkshopDetailsPublic)。
+ *    クラス名・料金などを出すのは全体LINEで案内する 11/6 19:30 から(isBf7WorkshopDetailsPublic・TARO 2026-11-05)。
  */
 
 export const BF7_WORKSHOP = {
@@ -185,7 +185,10 @@ export const BF7_WORKSHOP = {
   ],
 } as const;
 
-/** WSの詳細(クラス名・料金など)をサイトに出すのは、会員の先行受付が始まる日から。それまではプレ告知の情報だけ */
-export function isBf7WorkshopDetailsPublic(today: string): boolean {
-  return today >= BF7_WORKSHOP.memberFrom;
+/** WSの詳細(クラス名・料金など)をサイトに出す時刻。全体LINEの案内(19:30)→インスタ(20:00)の順に合わせる */
+export const BF7_WORKSHOP_DETAILS_FROM = '2026-11-06T19:30:00+09:00';
+
+/** それまではプレ告知の情報(日時・会場・時間)だけ */
+export function isBf7WorkshopDetailsPublic(now: Date): boolean {
+  return now.getTime() >= new Date(BF7_WORKSHOP_DETAILS_FROM).getTime();
 }

@@ -2,7 +2,8 @@
 // 見た目は告知画像(BF7_WS告知)と同じ「時間割表」の形にそろえる:
 //   左=濃い青の時間の列 / 右=クラス名 → 正式な説明 → 番号付きの対象Step
 // WSの告知画像のQRコードは /bf7#workshop に飛ぶので、id="workshop" を外さないこと。
-// ⚠️ 会員の先行受付が始まるまでは、プレ告知で出した情報(日時・会場・時間)だけを出す(スタッフのログイン中は確認のため全部出す)。
+// ⚠️ 公開の時刻までは、プレ告知で出した情報(日時・会場・時間)だけを出す(スタッフのログイン中は確認のため全部出す)。
+// 申込ボタンは受付が始まってから出す(受付前に押せるのはスタッフの確認用だけ)。
 import Link from 'next/link';
 import { BF7_WORKSHOP, isBf7WorkshopDetailsPublic } from '@/lib/bf7';
 import { bf7WsGate, formatBf7WsDate } from '@/lib/bf7Workshop';
@@ -16,9 +17,9 @@ const MAP_URL = 'https://www.google.com/maps/search/?api=1&query=%E3%82%A8%E3%83
 
 export default async function WorkshopSection() {
   const ws = BF7_WORKSHOP;
-  const today = todayJst();
-  const gate = bf7WsGate(today);
-  const showDetails = isBf7WorkshopDetailsPublic(today) || (await isAuthorizedServer());
+  const gate = bf7WsGate(todayJst());
+  const staff = await isAuthorizedServer();
+  const showDetails = isBf7WorkshopDetailsPublic(new Date()) || staff;
   return (
     <section id="workshop" className="scroll-mt-6 px-4 pt-10">
       <ScrollToHash id="workshop" />
@@ -139,7 +140,7 @@ export default async function WorkshopSection() {
       {gate === 'closed' ? (
         <p className="mt-3 rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-center text-sm font-bold text-neutral-300">お申込みの受付は終了しました</p>
       ) : (
-        (gate !== 'before' || showDetails) && (
+        (gate !== 'before' || staff) && (
           <div className="mt-4">
             <Link href="/bf7/workshop" className={`block w-full rounded-2xl py-4 text-center text-lg font-black active:scale-[0.99] ${btnPrimaryCls}`}>
               {gate === 'open' ? 'ワークショップに申し込む' : 'BOOM会員の方はこちらから申込'}
