@@ -26,6 +26,14 @@ export function bf7WsCourseUses(course: Bf7WsCourse): { first: boolean; second: 
   return { first: course !== 'second', second: course !== 'first' };
 }
 
+/** 申込フォームの「1本目」「2本目」のチェックから受講コースを決める(どちらも外れていれば未選択) */
+export function bf7WsCourseFromPicks(first: boolean, second: boolean): Bf7WsCourse | '' {
+  if (first && second) return 'both';
+  if (first) return 'first';
+  if (second) return 'second';
+  return '';
+}
+
 export function bf7WsPrice(course: Bf7WsCourse, isMember: boolean): number {
   const p = isMember ? BF7_WORKSHOP.memberPrice : BF7_WORKSHOP.price;
   return course === 'both' ? p.two : p.one;

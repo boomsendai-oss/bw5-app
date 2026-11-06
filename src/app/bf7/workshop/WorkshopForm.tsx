@@ -9,10 +9,9 @@ import { BF7_WORKSHOP } from '@/lib/bf7';
 import {
   BF7_WS_AREA_NOTICE,
   BF7_WS_CARD_TEST_AMOUNT,
-  bf7WsCourseUses,
+  bf7WsCourseFromPicks,
   bf7WsPrice,
   yenBf7Ws,
-  type Bf7WsCourse,
   type Bf7WsFieldErrors,
   type Bf7WsRemaining,
 } from '@/lib/bf7Workshop';
@@ -32,7 +31,10 @@ export default function WorkshopForm({ memberOnly, remaining, preview = false }:
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [isMember, setIsMember] = useState<boolean | null>(memberOnly ? true : null);
-  const [course, setCourse] = useState<Bf7WsCourse | ''>('');
+  // クラスは「1本目」「2本目」を別々にチェックする(両方で2本受講)。送るときにコースへまとめる(TARO 2026-11-06)
+  const [pickFirst, setPickFirst] = useState(false);
+  const [pickSecond, setPickSecond] = useState(false);
+  const course = bf7WsCourseFromPicks(pickFirst, pickSecond);
   const [payMethod, setPayMethod] = useState<'prepaid' | 'transfer' | ''>('');
   const [note, setNote] = useState('');
   const [agreed, setAgreed] = useState(false);
@@ -45,16 +47,12 @@ export default function WorkshopForm({ memberOnly, remaining, preview = false }:
   const minor = isMinor(age);
   const [c1, c2] = BF7_WORKSHOP.classes;
 
-  function courseFull(k: Bf7WsCourse): boolean {
-    const use = bf7WsCourseUses(k);
-    return (use.first && remaining.first <= 0) || (use.second && remaining.second <= 0);
-  }
-
-  const courses: Array<{ key: Bf7WsCourse; label: string; time: string; title: string; left: number }> = [
-    { key: 'first', label: '1本目', time: `${c1.start}〜${c1.end}`, title: c1.title, left: remaining.first },
-    { key: 'second', label: '2本目', time: `${c2.start}〜${c2.end}`, title: c2.title, left: remaining.second },
-    { key: 'both', label: '2本とも', time: `${c1.start}〜${c2.end}`, title: `${c1.title} ＋ ${c2.title}`, left: Math.min(remaining.first, remaining.second) },
+  const classes: Array<{ key: 'first' | 'second'; label: string; time: string; title: string; left: number; on: boolean; set: (v: boolean) => void }> = [
+    { key: 'first', label: '1本目', time: `${c1.start}〜${c1.end}`, title: c1.title, left: remaining.first, on: pickFirst, set: setPickFirst },
+    { key: 'second', label: '2本目', time: `${c2.start}〜${c2.end}`, title: c2.title, left: remaining.second, on: pickSecond, set: setPickSecond },
   ];
+  /** 2本受講の割引額(1本の料金×2 との差) */
+  const bothSaving = (member: boolean) => bf7WsPrice('first', member) * 2 - bf7WsPrice('both', member);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -82,7 +80,7 @@ export default function WorkshopForm({ memberOnly, remaining, preview = false }:
     <form onSubmit={submit} noValidate className="space-y-5 px-4 pt-5">
       {/* 受講できる地域。入力を始める前に必ず目に入るよう、フォームの先頭に置く */}
       <div className="rounded-2xl border-2 border-sky-400 bg-sky-500/10 p-4">
-        <p className="text-base font-black leading-snug text-white">東北・北陸の方のみ受講可能</p>
+        <p className="text-base font-black leading-snug text-red-400">本ワークショップは東北・北陸の方のみ受講可能です</p>
         <p className="mt-1 text-xs font-bold leading-relaxed text-neutral-300">{BF7_WS_AREA_NOTICE}</p>
         <label className="mt-3 flex items-start gap-3 text-sm font-bold text-white">
           <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-sky-500" checked={inArea} onChange={(e) => (setInArea(e.target.checked), clear('inArea'))} />
@@ -105,20 +103,24 @@ export default function WorkshopForm({ memberOnly, remaining, preview = false }:
         </p>
       </Group>
 
-      <Group title="受講するクラス" error={fe.course}>
+      <Group title="受講するクラス(両方選ぶと2本受講)" error={fe.course}>
         <div className="space-y-2">
-          {courses.map((c) => {
-            const full = courseFull(c.key);
+          {classes.map((c) => {
+            const full = c.left <= 0;
             return (
-              <button
+              <label
                 key={c.key}
-                type="button"
-                disabled={full}
-                onClick={() => (setCourse(c.key), clear('course'))}
-                className={`grid w-full grid-cols-[1fr_auto] items-center gap-3 rounded-xl border-2 px-3.5 py-3 text-left disabled:opacity-40 ${
-                  course === c.key ? 'border-sky-400 bg-sky-500/15' : 'border-neutral-800 bg-neutral-900'
-                }`}
+                className={`grid w-full cursor-pointer grid-cols-[auto_1fr] items-center gap-3 rounded-xl border-2 px-3.5 py-3 ${
+                  full ? 'cursor-not-allowed opacity-40' : ''
+                } ${c.on ? 'border-sky-400 bg-sky-500/15' : 'border-neutral-800 bg-neutral-900'}`}
               >
+                <input
+                  type="checkbox"
+                  className="h-6 w-6 shrink-0 accent-sky-500"
+                  checked={c.on}
+                  disabled={full}
+                  onChange={(e) => (c.set(e.target.checked), clear('course'))}
+                />
                 <span>
                   {/* 分かりやすさ優先で「何本目・何時から」を先に大きく出し、クラス名はその下に(TARO 2026-11-05) */}
                   <span className="block text-lg font-black leading-tight text-white">
@@ -132,14 +134,30 @@ export default function WorkshopForm({ memberOnly, remaining, preview = false }:
                     c.left <= LOW_LEFT && <span className="mt-1 block text-xs font-black text-sky-300">残り{c.left}名</span>
                   )}
                 </span>
-                {isMember !== null && (
-                  <span className="text-xl font-black text-white tabular-nums">{yenBf7Ws(bf7WsPrice(c.key, isMember))}</span>
-                )}
-              </button>
+              </label>
             );
           })}
         </div>
-        {isMember === null && <p className="mt-2 text-xs text-neutral-400">会員かどうかを選ぶと、料金が表示されます。</p>}
+        {/* 合計料金。会員かどうかで変わるので、両方選ばれてから出す */}
+        <div className="mt-3 rounded-xl border border-neutral-700 bg-neutral-900 px-3.5 py-3">
+          {isMember === null ? (
+            <p className="text-xs text-neutral-400">会員かどうかを選ぶと、料金が表示されます。</p>
+          ) : !course ? (
+            <p className="text-xs text-neutral-400">受講するクラスにチェックを入れると、合計料金が表示されます。</p>
+          ) : (
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-sm font-black text-white">
+                合計<span className="ml-1.5 text-xs font-bold text-neutral-400">({course === 'both' ? '2本受講' : '1本受講'})</span>
+              </p>
+              <p className="text-right">
+                <span className="text-2xl font-black text-white tabular-nums">{yenBf7Ws(bf7WsPrice(course, isMember))}</span>
+                {course === 'both' && (
+                  <span className="block text-[11px] font-black text-sky-300">2本受講で{yenBf7Ws(bothSaving(isMember))}おトク</span>
+                )}
+              </p>
+            </div>
+          )}
+        </div>
       </Group>
 
       <Group title="受講される方">
