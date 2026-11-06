@@ -6,7 +6,7 @@
 // 会員料金は会員本人だけ(きょうだい・保護者は一般料金)。支払いは事前のカードか銀行振込のみで、当日払いはなし。
 // ⚠️ 照合の結果を申込者に見せない(名前を入れて会員かどうかを調べられてしまうため)。
 import { BF7_WORKSHOP } from '@/lib/bf7';
-import { BOOM_BANK, addDays, isMinor } from '@/lib/mocchinEntry';
+import { addDays, isMinor } from '@/lib/mocchinEntry';
 import { matchMember, type MatchableMember } from '@/lib/surveyMatch';
 
 export type Bf7WsGate = 'before' | 'member' | 'open' | 'closed';
@@ -42,8 +42,14 @@ export function bf7WsPrice(course: Bf7WsCourse, isMember: boolean): number {
 /** スタッフの確認用モードでカードを選んだときの金額(本物の請求なので、動作確認に足りる最小限にする) */
 export const BF7_WS_CARD_TEST_AMOUNT = 100;
 
-/** 振込先(BOOMの事業用口座。MOCCHINナンバーと同じ) */
-export const BF7_WS_BANK = BOOM_BANK;
+/** 振込先(BF7専用の振込入金口座。2026-11-06発行・TARO)。BF7の入金だけがここに入る */
+export const BF7_WS_BANK = {
+  bank: 'GMOあおぞらネット銀行',
+  branch: 'デネブ支店',
+  type: '普通',
+  number: '6077516',
+  holder: 'キムラ シンタロウＢＦ７',
+} as const;
 
 /** 振込名義の頭に付ける形(ハイフンなし)。例: 1 → WS001 */
 export function bf7WsTransferPrefix(id: number): string {
