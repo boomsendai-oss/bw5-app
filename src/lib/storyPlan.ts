@@ -92,7 +92,7 @@ async function sortByDeclaredTime(origin: string, list: ChainMedia[]): Promise<C
 // 週替わりの土日でも「その週の実際の顔ぶれ」に合う画像を自動で選んで並べる(手作業ゼロ化)。
 // 一致画像が無いグループは投稿されない(=素材不足→watchdog/プレビューで可視化)。
 export async function selectLibraryChain(origin: string, date: string, weekday: number): Promise<ChainMedia[]> {
-  let manifest: { entries?: Array<{ file: string; weekday: number; mentions?: string[]; lessons: DeclaredLesson[] }> };
+  let manifest: { entries?: Array<LibraryEntryPeriod & { file: string; weekday: number; mentions?: string[]; lessons: DeclaredLesson[] }> };
   try {
     const res = await fetch(`${origin}/stories/library/manifest.json`, { cache: 'no-store' });
     if (!res?.ok) return [];
@@ -100,7 +100,9 @@ export async function selectLibraryChain(origin: string, date: string, weekday: 
   } catch {
     return [];
   }
-  const entries = (manifest.entries ?? []).filter((e) => e.weekday === weekday && e.lessons?.length);
+  const entries = (manifest.entries ?? []).filter(
+    (e) => e.weekday === weekday && e.lessons?.length && isEntryInPeriod(e, date)
+  );
   if (entries.length === 0) return [];
 
   const { fetchLessonsForDate } = await import('./lessonCalendar');
@@ -134,6 +136,20 @@ export async function selectLibraryChain(origin: string, date: string, weekday: 
     lessons: e.lessons,
     mentions: e.mentions ?? [],
   }));
+}
+
+/**
+ * 台帳の各画像に「使ってよい期間」を持たせる(TARO 2026-11-06: 12/1からの新しい時間割)。
+ * 照合は「時刻+講師名」だけなので、クラス名だけが変わる改編(例: 多賀城 HIPHOP 基礎→入門)や、
+ * 開講前の体験会が同じ時刻にある週では新旧の画像を区別できない。from/until で切り替え日を明示する。
+ * どちらも 'YYYY-MM-DD'(JST・両端含む)。省略 = 期限なし。純関数(テスト対象)。
+ */
+export type LibraryEntryPeriod = { from?: string; until?: string };
+
+export function isEntryInPeriod(entry: LibraryEntryPeriod, date: string): boolean {
+  if (entry.from && date < entry.from) return false;
+  if (entry.until && date > entry.until) return false;
+  return true;
 }
 
 function lessonKey(start: string, instructor: string): string {

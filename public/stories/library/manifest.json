@@ -1,5 +1,5 @@
 {
-  "_note": "ライブラリ各画像が告知するレッスン内容の台帳。post-storyがカレンダー(正本)と突合し、当日一致する画像を自動選択して投稿する。weekday=0日..6土。日付固有(0718/0808/0719)や時刻ズレ(15おっちゃん14:00)の素材は自動選択の対象外にするため未掲載。",
+  "_note": "ライブラリ各画像が告知するレッスン内容の台帳。post-storyがカレンダー(正本)と突合し、当日一致する画像を自動選択して投稿する。weekday=0日..6土。日付固有(0718/0808/0719)や時刻ズレ(15おっちゃん14:00)の素材は自動選択の対象外にするため未掲載。 from/until(YYYY-MM-DD・JST・両端含む)で使用期間を限定できる(2026-11-06: 12/1からの新しい時間割で追加)。",
   "entries": [
     {
       "file": "04_土曜_朝基本.jpg",
@@ -112,7 +112,8 @@
           "start": "12:45",
           "instructor": "AOI"
         }
-      ]
+      ],
+      "until": "2026-11-30"
     },
     {
       "file": "12_日曜_仙台昼.jpg",
@@ -269,6 +270,86 @@
         {
           "start": "19:00",
           "instructor": "ちゃんなつ"
+        }
+      ]
+    },
+    {
+      "file": "23_月曜_12月から.jpg",
+      "weekday": 1,
+      "from": "2026-12-01",
+      "mentions": [
+        "m55keiko",
+        "aoi.w_0530",
+        "taro_bsb"
+      ],
+      "lessons": [
+        {
+          "start": "18:30",
+          "instructor": "KEIKO"
+        },
+        {
+          "start": "18:50",
+          "instructor": "AOI"
+        },
+        {
+          "start": "20:15",
+          "instructor": "TARO"
+        }
+      ]
+    },
+    {
+      "file": "24_水曜_12月から.jpg",
+      "weekday": 3,
+      "from": "2026-12-01",
+      "mentions": [
+        "haruki_brat.ii",
+        "kattsu_ziel"
+      ],
+      "lessons": [
+        {
+          "start": "18:45",
+          "instructor": "HARUKI"
+        },
+        {
+          "start": "20:00",
+          "instructor": "K@TTSU"
+        }
+      ]
+    },
+    {
+      "file": "25_木曜_12月から.jpg",
+      "weekday": 4,
+      "from": "2026-12-01",
+      "mentions": [
+        "taro_bsb",
+        "takaryu_1203"
+      ],
+      "lessons": [
+        {
+          "start": "18:30",
+          "instructor": "TARO"
+        },
+        {
+          "start": "20:00",
+          "instructor": "Ryuki"
+        }
+      ]
+    },
+    {
+      "file": "26_日曜_多賀城AOI_12月から.jpg",
+      "weekday": 0,
+      "from": "2026-12-01",
+      "mentions": [
+        "aoi.w_0530"
+      ],
+      "lessons": [
+        {
+          "start": "11:00",
+          "instructor": "AOI"
+        },
+        {
+          "start": "12:45",
+          "instructor": "AOI"
         }
       ]
     }

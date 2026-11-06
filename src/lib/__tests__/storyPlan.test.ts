@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchDeclaredLesson } from '../storyPlan';
+import { matchDeclaredLesson, isEntryInPeriod } from '../storyPlan';
 
 // instructors テーブルの登録名(UPPERCASE比較される)
 const KNOWN = ['K@TTSU', 'AOI', 'TARO', 'KEIKO', 'RYUKI', 'ちゃんなつ', 'SAYUKI', 'おっちゃん', 'HARUKA', 'YURI', 'KOKEKO', 'MY'];
@@ -66,5 +66,19 @@ describe('matchDeclaredLesson (台帳の宣言レッスンが当日カレンダ�
     const cal = [ev('11:00', '⚔️ダンスバトル練習会'), ev('11:00', '【AOI】多賀城 HIPHOP 初級')];
     expect(matchDeclaredLesson(cal, KNOWN, { start: '11:00', instructor: 'AOI' })).toBe(true);
     expect(matchDeclaredLesson(cal, KNOWN, { start: '11:00', instructor: 'K@TTSU' })).toBe(false);
+  });
+});
+
+describe('isEntryInPeriod (台帳画像の使用期間)', () => {
+  it('期間指定なしは常に対象', () => {
+    expect(isEntryInPeriod({}, '2026-11-15')).toBe(true);
+  });
+  it('from は当日を含み、前日は対象外(12/1切替の新しい時間割)', () => {
+    expect(isEntryInPeriod({ from: '2026-12-01' }, '2026-11-30')).toBe(false);
+    expect(isEntryInPeriod({ from: '2026-12-01' }, '2026-12-01')).toBe(true);
+  });
+  it('until は当日を含み、翌日は対象外(旧時間割の画像)', () => {
+    expect(isEntryInPeriod({ until: '2026-11-30' }, '2026-11-30')).toBe(true);
+    expect(isEntryInPeriod({ until: '2026-11-30' }, '2026-12-01')).toBe(false);
   });
 });
