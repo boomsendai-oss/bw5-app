@@ -3,9 +3,9 @@ import { describe, it, expect } from 'vitest';
 import { BF7_WORKSHOP, isBf7WorkshopDetailsPublic } from '../bf7';
 
 describe('BF7_WORKSHOP', () => {
-  it('WSの詳細は 11/6 19:30(全体LINEの案内)までサイトに出さない(TARO 11/5)', () => {
-    expect(isBf7WorkshopDetailsPublic(new Date('2026-11-06T19:29:59+09:00'))).toBe(false);
-    expect(isBf7WorkshopDetailsPublic(new Date('2026-11-06T19:30:00+09:00'))).toBe(true);
+  it('WSの詳細はインスタの告知(延期後の仮 11/18 20:00)までサイトに出さない(TARO 11/6)', () => {
+    expect(isBf7WorkshopDetailsPublic(new Date('2026-11-18T19:59:59+09:00'))).toBe(false);
+    expect(isBf7WorkshopDetailsPublic(new Date('2026-11-18T20:00:00+09:00'))).toBe(true);
   });
 
   it('クラスは2本で、時間は 13:30〜15:00 / 15:15〜16:45', () => {

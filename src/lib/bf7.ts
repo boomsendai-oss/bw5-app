@@ -185,8 +185,12 @@ export const BF7_WORKSHOP = {
   ],
 } as const;
 
-/** WSの詳細(クラス名・料金など)をサイトに出す時刻。全体LINEの案内(19:30)→インスタ(20:00)の順に合わせる */
-export const BF7_WORKSHOP_DETAILS_FROM = '2026-11-06T19:30:00+09:00';
+/**
+ * WSの詳細(クラス名・料金など)をサイトに出す時刻。インスタのフィード告知と同じ時刻にする。
+ * 当初は 11/6 19:30 だったが、HIROさん側の希望でSNS告知を11/17か11/18へ延期(2026-11-06 TARO決定)。
+ * 会員向けの全体LINE(11/6)はサイトのリンクを含まないので、サイトはSNSに合わせる。
+ */
+export const BF7_WORKSHOP_DETAILS_FROM = '2026-11-18T20:00:00+09:00';
 
 /** それまではプレ告知の情報(日時・会場・時間)だけ */
 export function isBf7WorkshopDetailsPublic(now: Date): boolean {
