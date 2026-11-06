@@ -9,11 +9,13 @@
 // ダメなら notifyTaro(Pushover優先)で「アプリパスワードが無効の可能性 → after_google_password_change.sh」を知らせる。
 // 背景: 2026-10-16 のGoogleパスワード変更でアプリのメールが全部止まり、誰も気づけなかった。
 // レスポンスとログに秘密は出さない(エラーは nodemailer の応答文のみ)。
+// ついでに、Stripe の銀行振込が使えるようになったかを確かめて、変わったら1回だけ知らせる(2026-11-06〜12/1・stripeBankTransferWatch)。
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyMailTransport } from '@/lib/email';
 import { notifyTaro } from '@/lib/notify';
 import { runMailHealth } from '@/lib/mailHealth';
 import { cronAuthorized } from '@/lib/inboxAlert/cronAuth';
+import { runStripeBankTransferWatch } from '@/lib/stripeBankTransferWatch';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -22,6 +24,12 @@ export const maxDuration = 60;
 async function handle(req: NextRequest) {
   if (!cronAuthorized(req.headers)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  try {
+    await runStripeBankTransferWatch((o) => notifyTaro(o));
+  } catch (e) {
+    // メールの健康診断は止めない
+    console.error('[stripe-bank-transfer-watch] failed', e instanceof Error ? e.message : e);
   }
   const r = await runMailHealth({ verify: () => verifyMailTransport(), notify: (o) => notifyTaro(o) });
   if (r.ok) return NextResponse.json({ ok: true });
