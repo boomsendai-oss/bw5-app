@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { syncLessons, ensureLessonCalendar, isConnected } from '@/lib/googleCalendar';
+import { syncLessons, ensureLessonCalendar, isConnected, restoreBf7WsCalendarUrl } from '@/lib/googleCalendar';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -28,7 +28,14 @@ export async function GET(req: NextRequest) {
     }
     await ensureLessonCalendar();
     const result = await syncLessons(3);
-    return NextResponse.json({ ok: true, ...result });
+    // BF7 HIRO WS の申込URLを、告知(11/17 20:00)のあとに公開カレンダーへ戻す(1回限り・失敗しても同期は止めない)
+    let bf7WsUrl = '';
+    try {
+      bf7WsUrl = await restoreBf7WsCalendarUrl();
+    } catch (e) {
+      console.error('[sync-lesson-calendar] bf7 ws url restore failed', e instanceof Error ? e.message : e);
+    }
+    return NextResponse.json({ ok: true, ...result, bf7WsUrl });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: `cron lesson sync failed: ${msg}` }, { status: 500 });

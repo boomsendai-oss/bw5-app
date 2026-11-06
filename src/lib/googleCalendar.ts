@@ -412,3 +412,28 @@ export async function listPrimaryLessonEvents(
   } while (pageToken);
   return { calendarId: 'primary', events };
 }
+
+/**
+ * BF7 HIRO WS の 1/31 の予定(boom.sendai の公開カレンダー)の備考に、申込URLを戻す(1回限り)。
+ * 背景(2026-11-06・TARO): 生徒も見るカレンダーなので、インスタの告知(11/17 20:00)より前に申込ページへたどり着けないよう
+ * URLを外してあった。告知のあとの最初の毎朝の同期(11/18 05:00)で戻す。すでに入っていれば何もしない。
+ */
+export const BF7_WS_CALENDAR_EVENT_ID = 'cvptli2mv59v0hv8010bv6rgoo';
+export const BF7_WS_FORM_URL = 'https://boomersfight.vercel.app/bf7/workshop';
+const BF7_WS_URL_FROM = '2026-11-17T20:00:00+09:00';
+
+/** 備考の末尾にURLの行を足した文を返す(すでにあれば null) */
+export function addBf7WsUrlToDescription(description: string): string | null {
+  if (description.includes(BF7_WS_FORM_URL)) return null;
+  return `${description.replace(/\s+$/, '')}\n${BF7_WS_FORM_URL}`;
+}
+
+export async function restoreBf7WsCalendarUrl(now: Date = new Date()): Promise<'restored' | 'already' | 'not_yet'> {
+  if (now.getTime() < new Date(BF7_WS_URL_FROM).getTime()) return 'not_yet';
+  const cal = await getCalendarClient();
+  const ev = await cal.events.get({ calendarId: 'boom.sendai@gmail.com', eventId: BF7_WS_CALENDAR_EVENT_ID });
+  const next = addBf7WsUrlToDescription(ev.data.description ?? '');
+  if (next === null) return 'already';
+  await cal.events.patch({ calendarId: 'boom.sendai@gmail.com', eventId: BF7_WS_CALENDAR_EVENT_ID, requestBody: { description: next } });
+  return 'restored';
+}
