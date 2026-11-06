@@ -100,6 +100,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true, result: `bf7ws_${r.status}` });
   }
 
+  // PaymentIntent の通知は、WSの銀行振込のため(2026-11-06)に受け取っている。
+  // カード決済の PaymentIntent には印(metadata)が無く、ほかの注文の処理(BF6など)に流すと誤って記録されるので、ここで受領だけ返す
+  if (typeof (event as { type?: unknown })?.type === 'string' && String((event as { type: string }).type).startsWith('payment_intent.')) {
+    return NextResponse.json({ received: true, result: 'payment_intent_ignored' });
+  }
+
   // BOOMER'S FIGHT!!! vol.7(metadata.bf7_order_id)も同じ相乗り方式。
   // vol.6の判定(metadata.order_id)より前に振り分け、vol.6側で order_not_found を出させない。
   const bf7Ev = parseBf7WebhookEvent(event);
