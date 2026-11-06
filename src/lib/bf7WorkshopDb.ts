@@ -288,6 +288,18 @@ export async function setBf7WsTransferReceived(id: number, received: boolean): P
   return Number(r.rowsAffected) > 0;
 }
 
+/** 振込照合用(GMOの明細と突き合わせる)。名前は照合のカナだけ持ち出す */
+export async function listBf7WsTransferOrders(): Promise<Array<{ id: number; kana: string; amountTotal: number; payMethod: 'prepaid' | 'transfer'; paymentStatus: string }>> {
+  const rows = await getAll("SELECT id, kana, amount_total, pay_method, payment_status FROM bf7_ws_orders WHERE pay_method = 'transfer'");
+  return rows.map((r) => ({
+    id: Number(r.id),
+    kana: String(r.kana ?? ''),
+    amountTotal: Number(r.amount_total),
+    payMethod: r.pay_method === 'prepaid' ? 'prepaid' : 'transfer',
+    paymentStatus: String(r.payment_status ?? ''),
+  }));
+}
+
 export async function getBf7WsOrderById(id: number): Promise<Bf7WsOrder | null> {
   const r = (await getAll('SELECT * FROM bf7_ws_orders WHERE id = ? LIMIT 1', [id]))[0];
   return r ? toOrder(r) : null;
