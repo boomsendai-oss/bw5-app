@@ -40,13 +40,13 @@ const order = (o: Partial<ValidatedBf7Ws> = {}): ValidatedBf7Ws => ({
 });
 
 describe('申込の流れ', () => {
-  it('確認用モードのカードだけ¥100で、本番の申込と銀行振込のテストは通常の料金', async () => {
+  it('確認用モードはカードも銀行振込も¥100で、本番の申込は通常の料金', async () => {
     const card = await db.createBf7WsOrder(order({ payMethod: 'prepaid', course: 'both' }), null, true);
     const transfer = await db.createBf7WsOrder(order({ course: 'both' }), null, true);
     const real = await db.createBf7WsOrder(order({ payMethod: 'prepaid', course: 'both' }), null, false);
     if (!card.ok || !transfer.ok || !real.ok) throw new Error('create failed');
     expect(card.amountTotal).toBe(100);
-    expect(transfer.amountTotal).toBe(7000);
+    expect(transfer.amountTotal).toBe(100);
     expect(real.amountTotal).toBe(7000);
     await db.cancelBf7WsOrder(card.id);
     await db.cancelBf7WsOrder(transfer.id);
@@ -91,6 +91,38 @@ describe('申込の流れ', () => {
     await core.execute('UPDATE bf7_ws_orders SET expires_at = ? WHERE id = ?', ['2000-01-01T00:00:00.000Z', r.id]);
     expect(await db.getBf7WsRemaining()).toEqual(before);
     expect((await db.loadBf7WsOrderByToken(r.token))?.paymentStatus).toBe('expired');
+  });
+
+  it('Stripeの銀行振込: 振込先を保存し、入金の通知(payment_intent.succeeded)で支払済みになる', async () => {
+    const r = await db.createBf7WsOrder(order({ course: 'first' }), null, false);
+    if (!r.ok) throw new Error(r.error);
+    const bank = { bank: '三井住友銀行', branch: '東京第二', type: '普通', number: '1234567', holder: 'ストライプジャパン（カ' };
+    await db.saveBf7WsBankTransfer(r.id, 'pi_ws_1', bank);
+    const saved = await db.loadBf7WsOrderByToken(r.token);
+    expect(saved?.bankAccount).toEqual(bank);
+    expect(saved?.stripePaymentIntentId).toBe('pi_ws_1');
+    // 足りない入金の通知では変わらない
+    expect((await db.applyBf7WsWebhookEvent({ eventId: 'evt_ws_pf', type: 'payment_intent.partially_funded', sessionId: 'pi_ws_1', orderId: r.id, amountTotal: null })).status).toBe('ignored');
+    const ok = await db.applyBf7WsWebhookEvent({ eventId: 'evt_ws_bt', type: 'payment_intent.succeeded', sessionId: 'pi_ws_1', orderId: r.id, amountTotal: 4000 });
+    expect(ok.status).toBe('paid');
+    if (ok.status === 'paid') expect(ok.amountMismatch).toBe(false);
+    expect((await db.loadBf7WsOrderByToken(r.token))?.paymentStatus).toBe('paid');
+    await db.cancelBf7WsOrder(r.id);
+  });
+
+  it('振込の期限(申込日から7日)を過ぎた振込待ちは取り消して枠を空け、あとから入金が届けば支払済みにする', async () => {
+    const before = await db.getBf7WsRemaining();
+    const r = await db.createBf7WsOrder(order({ course: 'first' }), null, false);
+    if (!r.ok) throw new Error(r.error);
+    // 申込日から7日目まではそのまま
+    await core.execute("UPDATE bf7_ws_orders SET applied_on = date('now', '+9 hours', '-7 days') WHERE id = ?", [r.id]);
+    expect((await db.loadBf7WsOrderByToken(r.token))?.paymentStatus).toBe('transfer_due');
+    await core.execute("UPDATE bf7_ws_orders SET applied_on = date('now', '+9 hours', '-8 days') WHERE id = ?", [r.id]);
+    expect((await db.loadBf7WsOrderByToken(r.token))?.paymentStatus).toBe('expired');
+    expect(await db.getBf7WsRemaining()).toEqual(before);
+    const late = await db.applyBf7WsWebhookEvent({ eventId: 'evt_ws_late', type: 'payment_intent.succeeded', sessionId: 'pi_x', orderId: r.id, amountTotal: 4000 });
+    expect(late.status).toBe('paid');
+    await db.cancelBf7WsOrder(r.id);
   });
 
   it('要確認の人は、あとから入会すれば照合のやり直しで確認済みになる・会員ではないと判断した人は戻らない', async () => {

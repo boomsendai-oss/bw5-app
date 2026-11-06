@@ -221,8 +221,10 @@ export default function WorkshopForm({ memberOnly, remaining, preview = false }:
       <button type="submit" disabled={busy} className={`w-full rounded-2xl py-4 text-lg font-black active:scale-[0.99] disabled:opacity-50 ${btnPrimaryCls}`}>
         {busy
           ? '送信中…'
-          : preview && payMethod === 'prepaid'
-            ? `テスト決済に進む(${yenBf7Ws(BF7_WS_CARD_TEST_AMOUNT)})`
+          : preview && payMethod
+            ? payMethod === 'prepaid'
+              ? `テスト決済に進む(${yenBf7Ws(BF7_WS_CARD_TEST_AMOUNT)})`
+              : `テスト申込(振込${yenBf7Ws(BF7_WS_CARD_TEST_AMOUNT)})`
             : course && isMember !== null
               ? `申し込む(${yenBf7Ws(bf7WsPrice(course, isMember))})`
               : '申し込む'}

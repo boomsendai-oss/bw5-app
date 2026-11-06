@@ -31,6 +31,7 @@ export default async function Bf7WorkshopCompletePage({ searchParams }: { search
   }
 
   const st = order.paymentStatus;
+  const bank = order.bankAccount ?? BF7_WS_BANK;
   const hero =
     st === 'paid'
       ? { title: 'COMPLETE', subtitle: 'お申込みありがとうございます!' }
@@ -58,19 +59,28 @@ export default async function Bf7WorkshopCompletePage({ searchParams }: { search
                   <div>金額: <span className="text-lg font-black text-white">{yenBf7Ws(order.amountTotal)}</span></div>
                   <div>期限: {formatBf7WsDate(bf7WsPayDeadline(order.appliedOn))} まで</div>
                   <div className="pt-2">
-                    {BF7_WS_BANK.bank} {BF7_WS_BANK.branch}
+                    {bank.bank} {bank.branch}
                     <br />
-                    {BF7_WS_BANK.type} {BF7_WS_BANK.number}
+                    {bank.type} {bank.number}
                     <br />
-                    口座名義: {BF7_WS_BANK.holder}
+                    口座名義: {bank.holder}
                   </div>
                 </dl>
-                <p className="mt-3 rounded-lg bg-sky-500/15 p-3 text-sm font-black text-white">
-                  振込名義の前に、受付番号「{bf7WsTransferPrefix(order.id)}」を付けてください
-                  <span className="block font-bold text-neutral-200">例: {bf7WsTransferPrefix(order.id)} ヤマダハナコ</span>
-                </p>
+                {order.bankAccount ? (
+                  <p className="mt-3 rounded-lg bg-sky-500/15 p-3 text-sm font-black text-white">
+                    この口座は、あなたのお申込み専用の振込先です(決済代行のStripeの口座)
+                    <span className="block font-bold text-neutral-200">
+                      振込名義はご本人のお名前のままで大丈夫です。{yenBf7Ws(order.amountTotal)}ちょうどをお振込みください。ご入金を確認すると、確定のメールが自動で届きます。
+                    </span>
+                  </p>
+                ) : (
+                  <p className="mt-3 rounded-lg bg-sky-500/15 p-3 text-sm font-black text-white">
+                    振込名義の前に、受付番号「{bf7WsTransferPrefix(order.id)}」を付けてください
+                    <span className="block font-bold text-neutral-200">例: {bf7WsTransferPrefix(order.id)} ヤマダハナコ</span>
+                  </p>
+                )}
                 <p className="mt-2 text-xs leading-relaxed text-neutral-400">
-                  振込手数料はご負担をお願いします。期限までにご入金を確認できない場合、お申込みを取り消すことがあります。
+                  振込手数料はご負担をお願いします。期限までにご入金を確認できない場合、お申込みは取り消しとなります。
                 </p>
               </Bf7Card>
             ) : (

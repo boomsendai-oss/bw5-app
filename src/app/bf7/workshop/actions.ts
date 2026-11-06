@@ -17,6 +17,7 @@ import {
   bf7WsGateError,
   checkBf7WsMember,
   validateBf7WsInput,
+  type Bf7WsBankAccount,
   type Bf7WsFieldErrors,
   type Bf7WsInput,
   type Bf7WsMemberCheck,
@@ -25,9 +26,10 @@ import {
   createBf7WsOrder,
   listBf7WsMatchableMembers,
   loadBf7WsOrderByToken,
+  saveBf7WsBankTransfer,
   saveBf7WsStripeSession,
 } from '@/lib/bf7WorkshopDb';
-import { buildBf7WsCheckoutFormParams, createBf7WsCheckoutSession } from '@/lib/bf7WorkshopStripe';
+import { buildBf7WsCheckoutFormParams, createBf7WsBankTransfer, createBf7WsCheckoutSession } from '@/lib/bf7WorkshopStripe';
 
 async function clientIp(): Promise<string> {
   const h = await headers();
@@ -63,9 +65,25 @@ export async function submitBf7Ws(input: Bf7WsInput): Promise<Bf7WsSubmitResult>
   if (!created.ok) return { ok: false, error: created.error };
 
   if (v.value.payMethod === 'transfer') {
+    // 銀行振込は Stripe でその人専用の振込先を作る(入金は自動で確認される・TARO 2026-11-06)。
+    // 作れなかったときは固定の口座(BF7_WS_BANK)を案内する(入金はGMOの明細で照合)
+    const use = bf7WsCourseUses(v.value.course);
+    let bankAccount: Bf7WsBankAccount | null = null;
+    try {
+      const t = await createBf7WsBankTransfer({
+        orderId: created.id,
+        amount: created.amountTotal,
+        email: v.value.email,
+        name: v.value.name,
+        description: `${isTest ? '【動作確認】' : ''}HIRO WORKSHOP 2027/1/31 ${bf7WsClassLines(use.first, use.second).map((c) => c.split(' ')[0]).join('・')}`,
+      });
+      await saveBf7WsBankTransfer(created.id, t.paymentIntentId, t.bankAccount);
+      bankAccount = t.bankAccount;
+    } catch (e) {
+      console.error('[bf7ws] bank transfer setup failed, fallback to fixed account. order:', created.id, e instanceof Error ? e.message : e);
+    }
     // 銀行振込は申込の時点で振込先を送る(カードは決済確定の通知を受けたとき)
     try {
-      const use = bf7WsCourseUses(v.value.course);
       const mail = buildBf7WsEmail({
         id: created.id,
         name: v.value.name,
@@ -76,6 +94,7 @@ export async function submitBf7Ws(input: Bf7WsInput): Promise<Bf7WsSubmitResult>
         isMember: v.value.isMember,
         paid: false,
         appliedOn: created.appliedOn,
+        bankAccount,
       });
       await sendEmail({ to: v.value.email, subject: mail.subject, text: mail.text });
     } catch (e) {

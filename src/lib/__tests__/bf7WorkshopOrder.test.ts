@@ -215,3 +215,48 @@ describe('カード決済', () => {
     expect(parseBf7WsWebhookEvent(entry)).toBeNull();
   });
 });
+
+describe('Stripeの銀行振込', () => {
+  it('PaymentIntent の振込先(zengin)を読み取る', async () => {
+    const { parseBf7WsBankAccount } = await import('../bf7WorkshopStripe');
+    const pi = {
+      next_action: {
+        display_bank_transfer_instructions: {
+          type: 'jp_bank_transfer',
+          financial_addresses: [
+            { type: 'zengin', zengin: { bank_name: '三井住友銀行', branch_name: '東京第二', account_type: 'futsu', account_number: '1234567', account_holder_name: 'ストライプジャパン（カ　シュウノウダイコウ' } },
+          ],
+        },
+      },
+    };
+    expect(parseBf7WsBankAccount(pi)).toEqual({ bank: '三井住友銀行', branch: '東京第二', type: '普通', number: '1234567', holder: 'ストライプジャパン（カ　シュウノウダイコウ' });
+    expect(parseBf7WsBankAccount({ next_action: null })).toBeNull();
+  });
+
+  it('PaymentIntent は日本の銀行振込・すぐ確定・申込番号付きで作る', async () => {
+    const { buildBf7WsBankTransferParams } = await import('../bf7WorkshopStripe');
+    const p = buildBf7WsBankTransferParams({ customerId: 'cus_1', amount: 7000, orderId: 12, description: 'x' });
+    expect(p.get('payment_method_types[]')).toBe('customer_balance');
+    expect(p.get('payment_method_options[customer_balance][bank_transfer][type]')).toBe('jp_bank_transfer');
+    expect(p.get('confirm')).toBe('true');
+    expect(p.get('customer')).toBe('cus_1');
+    expect(p.get('amount')).toBe('7000');
+    expect(p.get('metadata[bf7_ws_order_id]')).toBe('12');
+  });
+
+  it('入金の通知(PaymentIntent)から申込番号と入金額を取り出す', async () => {
+    const { parseBf7WsWebhookEvent } = await import('../bf7WorkshopStripe');
+    const ev = parseBf7WsWebhookEvent({ id: 'evt_1', type: 'payment_intent.succeeded', data: { object: { id: 'pi_1', amount_received: 7000, metadata: { bf7_ws_order_id: '12' } } } });
+    expect(ev).toEqual({ eventId: 'evt_1', type: 'payment_intent.succeeded', sessionId: 'pi_1', orderId: 12, amountTotal: 7000 });
+  });
+
+  it('控えのメールは、Stripeの振込先なら受付番号の付け方を書かず、固定の口座なら書く', () => {
+    const base = { id: 3, name: '山田 花子', first: true, second: false, amountTotal: 4000, payMethod: 'transfer' as const, isMember: false, paid: false, appliedOn: '2026-11-30' };
+    const stripe = buildBf7WsEmail({ ...base, bankAccount: { bank: '三井住友銀行', branch: '東京第二', type: '普通', number: '1234567', holder: 'ストライプジャパン' } }).text;
+    expect(stripe).toContain('三井住友銀行 東京第二 普通 1234567');
+    expect(stripe).toContain('お申込み専用の振込先');
+    expect(stripe).not.toContain('受付番号「WS003」を付けて');
+    const fixed = buildBf7WsEmail(base).text;
+    expect(fixed).toContain('受付番号「WS003」を付けて');
+  });
+});

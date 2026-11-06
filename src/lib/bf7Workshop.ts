@@ -42,7 +42,14 @@ export function bf7WsPrice(course: Bf7WsCourse, isMember: boolean): number {
 /** スタッフの確認用モードでカードを選んだときの金額(本物の請求なので、動作確認に足りる最小限にする) */
 export const BF7_WS_CARD_TEST_AMOUNT = 100;
 
-/** 振込先(BF7専用の振込入金口座。2026-11-06発行・TARO)。BF7の入金だけがここに入る */
+/** 振込先の口座(お客さんに案内する形) */
+export type Bf7WsBankAccount = { bank: string; branch: string; type: string; number: string; holder: string };
+
+/**
+ * 固定の振込先(BF7専用の振込入金口座。2026-11-06発行・TARO)。
+ * 通常は Stripe の銀行振込(申込ごとの振込先・自動消し込み)を案内し、Stripe の振込先を作れなかった申込だけここを案内する。
+ * この口座への入金は scripts/bf7_ws_match_transfers.mjs(GMOの明細CSV)で照合する。
+ */
 export const BF7_WS_BANK = {
   bank: 'GMOあおぞらネット銀行',
   branch: 'デネブ支店',
@@ -240,6 +247,8 @@ export function buildBf7WsEmail(p: {
   /** 支払いが確認できているか(false=振込待ち) */
   paid: boolean;
   appliedOn: string;
+  /** Stripe の銀行振込で発行した振込先。無ければ固定の口座(BF7_WS_BANK)を案内する */
+  bankAccount?: Bf7WsBankAccount | null;
 }): { subject: string; text: string } {
   const no = formatBf7WsNo(p.id);
   const ws = BF7_WORKSHOP;
@@ -269,11 +278,17 @@ export function buildBf7WsEmail(p: {
     L.push('');
     L.push('【お振込み先】');
     L.push(`期限: ${formatBf7WsDate(bf7WsPayDeadline(p.appliedOn))} まで`);
-    L.push(`${BF7_WS_BANK.bank} ${BF7_WS_BANK.branch} ${BF7_WS_BANK.type} ${BF7_WS_BANK.number}`);
-    L.push(`口座名義: ${BF7_WS_BANK.holder}`);
-    L.push(`※振込名義の前に、受付番号「${bf7WsTransferPrefix(p.id)}」を付けてください(例: ${bf7WsTransferPrefix(p.id)} ヤマダハナコ)`);
+    const b = p.bankAccount ?? BF7_WS_BANK;
+    L.push(`${b.bank} ${b.branch} ${b.type} ${b.number}`);
+    L.push(`口座名義: ${b.holder}`);
+    if (p.bankAccount) {
+      L.push('※この口座は、あなたのお申込み専用の振込先です(決済代行のStripeの口座)。振込名義はご本人のお名前のままで大丈夫です');
+      L.push(`※${yenBf7Ws(p.amountTotal)}ちょうどをお振込みください。ご入金を確認すると、お申込み確定のメールが自動で届きます`);
+    } else {
+      L.push(`※振込名義の前に、受付番号「${bf7WsTransferPrefix(p.id)}」を付けてください(例: ${bf7WsTransferPrefix(p.id)} ヤマダハナコ)`);
+    }
     L.push('※振込手数料はご負担をお願いします');
-    L.push('※期限までにご入金を確認できない場合、お申込みを取り消すことがあります');
+    L.push('※期限までにご入金を確認できない場合、お申込みは取り消しとなります');
   }
   L.push('');
   L.push('お客様のご都合によるキャンセル・返金はお受けできません。');

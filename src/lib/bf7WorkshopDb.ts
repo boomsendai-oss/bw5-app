@@ -1,12 +1,13 @@
 // BF7 HIRO ワークショップの申込のDB操作。純ロジックは bf7Workshop.ts。
 // 公開フォーム: src/app/bf7/workshop / スタッフ一覧: src/app/staff/bf7/workshop
 //   - 枠を使う = paid・振込待ち transfer_due + カード決済待ち pending(30分の仮押さえ)
-//   - 期限切れの pending は読み取り前に expired にして枠を空ける
-//   - カード決済の確定はStripeの通知(Webhook)が正本
+//   - 期限切れの pending(カード30分)と transfer_due(振込期限=申込日から7日)は読み取り前に expired にして枠を空ける
+//   - カード決済・Stripeの銀行振込の確定はStripeの通知(Webhook)が正本
 import { execute, getAll, withWriteTx } from '@/lib/db';
 import type { Transaction } from '@libsql/client';
 import { generateEditToken } from '@/lib/eventSignup';
 import { nowUtcIso, todayJst } from '@/lib/dateJst';
+import { BF7_WORKSHOP } from '@/lib/bf7';
 import {
   BF7_WS_CARD_TEST_AMOUNT,
   bf7WsCapacityError,
@@ -14,6 +15,7 @@ import {
   bf7WsPrice,
   checkBf7WsMember,
   calcBf7WsRemaining,
+  type Bf7WsBankAccount,
   type Bf7WsMemberCheck,
   type Bf7WsPayMethod,
   type Bf7WsRemaining,
@@ -46,11 +48,25 @@ export interface Bf7WsOrder {
   payMethod: Bf7WsPayMethod;
   paymentStatus: Bf7WsPaymentStatus;
   stripeSessionId: string;
+  /** Stripe の銀行振込の PaymentIntent(固定の口座を案内した申込・カードは空) */
+  stripePaymentIntentId: string;
+  /** 案内した Stripe の振込先(固定の口座を案内した申込・カードは null) */
+  bankAccount: Bf7WsBankAccount | null;
   appliedOn: string;
   note: string;
   staffNote: string;
   isTest: boolean;
   createdAt: string;
+}
+
+function parseBankAccount(raw: unknown): Bf7WsBankAccount | null {
+  if (!raw) return null;
+  try {
+    const a = JSON.parse(String(raw));
+    return a && typeof a.number === 'string' && a.number ? (a as Bf7WsBankAccount) : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseIds(raw: unknown): number[] {
@@ -81,6 +97,8 @@ function toOrder(r: Record<string, unknown>): Bf7WsOrder {
     payMethod: r.pay_method === 'prepaid' ? 'prepaid' : 'transfer',
     paymentStatus: String(r.payment_status ?? 'pending') as Bf7WsPaymentStatus,
     stripeSessionId: String(r.stripe_session_id ?? ''),
+    stripePaymentIntentId: String(r.stripe_payment_intent_id ?? ''),
+    bankAccount: parseBankAccount(r.bank_account_json),
     appliedOn: String(r.applied_on ?? ''),
     note: String(r.note ?? ''),
     staffNote: String(r.staff_note ?? ''),
@@ -93,6 +111,13 @@ export async function sweepExpiredBf7Ws(): Promise<void> {
   await execute(
     "UPDATE bf7_ws_orders SET payment_status = 'expired', updated_at = ? WHERE payment_status = 'pending' AND expires_at != '' AND expires_at < ?",
     [nowUtcIso(), new Date().toISOString()]
+  );
+  // 振込の期限(bf7WsPayDeadline = 申込日から7日・申込の締切まで)を過ぎた振込待ちは取り消して枠を空ける(TARO 2026-11-06)。
+  // 期限のあとにStripeで入金が届いた場合は、カードと同じく入金済みにする(applyBf7WsWebhookEvent)
+  const today = todayJst();
+  await execute(
+    "UPDATE bf7_ws_orders SET payment_status = 'expired', updated_at = ? WHERE payment_status = 'transfer_due' AND applied_on != '' AND (date(applied_on, '+7 days') < ? OR ? < ?)",
+    [nowUtcIso(), today, BF7_WORKSHOP.deadline, today]
   );
 }
 
@@ -122,7 +147,8 @@ export async function createBf7WsOrder(v: ValidatedBf7Ws, memberResult: Bf7WsMem
   await sweepExpiredBf7Ws();
   const use = bf7WsCourseUses(v.course);
   // 確認用モードのカードは少額で試す(受付開始前にスタッフだけが通れる経路)
-  const amountTotal = isTest && v.payMethod === 'prepaid' ? BF7_WS_CARD_TEST_AMOUNT : bf7WsPrice(v.course, v.isMember);
+  // 確認用モードは振込も少額にする(Stripeの銀行振込を本物の振込で試すため)
+  const amountTotal = isTest ? BF7_WS_CARD_TEST_AMOUNT : bf7WsPrice(v.course, v.isMember);
   const token = generateEditToken();
   const now = nowUtcIso();
   const appliedOn = todayJst();
@@ -167,6 +193,15 @@ export async function loadBf7WsOrderByToken(token: string): Promise<Bf7WsOrder |
   return r ? toOrder(r) : null;
 }
 
+export async function saveBf7WsBankTransfer(id: number, paymentIntentId: string, bankAccount: Bf7WsBankAccount): Promise<void> {
+  await execute('UPDATE bf7_ws_orders SET stripe_payment_intent_id = ?, bank_account_json = ?, updated_at = ? WHERE id = ?', [
+    paymentIntentId,
+    JSON.stringify(bankAccount),
+    nowUtcIso(),
+    id,
+  ]);
+}
+
 export async function saveBf7WsStripeSession(id: number, sessionId: string): Promise<void> {
   await execute('UPDATE bf7_ws_orders SET stripe_session_id = ?, updated_at = ? WHERE id = ?', [sessionId, nowUtcIso(), id]);
 }
@@ -188,18 +223,26 @@ export async function applyBf7WsWebhookEvent(ev: {
     [ev.eventId, ev.type, ev.sessionId, ev.orderId, ev.amountTotal ?? 0, nowUtcIso()]
   );
   if (Number(inserted.rowsAffected ?? 0) === 0) return { status: 'duplicate' };
-  if (ev.type !== 'checkout.session.completed') return { status: 'ignored' };
+  const card = ev.type === 'checkout.session.completed';
+  // Stripeの銀行振込は、金額が全部そろったときに PaymentIntent の succeeded が届く(足りない間は partially_funded)
+  const bankTransfer = ev.type === 'payment_intent.succeeded';
+  if (!card && !bankTransfer) return { status: 'ignored' };
 
   const row = (await getAll('SELECT * FROM bf7_ws_orders WHERE id = ? LIMIT 1', [ev.orderId]))[0];
   if (!row) return { status: 'order_not_found' };
-  const updated = await execute(
-    "UPDATE bf7_ws_orders SET payment_status = 'paid', stripe_session_id = ?, updated_at = ? WHERE id = ? AND payment_status IN ('pending', 'expired')",
-    [ev.sessionId, nowUtcIso(), ev.orderId]
-  );
+  const updated = card
+    ? await execute(
+        "UPDATE bf7_ws_orders SET payment_status = 'paid', stripe_session_id = ?, updated_at = ? WHERE id = ? AND payment_status IN ('pending', 'expired')",
+        [ev.sessionId, nowUtcIso(), ev.orderId]
+      )
+    : await execute(
+        "UPDATE bf7_ws_orders SET payment_status = 'paid', updated_at = ? WHERE id = ? AND pay_method = 'transfer' AND payment_status IN ('transfer_due', 'expired')",
+        [nowUtcIso(), ev.orderId]
+      );
   if (Number(updated.rowsAffected ?? 0) === 0) return { status: 'not_updated' };
   return {
     status: 'paid',
-    order: toOrder({ ...row, payment_status: 'paid', stripe_session_id: ev.sessionId }),
+    order: toOrder({ ...row, payment_status: 'paid', ...(card ? { stripe_session_id: ev.sessionId } : {}) }),
     amountMismatch: ev.amountTotal != null && ev.amountTotal !== Number(row.amount_total),
   };
 }
@@ -282,8 +325,11 @@ export async function setBf7WsMemberCheck(id: number, check: 'confirmed' | 'reje
 /** 銀行振込の入金確認(取り消しもできる)。カード決済の行は変えない */
 export async function setBf7WsTransferReceived(id: number, received: boolean): Promise<boolean> {
   const r = await execute(
-    `UPDATE bf7_ws_orders SET payment_status = ?, updated_at = ? WHERE id = ? AND pay_method = 'transfer' AND payment_status = ?`,
-    [received ? 'paid' : 'transfer_due', nowUtcIso(), id, received ? 'transfer_due' : 'paid']
+    // 期限切れ(expired)のあとに固定の口座へ入金があった場合も、スタッフが入金確認できるようにする
+    received
+      ? "UPDATE bf7_ws_orders SET payment_status = 'paid', updated_at = ? WHERE id = ? AND pay_method = 'transfer' AND payment_status IN ('transfer_due', 'expired')"
+      : "UPDATE bf7_ws_orders SET payment_status = 'transfer_due', updated_at = ? WHERE id = ? AND pay_method = 'transfer' AND payment_status = 'paid'",
+    [nowUtcIso(), id]
   );
   return Number(r.rowsAffected) > 0;
 }

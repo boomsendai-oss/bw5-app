@@ -49,7 +49,7 @@ export default async function Bf7WorkshopPage() {
       {preview && (
         <div className="bg-amber-400 px-4 py-2.5 text-center text-xs font-black text-neutral-950">
           確認用モード(スタッフのログイン中だけ表示・一般の方には「受付開始前」と出ます)
-          <span className="block font-bold">テスト申込は定員に数えません。カードを選ぶと、本物のカードに ¥100 だけ請求されます</span>
+          <span className="block font-bold">テスト申込は定員に数えません。金額は ¥100 です(カードは本物のカードに請求・振込は本物の振込先が発行されます)</span>
         </div>
       )}
       <Bf7Hero title="WORKSHOP" subtitle="HIRO ワークショップ お申込み" />
