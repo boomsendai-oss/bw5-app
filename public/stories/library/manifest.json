@@ -2,6 +2,25 @@
   "_note": "ライブラリ各画像が告知するレッスン内容の台帳。post-storyがカレンダー(正本)と突合し、当日一致する画像を自動選択して投稿する。weekday=0日..6土。日付固有(0718/0808/0719)や時刻ズレ(15おっちゃん14:00)の素材は自動選択の対象外にするため未掲載。 from/until(YYYY-MM-DD・JST・両端含む)で使用期間を限定できる(2026-11-06: 12/1からの新しい時間割で追加)。",
   "entries": [
     {
+      "file": "02_金曜.jpg",
+      "weekday": 5,
+      "mentions": [
+        "aoi.w_0530",
+        "taro_bsb"
+      ],
+      "lessons": [
+        {
+          "start": "18:30",
+          "instructor": "AOI"
+        },
+        {
+          "start": "19:30",
+          "instructor": "TARO"
+        }
+      ],
+      "until": "2026-11-30"
+    },
+    {
       "file": "04_土曜_朝基本.jpg",
       "weekday": 6,
       "mentions": [
@@ -350,6 +369,29 @@
         {
           "start": "12:45",
           "instructor": "AOI"
+        }
+      ]
+    },
+    {
+      "file": "27_金曜_12月から.jpg",
+      "weekday": 5,
+      "from": "2026-12-01",
+      "mentions": [
+        "taro_bsb",
+        "aoi.w_0530"
+      ],
+      "lessons": [
+        {
+          "start": "17:30",
+          "instructor": "MYU"
+        },
+        {
+          "start": "18:30",
+          "instructor": "AOI"
+        },
+        {
+          "start": "19:30",
+          "instructor": "TARO"
         }
       ]
     }
