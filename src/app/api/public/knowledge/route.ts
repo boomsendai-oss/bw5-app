@@ -44,7 +44,7 @@ export async function GET() {
       // end_date除外もHPと同一(終了日を過ぎたクラスを非公開)=終了済みクラスがボットの知識に残らないように。
       getAll(`
         SELECT lm.class_name, lm.level, lm.default_day_of_week, lm.default_start_time, lm.default_end_time,
-               lm.target, lm.description_text,
+               lm.target, lm.description_text, lm.start_date, lm.end_date,
                lm.active, lm.is_public, s.name AS studio_name, i.name AS instructor_name
         FROM lesson_master lm
         LEFT JOIN studios s ON s.id = lm.default_studio_id

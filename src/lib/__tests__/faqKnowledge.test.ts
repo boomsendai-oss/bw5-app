@@ -37,6 +37,7 @@ const publicInstructor = { name: 'TARO', genre: 'HIPHOP', bio: 'ダンス歴15�
 const publicClass = {
   name: 'キッズ 強化', day: '月', start_time: '17:00', end_time: '18:00', level: '初級', instructor: 'TARO', studio: '仙台本店',
   target: '小学生', description: 'リズム感と基礎を楽しく身につけるクラス',
+  start_date: null, end_date: null,
 };
 
 describe('buildKnowledge', () => {
@@ -251,7 +252,20 @@ describe('buildKnowledge', () => {
     ];
     const k = buildKnowledge({ faqRows: [], productRows: [], studioRows: [], instructorRows: [], classRows: rows });
     expect(k.classes).toEqual([
-      { name: '未設定クラス', day: null, start_time: null, end_time: null, level: null, instructor: null, studio: null, target: null, description: null },
+      { name: '未設定クラス', day: null, start_time: null, end_time: null, level: null, instructor: null, studio: null, target: null, description: null, start_date: null, end_date: null },
     ]);
+  });
+  it('クラスの開始日・終了日(期間限定の時間割)をそのまま渡し、空文字はnullに寄せる', () => {
+    const k = buildKnowledge({
+      faqRows: [], productRows: [], studioRows: [],
+      classRows: [
+        { ...classRows[0], start_date: '2026-12-03', end_date: '' },
+        { ...classRows[0], start_date: null, end_date: '2026-11-25' },
+      ],
+    });
+    expect(k.classes[0].start_date).toBe('2026-12-03');
+    expect(k.classes[0].end_date).toBeNull();
+    expect(k.classes[1].start_date).toBeNull();
+    expect(k.classes[1].end_date).toBe('2026-11-25');
   });
 });

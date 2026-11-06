@@ -19,6 +19,9 @@ export type PublicKnowledge = {
     studio: string | null;
     target: string | null;
     description: string | null;
+    // 期間限定の開講/終了日(YYYY-MM-DD)。新クラスの開始日・終わるクラスの最終日をボットが区別するため(HPの時間割切替と同じ列)。
+    start_date: string | null;
+    end_date: string | null;
   }[];
 };
 
@@ -60,6 +63,8 @@ export type ClassRow = {
   // InstructorRow同様、未指定を許容(nz()でnull正規化)。
   target?: string | null;
   description_text?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
 };
 
 type Rows = {
@@ -144,6 +149,8 @@ export function buildKnowledge({ faqRows, productRows, studioRows, instructorRow
         studio: nz(r.studio_name),
         target: nz(r.target),
         description: nz(r.description_text),
+        start_date: nz(r.start_date),
+        end_date: nz(r.end_date),
       })),
   };
 }
