@@ -29,13 +29,22 @@ export const MOCCHIN_MEMBER_START = '2026-11-08';
 export const MOCCHIN_OPEN_START = '2026-11-15';
 export const MOCCHIN_DEADLINE = '2026-12-13';
 
-/** 参加費の振込先(BOOMの事業用口座。お客さん向けに案内している口座) */
-export const MOCCHIN_BANK = {
+/** BOOMの事業用口座(お客さん向けに案内している口座)。BF7など他イベントの振込先 */
+export const BOOM_BANK = {
   bank: 'GMOあおぞらネット銀行',
   branch: 'ビジネス支店',
   type: '普通',
   number: '1090355',
   holder: 'ブームキムラシンタロウ',
+} as const;
+
+/** モッチンナンバー専用の振込入金口座(2026-11-06発行・TARO) */
+export const MOCCHIN_BANK = {
+  bank: 'GMOあおぞらネット銀行',
+  branch: 'デネブ支店',
+  type: '普通',
+  number: '6041735',
+  holder: 'キムラ シンタロウＢＷ６モツチンナンバー',
 } as const;
 
 export const MOCCHIN_SCHEDULE = [
