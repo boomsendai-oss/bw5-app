@@ -145,7 +145,7 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
               <span className="mt-1 block text-xs font-bold">
                 {(() => {
                   const st = mocchinPaySteps(k, isMember !== false, '2026-11-08');
-                  return `${st.length}回払い・合計${yen(st.reduce((a, x) => a + x.amount, 0))}`;
+                  return `お支払い 計${st.length}回・合計${yen(st.reduce((a, x) => a + x.amount, 0))}`;
                 })()}
               </span>
               </span>
