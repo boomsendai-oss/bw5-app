@@ -58,7 +58,7 @@ export const MOCCHIN_SCHEDULE = [
 
 export const MOCCHIN_PROMISES = [
   '原則、全日程に参加します',
-  '参加できない日がある場合は、必ず事前にBOOMの先生(TARO・KEIKO)に相談します',
+  '参加できない日程がある場合は、必ず事前にスクールに相談します',
   '参加費は返金できないことを了承します',
   'レッスン代は全6日分のお支払いです。お休みしたり途中でやめたりしても、返金・減額はないことを了承します',
 ] as const;
@@ -219,7 +219,7 @@ export interface ValidatedMocchin {
   isMember: boolean;
   memberNo: string;
   danceHistory: string;
-  classNumber: ClassNumberPlan;
+  classNumber: ClassNumberPlan | '';
   paymentPlan: PaymentPlan;
   payMethod: PayMethod;
   note: string;
@@ -266,7 +266,8 @@ export function validateMocchinInput(raw: MocchinInput): { ok: true; value: Vali
   if (phone.length < 10 || phone.length > 11) e.phone = '電話番号を正しく入力してください';
   if (!EMAIL_RE.test(email)) e.email = 'メールアドレスを正しく入力してください';
   if (raw.isMember === null) e.isMember = 'BOOM会員かどうかを選んでください';
-  if (!(CLASS_NUMBER_OPTIONS as readonly string[]).includes(classNumber)) e.classNumber = 'クラスのナンバーに出る予定かを選んでください';
+  // クラスのナンバーの質問は 2026-11-08 にフォームから外した(TARO)。空欄で受け付け、値が来たときだけ形を確かめる
+  if (classNumber && !(CLASS_NUMBER_OPTIONS as readonly string[]).includes(classNumber)) e.classNumber = 'クラスのナンバーの予定の値が正しくありません';
   if (!(PAYMENT_PLANS as readonly string[]).includes(paymentPlan)) e.paymentPlan = 'お支払い方法を選んでください';
   if (!(PAY_METHODS as readonly string[]).includes(payMethod)) e.payMethod = '銀行振込かカードかを選んでください';
   if (!Array.isArray(raw.agreed) || raw.agreed.length !== MOCCHIN_PROMISES.length || raw.agreed.some((a) => a !== true)) {
@@ -286,7 +287,7 @@ export function validateMocchinInput(raw: MocchinInput): { ok: true; value: Vali
       isMember: raw.isMember === true,
       memberNo,
       danceHistory,
-      classNumber: classNumber as ClassNumberPlan,
+      classNumber: classNumber as ClassNumberPlan | '',
       paymentPlan: paymentPlan as PaymentPlan,
       payMethod: payMethod as PayMethod,
       note,

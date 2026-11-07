@@ -5,8 +5,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import {
-  CLASS_NUMBER_LABEL,
-  CLASS_NUMBER_OPTIONS,
   MOCCHIN_BANK,
   MOCCHIN_OPEN_START,
   MOCCHIN_PROMISES,
@@ -34,9 +32,9 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [isMember, setIsMember] = useState<boolean | null>(memberOnly ? true : null);
-  const [memberNo, setMemberNo] = useState('');
+  const memberNo = '';
   const [danceHistory, setDanceHistory] = useState('');
-  const [classNumber, setClassNumber] = useState('');
+  const classNumber = '';
   const [paymentPlan, setPaymentPlan] = useState('');
   const [payMethod, setPayMethod] = useState('');
   const [note, setNote] = useState('');
@@ -111,40 +109,38 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
         {memberOnly && (
           <p className="mt-2 text-xs font-bold text-white/75">会員以外の方は{formatJpDate(MOCCHIN_OPEN_START)}から申し込めます</p>
         )}
-        {isMember === true && (
-          <Field label="会員番号(わかれば)" hint="わからなければ空欄でOK">
-            <input className={inputCls} value={memberNo} onChange={(e) => setMemberNo(e.target.value)} placeholder="例: 1234" />
-          </Field>
-        )}
         {isMember === false && (
           <Field label="所属・ダンス歴(任意)" hint="例: ○○スタジオ所属 / HIPHOP 3年">
             <textarea className={inputCls} rows={3} value={danceHistory} onChange={(e) => setDanceHistory(e.target.value)} />
           </Field>
         )}
-        <Field label="BW6で、クラスのナンバーにも出る予定ですか？" error={fe.classNumber}>
-          <div className="grid grid-cols-3 gap-2">
-            {CLASS_NUMBER_OPTIONS.map((k) => (
-              <Choice key={k} on={classNumber === k} onClick={() => (setClassNumber(k), clear('classNumber'))} label={CLASS_NUMBER_LABEL[k]} />
-            ))}
-          </div>
-        </Field>
-        <p className="mt-2 text-xs font-bold text-white/75">クラスのナンバーに出る場合は、その参加費が別にかかります</p>
       </Panel>
 
       <Panel title="お支払い方法">
         <p className="text-xs font-bold text-white/80">
           {isMember === false ? 'BOOM会員以外の方の金額です。' : isMember === true ? 'BOOM会員の方の金額です。' : 'BOOM会員の方の金額です(会員以外の方は、上で選ぶと金額が変わります)。'}
         </p>
-        <div className="mt-3 space-y-2">
+        <p className="mt-3 text-sm font-black">① 払い方を、下の4つから1つタップして選んでください</p>
+        <div className="mt-2 space-y-2">
           {PAYMENT_PLANS.map((k) => (
             <button
               key={k}
               type="button"
               onClick={() => (setPaymentPlan(k), clear('paymentPlan'))}
-              className={`block w-full rounded-lg border-2 p-3 text-left ${
+              aria-pressed={paymentPlan === k}
+              className={`flex w-full items-start gap-3 rounded-lg border-2 p-3 text-left ${
                 paymentPlan === k ? 'border-[#19F2D6] bg-[#19F2D6] text-black' : 'border-white/40 bg-black text-white'
               }`}
             >
+              <span
+                aria-hidden
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                  paymentPlan === k ? 'border-black' : 'border-white/70'
+                }`}
+              >
+                {paymentPlan === k && <span className="h-2.5 w-2.5 rounded-full bg-black" />}
+              </span>
+              <span className="min-w-0 flex-1">
               <span className="block text-sm font-black">{PAYMENT_PLAN_LABEL[k]}</span>
               <span className="mt-1 block text-xs font-bold">
                 {/* 1回目の期限は申込日で決まるので、選ぶ画面では「申込後7日以内」と出す */}
@@ -154,11 +150,12 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
                   </span>
                 ))}
               </span>
+              </span>
             </button>
           ))}
         </div>
         {fe.paymentPlan && <p className="mt-2 text-xs font-black text-[#FF4DB8]">⚠ {fe.paymentPlan}</p>}
-        <Field label="銀行振込とカード、どちらで払いますか？" hint="カードの手数料はかかりません。分割の場合、2回目からは変えることもできます" error={fe.payMethod}>
+        <Field label="② 銀行振込とカード、どちらで払いますか？（タップで選択）" hint="カードの手数料はかかりません。分割の場合、2回目からは変えることもできます" error={fe.payMethod}>
           <div className="grid grid-cols-2 gap-2">
             {PAY_METHODS.map((k) => (
               <Choice key={k} on={payMethod === k} onClick={() => (setPayMethod(k), clear('payMethod'))} label={PAY_METHOD_LABEL[k]} />
