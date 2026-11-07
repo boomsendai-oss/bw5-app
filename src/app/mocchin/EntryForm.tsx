@@ -89,7 +89,7 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
         <Field label="電話番号" error={fe.phone}>
           <input className={inputCls + errCls(fe.phone)} value={phone} type="tel" inputMode="tel" autoComplete="tel" onChange={(e) => (setPhone(e.target.value), clear('phone'))} placeholder="例: 09012345678" />
         </Field>
-        <Field label="メールアドレス" hint="申込番号と振込先をお送りします" error={fe.email}>
+        <Field label="メールアドレス" hint="お申込み後、お支払いのご案内（振込先・金額・期限）をこのアドレスにお送りします。入力ミスがないかご確認ください。boom.sendai@gmail.com からのメールを受け取れるようにしておいてください" error={fe.email}>
           <input className={inputCls + errCls(fe.email)} value={email} type="email" inputMode="email" autoComplete="email" onChange={(e) => (setEmail(e.target.value), clear('email'))} placeholder="例: boom@example.com" />
         </Field>
       </Panel>
@@ -143,17 +143,32 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
               <span className="min-w-0 flex-1">
               <span className="block text-sm font-black">{PAYMENT_PLAN_LABEL[k]}</span>
               <span className="mt-1 block text-xs font-bold">
-                {/* 1回目の期限は申込日で決まるので、選ぶ画面では「申込後7日以内」と出す */}
-                {mocchinPaySteps(k, isMember !== false, '2026-11-08').map((s) => (
-                  <span key={s.step} className="block">
-                    {s.label}：{yen(s.amount)}（{s.step === 0 ? '申込から7日以内' : `${formatJpDate(s.due)}まで`}）
-                  </span>
-                ))}
+                {(() => {
+                  const st = mocchinPaySteps(k, isMember !== false, '2026-11-08');
+                  return `${st.length}回払い・合計${yen(st.reduce((a, x) => a + x.amount, 0))}`;
+                })()}
               </span>
               </span>
             </button>
           ))}
         </div>
+        {paymentPlan && (PAYMENT_PLANS as readonly string[]).includes(paymentPlan) && (
+          <div className="mt-3 rounded-lg border border-white/30 p-3">
+            <p className="text-xs font-black text-white/80">選んだ払い方の金額と期限</p>
+            <table className="mt-2 w-full text-sm font-bold">
+              <tbody>
+                {/* 1回目の期限は申込日で決まるので、選ぶ画面では「申込から7日以内」と出す */}
+                {mocchinPaySteps(paymentPlan as (typeof PAYMENT_PLANS)[number], isMember !== false, '2026-11-08').map((s) => (
+                  <tr key={s.step} className="border-t border-white/15 first:border-t-0">
+                    <td className="py-1.5 pr-2">{s.label}</td>
+                    <td className="py-1.5 pr-2 text-right whitespace-nowrap">{yen(s.amount)}</td>
+                    <td className="py-1.5 text-right text-xs whitespace-nowrap text-white/80">{s.step === 0 ? '申込から7日以内' : `${formatJpDate(s.due)}まで`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         {fe.paymentPlan && <p className="mt-2 text-xs font-black text-[#FF4DB8]">⚠ {fe.paymentPlan}</p>}
         <Field label="② 銀行振込とカード、どちらで払いますか？（タップで選択）" hint="カードの手数料はかかりません。分割の場合、2回目からは変えることもできます" error={fe.payMethod}>
           <div className="grid grid-cols-2 gap-2">
@@ -164,7 +179,7 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
         </Field>
       </Panel>
 
-      <Panel title="参加の約束">
+      <Panel title="ご確認事項">
         <div className="space-y-3">
           {MOCCHIN_PROMISES.map((p, i) => (
             <label key={p} className="flex items-start gap-3 text-sm font-bold">
@@ -191,7 +206,8 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
       </Panel>
 
       <Notice>
-        お支払いの案内は、申込のあとに表示します。同じ内容をメールでもお送りします。
+        <span className="block font-black">お支払いのご案内は、メールでお送りします。</span>
+        申込のあとの画面にも表示します。届いたメールを必ずご確認のうえ、期限までにお支払いください。
         <Link href="/mocchin/legal" target="_blank" className="mt-1 block text-xs underline">
           特定商取引法に基づく表記
         </Link>

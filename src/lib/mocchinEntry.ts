@@ -60,6 +60,7 @@ export const MOCCHIN_PROMISES = [
   '原則、全日程に参加します',
   '参加できない日程がある場合は、必ず事前にスクールに相談します',
   '参加費は返金できないことを了承します',
+  'BW6でクラスのナンバーにも出る場合は、そちらの参加費などが別途かかることを了承します',
   'レッスン代は全6日分のお支払いです。お休みしたり途中でやめたりしても、返金・減額はないことを了承します',
 ] as const;
 
@@ -271,7 +272,7 @@ export function validateMocchinInput(raw: MocchinInput): { ok: true; value: Vali
   if (!(PAYMENT_PLANS as readonly string[]).includes(paymentPlan)) e.paymentPlan = 'お支払い方法を選んでください';
   if (!(PAY_METHODS as readonly string[]).includes(payMethod)) e.payMethod = '銀行振込かカードかを選んでください';
   if (!Array.isArray(raw.agreed) || raw.agreed.length !== MOCCHIN_PROMISES.length || raw.agreed.some((a) => a !== true)) {
-    e.agreed = '参加の約束をすべて確認してチェックしてください';
+    e.agreed = 'ご確認事項をすべて読んで、チェックしてください';
   }
 
   if (Object.keys(e).length > 0) return { ok: false, errors: e };
@@ -416,7 +417,7 @@ export function buildMocchinEmail(p: {
   for (const s of MOCCHIN_SCHEDULE) L.push(`${s.date} ${s.time} ${s.venue}`);
   L.push('2本目のあとは、参加者みんなで練習や質問の時間をとります。');
   L.push('');
-  L.push('【参加の約束】');
+  L.push('【ご確認事項】');
   for (const s of MOCCHIN_PROMISES) L.push(`・${s}`);
   if (p.overCapacity) {
     L.push('');
