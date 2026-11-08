@@ -20,7 +20,6 @@ import {
   mocchinTransferPrefix,
   validateMocchinInput,
   LESSON_PLANS,
-  MOCCHIN_PLAN_INVITE_FROM,
   mocchinNeedsLessonPlan,
   type FieldErrors,
   type MocchinInput,
@@ -136,7 +135,7 @@ export async function startMocchinCheckout(token: string): Promise<MocchinChecko
 
 export type MocchinPlanResult = { ok: true } | { ok: false; error: string };
 
-/** レッスン代の払い方を選ぶ(締切後・参加費を払った人だけ)。テスト申込は日付を問わず選べる */
+/** レッスン代の払い方を選ぶ(参加費を払った人だけ・まだ選んでいないときだけ) */
 export async function chooseMocchinLessonPlan(token: string, plan: string): Promise<MocchinPlanResult> {
   if (!(await checkRateLimit(`mocchinplan:${await ip()}`, 30, 3600))) {
     return { ok: false, error: '操作が多すぎます。しばらくしてからお試しください' };
@@ -145,7 +144,6 @@ export async function chooseMocchinLessonPlan(token: string, plan: string): Prom
   const e = await loadMocchinEntryByToken(token);
   if (!e || e.status !== 'active') return { ok: false, error: '申込が見つかりません' };
   if (!mocchinNeedsLessonPlan(e)) return { ok: false, error: '払い方はすでに決まっているか、まだ選べる状態ではありません' };
-  if (!isMocchinTestEntry(e) && todayJst() < MOCCHIN_PLAN_INVITE_FROM) return { ok: false, error: 'レッスン代の払い方は、締切のあとに選べます' };
   const changed = await setMocchinLessonPlan(e.id, plan);
   return changed ? { ok: true } : { ok: false, error: '払い方はすでに決まっています' };
 }

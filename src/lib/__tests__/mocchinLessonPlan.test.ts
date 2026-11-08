@@ -24,9 +24,9 @@ describe('参加費だけの申込(pending)', () => {
     expect(mocchinNeedsLessonPlan({ paymentPlan: 'lesson_two', paid: true })).toBe(false);
   });
 
-  it('案内メールは12/14から、参加費を払った人に1回', () => {
+  it('案内メールは参加費を払ったらすぐ(締切を待たない)、1回だけ', () => {
     const e = { paymentPlan: 'pending', paid: true, reminded: '' };
-    expect(mocchinPlanMailToday(e, '2026-12-13')).toBeNull();
+    expect(mocchinPlanMailToday(e, '2026-11-09')).toBe('invite');
     expect(mocchinPlanMailToday(e, '2026-12-14')).toBe('invite');
     expect(mocchinPlanMailToday({ ...e, paid: false }, '2026-12-14')).toBeNull();
     expect(mocchinPlanMailToday({ ...e, reminded: String(MOCCHIN_MARK_PLAN_INVITE) }, '2026-12-20')).toBeNull();
@@ -49,7 +49,7 @@ describe('参加費だけの申込(pending)', () => {
     const m = buildMocchinEmail({ id: 1, name: 'テスト', appliedOn: '2026-11-08', isMember: true, paymentPlan: 'pending', payMethod: 'transfer', payToken: 't', overCapacity: false });
     expect(m.text).toContain('申込のときは参加費だけです');
     expect(m.text).toContain('・参加費: 15,000円');
-    expect(m.text).toContain('12月14日(月)にメールでご案内します');
+    expect(m.text).toContain('参加費のお支払いを確認したら');
     expect(m.text).not.toContain('レッスン代 1回目');
   });
 
@@ -57,7 +57,8 @@ describe('参加費だけの申込(pending)', () => {
     const step = mocchinPaySteps('pending', true, '2026-11-08')[0];
     const m = buildMocchinCardPaidEmail({ id: 1, name: 'テスト', payToken: 't', step, remaining: [], paymentPlan: 'pending' });
     expect(m.text).not.toContain('すべて完了');
-    expect(m.text).toContain('【レッスン代について】');
+    expect(m.text).toContain('【続いて、レッスン代の払い方を選んでください】');
+    expect(m.text).toContain('/mocchin/pay?t=t');
   });
 
   it('払い方の案内メールに3つの払い方と選ぶページが出る(会員以外は7,000円×6日)', () => {

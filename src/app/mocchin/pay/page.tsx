@@ -1,14 +1,11 @@
 // ⚠️ 公開ページ(認証なし)。理由: 申込者本人の支払いページ。pay_token 完全一致の1件だけ表示する
-// (列挙不可・トークンなしでは何も出さない)。名前や連絡先は出さず、申込番号と支払いの状況だけ出す。
+// (列挙不可・トークンなしでは何も出さない)。本人宛てメールのリンクなので、お名前は出す(2026-11-08 TARO)。連絡先は出さない。
 import type { Metadata } from 'next';
-import { todayJst } from '@/lib/dateJst';
 import {
   LESSON_PLANS,
   LESSON_PLAN_LABEL,
   MOCCHIN_BANK,
-  MOCCHIN_DEADLINE,
   MOCCHIN_PLAN_CHOOSE_BY,
-  MOCCHIN_PLAN_INVITE_FROM,
   mocchinNeedsLessonPlan,
   formatJpDate,
   formatMocchinNo,
@@ -41,7 +38,6 @@ export default async function MocchinPayPage({ searchParams }: { searchParams: P
   const paid = paidStepSet(e.paid, e.lessonPaid);
   const next = mocchinNextStep(steps, paid);
   const needsPlan = mocchinNeedsLessonPlan(e);
-  const canChoose = needsPlan && (isMocchinTestEntry(e) || todayJst() >= MOCCHIN_PLAN_INVITE_FROM);
   const planOptions = LESSON_PLANS.map((k) => ({
     key: k,
     label: LESSON_PLAN_LABEL[k],
@@ -53,7 +49,8 @@ export default async function MocchinPayPage({ searchParams }: { searchParams: P
   return (
     <Shell>
       <h1 className="text-2xl font-black">お支払い</h1>
-      <p className="mt-1 text-sm font-bold text-white/85">申込番号 {formatMocchinNo(e.id)}</p>
+      <p className="mt-1 text-base font-black">{e.name} 様</p>
+      <p className="text-sm font-bold text-white/85">申込番号 {formatMocchinNo(e.id)}</p>
       <Panel title="お支払いの状況">
         <ul className="space-y-2 text-sm font-bold">
           {steps.map((s) => (
@@ -66,16 +63,11 @@ export default async function MocchinPayPage({ searchParams }: { searchParams: P
           ))}
         </ul>
       </Panel>
-      {canChoose && (
+      {needsPlan && (
         <Panel title="レッスン代の払い方を選んでください">
           <p className="mb-3 text-xs font-bold text-white/80">選ぶ期限：{formatJpDate(MOCCHIN_PLAN_CHOOSE_BY)}。決めたあと、このページからカードでも払えます。</p>
           <LessonPlanPicker token={e.payToken} options={planOptions} />
         </Panel>
-      )}
-      {needsPlan && !canChoose && (
-        <Notice>
-          参加費のお支払いを確認しました。ありがとうございます！レッスン代の払い方は、{formatJpDate(MOCCHIN_DEADLINE)}の締切のあと、{formatJpDate(MOCCHIN_PLAN_INVITE_FROM)}にメールでご案内します。
-        </Notice>
       )}
       {next ? (
         <>
@@ -103,7 +95,7 @@ export default async function MocchinPayPage({ searchParams }: { searchParams: P
       )}
       {!needsPlan && e.paymentPlan === 'pending' && (
         <p className="mt-3 text-xs font-bold text-white/75">
-          レッスン代の払い方は、{formatJpDate(MOCCHIN_DEADLINE)}の締切のあと、参加費のお支払いが済んだ方に{formatJpDate(MOCCHIN_PLAN_INVITE_FROM)}にメールでご案内します。
+          参加費のお支払いを確認したら、このページでレッスン代の払い方を選べるようになります(メールでもご案内します)。
         </p>
       )}
     </Shell>

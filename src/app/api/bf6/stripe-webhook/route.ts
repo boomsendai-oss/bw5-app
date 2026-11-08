@@ -22,6 +22,7 @@ import { buildBf7WsEmail } from '@/lib/bf7Workshop';
 import { sendEmail } from '@/lib/email';
 import { buildMocchinCardPaidEmail } from '@/lib/mocchinEntry';
 import { applyMocchinWebhookEvent } from '@/lib/mocchinEntryDb';
+import { markMocchinPlanInvited } from '@/lib/mocchinPlanInvite';
 import { parseMocchinWebhookEvent } from '@/lib/mocchinStripe';
 
 export const dynamic = 'force-dynamic';
@@ -61,6 +62,8 @@ export async function POST(req: NextRequest) {
       try {
         const mail = buildMocchinCardPaidEmail({ id: r.entry.id, name: r.entry.name, payToken: r.entry.payToken, step: r.step, remaining: r.remaining, paymentPlan: r.entry.paymentPlan });
         await sendEmail({ to: r.entry.email, subject: mail.subject, text: mail.text });
+        // 参加費だけの申込は、この完了メールにレッスン代の払い方の案内を入れたので、案内済みの印を付ける
+        if (r.entry.paymentPlan === 'pending' && r.step.step === 0) await markMocchinPlanInvited(r.entry);
       } catch (e) {
         // 入金は反映済み。メールだけ失敗してもリトライさせない
         console.error('[mocchin] mail failed. entry:', mocchinEv.entryId, e instanceof Error ? e.message : e);

@@ -10,11 +10,9 @@ import {
   MOCCHIN_PROMISES,
   PAY_METHODS,
   PAY_METHOD_LABEL,
-  MOCCHIN_DEADLINE,
   MOCCHIN_FEE,
   MOCCHIN_LESSON_DUES,
   MOCCHIN_PLAN_CHOOSE_BY,
-  MOCCHIN_PLAN_INVITE_FROM,
   formatJpDate,
   isMinor,
   yen,
@@ -118,20 +116,11 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
         )}
       </Panel>
 
-      <Panel title="お支払い">
+      <Panel title="参加費のお支払い">
         <div className="rounded-lg border-2 border-[#19F2D6] p-3">
           <p className="text-sm font-black">お申込みのときにお支払いいただくのは、参加費だけです</p>
           <p className="mt-1 text-2xl font-black text-[#19F2D6]">{yen(MOCCHIN_FEE)}</p>
           <p className="text-xs font-bold text-white/80">申込から7日以内にお支払いください</p>
-        </div>
-        <div className="mt-3 text-sm font-bold">
-          <p className="font-black">レッスン代の払い方の決め方</p>
-          <ol className="mt-1 list-decimal space-y-1 pl-5 text-xs text-white/85">
-            <li>{formatJpDate(MOCCHIN_DEADLINE)}に申込を締め切ります</li>
-            <li>{formatJpDate(MOCCHIN_PLAN_INVITE_FROM)}に、参加費のお支払いが済んだ方へメールでご案内します</li>
-            <li>メールのリンクから、一括・2回・3回のどれかを選んでいただきます({formatJpDate(MOCCHIN_PLAN_CHOOSE_BY)}まで)</li>
-            <li>レッスン代の1回目の期限は{formatJpDate(MOCCHIN_LESSON_DUES[0])}です</li>
-          </ol>
         </div>
         <Field label="参加費は、銀行振込とカードのどちらで払いますか？（タップで選択）" hint="カードの手数料はかかりません。レッスン代は、そのときにまた選べます" error={fe.payMethod}>
           <div className="grid grid-cols-2 gap-2">
@@ -140,6 +129,14 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
             ))}
           </div>
         </Field>
+      </Panel>
+
+      <Panel title="レッスン代について">
+        <ol className="list-decimal space-y-1 pl-5 text-sm font-bold text-white/90">
+          <li>参加費のお支払いを確認したら、メールでご案内をお送りします</li>
+          <li>メールのリンクから、レッスン代の払い方(一括・2回・3回)を選んでいただきます({formatJpDate(MOCCHIN_PLAN_CHOOSE_BY)}まで)</li>
+          <li>レッスン代の1回目のお支払い期限は{formatJpDate(MOCCHIN_LESSON_DUES[0])}です</li>
+        </ol>
       </Panel>
 
       <Panel title="ご確認事項">
@@ -225,7 +222,7 @@ function DoneView({ d }: { d: Done }) {
             </div>
           ))}
           <div className="pt-1 text-xs text-white/80">
-            レッスン代の払い方は、締切のあと{formatJpDate(MOCCHIN_PLAN_INVITE_FROM)}にメールでご案内します(参加費のお支払いが済んだ方)。
+            参加費のお支払いを確認したら、レッスン代の払い方を選んでいただくご案内をメールでお送りします。
           </div>
           <div className="pt-2 text-[#19F2D6]">銀行振込の振込先</div>
           <div>
