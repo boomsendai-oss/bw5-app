@@ -28,6 +28,7 @@ import {
   type MocchinPayStep,
 } from '@/lib/mocchinEntry';
 import {
+  MOCCHIN_INSTRUCTOR_KEY,
   MOCCHIN_SETTINGS_KEY,
   countActiveMocchin,
   createMocchinEntry,
@@ -52,7 +53,7 @@ async function ip(): Promise<string> {
   return (h.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
 }
 
-export async function submitMocchinEntry(input: MocchinInput, preview?: string): Promise<MocchinSubmitResult> {
+export async function submitMocchinEntry(input: MocchinInput, preview?: string, inst?: string): Promise<MocchinSubmitResult> {
   if (!(await checkRateLimit(`mocchin:${await ip()}`, 10, 3600))) {
     return { ok: false, error: '送信が多すぎます。しばらくしてからお試しください' };
   }
@@ -70,8 +71,11 @@ export async function submitMocchinEntry(input: MocchinInput, preview?: string):
   // 「会員」と答えた人は、名前かフリガナが在籍中の会員1人にぴったり合うときだけ受け付ける。
   // 合わない(会員でない・同姓同名・退会者・保護者の名前など)ときは送信を止め、公式LINEへの相談を案内する。
   // 先行期間だけでなく一般受付の期間も行う(会員はレッスン代が安いため)
-  let memberNote = '';
-  if (v.value.isMember) {
+  // 講師用リンク(鍵つき)から来た人は講師なので照合しない(講師の多くは会員登録がない)。会員料金で受け付ける
+  const isInstructor = isXmasPreview(MOCCHIN_INSTRUCTOR_KEY, inst);
+  let memberNote = isInstructor ? '講師用リンクから申込' : '';
+  if (isInstructor) v.value.isMember = true;
+  else if (v.value.isMember) {
     const check = mocchinMemberCheck(v.value.name, v.value.kana, await listBf7WsMatchableMembers());
     if (!check.ok) {
       return { ok: false, error: MOCCHIN_MEMBER_MISMATCH, fieldErrors: { name: MOCCHIN_MEMBER_MISMATCH } };

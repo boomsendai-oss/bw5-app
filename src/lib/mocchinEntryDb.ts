@@ -8,6 +8,8 @@ import type { MocchinWebhookEvent } from '@/lib/mocchinStripe';
 
 /** 設定は party_settings に置く(クリパと同じ置き場・event_key で分ける) */
 export const MOCCHIN_SETTINGS_KEY = 'bw6_mocchin';
+/** 講師用リンクの鍵の種(鍵そのものは秘密値から作るのでリポジトリには出ない) */
+export const MOCCHIN_INSTRUCTOR_KEY = 'bw6_mocchin_instructor';
 
 export interface MocchinEntry {
   id: number;
