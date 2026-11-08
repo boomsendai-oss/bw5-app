@@ -21,6 +21,8 @@ import {
   validateMocchinInput,
   LESSON_PLANS,
   mocchinNeedsLessonPlan,
+  MOCCHIN_MEMBER_MISMATCH,
+  mocchinMemberCheck,
   type FieldErrors,
   type MocchinInput,
   type MocchinPayStep,
@@ -39,6 +41,7 @@ import {
 } from '@/lib/mocchinEntryDb';
 import { MOCCHIN_CHECKOUT_MINUTES, buildMocchinCheckoutFormParams, createMocchinCheckoutSession } from '@/lib/mocchinStripe';
 import { retrieveCheckoutSession } from '@/lib/partyStripe';
+import { listBf7WsMatchableMembers } from '@/lib/bf7WorkshopDb';
 
 export type MocchinSubmitResult =
   | { ok: true; no: string; transferPrefix: string; steps: MocchinPayStep[]; payMethod: string; payToken: string; overCapacity: boolean; mailed: boolean }
@@ -64,10 +67,23 @@ export async function submitMocchinEntry(input: MocchinInput, preview?: string):
     if (gateErr) return { ok: false, error: gateErr };
   }
 
+  // 「会員」と答えた人は、名前かフリガナが在籍中の会員1人にぴったり合うときだけ受け付ける。
+  // 合わない(会員でない・同姓同名・退会者・保護者の名前など)ときは送信を止め、公式LINEへの相談を案内する。
+  // 先行期間だけでなく一般受付の期間も行う(会員はレッスン代が安いため)
+  let memberNote = '';
+  if (v.value.isMember) {
+    const check = mocchinMemberCheck(v.value.name, v.value.kana, await listBf7WsMatchableMembers());
+    if (!check.ok) {
+      return { ok: false, error: MOCCHIN_MEMBER_MISMATCH, fieldErrors: { name: MOCCHIN_MEMBER_MISMATCH } };
+    }
+    memberNote = `会員照合OK(会員ID ${check.memberId})`;
+  }
+
   const before = await countActiveMocchin();
   const capacity = await getMocchinCapacity();
   const { id, appliedOn, payToken } = await createMocchinEntry(v.value);
-  if (isPreview) await setMocchinStaffNote(id, 'プレビューから送信(テスト)');
+  const notes = [isPreview ? 'プレビューから送信(テスト)' : '', memberNote].filter(Boolean);
+  if (notes.length) await setMocchinStaffNote(id, notes.join(' / '));
   const overCapacity = before + 1 > capacity;
 
   let mailed = true;

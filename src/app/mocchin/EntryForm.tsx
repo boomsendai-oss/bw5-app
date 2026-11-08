@@ -106,8 +106,15 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
             />
           </div>
         </Field>
+        {isMember === true && (
+          <p className="mt-2 text-xs font-bold text-white/75">BOOMに会員登録しているお名前で入力してください。会員情報と照らし合わせて確認します。</p>
+        )}
         {memberOnly && (
-          <p className="mt-2 text-xs font-bold text-white/75">会員以外の方は{formatJpDate(MOCCHIN_OPEN_START)}から申し込めます</p>
+          <p className="mt-2 text-xs font-bold text-white/75">
+            会員以外の方は{formatJpDate(MOCCHIN_OPEN_START)}から申し込めます。
+            <a href="https://lin.ee/4EYB9zZ" target="_blank" rel="noopener noreferrer" className="underline text-[#19F2D6]">BOOMの公式LINE</a>
+            に友だち登録しておくと、受付開始の日にお知らせが届きます。
+          </p>
         )}
         {isMember === false && (
           <Field label="所属・ダンス歴(任意)" hint="例: ○○スタジオ所属 / HIPHOP 3年">

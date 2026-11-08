@@ -570,3 +570,37 @@ export function mocchinCsv(
   );
   return [head.join(','), ...lines].join('\n');
 }
+
+/** 「会員」と答えた人の名前が会員データと合わないときの案内(2026-11-08 TARO: 会員以外が会員と名乗る申込を止める) */
+export const MOCCHIN_MEMBER_MISMATCH = 'BOOMの会員情報と一致しませんでした。会員登録しているお名前(またはフリガナ)で入力してください。うまくいかない場合は、公式LINEでご相談ください。';
+
+/** 照合用の正規化: NFKC→空白を全部取る→ひらがなをカタカナに */
+function normMemberKey(raw: string): string {
+  return (raw || '')
+    .normalize('NFKC')
+    .replace(/[\s　]+/g, '')
+    .replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+}
+
+/**
+ * 「会員」と答えた人を会員データと照合する(2026-11-08 TARO)。
+ * 名前(漢字)かフリガナが、在籍中の会員1人にぴったり合えばOK。
+ * 合う人がいない・同じ名前の在籍者が2人以上いるときはNG(公式LINEへの相談を案内する)。
+ * BF7の照合と違い「と」「・」で名前を分けない(「まこと」のような名前が落ちるため)、
+ * 本人が保護者としても登録されていてもOKにする。
+ */
+export function mocchinMemberCheck(
+  name: string,
+  kana: string,
+  members: Array<{ id: number; full_name: string; full_name_kana: string; status: string }>
+): { ok: true; memberId: number } | { ok: false } {
+  const n = normMemberKey(name);
+  const k = normMemberKey(kana);
+  const active = members.filter((m) => m.status === 'active');
+  for (const key of [n, k]) {
+    if (!key) continue;
+    const hits = active.filter((m) => normMemberKey(m.full_name) === key || (m.full_name_kana && normMemberKey(m.full_name_kana) === key));
+    if (hits.length === 1) return { ok: true, memberId: hits[0].id };
+  }
+  return { ok: false };
+}

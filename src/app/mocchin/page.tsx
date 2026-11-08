@@ -94,6 +94,10 @@ export default async function MocchinPage({ searchParams }: { searchParams: Prom
             {gate === 'member' ? (
               <>
                 いまは<b>BOOM会員の方の先行申込期間</b>です。会員以外の方は{formatJpDate(MOCCHIN_OPEN_START)}から申し込めます。
+                <span className="block mt-1">
+                  <a href="https://lin.ee/4EYB9zZ" target="_blank" rel="noopener noreferrer" className="underline text-[#19F2D6]">BOOMの公式LINE</a>
+                  に友だち登録しておくと、受付開始の日にお知らせが届きます。
+                </span>
               </>
             ) : (
               <>BOOM会員以外の方も申し込めます。</>
