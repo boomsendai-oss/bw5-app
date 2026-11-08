@@ -145,7 +145,11 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
               <span className="mt-1 block text-xs font-bold">
                 {(() => {
                   const st = mocchinPaySteps(k, isMember !== false, '2026-11-08');
-                  return `お支払い 計${st.length}回・合計${yen(st.reduce((a, x) => a + x.amount, 0))}`;
+                  // 合計額は出さず、1回ごとの金額で見せる(合計を見て尻込みしないように・2026-11-08 TARO)
+                  if (st.length === 1) return `1回で ${yen(st[0].amount)}`;
+                  const rest = st.slice(1);
+                  const same = rest.every((x) => x.amount === rest[0].amount);
+                  return `最初は ${yen(st[0].amount)}、あとは ${yen(rest[0].amount)}${same && rest.length > 1 ? ` × ${rest.length}回` : ''}`;
                 })()}
               </span>
               </span>
