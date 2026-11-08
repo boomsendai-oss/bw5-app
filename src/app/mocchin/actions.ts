@@ -79,9 +79,10 @@ export async function submitMocchinEntry(input: MocchinInput, preview?: string):
       memberNote = `会員照合OK(会員ID ${check.memberId})`;
     } else {
       // 講師は会員データに居ないことが多いので、在籍中の講師の本名・口座名義(カナ)とも照らす
-      const instructors = (await getAll('SELECT bank_account_holder, real_name FROM instructors WHERE active = 1')).map((r) => ({
+      const instructors = (await getAll('SELECT bank_account_holder, real_name, real_name_kana FROM instructors WHERE active = 1')).map((r) => ({
         holder: r.bank_account_holder as string | null,
         realName: r.real_name as string | null,
+        realKana: r.real_name_kana as string | null,
       }));
       if (!mocchinInstructorCheck(v.value.name, v.value.kana, instructors)) {
         return { ok: false, error: MOCCHIN_MEMBER_MISMATCH, fieldErrors: { name: MOCCHIN_MEMBER_MISMATCH } };

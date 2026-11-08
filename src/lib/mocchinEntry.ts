@@ -618,11 +618,12 @@ function normKanaLoose(raw: string): string {
 export function mocchinInstructorCheck(
   name: string,
   kana: string,
-  instructors: { holder: string | null; realName: string | null }[]
+  instructors: { holder: string | null; realName: string | null; realKana?: string | null }[]
 ): boolean {
   const k = normKanaLoose(kana);
   const n = normMemberKey(name);
   return instructors.some(
-    (i) => (!!k && !!i.holder && normKanaLoose(i.holder) === k) || (!!n && !!i.realName && normMemberKey(i.realName) === n)
+    (i) => (!!k && !!i.holder && normKanaLoose(i.holder) === k) || (!!n && !!i.realName && normMemberKey(i.realName) === n) ||
+      (!!k && !!i.realKana && normKanaLoose(i.realKana) === k)
   );
 }

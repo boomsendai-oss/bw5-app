@@ -41,6 +41,7 @@ describe('mocchinInstructorCheck', () => {
   });
   it('本名(漢字)と名前が合う・ひらがなとカタカナも同じに扱う', () => {
     expect(mocchinInstructorCheck('試験　みゅう', '', [{ holder: null, realName: '試験 ミュウ' }])).toBe(true);
+    expect(mocchinInstructorCheck('漢字違い', 'しけん みゅう', [{ holder: null, realName: '試験 みゅう', realKana: 'シケン ミュウ' }])).toBe(true);
   });
   it('合わない・空は通さない', () => {
     expect(mocchinInstructorCheck('別 人', 'べつ ひと', [{ holder: 'ｷﾔﾂﾄ ﾀﾛｳ', realName: '試験 太郎' }])).toBe(false);
