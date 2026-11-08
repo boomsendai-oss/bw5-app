@@ -10,11 +10,13 @@ import {
   MOCCHIN_PROMISES,
   PAY_METHODS,
   PAY_METHOD_LABEL,
-  PAYMENT_PLANS,
-  PAYMENT_PLAN_LABEL,
+  MOCCHIN_DEADLINE,
+  MOCCHIN_FEE,
+  MOCCHIN_LESSON_DUES,
+  MOCCHIN_PLAN_CHOOSE_BY,
+  MOCCHIN_PLAN_INVITE_FROM,
   formatJpDate,
   isMinor,
-  mocchinPaySteps,
   yen,
   type FieldErrors,
 } from '@/lib/mocchinEntry';
@@ -35,7 +37,7 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
   const memberNo = '';
   const [danceHistory, setDanceHistory] = useState('');
   const classNumber = '';
-  const [paymentPlan, setPaymentPlan] = useState('');
+  const paymentPlan = 'pending';
   const [payMethod, setPayMethod] = useState('');
   const [note, setNote] = useState('');
   const [agreed, setAgreed] = useState<boolean[]>(MOCCHIN_PROMISES.map(() => false));
@@ -116,65 +118,22 @@ export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean
         )}
       </Panel>
 
-      <Panel title="お支払い方法">
-        <p className="text-xs font-bold text-white/80">
-          {isMember === false ? 'BOOM会員以外の方の金額です。' : isMember === true ? 'BOOM会員の方の金額です。' : 'BOOM会員の方の金額です(会員以外の方は、上で選ぶと金額が変わります)。'}
-        </p>
-        <p className="mt-3 text-sm font-black">① 払い方を、下の4つから1つタップして選んでください</p>
-        <div className="mt-2 space-y-2">
-          {PAYMENT_PLANS.map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => (setPaymentPlan(k), clear('paymentPlan'))}
-              aria-pressed={paymentPlan === k}
-              className={`flex w-full items-start gap-3 rounded-lg border-2 p-3 text-left ${
-                paymentPlan === k ? 'border-[#19F2D6] bg-[#19F2D6] text-black' : 'border-white/40 bg-black text-white'
-              }`}
-            >
-              <span
-                aria-hidden
-                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                  paymentPlan === k ? 'border-black' : 'border-white/70'
-                }`}
-              >
-                {paymentPlan === k && <span className="h-2.5 w-2.5 rounded-full bg-black" />}
-              </span>
-              <span className="min-w-0 flex-1">
-              <span className="block text-sm font-black">{PAYMENT_PLAN_LABEL[k]}</span>
-              <span className="mt-1 block text-xs font-bold">
-                {(() => {
-                  const st = mocchinPaySteps(k, isMember !== false, '2026-11-08');
-                  // 合計額は出さず、1回ごとの金額で見せる(合計を見て尻込みしないように・2026-11-08 TARO)
-                  if (st.length === 1) return `1回で ${yen(st[0].amount)}`;
-                  const rest = st.slice(1);
-                  const same = rest.every((x) => x.amount === rest[0].amount);
-                  return `最初は ${yen(st[0].amount)}、あとは ${yen(rest[0].amount)}${same && rest.length > 1 ? ` × ${rest.length}回` : ''}`;
-                })()}
-              </span>
-              </span>
-            </button>
-          ))}
+      <Panel title="お支払い">
+        <div className="rounded-lg border-2 border-[#19F2D6] p-3">
+          <p className="text-sm font-black">お申込みのときにお支払いいただくのは、参加費だけです</p>
+          <p className="mt-1 text-2xl font-black text-[#19F2D6]">{yen(MOCCHIN_FEE)}</p>
+          <p className="text-xs font-bold text-white/80">申込から7日以内にお支払いください</p>
         </div>
-        {paymentPlan && (PAYMENT_PLANS as readonly string[]).includes(paymentPlan) && (
-          <div className="mt-3 rounded-lg border border-white/30 p-3">
-            <p className="text-xs font-black text-white/80">選んだ払い方の金額と期限</p>
-            <table className="mt-2 w-full text-sm font-bold">
-              <tbody>
-                {/* 1回目の期限は申込日で決まるので、選ぶ画面では「申込から7日以内」と出す */}
-                {mocchinPaySteps(paymentPlan as (typeof PAYMENT_PLANS)[number], isMember !== false, '2026-11-08').map((s) => (
-                  <tr key={s.step} className="border-t border-white/15 first:border-t-0">
-                    <td className="py-1.5 pr-2">{s.label}</td>
-                    <td className="py-1.5 pr-2 text-right whitespace-nowrap">{yen(s.amount)}</td>
-                    <td className="py-1.5 text-right text-xs whitespace-nowrap text-white/80">{s.step === 0 ? '申込から7日以内' : `${formatJpDate(s.due)}まで`}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {fe.paymentPlan && <p className="mt-2 text-xs font-black text-[#FF4DB8]">⚠ {fe.paymentPlan}</p>}
-        <Field label="② 銀行振込とカード、どちらで払いますか？（タップで選択）" hint="カードの手数料はかかりません。分割の場合、2回目からは変えることもできます" error={fe.payMethod}>
+        <div className="mt-3 text-sm font-bold">
+          <p className="font-black">レッスン代の払い方の決め方</p>
+          <ol className="mt-1 list-decimal space-y-1 pl-5 text-xs text-white/85">
+            <li>{formatJpDate(MOCCHIN_DEADLINE)}に申込を締め切ります</li>
+            <li>{formatJpDate(MOCCHIN_PLAN_INVITE_FROM)}に、参加費のお支払いが済んだ方へメールでご案内します</li>
+            <li>メールのリンクから、一括・2回・3回のどれかを選んでいただきます({formatJpDate(MOCCHIN_PLAN_CHOOSE_BY)}まで)</li>
+            <li>レッスン代の1回目の期限は{formatJpDate(MOCCHIN_LESSON_DUES[0])}です</li>
+          </ol>
+        </div>
+        <Field label="参加費は、銀行振込とカードのどちらで払いますか？（タップで選択）" hint="カードの手数料はかかりません。レッスン代は、そのときにまた選べます" error={fe.payMethod}>
           <div className="grid grid-cols-2 gap-2">
             {PAY_METHODS.map((k) => (
               <Choice key={k} on={payMethod === k} onClick={() => (setPayMethod(k), clear('payMethod'))} label={PAY_METHOD_LABEL[k]} />
@@ -265,6 +224,9 @@ function DoneView({ d }: { d: Done }) {
               <span className="block text-xs text-white/80">{formatJpDate(s.due)} まで</span>
             </div>
           ))}
+          <div className="pt-1 text-xs text-white/80">
+            レッスン代の払い方は、締切のあと{formatJpDate(MOCCHIN_PLAN_INVITE_FROM)}にメールでご案内します(参加費のお支払いが済んだ方)。
+          </div>
           <div className="pt-2 text-[#19F2D6]">銀行振込の振込先</div>
           <div>
             {MOCCHIN_BANK.bank} {MOCCHIN_BANK.branch}

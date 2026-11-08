@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
     if (r.status === 'paid') {
       if (r.amountMismatch) console.error('[mocchin] amount mismatch on entry', mocchinEv.entryId, 'stripe:', mocchinEv.amountTotal);
       try {
-        const mail = buildMocchinCardPaidEmail({ id: r.entry.id, name: r.entry.name, payToken: r.entry.payToken, step: r.step, remaining: r.remaining });
+        const mail = buildMocchinCardPaidEmail({ id: r.entry.id, name: r.entry.name, payToken: r.entry.payToken, step: r.step, remaining: r.remaining, paymentPlan: r.entry.paymentPlan });
         await sendEmail({ to: r.entry.email, subject: mail.subject, text: mail.text });
       } catch (e) {
         // 入金は反映済み。メールだけ失敗してもリトライさせない

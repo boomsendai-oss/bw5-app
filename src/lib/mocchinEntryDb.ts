@@ -202,6 +202,12 @@ export async function markMocchinReminded(id: number, reminded: string, steps: n
   await execute('UPDATE mocchin_entries SET reminded = ?, updated_at = ? WHERE id = ?', [value, nowUtcIso(), id]);
 }
 
+/** レッスン代の払い方を決める(参加費だけ=pending の申込のときだけ変わる)。変わったら true */
+export async function setMocchinLessonPlan(id: number, plan: string): Promise<boolean> {
+  const r = await execute("UPDATE mocchin_entries SET payment_plan = ?, updated_at = ? WHERE id = ? AND payment_plan = 'pending'", [plan, nowUtcIso(), id]);
+  return Number(r.rowsAffected) > 0;
+}
+
 export async function setMocchinStatus(id: number, status: 'active' | 'cancelled'): Promise<boolean> {
   const r = await execute('UPDATE mocchin_entries SET status = ?, updated_at = ? WHERE id = ?', [status, nowUtcIso(), id]);
   return Number(r.rowsAffected) > 0;

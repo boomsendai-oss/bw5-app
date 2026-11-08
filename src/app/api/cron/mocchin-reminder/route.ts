@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { todayJst } from '@/lib/dateJst';
 import { sendEmail } from '@/lib/email';
-import { buildMocchinReminderEmail, mocchinRemindSteps } from '@/lib/mocchinEntry';
+import { MOCCHIN_MARK_PLAN_INVITE, MOCCHIN_MARK_PLAN_REMIND, buildMocchinPlanEmail, buildMocchinReminderEmail, mocchinPlanMailToday, mocchinRemindSteps } from '@/lib/mocchinEntry';
 import { listMocchinEntries, markMocchinReminded } from '@/lib/mocchinEntryDb';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +27,20 @@ export async function GET(req: NextRequest) {
   let failed = 0;
   for (const e of await listMocchinEntries()) {
     if (e.status !== 'active' || e.staffNote.includes('テスト')) continue;
+    // 締切後: 参加費を払った人に、レッスン代の払い方を選んでもらうメール(案内1回＋選ぶ期限前に1回)
+    const planMail = mocchinPlanMailToday(e, today);
+    if (planMail) {
+      try {
+        const mail = buildMocchinPlanEmail({ id: e.id, name: e.name, payToken: e.payToken, isMember: e.isMember, kind: planMail });
+        await sendEmail({ to: e.email, subject: mail.subject, text: mail.text });
+        await markMocchinReminded(e.id, e.reminded, [planMail === 'invite' ? MOCCHIN_MARK_PLAN_INVITE : MOCCHIN_MARK_PLAN_REMIND]);
+        sent++;
+      } catch (err) {
+        console.error('[mocchin-reminder] plan mail failed', e.id, err instanceof Error ? err.message : err);
+        failed++;
+      }
+      continue;
+    }
     const steps = mocchinRemindSteps(e, today);
     if (steps.length === 0) continue;
     try {
