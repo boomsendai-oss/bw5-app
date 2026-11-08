@@ -24,14 +24,14 @@ import { Field, Notice, Panel, btnCls, errCls, inputCls } from './ui';
 
 type Done = Extract<MocchinSubmitResult, { ok: true }>;
 
-export default function EntryForm({ memberOnly, preview, inst }: { memberOnly: boolean; preview?: string; inst?: string }) {
+export default function EntryForm({ memberOnly, preview }: { memberOnly: boolean; preview?: string }) {
   const [name, setName] = useState('');
   const [kana, setKana] = useState('');
   const [age, setAge] = useState('');
   const [guardianName, setGuardianName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [isMember, setIsMember] = useState<boolean | null>(memberOnly || inst ? true : null);
+  const [isMember, setIsMember] = useState<boolean | null>(memberOnly ? true : null);
   const memberNo = '';
   const [danceHistory, setDanceHistory] = useState('');
   const classNumber = '';
@@ -52,8 +52,7 @@ export default function EntryForm({ memberOnly, preview, inst }: { memberOnly: b
     setError('');
     const r = await submitMocchinEntry(
       { name, kana, age, guardianName, phone, email, isMember, memberNo, danceHistory, classNumber, paymentPlan, payMethod, note, agreed },
-      preview,
-      inst
+      preview
     );
     setBusy(false);
     if (!r.ok) {
@@ -96,11 +95,7 @@ export default function EntryForm({ memberOnly, preview, inst }: { memberOnly: b
       </Panel>
 
       <Panel title="BOOMとの関わり">
-{inst ? (
-          <p className="mt-4 rounded-lg border-2 border-[#19F2D6] p-3 text-sm font-bold text-white">講師用の申込フォームです。会員料金で受け付けます。</p>
-        ) : (
-          <>
-                <Field label="BOOM会員ですか？" error={fe.isMember}>
+        <Field label="BOOM会員ですか？" error={fe.isMember}>
           <div className="grid grid-cols-2 gap-2">
             <Choice on={isMember === true} onClick={() => (setIsMember(true), clear('isMember'))} label="BOOM会員です" />
             <Choice
@@ -120,8 +115,6 @@ export default function EntryForm({ memberOnly, preview, inst }: { memberOnly: b
             <a href="https://lin.ee/4EYB9zZ" target="_blank" rel="noopener noreferrer" className="underline text-[#19F2D6]">BOOMの公式LINE</a>
             に友だち登録しておくと、受付開始の日にお知らせが届きます。
           </p>
-        )}
-          </>
         )}
         {isMember === false && (
           <Field label="所属・ダンス歴(任意)" hint="例: ○○スタジオ所属 / HIPHOP 3年">

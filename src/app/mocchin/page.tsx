@@ -16,15 +16,14 @@ import {
   mocchinGate,
   yen,
 } from '@/lib/mocchinEntry';
-import { MOCCHIN_INSTRUCTOR_KEY, MOCCHIN_SETTINGS_KEY } from '@/lib/mocchinEntryDb';
+import { MOCCHIN_SETTINGS_KEY } from '@/lib/mocchinEntryDb';
 import EntryForm from './EntryForm';
 import { Notice, Panel, PreviewBanner, Shell } from './ui';
 
 export const dynamic = 'force-dynamic';
 
-export default async function MocchinPage({ searchParams }: { searchParams: Promise<{ preview?: string; k?: string }> }) {
-  const { preview, k } = await searchParams;
-  const isInstructor = isXmasPreview(MOCCHIN_INSTRUCTOR_KEY, k);
+export default async function MocchinPage({ searchParams }: { searchParams: Promise<{ preview?: string }> }) {
+  const { preview } = await searchParams;
   const isPreview = isXmasPreview(MOCCHIN_SETTINGS_KEY, preview);
   const real = mocchinGate(todayJst());
   // プレビューは受付開始前でも「会員の先行期間」の画面を出す
@@ -105,7 +104,7 @@ export default async function MocchinPage({ searchParams }: { searchParams: Prom
             )}
             <span className="block">締切：{formatJpDate(MOCCHIN_DEADLINE)}</span>
           </Notice>
-          <EntryForm memberOnly={gate === 'member'} preview={isPreview ? preview : undefined} inst={isInstructor ? k : undefined} />
+          <EntryForm memberOnly={gate === 'member'} preview={isPreview ? preview : undefined} />
         </>
       )}
     </Shell>
