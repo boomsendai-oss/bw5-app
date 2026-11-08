@@ -37,10 +37,13 @@ describe('mocchinMemberCheck', () => {
 import { mocchinInstructorCheck } from '../mocchinEntry';
 describe('mocchinInstructorCheck', () => {
   it('口座名義の大きい字・半角とフリガナの小さい字が合う', () => {
-    expect(mocchinInstructorCheck('きゃっと たろう', ['ｷﾔﾂﾄ ﾀﾛｳ'])).toBe(true);
+    expect(mocchinInstructorCheck('', 'きゃっと たろう', [{ holder: 'ｷﾔﾂﾄ ﾀﾛｳ', realName: null }])).toBe(true);
+  });
+  it('本名(漢字)と名前が合う・ひらがなとカタカナも同じに扱う', () => {
+    expect(mocchinInstructorCheck('試験　みゅう', '', [{ holder: null, realName: '試験 ミュウ' }])).toBe(true);
   });
   it('合わない・空は通さない', () => {
-    expect(mocchinInstructorCheck('べつ ひと', ['ｷﾔﾂﾄ ﾀﾛｳ'])).toBe(false);
-    expect(mocchinInstructorCheck('', ['ｷﾔﾂﾄ ﾀﾛｳ', null])).toBe(false);
+    expect(mocchinInstructorCheck('別 人', 'べつ ひと', [{ holder: 'ｷﾔﾂﾄ ﾀﾛｳ', realName: '試験 太郎' }])).toBe(false);
+    expect(mocchinInstructorCheck('', '', [{ holder: 'ｷﾔﾂﾄ ﾀﾛｳ', realName: null }, { holder: null, realName: null }])).toBe(false);
   });
 });

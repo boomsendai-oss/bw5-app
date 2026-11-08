@@ -613,10 +613,16 @@ function normKanaLoose(raw: string): string {
 
 /**
  * 講師も「会員」として申し込めるようにする(2026-11-08 TARO「名前登録すればよい」)。
- * 講師の多くは会員データに居ないので、在籍中の講師の口座名義(カナ)とフリガナが合えばOKにする。
+ * 講師の多くは会員データに居ないので、在籍中の講師の本名(real_name)と名前、または口座名義(カナ)とフリガナが合えばOKにする。
  */
-export function mocchinInstructorCheck(kana: string, holders: (string | null)[]): boolean {
+export function mocchinInstructorCheck(
+  name: string,
+  kana: string,
+  instructors: { holder: string | null; realName: string | null }[]
+): boolean {
   const k = normKanaLoose(kana);
-  if (!k) return false;
-  return holders.some((h) => h && normKanaLoose(h) === k);
+  const n = normMemberKey(name);
+  return instructors.some(
+    (i) => (!!k && !!i.holder && normKanaLoose(i.holder) === k) || (!!n && !!i.realName && normMemberKey(i.realName) === n)
+  );
 }
