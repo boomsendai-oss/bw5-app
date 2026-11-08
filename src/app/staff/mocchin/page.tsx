@@ -6,7 +6,7 @@ import { isAuthorizedServer } from '@/lib/eventAuth';
 import { todayJst } from '@/lib/dateJst';
 import { xmasPreviewKey } from '@/lib/partyPreview';
 import { mocchinGate, mocchinPaySteps, paidStepSet, yen } from '@/lib/mocchinEntry';
-import { MOCCHIN_INSTRUCTOR_KEY, MOCCHIN_SETTINGS_KEY, getMocchinCapacity, listMocchinEntries } from '@/lib/mocchinEntryDb';
+import { MOCCHIN_SETTINGS_KEY, getMocchinCapacity, listMocchinEntries } from '@/lib/mocchinEntryDb';
 import EntryTable from './EntryTable';
 
 export const dynamic = 'force-dynamic';
@@ -25,7 +25,6 @@ export default async function StaffMocchinPage() {
   const late = steps.filter((s) => s.all.some((x) => !s.done.has(x.step) && today > x.due)).length;
   const members = active.filter((r) => r.isMember);
   const previewUrl = `/mocchin?preview=${xmasPreviewKey(MOCCHIN_SETTINGS_KEY)}`;
-  const instructorUrl = `https://event.boom-sendai.com/mocchin?k=${xmasPreviewKey(MOCCHIN_INSTRUCTOR_KEY)}`;
 
   return (
     <div>
@@ -39,9 +38,6 @@ export default async function StaffMocchinPage() {
             </a>
             <a href={previewUrl} target="_blank" rel="noreferrer" className="rounded-md border border-sand-200 px-3 py-1 text-brand-700">
               プレビュー
-            </a>
-            <a id="instructor-link" href={instructorUrl} target="_blank" rel="noreferrer" className="rounded-md border border-sand-200 px-3 py-1 text-brand-700">
-              講師用の申込リンク
             </a>
           </div>
         }
