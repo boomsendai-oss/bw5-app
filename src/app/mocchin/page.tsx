@@ -64,7 +64,7 @@ export default async function MocchinPage({ searchParams }: { searchParams: Prom
             </dd>
           </div>
         </dl>
-        <p className="mt-2 text-xs font-bold text-white/80">お支払いは銀行振込かカードです。お申込みのときは参加費だけ。レッスン代は締切のあと、一括か分割(最大3回)を選べます。</p>
+        <p className="mt-2 text-xs font-bold text-white/80">お支払いは銀行振込かカードです。お申込みのときは参加費だけ。レッスン代の払い方(一括か分割・最大3回)は、参加費のお支払いのあとにメールでご案内します。</p>
       </Panel>
 
       <Panel title="日程・会場">
