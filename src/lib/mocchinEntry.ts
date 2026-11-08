@@ -604,3 +604,19 @@ export function mocchinMemberCheck(
   }
   return { ok: false };
 }
+
+/** 講師の口座名義(カナ)と比べるための形。銀行のカナは小さい字を大きく書くので、小さい字を大きくそろえる */
+function normKanaLoose(raw: string): string {
+  const small: Record<string, string> = { ァ: 'ア', ィ: 'イ', ゥ: 'ウ', ェ: 'エ', ォ: 'オ', ッ: 'ツ', ャ: 'ヤ', ュ: 'ユ', ョ: 'ヨ', ヮ: 'ワ', ヵ: 'カ', ヶ: 'ケ' };
+  return normMemberKey(raw).replace(/[ァィゥェォッャュョヮヵヶ]/g, (c) => small[c]).replace(/[ー\-]/g, '');
+}
+
+/**
+ * 講師も「会員」として申し込めるようにする(2026-11-08 TARO「名前登録すればよい」)。
+ * 講師の多くは会員データに居ないので、在籍中の講師の口座名義(カナ)とフリガナが合えばOKにする。
+ */
+export function mocchinInstructorCheck(kana: string, holders: (string | null)[]): boolean {
+  const k = normKanaLoose(kana);
+  if (!k) return false;
+  return holders.some((h) => h && normKanaLoose(h) === k);
+}

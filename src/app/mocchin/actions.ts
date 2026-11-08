@@ -1,4 +1,5 @@
 'use server';
+import { getAll } from '@/lib/db';
 
 // ⚠️ 公開Server Actions(認証なし)。理由: BW6スペシャルナンバー by MOCCHIN の申込は
 // BOOM会員以外(県外の方も)申し込めるため、/mocchin の公開フォームが叩く。
@@ -22,6 +23,7 @@ import {
   LESSON_PLANS,
   mocchinNeedsLessonPlan,
   MOCCHIN_MEMBER_MISMATCH,
+  mocchinInstructorCheck,
   mocchinMemberCheck,
   type FieldErrors,
   type MocchinInput,
@@ -73,10 +75,16 @@ export async function submitMocchinEntry(input: MocchinInput, preview?: string):
   let memberNote = '';
   if (v.value.isMember) {
     const check = mocchinMemberCheck(v.value.name, v.value.kana, await listBf7WsMatchableMembers());
-    if (!check.ok) {
-      return { ok: false, error: MOCCHIN_MEMBER_MISMATCH, fieldErrors: { name: MOCCHIN_MEMBER_MISMATCH } };
+    if (check.ok) {
+      memberNote = `会員照合OK(会員ID ${check.memberId})`;
+    } else {
+      // 講師は会員データに居ないことが多いので、在籍中の講師の口座名義(カナ)とも照らす
+      const holders = (await getAll('SELECT bank_account_holder FROM instructors WHERE active = 1')).map((r) => r.bank_account_holder as string | null);
+      if (!mocchinInstructorCheck(v.value.kana, holders)) {
+        return { ok: false, error: MOCCHIN_MEMBER_MISMATCH, fieldErrors: { name: MOCCHIN_MEMBER_MISMATCH } };
+      }
+      memberNote = '講師として照合OK';
     }
-    memberNote = `会員照合OK(会員ID ${check.memberId})`;
   }
 
   const before = await countActiveMocchin();

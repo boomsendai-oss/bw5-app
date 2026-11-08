@@ -33,3 +33,14 @@ describe('mocchinMemberCheck', () => {
     expect(mocchinMemberCheck('', '', M)).toEqual({ ok: false });
   });
 });
+
+import { mocchinInstructorCheck } from '../mocchinEntry';
+describe('mocchinInstructorCheck', () => {
+  it('口座名義の大きい字・半角とフリガナの小さい字が合う', () => {
+    expect(mocchinInstructorCheck('きゃっと たろう', ['ｷﾔﾂﾄ ﾀﾛｳ'])).toBe(true);
+  });
+  it('合わない・空は通さない', () => {
+    expect(mocchinInstructorCheck('べつ ひと', ['ｷﾔﾂﾄ ﾀﾛｳ'])).toBe(false);
+    expect(mocchinInstructorCheck('', ['ｷﾔﾂﾄ ﾀﾛｳ', null])).toBe(false);
+  });
+});
