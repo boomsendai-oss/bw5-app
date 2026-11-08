@@ -33,9 +33,11 @@ export default async function MocchinPage({ searchParams }: { searchParams: Prom
     <Shell>
       {isPreview && <PreviewBanner />}
       <h1 className="text-3xl font-black leading-tight">
-        スペシャルナンバー
+        BW6
         <br />
-        <span className="text-[#19F2D6] [text-shadow:0_0_14px_rgba(25,242,214,0.6)]">by MOCCHIN</span> 申込
+        <span className="text-[#19F2D6] [text-shadow:0_0_14px_rgba(25,242,214,0.6)]">MOCCHIN</span> SPナンバー
+        <br />
+        募集スタート
       </h1>
       <p className="mt-2 text-sm font-bold text-white/85">
         BOOM WOP vol.6(2027年4月11日・若林区文化センター)で、D&apos;OAMのMOCCHINさんが振付するスペシャルナンバーです。
