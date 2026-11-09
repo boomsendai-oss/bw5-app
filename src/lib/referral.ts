@@ -3,7 +3,13 @@
 // 突き合わせ、紹介特典(紹介した人にチケット1回・入会した人は月謝1ヶ月分無料)の対応漏れを防ぐ。
 // 純粋関数のみ(DBに触らない)。
 
-/** 照合用にカナをそろえる: ひらがな→カタカナ、空白・中黒・記号を除去、半角カナは扱わない(フォームが全角カナ限定)。 */
+/**
+ * 照合用にカナをそろえる(紹介者欄の表記ゆれを吸収・2026-11-09 TARO依頼)。
+ * - 全角/半角(NFKC)・ひらがな→カタカナ
+ * - 空白(全角/半角)・中黒・ピリオド・ハイフン類・括弧を除去
+ * - ヂ→ジ / ヅ→ズ / ヴ→ブ / ヰ→イ / ヱ→エ (入力ゆれ)
+ * - 末尾の敬称(サン/サマ/クン/チャン/様/さん)を除去(残りが3文字以上のときだけ)
+ */
 export function normalizeKana(s: string | null | undefined): string {
   let out = '';
   for (const ch of (s ?? '').normalize('NFKC')) {
@@ -11,7 +17,11 @@ export function normalizeKana(s: string | null | undefined): string {
     if (c >= 0x3041 && c <= 0x3096) out += String.fromCharCode(c + 0x60);
     else out += ch;
   }
-  return out.replace(/[\s　・･.\-‐－()（）]/g, '').trim();
+  out = out.replace(/[\s　・･.\-‐－―()（）]/g, '');
+  out = out.replace(/ヂ/g, 'ジ').replace(/ヅ/g, 'ズ').replace(/ヴ/g, 'ブ').replace(/ヰ/g, 'イ').replace(/ヱ/g, 'エ');
+  const m = /^(.*?)(サン|サマ|クン|チャン|様)$/.exec(out);
+  if (m && m[1].length >= 3) out = m[1];
+  return out.trim();
 }
 
 export type ReferrerMatch =

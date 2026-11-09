@@ -12,6 +12,10 @@ const members = [
 describe('normalizeKana', () => {
   it('空白とひらがなの違いを吸収', () => expect(normalizeKana('せんだい　はなこ')).toBe(normalizeKana('センダイハナコ')));
   it('長音は残す', () => expect(normalizeKana('ユーリ')).toBe('ユーリ'));
+  it('半角カナ・全角空白・中黒を吸収', () => expect(normalizeKana('ｾﾝﾀﾞｲ　ﾊﾅｺ')).toBe(normalizeKana('センダイ・ハナコ')));
+  it('ヅ/ズ・ヴ/ブのゆれを吸収', () => expect(normalizeKana('ミヅキ')).toBe(normalizeKana('ミズキ')));
+  it('末尾の敬称を外す', () => expect(normalizeKana('センダイ ハナコさん')).toBe('センダイハナコ'));
+  it('短い名前の末尾サンは外さない', () => expect(normalizeKana('サン')).toBe('サン'));
 });
 
 describe('matchReferrer', () => {
