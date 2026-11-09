@@ -4,6 +4,7 @@ import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { parseCSV, rowsToDicts, parseDateTime } from '@/lib/csvUtil';
 import { planAbsentCancellations, inferWindowFromRows, trialKey } from '@/lib/trialAbsent';
 import { runAutoLink, type AutoLinkSummary } from '@/lib/autoLinkDb';
+import { syncTrialCalendar, type TrialCalendarSummary } from '@/lib/trialCalendar';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -404,6 +405,16 @@ async function handleImport(req: NextRequest) {
     autoLink = { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 
+  // --- 体験予約をスタッフ用カレンダーへ (2026-11-09) ---
+  // boom.sendai 所有の非公開カレンダー「体験予約（スタッフ用・非公開）」だけに書く(trialCalendar.ts)。
+  // 失敗しても取込自体は成功扱いにする。
+  let trialCalendar: TrialCalendarSummary | { ok: false; error: string };
+  try {
+    trialCalendar = await syncTrialCalendar();
+  } catch (e) {
+    trialCalendar = { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+
   // 当月サマリ
   const now = new Date();
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -440,6 +451,7 @@ async function handleImport(req: NextRequest) {
       month_attended: Number(monthAgg?.attended ?? 0),
       month_canceled: Number(monthAgg?.canceled ?? 0),
       auto_link: autoLink,
+      trial_calendar: trialCalendar,
     },
   });
 }

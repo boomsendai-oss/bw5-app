@@ -84,7 +84,7 @@ export async function isConnected(): Promise<boolean> {
   return !!(row?.value as string | undefined);
 }
 
-async function getCalendarClient() {
+export async function getCalendarClient() {
   const { clientId, clientSecret } = getEnv();
   const refreshToken = await getStoredRefreshToken();
   const auth = new google.auth.OAuth2(clientId, clientSecret);
