@@ -48,6 +48,8 @@ export type LinkCandidate = {
   relation_suggestion: '本人' | '保護者' | '講師';
   line_type: LineType;
   source: '体験予約' | 'Lstep表示名';
+  /** 体験予約由来のとき、何で一致したか。'カナ'=体験予約のカナ名と完全一致 / '漢字'=カナが合わず漢字氏名で一致 */
+  match_key?: 'カナ' | '漢字';
 };
 
 export type LinkSuggestion = {
@@ -307,6 +309,7 @@ export async function buildLinkSuggestions(
     // --- 主軸: 体験予約カナ名で突合 ---
     const matchedLstep = new Set<string>();
     if (memberKana) for (const lid of lstepByKana.get(memberKana) ?? []) matchedLstep.add(lid);
+    const matchKey: 'カナ' | '漢字' = matchedLstep.size > 0 ? 'カナ' : '漢字';
     // カナが無い/不一致のときは漢字名でも試す
     if (matchedLstep.size === 0 && memberNameNorm) {
       for (const lid of lstepByName.get(memberNameNorm) ?? []) matchedLstep.add(lid);
@@ -340,6 +343,7 @@ export async function buildLinkSuggestions(
         relation_suggestion: cls.relation,
         line_type: cls.line_type,
         source: '体験予約',
+        match_key: matchKey,
       });
     }
 

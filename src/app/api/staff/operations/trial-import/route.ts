@@ -3,6 +3,7 @@ import { getAll, getOne, batch } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { parseCSV, rowsToDicts, parseDateTime } from '@/lib/csvUtil';
 import { planAbsentCancellations, inferWindowFromRows, trialKey } from '@/lib/trialAbsent';
+import { runAutoLink, type AutoLinkSummary } from '@/lib/autoLinkDb';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -392,6 +393,17 @@ async function handleImport(req: NextRequest) {
     await batch(kanaStmts.slice(i, i + 50));
   }
 
+  // --- 会員 ↔ LINE の自動ひもづけ (2026-11-09) ---
+  // 体験予約が最新になった直後に、確度の高い候補だけ member_lstep_links に追加する(既存行は触らない)。
+  // 日次の流れでは会員突合(/sync)の後にこの取込が呼ばれるので、新入会者も体験予約も揃っている。
+  // 判定は src/lib/autoLink.ts。失敗しても取込自体は成功扱いにする。
+  let autoLink: AutoLinkSummary | { ok: false; error: string };
+  try {
+    autoLink = await runAutoLink({ dryRun: false });
+  } catch (e) {
+    autoLink = { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+
   // 当月サマリ
   const now = new Date();
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -427,6 +439,7 @@ async function handleImport(req: NextRequest) {
       month_reserved: Number(monthAgg?.reserved ?? 0),
       month_attended: Number(monthAgg?.attended ?? 0),
       month_canceled: Number(monthAgg?.canceled ?? 0),
+      auto_link: autoLink,
     },
   });
 }
