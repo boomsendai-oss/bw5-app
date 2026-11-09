@@ -18,6 +18,7 @@ import { fetchEventsForRange } from './lessonCalendar';
 import { buildTrialGroups, type TrialRow } from './trialNotify';
 import { buildTrialCalendarEvents, type LessonSlot } from './trialCalendarEvents';
 import { todayJst } from './dateJst';
+import { matchReferrer, referrerMatchLabel, type MemberKana } from './referral';
 
 const CALENDAR_ID_KEY = 'trial_calendar_id';
 const BLOCK_CALENDAR_ID_KEY = 'block_calendar_id';
@@ -91,7 +92,7 @@ export async function syncTrialCalendar(opts: { daysAhead?: number } = {}): Prom
   const rows = (await getAll(
     `SELECT reserved_at, lesson_name, status,
             applicant_name, applicant_name_kana, applicant_age,
-            course_type, dance_experience, referral_source
+            course_type, dance_experience, referral_source, referrer_kana
        FROM trial_records
       WHERE date(reserved_at) >= date(?) AND date(reserved_at) <= date(?)
       ORDER BY reserved_at ASC`,
@@ -106,7 +107,13 @@ export async function syncTrialCalendar(opts: { daysAhead?: number } = {}): Prom
   } catch (e) {
     console.warn(`体験カレンダー: 正本の読み取り失敗(60分で代用): ${e instanceof Error ? e.message : e}`);
   }
-  const desired = new Map(buildTrialCalendarEvents(groups, slots).map((ev) => [ev.key, ev]));
+  // 紹介者を会員名簿(在籍中)と照合して、カレンダーに「一致/要確認」を出す
+  let members: MemberKana[] = [];
+  if (rows.some((r) => r.referrer_kana)) {
+    members = (await getAll(`SELECT id, full_name_kana FROM boom_members WHERE status = 'active'`)) as MemberKana[];
+  }
+  const label = (kana: string) => referrerMatchLabel(matchReferrer(kana, members));
+  const desired = new Map(buildTrialCalendarEvents(groups, slots, label).map((ev) => [ev.key, ev]));
 
   const cal = await getCalendarClient();
   const calendarId = await ensureTrialCalendar();

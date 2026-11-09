@@ -12,6 +12,7 @@ export type TrialRow = {
   course_type: string | null;          // 体験レッスン / 見学
   dance_experience: string | null;
   referral_source: string | null;
+  referrer_kana?: string | null;       // 紹介者カナ(2026-11-09〜・講師向け周知文には出さない)
 };
 
 export type TrialVisitor = {
@@ -21,6 +22,7 @@ export type TrialVisitor = {
   experience: string | null;
   referral: string | null;
   isObservation: boolean; // 見学かどうか
+  referrer?: string | null; // 紹介者カナ(スタッフ用カレンダーにだけ出す)
 };
 
 export type TrialGroup = {
@@ -102,6 +104,7 @@ function toVisitor(row: TrialRow): TrialVisitor {
     experience: row.dance_experience,
     referral: row.referral_source,
     isObservation: (row.course_type ?? '').includes('見学'),
+    referrer: row.referrer_kana ?? null,
   };
 }
 

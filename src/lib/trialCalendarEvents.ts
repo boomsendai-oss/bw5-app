@@ -59,18 +59,33 @@ export function simpleHash(s: string): string {
 export const TRIAL_CALENDAR_FOOTER =
   '※BOOMアプリが体験予約(Lステップ)から自動で書き込んでいます(毎日12時・18時ごろ更新)。手で直しても次の更新で元に戻ります。';
 
+/** 紹介者の行(スタッフ用)。referrerLabel は紹介者カナ→照合結果の文言。 */
+export function buildReferralBlock(g: TrialGroup, referrerLabel: (kana: string) => string): string {
+  const lines = g.visitors
+    .filter((v) => v.referrer)
+    .map((v) => `・${v.name} ← 紹介者 ${v.referrer}（${referrerLabel(v.referrer as string)}）`);
+  if (lines.length === 0) return '';
+  return `【ご紹介】入会したら：紹介した人にチケット1回／入会した人は月謝1ヶ月分無料\n${lines.join('\n')}`;
+}
+
 /** 体験の枠(TrialGroup)ごとに、カレンダーに置く予定を1件ずつ作る。 */
-export function buildTrialCalendarEvents(groups: TrialGroup[], slots: LessonSlot[]): TrialCalendarEvent[] {
+export function buildTrialCalendarEvents(
+  groups: TrialGroup[],
+  slots: LessonSlot[],
+  referrerLabel: (kana: string) => string = () => '照合なし',
+): TrialCalendarEvent[] {
   return groups.map((g) => {
     const trial = g.visitors.filter((v) => !v.isObservation).length;
     const obs = g.visitors.length - trial;
     const counts = [trial ? `体験${trial}名` : '', obs ? `見学${obs}名` : ''].filter(Boolean).join('・');
     const slot = findLessonSlot(g.date, g.time, g.lessonName, slots);
     const summary = `🔰${counts}｜${g.lessonName}`;
-    const description = `${g.copyText}\n\n${TRIAL_CALENDAR_FOOTER}`;
+    const referral = buildReferralBlock(g, referrerLabel);
+    const summary2 = referral ? `${summary}🎁` : summary;
+    const description = [g.copyText, referral, TRIAL_CALENDAR_FOOTER].filter(Boolean).join('\n\n');
     const end = slot?.end && slot.end > g.time ? slot.end : addMinutes(g.time, 60);
     const location = slot?.location ?? null;
-    const ev = { key: `${g.date}|${g.lessonName}`, summary, description, date: g.date, start: g.time, end, location };
+    const ev = { key: `${g.date}|${g.lessonName}`, summary: summary2, description, date: g.date, start: g.time, end, location };
     return { ...ev, hash: simpleHash(JSON.stringify(ev)) };
   });
 }

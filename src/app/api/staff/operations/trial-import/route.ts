@@ -5,6 +5,7 @@ import { parseCSV, rowsToDicts, parseDateTime } from '@/lib/csvUtil';
 import { planAbsentCancellations, inferWindowFromRows, trialKey } from '@/lib/trialAbsent';
 import { runAutoLink, type AutoLinkSummary } from '@/lib/autoLinkDb';
 import { syncTrialCalendar, type TrialCalendarSummary } from '@/lib/trialCalendar';
+import { pickReferrerKana } from '@/lib/referral';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -63,7 +64,8 @@ function pick(row: Record<string, string>, candidates: string[]): string {
     if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
   }
   // partial match (ヘッダー揺らぎ対策)
-  const keys = Object.keys(row);
+  // 「ご紹介者のお名前（カタカナ）」列は申込者本人の「お名前」「カナ」に部分一致しうるので除外する(2026-11-09)
+  const keys = Object.keys(row).filter((k) => !k.includes('紹介者'));
   for (const c of candidates) {
     const hit = keys.find((k) => k.includes(c));
     if (hit) {
@@ -174,6 +176,7 @@ async function handleImport(req: NextRequest) {
     course_type: string | null;
     dance_experience: string | null;
     referral_source: string | null;
+    referrer_kana: string | null;
   };
 
   const parsedRows: Parsed[] = [];
@@ -231,6 +234,7 @@ async function handleImport(req: NextRequest) {
       course_type: courseType,
       dance_experience: danceExperience,
       referral_source: referralSource,
+      referrer_kana: pickReferrerKana(r),
     });
   }
 
@@ -286,10 +290,11 @@ async function handleImport(req: NextRequest) {
                   applicant_age = COALESCE(?, applicant_age),
                   course_type = COALESCE(?, course_type),
                   dance_experience = COALESCE(?, dance_experience),
-                  referral_source = COALESCE(?, referral_source)
+                  referral_source = COALESCE(?, referral_source),
+                  referrer_kana = COALESCE(?, referrer_kana)
                 WHERE id = ?`,
           args: [p.lesson_name, p.status, nowIso, p.member_id, p.applicant_name, p.applicant_name_kana, p.applicant_age,
-                 p.course_type, p.dance_experience, p.referral_source, ex.id],
+                 p.course_type, p.dance_experience, p.referral_source, p.referrer_kana, ex.id],
         });
         updateCount += 1;
       } else {
@@ -303,10 +308,11 @@ async function handleImport(req: NextRequest) {
                   applicant_age = COALESCE(?, applicant_age),
                   course_type = COALESCE(?, course_type),
                   dance_experience = COALESCE(?, dance_experience),
-                  referral_source = COALESCE(?, referral_source)
+                  referral_source = COALESCE(?, referral_source),
+                  referrer_kana = COALESCE(?, referrer_kana)
                 WHERE id = ?`,
           args: [p.lesson_name, p.member_id, p.applicant_name, p.applicant_name_kana, p.applicant_age,
-                 p.course_type, p.dance_experience, p.referral_source, ex.id],
+                 p.course_type, p.dance_experience, p.referral_source, p.referrer_kana, ex.id],
         });
       }
     } else {
@@ -314,8 +320,8 @@ async function handleImport(req: NextRequest) {
         sql: `INSERT INTO trial_records
                 (lstep_id, member_id, reserved_at, lesson_name, status, status_source, status_updated_at,
                  applicant_name, applicant_name_kana, applicant_age,
-                 course_type, dance_experience, referral_source)
-              VALUES (?, ?, ?, ?, ?, 'lstep_calendar_csv', ?, ?, ?, ?, ?, ?, ?)
+                 course_type, dance_experience, referral_source, referrer_kana)
+              VALUES (?, ?, ?, ?, ?, 'lstep_calendar_csv', ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(lstep_id, reserved_at) DO UPDATE SET
                 lesson_name = COALESCE(excluded.lesson_name, trial_records.lesson_name),
                 status = excluded.status,
@@ -327,10 +333,11 @@ async function handleImport(req: NextRequest) {
                 applicant_age = COALESCE(excluded.applicant_age, trial_records.applicant_age),
                 course_type = COALESCE(excluded.course_type, trial_records.course_type),
                 dance_experience = COALESCE(excluded.dance_experience, trial_records.dance_experience),
-                referral_source = COALESCE(excluded.referral_source, trial_records.referral_source)`,
+                referral_source = COALESCE(excluded.referral_source, trial_records.referral_source),
+                referrer_kana = COALESCE(excluded.referrer_kana, trial_records.referrer_kana)`,
         args: [p.lstep_id, p.member_id, p.reserved_at, p.lesson_name, p.status, nowIso,
                p.applicant_name, p.applicant_name_kana, p.applicant_age,
-               p.course_type, p.dance_experience, p.referral_source],
+               p.course_type, p.dance_experience, p.referral_source, p.referrer_kana],
       });
       newCount += 1;
     }
