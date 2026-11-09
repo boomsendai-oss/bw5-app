@@ -6,7 +6,7 @@
 //
 // --dry-run: 各画像と全体の器(コンテナ)の作成まで行い、公開はしない
 // 終了コード: 0=公開OK / 1=作成の失敗(公開されていない=再試行してよい) / 2=公開時の失敗(公開された可能性があるので再試行しない)
-// ⚠️ 画像は JPEG の公開URL・2〜10枚。⚠️ 共同投稿者は最大3人。相手が承認するまで相手のプロフィールには出ない。
+// ⚠️ 画像は JPEG の公開URL・2〜10枚。⚠️ 共同投稿者は最大5人(アプリと同じ上限。2026-11-09 APIで5人の器作成OKを確認)。相手が承認するまで相手のプロフィールには出ない。
 // トークンは本番Turso settingsから取得(post_feed_image_once.mjs と同じ)。
 import { createClient } from '@libsql/client';
 import { readFileSync } from 'fs';
@@ -23,7 +23,7 @@ const COLLAB = String(opt('--collaborators') ?? '')
   .split(/[\s,]+/)
   .map((s) => s.replace(/^@+/, '').trim())
   .filter(Boolean)
-  .slice(0, 3);
+  .slice(0, 5);
 if (URLS.length < 2 || URLS.length > 10) { console.error('--image-urls は2〜10枚'); process.exit(1); }
 if (URLS.some((u) => !/\.jpe?g($|\?)/i.test(u))) { console.error('画像は JPEG の URL にしてください'); process.exit(1); }
 
