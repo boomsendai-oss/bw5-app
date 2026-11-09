@@ -38,7 +38,37 @@ export type DayPlan = {
   extra: InstanceWrite[];       // マスタに無い単発(WS・バトル練習会・代講回など)
   needsReview: ResolvedLesson[]; // 読めなかったもの。**書き込まない**
   skipped: MasterSlotLite[];     // 読めない予定と時間が重なる枠。**触らない**(誤判定で消さない)
+  /** skipped のうち、重なった予定が「代講」だった枠。
+   *  給与の補完(master展開)がこの枠を元の担当に払わないよう、同期が記録して給与計算へ渡す。
+   *  (2026-10-11 の実例: 代講3コマが触らない扱い→instance無し→元の担当に給与が付いた) */
+  skippedSubstitute: MasterSlotLite[];
 };
+
+/** 代講で保留中の枠を給与計算へ渡すための settings のキー(月ごと) */
+export function substitutePendingKey(ym: string): string {
+  return `calendar_substitute_pending:${ym}`;
+}
+
+export type SubstitutePendingSlot = { master_id: number; date: string; class_name: string };
+
+/** settings に保存した保留枠(JSON配列)を `${master_id}_${date}` → 枠 のMapに戻す。
+ *  壊れていても空Mapを返す(給与計算そのものは止めない)。 */
+export function parseSubstitutePending(raw: string | null | undefined): Map<string, SubstitutePendingSlot> {
+  const out = new Map<string, SubstitutePendingSlot>();
+  if (!raw) return out;
+  let v: unknown;
+  try { v = JSON.parse(raw); } catch { return out; }
+  if (!Array.isArray(v)) return out;
+  for (const x of v) {
+    if (!x || typeof x !== 'object') continue;
+    const o = x as Record<string, unknown>;
+    if (typeof o.master_id !== 'number' || typeof o.date !== 'string') continue;
+    out.set(`${o.master_id}_${o.date}`, {
+      master_id: o.master_id, date: o.date, class_name: typeof o.class_name === 'string' ? o.class_name : '',
+    });
+  }
+  return out;
+}
 
 function toMin(hhmm: string): number {
   const m = /^(\d{1,2}):(\d{2})/.exec(hhmm ?? '');
@@ -77,7 +107,7 @@ function sameClass(a: string | null | undefined, b: string | null | undefined): 
 }
 
 export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[], opts: ReconcileOpts = {}): DayPlan {
-  const plan: DayPlan = { keep: [], removed: [], extra: [], needsReview: [], skipped: [] };
+  const plan: DayPlan = { keep: [], removed: [], extra: [], needsReview: [], skipped: [], skippedSubstitute: [] };
 
   // 給与対象外(練習会など)は枠にマッチさせない。会場だけ使うので extra として残す。
   const nonPayable = events.filter((e) => !e.payable && !e.cancelled);
@@ -139,7 +169,7 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[], 
       //  曖昧扱いになり、枠が未書き込みのまま master展開に埋め戻されて
       //  **開催していないレッスンに給与が付いた**。「触らない」は中立ではなく
       //  「開催したことにする」だと判明したため、会場で切れるものは切る)
-      const ambiguous = plan.needsReview.some((e) => {
+      const overlaps = (e: ResolvedLesson) => {
         if (Math.abs(toMin(e.start) - toMin(s.start_time)) > MATCH_WINDOW_MIN) return false;
         // 代講と書かれた予定は「この時間にレッスンをやった」ことが確実なので、会場違いでも切らない。
         // 七ヶ浜は国際村/アクアが週替わりで、枠の既定会場と違うのが正常(2026-09-25の実例:
@@ -148,8 +178,15 @@ export function reconcileDay(slots: MasterSlotLite[], events: ResolvedLesson[], 
         if (e.substitute && sameClass(e.class_name, s.class_name)) return true;
         if (e.studio_id != null && s.studio_id != null && e.studio_id !== s.studio_id) return false;
         return true;
-      });
-      if (ambiguous) { plan.skipped.push(s); return; }
+      };
+      const blockers = plan.needsReview.filter(overlaps);
+      if (blockers.length > 0) {
+        plan.skipped.push(s);
+        // 重なった予定が代講なら「元の担当はやっていない」ことが確実。
+        // 給与の補完で元の担当に払わないよう記録する(会場費は枠どおり補完してよい)。
+        if (blockers.some((e) => e.substitute)) plan.skippedSubstitute.push(s);
+        return;
+      }
       // カレンダーに対応する予定が無い = 開催されなかった
       plan.removed.push({
         master_id: s.master_id, date: s.date, start_time: s.start_time, end_time: s.end_time,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reconcileDay, type MasterSlotLite } from '../calendarReconcile';
+import { reconcileDay, parseSubstitutePending, substitutePendingKey, type MasterSlotLite } from '../calendarReconcile';
 import type { ResolvedLesson } from '../calendarActuals';
 
 const slot = (o: Partial<MasterSlotLite>): MasterSlotLite => ({
@@ -197,5 +197,79 @@ describe('reconcileDay', () => {
     expect(p.keep).toHaveLength(0);
     expect(p.removed).toHaveLength(1);
     expect(p.extra).toHaveLength(1); // 別枠の単発として残る
+  });
+});
+
+// 代講の予定と重なって「触らない」にした枠は、給与の補完で元の担当に払わないよう記録する。
+// 2026-10-11 の実例: 代講(担当未登録)の3コマに instance が無く、給与の補完が
+// 元の担当(マスタの既定講師)に給与を付けた。
+describe('reconcileDay: 代講で保留した枠 (skippedSubstitute)', () => {
+  const sub = (o: Partial<ResolvedLesson>) => res({
+    date: '2026-10-11', substitute: true, instructor_id: 3,
+    instructors: [{ id: 3, name: 'TARO', substitute: true }],
+    issues: ['代講のため単価が自動で決まらない'], ...o,
+  });
+
+  it('【回帰】同じクラスの代講予定と重なる枠は skippedSubstitute に入る', () => {
+    const p = reconcileDay(
+      [slot({ master_id: 5, date: '2026-10-11', instructor_id: 2, studio_id: 3, start_time: '11:00', end_time: '12:30', class_name: '多賀城 HIPHOP 初級' })],
+      [sub({ start: '11:00', end: '12:30', studio_id: 3, class_name: '多賀城 HIPHOP 初級' })]
+    );
+    expect(p.skipped).toHaveLength(1);
+    expect(p.skippedSubstitute).toEqual([
+      expect.objectContaining({ master_id: 5, date: '2026-10-11', class_name: '多賀城 HIPHOP 初級' }),
+    ]);
+  });
+
+  it('【回帰】クラス名の表記が違っても、同じ会場・同じ時間の代講予定なら記録する(基礎↔入門)', () => {
+    const p = reconcileDay(
+      [slot({ master_id: 4, date: '2026-10-11', instructor_id: 2, studio_id: 3, start_time: '12:45', end_time: '13:45', class_name: '多賀城 HIPHOP 入門' })],
+      [sub({ start: '12:45', end: '13:45', studio_id: 3, class_name: '多賀城 HIPHOP基礎' })]
+    );
+    expect(p.skippedSubstitute.map((s) => s.master_id)).toEqual([4]);
+  });
+
+  it('同じクラスの代講予定なら会場が違っても記録する(週替わり会場)', () => {
+    const p = reconcileDay(
+      [slot({ master_id: 1, date: '2026-10-11', instructor_id: 5, studio_id: 1, start_time: '12:15', end_time: '13:15', class_name: 'キッズHIPHOP入門' })],
+      [sub({ start: '12:15', end: '13:15', studio_id: 4, class_name: 'キッズHIPHOP 入門🔰' })]
+    );
+    expect(p.skippedSubstitute.map((s) => s.master_id)).toEqual([1]);
+  });
+
+  it('代講ではない要確認予定(講師不明など)と重なる枠は記録しない(従来どおり)', () => {
+    const p = reconcileDay(
+      [slot({ studio_id: 90 })],
+      [res({ issues: ['講師が特定できない'], instructor_id: null, studio_id: 90 })]
+    );
+    expect(p.skipped).toHaveLength(1);
+    expect(p.skippedSubstitute).toHaveLength(0);
+  });
+
+  it('別クラス・別会場の代講予定は巻き込まない', () => {
+    const p = reconcileDay(
+      [slot({ master_id: 1, date: '2026-10-11', instructor_id: 5, studio_id: 1, start_time: '12:15', class_name: 'キッズHIPHOP入門' })],
+      [sub({ start: '12:45', studio_id: 3, class_name: '多賀城 HIPHOP基礎' })]
+    );
+    expect(p.skippedSubstitute).toHaveLength(0);
+    expect(p.removed).toHaveLength(1);
+  });
+});
+
+describe('parseSubstitutePending / substitutePendingKey', () => {
+  it('保存したJSONから (master_id, date) のキーを復元する', () => {
+    const m = parseSubstitutePending(JSON.stringify([
+      { master_id: 1, date: '2026-10-11', class_name: 'キッズHIPHOP入門' },
+    ]));
+    expect(m.get('1_2026-10-11')).toMatchObject({ class_name: 'キッズHIPHOP入門' });
+  });
+  it('壊れた値・空は空Mapを返す(給与計算を止めない)', () => {
+    expect(parseSubstitutePending(null).size).toBe(0);
+    expect(parseSubstitutePending('not json').size).toBe(0);
+    expect(parseSubstitutePending('{"a":1}').size).toBe(0);
+    expect(parseSubstitutePending('[{"master_id":"x"}]').size).toBe(0);
+  });
+  it('設定キーは月ごと', () => {
+    expect(substitutePendingKey('2026-10')).toBe('calendar_substitute_pending:2026-10');
   });
 });

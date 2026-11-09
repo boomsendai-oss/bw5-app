@@ -236,8 +236,22 @@ export function aggregateInstances(
   }
 }
 
+/** 代講で保留中のため、元の担当に給与を付けなかった枠 */
+export type HeldSubstituteSlot = {
+  master_id: number;
+  date: string;
+  class_name: string;
+  default_instructor_id: number | null;
+};
+
 /**
  * master 週次展開 (instances にない日を埋める)
+ *
+ * @param substitutePendingKeys カレンダー同期が「代講の予定と重なるので触らない」とした枠の
+ *   `${master_id}_${date}`。この枠は元の担当がやっていないことが確実なので **給与を付けず**、
+ *   戻り値で返して画面の警告にする(2026-10-11 の実例: 代講3コマの給与が元の担当に付いた)。
+ *   会場費(studioBilling)の補完はこの関数を使わないので影響しない。
+ * @returns 保留して給与を付けなかった枠
  */
 export function expandMasters(
   yearMonth: string,
@@ -247,8 +261,17 @@ export function expandMasters(
   transitMap: Map<string, number>,
   expandedKeys: Set<string>,
   transitCharged: Set<string>,
-): void {
+  substitutePendingKeys: ReadonlySet<string> = new Set(),
+): HeldSubstituteSlot[] {
+  const held: HeldSubstituteSlot[] = [];
   for (const { master, dateStr } of expandMasterSlots(yearMonth, masters, expandedKeys)) {
+    if (substitutePendingKeys.has(`${master.id}_${dateStr}`)) {
+      held.push({
+        master_id: master.id, date: dateStr, class_name: master.class_name,
+        default_instructor_id: master.default_instructor_id ?? null,
+      });
+      continue;
+    }
     if (!master.default_instructor_id) continue;
     const result = resultsMap.get(master.default_instructor_id);
     if (!result) continue;
@@ -275,6 +298,7 @@ export function expandMasters(
     result.total_lesson_amount += rate;
     result.total_transit_amount += transit;
   }
+  return held;
 }
 
 /**

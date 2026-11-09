@@ -10,7 +10,10 @@ import {
   resolveCalendarEvent, STUDIO_ALIAS_SEED, UNREGISTERED_VENUES,
   type NamedRef, type ResolvedLesson,
 } from './calendarActuals';
-import { reconcileDay, type MasterSlotLite, type InstanceWrite } from './calendarReconcile';
+import {
+  reconcileDay, substitutePendingKey,
+  type MasterSlotLite, type InstanceWrite, type SubstitutePendingSlot,
+} from './calendarReconcile';
 
 // 受託スコープ(taro.bsbカレンダー)の定義。
 // TAROの個人カレンダーを読むため、**キーワードに一致した予定以外は一切取り込まない**
@@ -32,6 +35,8 @@ export type SyncResult = {
   extra: number;
   needsReview: ReviewItem[];
   untouchedSlots: number;
+  /** untouchedSlots のうち代講の予定と重なった枠。給与の補完で元の担当に払わない(要確認として出す) */
+  substitutePending: SubstitutePendingSlot[];
   unregisteredVenues: string[];
   written: number;
 };
@@ -50,7 +55,7 @@ export async function syncCalendarActuals(
 ): Promise<SyncResult> {
   const base: SyncResult = {
     year_month: ym, range: null, applied: false, held: 0, notHeld: 0, extra: 0,
-    needsReview: [], untouchedSlots: 0, unregisteredVenues: [], written: 0,
+    needsReview: [], untouchedSlots: 0, substitutePending: [], unregisteredVenues: [], written: 0,
   };
 
   if (await getOne('SELECT year_month FROM month_confirmations WHERE year_month = ?', [ym])) {
@@ -105,6 +110,7 @@ export async function syncCalendarActuals(
   const keep: InstanceWrite[] = [], removed: InstanceWrite[] = [], extra: InstanceWrite[] = [];
   const needsReview: ResolvedLesson[] = [];
   let untouched = 0;
+  const substitutePending: SubstitutePendingSlot[] = [];
 
   for (const sc of SCOPES) {
     const scopeMasters = masters.filter((m) => (m as { calendar_scope: string }).calendar_scope === sc.scope);
@@ -148,6 +154,7 @@ export async function syncCalendarActuals(
       const tag = (w: InstanceWrite): InstanceWrite => ({ ...w, note: `${sc.notePrefix}${w.note}`.slice(0, 120) });
       keep.push(...p.keep.map(tag)); removed.push(...p.removed.map(tag)); extra.push(...p.extra.map(tag));
       needsReview.push(...p.needsReview); untouched += p.skipped.length;
+      substitutePending.push(...p.skippedSubstitute.map((s) => ({ master_id: s.master_id, date: s.date, class_name: s.class_name })));
     }
   }
 
@@ -163,6 +170,7 @@ export async function syncCalendarActuals(
     extra: extra.length,
     needsReview: needsReview.map((r) => ({ date: r.date, start: r.start, class_name: r.class_name, issues: r.issues })),
     untouchedSlots: untouched,
+    substitutePending,
     unregisteredVenues: [...new Set(
       [...keep, ...extra].filter((w) => (w.studio_id ?? 0) < 0).map((w) => w.studio_id!).map(
         (id) => studios.find((s) => s.id === id)?.name ?? '?'
@@ -204,6 +212,15 @@ export async function syncCalendarActuals(
     });
   }
 
-  if (stmts.length > 0) await batch(stmts);
-  return { ...result, written: stmts.length };
+  const written = stmts.length;
+  // 代講で保留した枠を給与計算へ渡す(毎回その月ぶんを丸ごと置き換える)。
+  // instance を作らずに記録だけするのは、instance を作ると予定表・公開カレンダー・
+  // HACOMONOに「担当なしのレッスン」が出てしまうため。会場費の補完はこの記録を見ない。
+  stmts.push({
+    sql: `INSERT INTO settings (key, value) VALUES (?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    args: [substitutePendingKey(ym), JSON.stringify(substitutePending)],
+  });
+  await batch(stmts);
+  return { ...result, written };
 }

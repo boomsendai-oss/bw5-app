@@ -637,3 +637,46 @@ describe('resolveRateWithFallback (M2)', () => {
     expect(r).toEqual({ rate: 0, rateMissing: true, bucketFallback: false });
   });
 });
+
+// ============================================
+// expandMasters: 代講で保留中の枠は元の担当に払わない (2026-10-11 の実例)
+// ============================================
+describe('expandMasters: 代講で保留中の枠', () => {
+  // 日曜(0)の枠。2026-10 の日曜は 4, 11, 18, 25
+  const masters: MasterInput[] = [{
+    id: 1, class_name: 'キッズHIPHOP入門', default_day_of_week: 0,
+    default_start_time: '12:15', default_end_time: '13:15',
+    duration_minutes: 60, override_rate: null,
+    default_instructor_id: 5, default_studio_id: 1, studio_name: 'GOAT',
+  }];
+  const rateMap = new Map<string, number>([['5_60', 4000]]);
+  const transitMap = new Map<string, number>([['5_1', 300]]);
+
+  it('【回帰】保留中の (master_id, date) は元の担当に給与・交通費を付けず、held として返す', () => {
+    const resultsMap = buildResultsMap([{ id: 5, name: 'X', salary_type: 'per_lesson', monthly_fixed_amount: null }]);
+    const held = expandMasters('2026-10', masters, resultsMap, rateMap, transitMap, new Set(), new Set(),
+      new Set(['1_2026-10-11']));
+    const r = resultsMap.get(5)!;
+    expect(r.lines.map((l) => l.lesson_date)).toEqual(['2026-10-04', '2026-10-18', '2026-10-25']);
+    expect(r.total_lesson_amount).toBe(12000);
+    expect(r.total_transit_amount).toBe(900);
+    expect(held).toEqual([
+      { master_id: 1, date: '2026-10-11', class_name: 'キッズHIPHOP入門', default_instructor_id: 5 },
+    ]);
+  });
+
+  it('instance がある日(手で実施者を登録した後)は held にも出さない', () => {
+    const resultsMap = buildResultsMap([{ id: 5, name: 'X', salary_type: 'per_lesson', monthly_fixed_amount: null }]);
+    const held = expandMasters('2026-10', masters, resultsMap, rateMap, transitMap,
+      new Set(['1_2026-10-11']), new Set(), new Set(['1_2026-10-11']));
+    expect(held).toEqual([]);
+    expect(resultsMap.get(5)!.lines).toHaveLength(3);
+  });
+
+  it('保留指定が無ければ従来どおり全部補完する', () => {
+    const resultsMap = buildResultsMap([{ id: 5, name: 'X', salary_type: 'per_lesson', monthly_fixed_amount: null }]);
+    const held = expandMasters('2026-10', masters, resultsMap, rateMap, transitMap, new Set(), new Set());
+    expect(held).toEqual([]);
+    expect(resultsMap.get(5)!.lines).toHaveLength(4);
+  });
+});

@@ -1,5 +1,6 @@
 import { execute, getAll, getOne, withWriteTx } from './db';
 import { isMonthConfirmed } from './monthConfirm';
+import { parseSubstitutePending, substitutePendingKey } from './calendarReconcile';
 import {
   calcPaymentDate,
   minutesBetween,
@@ -11,11 +12,16 @@ import {
 } from './payroll-calc';
 
 // 型を payroll-calc.ts から re-export (既存の import 元を壊さない)
-export type { PayrollLine, PayrollResult } from './payroll-calc';
-import type { PayrollResult } from './payroll-calc';
+export type { PayrollLine, PayrollResult, HeldSubstituteSlot } from './payroll-calc';
+import type { PayrollResult, HeldSubstituteSlot } from './payroll-calc';
 
 // 月内のレッスン実績(休講除く)を集計してインストラクター別給与を計算
-export async function calculatePayrollForMonth(yearMonth: string): Promise<{ payment_date: string; results: import('./payroll-calc').PayrollResult[] }> {
+export async function calculatePayrollForMonth(yearMonth: string): Promise<{
+  payment_date: string;
+  results: PayrollResult[];
+  /** 代講の予定があるのに実施者が未登録のため、元の担当に給与を付けなかった枠(要確認) */
+  held_substitute: HeldSubstituteSlot[];
+}> {
   const [y, m] = yearMonth.split('-').map(Number);
   const monthStart = `${yearMonth}-01`;
   const lastDay = new Date(y, m, 0).getDate();
@@ -94,9 +100,14 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
   aggregateInstances(instances, resultsMap, masterOverrideMap, rateMap, transitMap, expandedKeys, transitCharged);
 
   // 2) lesson_master 週次展開 (instances にない日を埋める)
+  //    ただしカレンダー同期が「代講の予定と重なるので触らない」とした枠は、
+  //    元の担当がやっていないことが確実なので給与を付けず、要確認として返す。
   const confirmed = await isMonthConfirmed(yearMonth);
+  let heldSubstitute: HeldSubstituteSlot[] = [];
   if (!confirmed) {
-    expandMasters(yearMonth, masters, resultsMap, rateMap, transitMap, expandedKeys, transitCharged);
+    const pendingRow = await getOne('SELECT value FROM settings WHERE key = ?', [substitutePendingKey(yearMonth)]);
+    const pending = new Set(parseSubstitutePending(pendingRow?.value as string | undefined).keys());
+    heldSubstitute = expandMasters(yearMonth, masters, resultsMap, rateMap, transitMap, expandedKeys, transitCharged, pending);
   }
 
   // 3) monthly_fixed の人は固定額をlesson_amountに
@@ -108,6 +119,7 @@ export async function calculatePayrollForMonth(yearMonth: string): Promise<{ pay
   return {
     payment_date: calcPaymentDate(yearMonth),
     results: Array.from(resultsMap.values()),
+    held_substitute: heldSubstitute,
   };
 }
 

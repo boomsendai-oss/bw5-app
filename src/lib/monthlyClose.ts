@@ -4,6 +4,7 @@
 import { getAll } from './db';
 import { findRoomConflicts, type RoomConflict } from './roomConflicts';
 import { calculatePayrollForMonth, persistPayrollRun, zeroStaleDraftPayrollRuns } from './payroll';
+import type { HeldSubstituteSlot } from './payroll-calc';
 import {
   calculateStudioBillingForMonth, persistStudioBillingRun, zeroStaleDraftStudioBillingRuns,
 } from './studioBilling';
@@ -19,11 +20,32 @@ export type PayrollCalcResult = {
   zeroed_stale_drafts: number;
 };
 
+/** 代講保留の枠を給与計算画面の警告にする(純関数) */
+export function substituteWarnings(
+  held: HeldSubstituteSlot[],
+  results: { instructor_id: number; instructor_name: string }[],
+): PayrollWarning[] {
+  const nameOf = new Map(results.map((r) => [r.instructor_id, r.instructor_name]));
+  return held.map((h) => {
+    const [, mm, dd] = h.date.split('-');
+    const id = h.default_instructor_id ?? 0;
+    return {
+      instructor_id: id,
+      instructor_name: nameOf.get(id) ?? '担当未登録',
+      reason: `要確認: ${Number(mm)}/${Number(dd)} ${h.class_name} は代講の予定だが担当が未登録`
+        + '(給与¥0扱い・元の担当には付けていません。予定表で実施した講師を登録して再計算してください)',
+    };
+  });
+}
+
 /** 給与draftを再計算する。確定・配布・振込は行わない(人間のゲート)。 */
 export async function recalcPayroll(ym: string): Promise<PayrollCalcResult> {
-  const { payment_date, results } = await calculatePayrollForMonth(ym);
+  const { payment_date, results, held_substitute } = await calculatePayrollForMonth(ym);
   const runs: PayrollCalcResult['runs'] = [];
   const warnings: PayrollWarning[] = [];
+  // 代講の予定があるのに実施者が未登録の枠。元の担当には払っていない(¥0扱い)。
+  // 実施者を予定表で登録して再計算すると、その人に給与が付いてこの警告は消える。
+  warnings.push(...substituteWarnings(held_substitute, results));
   for (const r of results) {
     // 単価未登録でサイレント¥0になっている講師を警告として返す(T-156)
     if (r.has_rate_missing) {
