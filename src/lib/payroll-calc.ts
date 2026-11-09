@@ -37,13 +37,18 @@ export type PayrollResult = {
 };
 
 /**
- * 振込予定日: 翌月15日。15日が土日なら翌営業日
+ * 振込予定日: 翌月15日。15日が土日なら**前の平日**(金曜)。
+ *
+ * HACOMONOの大口入金(GMOイプシロン)は毎月15日・土日なら前営業日に入る
+ * (GMO明細で確認: 2026-02-13金・03-13金・08-14金)。給与はその入金日に払う
+ * (TARO 2026-11-09「手元に置くと他に使ってしまい払えなくなるのが一番まずい」)。
+ * ⚠️祝日は見ていない。15日が平日の祝日の月は、入金日を見て手で直すこと。
  */
 export function calcPaymentDate(yearMonth: string): string {
   const [y, m] = yearMonth.split('-').map(Number);
   const next = new Date(y, m, 15);
   while (next.getDay() === 0 || next.getDay() === 6) {
-    next.setDate(next.getDate() + 1);
+    next.setDate(next.getDate() - 1);
   }
   const yy = next.getFullYear();
   const mm = String(next.getMonth() + 1).padStart(2, '0');
