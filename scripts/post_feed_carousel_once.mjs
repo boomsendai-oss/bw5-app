@@ -2,7 +2,7 @@
 //
 // 使い方:
 //   node scripts/post_feed_carousel_once.mjs --image-urls "https://...1.jpg,https://...2.jpg" \
-//        --caption-file caption.txt [--collaborators "a,b"] [--dry-run]
+//        --caption-file caption.txt [--collaborators "a,b"] [--user-tags "c,d"] [--dry-run]
 //
 // --dry-run: 各画像と全体の器(コンテナ)の作成まで行い、公開はしない
 // 終了コード: 0=公開OK / 1=作成の失敗(公開されていない=再試行してよい) / 2=公開時の失敗(公開された可能性があるので再試行しない)
@@ -24,6 +24,19 @@ const COLLAB = String(opt('--collaborators') ?? '')
   .map((s) => s.replace(/^@+/, '').trim())
   .filter(Boolean)
   .slice(0, 5);
+// 1枚目の画像にタグ付けする人(共同投稿の枠に入らない人向け。最大20人・相手の承認不要・相手の「タグ付け」欄に出る)
+const TAGS = String(opt('--user-tags') ?? '')
+  .split(/[\s,]+/)
+  .map((s) => s.replace(/^@+/, '').trim())
+  .filter(Boolean)
+  .slice(0, 20);
+const tagPos = (i, n) => {
+  // 画像の下の方に横一列～2列で並べる(顔や文字にかぶりにくい位置)
+  const perRow = Math.min(n, 5);
+  const row = Math.floor(i / perRow);
+  const col = i % perRow;
+  return { x: +(((col + 1) / (perRow + 1))).toFixed(2), y: +(0.82 + row * 0.06).toFixed(2) };
+};
 if (URLS.length < 2 || URLS.length > 10) { console.error('--image-urls は2〜10枚'); process.exit(1); }
 if (URLS.some((u) => !/\.jpe?g($|\?)/i.test(u))) { console.error('画像は JPEG の URL にしてください'); process.exit(1); }
 
@@ -57,8 +70,10 @@ const waitFinished = async (id) => {
 };
 
 const children = [];
-for (const url of URLS) {
-  const r = await post(`${IG_USER}/media`, { image_url: url, is_carousel_item: 'true' });
+for (const [idx, url] of URLS.entries()) {
+  const item = { image_url: url, is_carousel_item: 'true' };
+  if (idx === 0 && TAGS.length) item.user_tags = JSON.stringify(TAGS.map((username, i) => ({ username, ...tagPos(i, TAGS.length) })));
+  const r = await post(`${IG_USER}/media`, item);
   if (!r.ok || !r.json.id) { console.error('画像の器の作成失敗:', url, JSON.stringify(r.json.error ?? r.json)); process.exit(1); }
   if (!(await waitFinished(r.json.id))) { console.error('画像の処理でエラー:', url); process.exit(1); }
   children.push(r.json.id);
@@ -67,7 +82,7 @@ const body = { media_type: 'CAROUSEL', children: children.join(','), caption: CA
 if (COLLAB.length) body.collaborators = JSON.stringify(COLLAB);
 const parent = await post(`${IG_USER}/media`, body);
 if (!parent.ok || !parent.json.id) { console.error('全体の器の作成失敗:', JSON.stringify(parent.json.error ?? parent.json)); process.exit(1); }
-console.log('器の作成OK:', parent.json.id, '/ 枚数:', children.length, '/ 共同投稿者:', COLLAB.join(', ') || '(なし)');
+console.log('器の作成OK:', parent.json.id, '/ 枚数:', children.length, '/ 共同投稿者:', COLLAB.join(', ') || '(なし)', '/ タグ:', TAGS.join(', ') || '(なし)');
 console.log('  キャプション文字数:', [...CAPTION].length, '/ ハッシュタグ数:', (CAPTION.match(/#/g) || []).length);
 if (DRY) { console.log('--dry-run のため公開しません'); process.exit(0); }
 if (!(await waitFinished(parent.json.id))) { console.error('全体の処理でエラー'); process.exit(1); }
