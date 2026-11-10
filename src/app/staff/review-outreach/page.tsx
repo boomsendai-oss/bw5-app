@@ -5,6 +5,14 @@ import StaffPageHeader from '@/components/StaffPageHeader';
 import { getAll, getOne } from '@/lib/db';
 import { isAuthorizedServer } from '@/lib/eventAuth';
 import OutreachList, { type Family } from './OutreachList';
+import NextBatch, { type NextFamily } from './NextBatch';
+import { todayJst } from '@/lib/dateJst';
+import {
+  loadOutreachCandidates,
+  pickNextFamilies,
+  greetingFor,
+  buildReviewRequest,
+} from '@/lib/reviewOutreachPick';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -107,14 +115,33 @@ export default async function ReviewOutreachPage() {
     (await getOne('SELECT COUNT(*) AS n FROM gbp_reviews'))?.n ?? 0
   );
 
+  // 次にお願いする家族 (2026-11-10 TARO決定の選び方)
+  const today = todayJst();
+  const nextFamilies: NextFamily[] = pickNextFamilies(
+    await loadOutreachCandidates((sql, args) => getAll(sql, args ?? [])),
+    today
+  ).map((f) => {
+    const greeting = greetingFor(f, today) ?? '';
+    return {
+      familyKey: f.familyKey,
+      greeting,
+      lineNames: [...new Set(f.lineLinks.map((l) => l.lineName).filter((n): n is string => !!n))],
+      memberNames: f.members.map((m) => m.name),
+      checkins: f.checkins,
+      lastCheckin: f.lastCheckin,
+      message: buildReviewRequest(greeting, reviewTotal),
+    };
+  });
+
   return (
     <div>
       <StaffPageHeader
         title="クチコミ声がけリスト"
-        description="保護者へのお願いLINEの進捗管理。1日5件ペース(スパムフィルタ対策)・見返りの約束はNG"
+        description="保護者へのお願いLINEの進捗管理。5家族ずつ・週2〜3回(TAROの個人LINEから)・見返りの約束はNG"
         backHref="/staff"
       />
       <div className="p-4 max-w-3xl mx-auto space-y-4">
+        <NextBatch families={nextFamilies} />
         <OutreachList
           families={families}
           reviewTotal={reviewTotal}
