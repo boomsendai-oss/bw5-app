@@ -49,7 +49,8 @@
           "start": "11:00",
           "instructor": "AOI"
         }
-      ]
+      ],
+      "until": "2026-11-30"
     },
     {
       "file": "07_土曜_多賀城KATTSU.jpg",
@@ -62,7 +63,8 @@
           "start": "11:00",
           "instructor": "K@TTSU"
         }
-      ]
+      ],
+      "until": "2026-11-30"
     },
     {
       "file": "08_土曜_午後2人.jpg",
@@ -158,7 +160,8 @@
           "start": "15:00",
           "instructor": "KEIKO"
         }
-      ]
+      ],
+      "until": "2026-11-30"
     },
     {
       "file": "13_日曜SP_ちゃんなつ.jpg",
@@ -393,6 +396,80 @@
         {
           "start": "19:30",
           "instructor": "TARO"
+        }
+      ]
+    },
+    {
+      "file": "28_日曜_仙台昼_12月から.jpg",
+      "weekday": 0,
+      "from": "2026-12-01",
+      "mentions": [
+        "haruka0v0matsuura",
+        "m55keiko",
+        "takaryu_1203"
+      ],
+      "lessons": [
+        {
+          "start": "10:00",
+          "instructor": "HARUKA"
+        },
+        {
+          "start": "11:00",
+          "instructor": "KEIKO"
+        },
+        {
+          "start": "12:15",
+          "instructor": "Ryuki"
+        },
+        {
+          "start": "13:30",
+          "instructor": "Ryuki"
+        },
+        {
+          "start": "15:00",
+          "instructor": "KEIKO"
+        }
+      ]
+    },
+    {
+      "file": "29_土曜_多賀城HOUSE入門KATTSU_12月から.jpg",
+      "weekday": 6,
+      "from": "2026-12-01",
+      "mentions": [
+        "kattsu_ziel"
+      ],
+      "lessons": [
+        {
+          "start": "11:00",
+          "instructor": "K@TTSU"
+        }
+      ]
+    },
+    {
+      "file": "30_土曜_多賀城HOUSE入門AOI_12月から.jpg",
+      "weekday": 6,
+      "from": "2026-12-01",
+      "mentions": [
+        "aoi.w_0530"
+      ],
+      "lessons": [
+        {
+          "start": "11:00",
+          "instructor": "AOI"
+        }
+      ]
+    },
+    {
+      "file": "31_土曜_多賀城HOUSE入門MYU_12月から.jpg",
+      "weekday": 6,
+      "from": "2026-12-01",
+      "mentions": [
+        "myu_0129_"
+      ],
+      "lessons": [
+        {
+          "start": "11:00",
+          "instructor": "MYU"
         }
       ]
     }
