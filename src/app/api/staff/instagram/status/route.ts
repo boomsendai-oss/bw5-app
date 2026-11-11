@@ -125,13 +125,14 @@ async function buildPlanForDate(origin: string, date: string, dayPlan: DayPlan |
     const items = [];
     for (const media of chainList) {
       // library-auto は台帳(manifest)の宣言/メンションをmediaが直接持つ(sidecar {base}.json は無い)
-      const sidecar = media.source === 'library-auto'
+      const sidecar = media.source === 'library-auto' || media.source === 'substitute'
         ? { lessons: media.lessons, mentions: media.mentions }
         : await loadSidecar(origin, media.base);
       const check = await checkSchedule(date, sidecar.lessons);
       items.push({
         base: media.base,
-        mediaPath: new URL(media.url).pathname,
+        // 代講版はR2(別ドメイン)の画像なので絶対URLのまま渡す(pathnameだと画面のサムネが切れる)
+        mediaPath: media.source === 'substitute' ? media.url : new URL(media.url).pathname,
         mediaType: media.type,
         mentions: sidecar.mentions ?? [],
         scheduleCheck: check,

@@ -62,7 +62,7 @@ type PlanItem = {
 type Plan = {
   date: string;
   weekday: number;
-  source: 'date-file' | 'weekday-file' | 'library-auto' | 'queue' | 'none';
+  source: 'date-file' | 'weekday-file' | 'library-auto' | 'substitute' | 'queue' | 'none';
   // その日の結論(サーバ側でcronと同じ判定を通した結果)。画面はこれを最初に大きく出す。
   verdict?: 'skip' | 'will-post' | 'blocked' | 'no-media';
   dayPlan?: DayPlanRow | null;
@@ -355,6 +355,7 @@ const PLAN_SOURCE_JA: Record<Plan['source'], string> = {
   'date-file': '日付指定の素材',
   'weekday-file': '曜日の素材',
   'library-auto': 'ライブラリ自動選択',
+  substitute: '代講版(自動作成)',
   queue: '埋め草キュー',
   none: '',
 };

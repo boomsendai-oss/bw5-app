@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
               ? String(slotHit.mentions).split(/[\s,、，]+/).map((h) => h.replace(/^@+/, '')).filter(Boolean)
               : undefined,
           }
-        : media.source === 'library-auto'
+        : media.source === 'library-auto' || media.source === 'substitute'
           ? { lessons: media.lessons, mentions: media.mentions }
           : await loadSidecar(origin, media.base);
 

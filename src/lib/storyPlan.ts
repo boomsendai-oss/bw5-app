@@ -1,3 +1,5 @@
+import { lessonMatches, judgeEntry, applySubstitutes, type SubstituteRecord, type Swap } from './storySubstitute';
+
 // ストーリー素材の選択ロジック(cron本番と /staff/instagram の「明日の投稿予定」プレビューで共用)。
 // 優先チェーン: ①日付指定 {YYYY-MM-DD}.(mp4|jpg) ②曜日 {曜日}.(mp4|jpg) ③埋め草キュー ④出さない。
 // 同一優先度内は mp4 > jpg (静止画を先に置き、動画完成後に同名.mp4を置くだけで自動格上げ)。
@@ -9,8 +11,9 @@ export type ChainMedia = {
   url: string;
   type: 'video' | 'image';
   base: string; // 'YYYY-MM-DD' または曜日名。メンションsidecar {base}.json の参照にも使う
-  source: 'date-file' | 'weekday-file' | 'library-auto';
-  // library-auto の時だけ: 台帳(manifest)由来の宣言/メンション。sidecar {base}.json は読まずこれを使う。
+  source: 'date-file' | 'weekday-file' | 'library-auto' | 'substitute';
+  // library-auto / substitute の時だけ: 宣言/メンションを直接持つ。sidecar {base}.json は読まずこれを使う。
+  // substitute = 代講版(M1が作ってR2に置いた画像。url は絶対URL・base は 'sub:{日付}:{元の素材}')。
   lessons?: DeclaredLesson[];
   mentions?: string[];
 };
@@ -51,8 +54,120 @@ export async function findChainMediaList(origin: string, date: string, weekday: 
   const dated = await fileChain(date, 'date-file');
   if (dated.length > 0) return sortByDeclaredTime(origin, dated);
   const auto = await selectLibraryChain(origin, date, weekday);
-  if (auto.length > 0) return sortByDeclaredTime(origin, auto);
-  return sortByDeclaredTime(origin, await fileChain(WEEKDAY_FILES[weekday], 'weekday-file'));
+  const chain = auto.length > 0 ? auto : await fileChain(WEEKDAY_FILES[weekday], 'weekday-file');
+  return sortByDeclaredTime(origin, await withSubstitutes(date, chain));
+}
+
+/** その日の代講版(story_substitute)を読む。表が無い・読めない時は空(=従来どおり)。 */
+export async function loadSubstitutes(date: string): Promise<SubstituteRecord[]> {
+  try {
+    const { getAll } = await import('./db');
+    const rows = await getAll(
+      "SELECT replaces_base, media_url, lessons FROM story_substitute WHERE date = ? AND status = 'active' ORDER BY replaces_base",
+      [date]
+    );
+    return rows
+      .map((r) => ({
+        replacesBase: String(r.replaces_base),
+        mediaUrl: String(r.media_url),
+        lessons: (() => {
+          try {
+            const v = JSON.parse(String(r.lessons));
+            return Array.isArray(v) ? (v as DeclaredLesson[]) : [];
+          } catch {
+            return [];
+          }
+        })(),
+      }))
+      .filter((s) => s.lessons.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+// 代講版を通常のチェーンに差し込む(TARO 2026-11-11: 代講はいつもの画像を代講の形に作り変えて自動で出す)。
+// 代講版も宣言レッスン(代講に入る講師)を持つので、投稿の直前にカレンダー照合を通る。
+// 夜のうちに代講が取り消されれば照合で止まる(=古い代講版が出ることはない)。
+async function withSubstitutes(date: string, chain: ChainMedia[]): Promise<ChainMedia[]> {
+  const subs = await loadSubstitutes(date);
+  if (subs.length === 0) return chain;
+  return applySubstitutes(chain, subs, (s) => ({
+    url: s.mediaUrl,
+    type: 'image' as const,
+    base: `sub:${date}:${s.replacesBase}`,
+    source: 'substitute' as const,
+    lessons: s.lessons,
+    mentions: [],
+  }));
+}
+
+export type SubstitutePlanItem = {
+  base: string; // 元の素材(台帳のファイル名 or 曜日名)
+  url: string; // 元の素材のURL
+  lessons: DeclaredLesson[]; // 元の宣言
+  swaps: Swap[];
+  substitutedLessons: DeclaredLesson[]; // 代講版が宣言するレッスン
+};
+
+/**
+ * 代講版を作るべき素材を洗い出す(M1の書き出しスクリプトが前夜に呼ぶ)。
+ * 対象 = その日の台帳の画像(期間内)。台帳にその曜日の画像が1枚も無い時は曜日画像(wed.jpg等)。
+ * 代講の印がある予定のせいで照合に落ちる画像のうち、食い違いが全部代講で説明できるものだけを返す。
+ * 休講・時間変更などは others に理由だけ返す(今までどおり出さない)。
+ */
+export async function planSubstitutes(origin: string, date: string, weekday: number): Promise<{
+  items: SubstitutePlanItem[];
+  others: Array<{ base: string; problems: string[] }>;
+  calendar: Array<{ start: string; end?: string; summary: string }>;
+  calendarSource: 'api' | 'ics';
+}> {
+  const { fetchLessonsForDate } = await import('./lessonCalendar');
+  const { getAll } = await import('./db');
+  const { lessons: cal, source } = await fetchLessonsForDate(date);
+  const knownNames = (await getAll('SELECT name FROM instructors')).map((r) => String(r.name));
+
+  type Cand = { base: string; url: string; lessons: DeclaredLesson[] };
+  let cands: Cand[] = [];
+  try {
+    const res = await fetch(`${origin}/stories/library/manifest.json`, { cache: 'no-store' });
+    if (res.ok) {
+      const manifest = (await res.json()) as { entries?: Array<LibraryEntryPeriod & { file: string; weekday: number; lessons: DeclaredLesson[] }> };
+      cands = (manifest.entries ?? [])
+        .filter((e) => e.weekday === weekday && e.lessons?.length && isEntryInPeriod(e, date))
+        .map((e) => ({ base: e.file, url: `${origin}/stories/library/${encodeURIComponent(e.file)}`, lessons: e.lessons }));
+    }
+  } catch {
+    cands = [];
+  }
+  if (cands.length === 0) {
+    for (let slot = 1; slot <= MAX_SLOTS; slot++) {
+      const b = slot === 1 ? WEEKDAY_FILES[weekday] : `${WEEKDAY_FILES[weekday]}-${slot}`;
+      const head = await fetch(`${origin}/stories/${b}.jpg`, { method: 'HEAD' }).catch(() => null);
+      if (!head?.ok) break;
+      const sc = await loadSidecar(origin, b);
+      if (sc.lessons?.length) cands.push({ base: b, url: `${origin}/stories/${b}.jpg`, lessons: sc.lessons });
+    }
+  }
+
+  const covered = new Set<string>();
+  const subs: SubstitutePlanItem[] = [];
+  const others: Array<{ base: string; problems: string[] }> = [];
+  for (const c of cands) {
+    const j = judgeEntry(cal, knownNames, c.lessons);
+    if (j.kind === 'ok') c.lessons.forEach((d) => covered.add(lessonKey(d.start, d.instructor)));
+    else if (j.kind === 'substitute') subs.push({ base: c.base, url: c.url, lessons: c.lessons, swaps: j.swaps, substitutedLessons: j.lessons });
+    else others.push({ base: c.base, problems: j.problems });
+  }
+  // 台帳の自動選択と同じく、情報量の多い画像から選び、既に全部載っている画像は捨てる
+  subs.sort((a, b) => b.lessons.length - a.lessons.length || a.base.localeCompare(b.base));
+  const items: SubstitutePlanItem[] = [];
+  for (const s of subs) {
+    const keys = s.substitutedLessons.map((d) => lessonKey(d.start, d.instructor));
+    if (keys.every((k) => covered.has(k))) continue;
+    keys.forEach((k) => covered.add(k));
+    items.push(s);
+  }
+  return { items, others, calendar: cal, calendarSource: source };
 }
 
 // 投稿順ルール(TARO 2026-07-25確定): チェーン内は「宣言時間が早いスロットから先に」投稿する。
@@ -71,7 +186,7 @@ async function sortByDeclaredTime(origin: string, list: ChainMedia[]): Promise<C
       // library-auto は台帳由来のlessonsを直接持つ。ファイル素材はsidecarから読む
       let lessons = m.lessons;
       let time: string | undefined;
-      if (m.source !== 'library-auto') {
+      if (m.source !== 'library-auto' && m.source !== 'substitute') {
         const sc = await loadSidecar(origin, m.base);
         lessons = sc.lessons;
         time = sc.time;
@@ -163,26 +278,15 @@ export function matchDeclaredLesson(
   d: DeclaredLesson
 ): boolean {
   const start = d.start.slice(0, 5);
-  // 全角と半角の揺れを吸収してから比較する(NFKC)。
-  // 実害: カレンダーに「多賀城HOUSE【K＠TTSU】」(＠が全角)と入っていた回があり、
-  // 講師名 K@TTSU と一致せず「講師名なし」と判定され、素材が選ばれず未投稿になった(2026-09-12)。
-  const norm = (v: string) => v.normalize('NFKC').toUpperCase();
-  const who = norm(d.instructor.trim());
-  const known = knownNames.map(norm);
   const atTime = calLessons.filter((l) => l.start === start);
   if (atTime.length === 0) return false;
-  return atTime.some((l) => {
-    const title = norm(l.summary);
-    const daiko = l.summary.match(/代講[\s:：]*([^\s　]+)/);
-    if (daiko) return norm(daiko[1]).includes(who) || who.includes(norm(daiko[1]));
-    // タイトルに講師名が無い予定は「レッスンである保証が無い」ので一致とみなさない。
-    // ⚠️2026-08-08の誤配信: 当日11:00にあったのは「⚔️ダンスバトル練習会」だけだったのに、
-    //   旧実装は「講師名なし→時刻一致でOK」としていたため、多賀城AOI/多賀城KATTSUの2枚が
-    //   "カレンダーに実在する"と誤判定され、休みの多賀城クラスの告知が自動投稿された。
-    //   BOOMのレッスン予定は必ずタイトルに講師名が入る運用(【講師名】クラス名)なので、
-    //   名前が取れない予定は落として良い(=誤配信より未投稿を選ぶ)。
-    return known.filter((n) => title.includes(n)).includes(who);
-  });
+  // 判定の本体は storySubstitute.lessonMatches(代講の判定と同じ規則を共有するため・2026-11-11)。
+  // ・全角と半角の揺れは NFKC で吸収する(2026-09-12「多賀城HOUSE【K＠TTSU】」が一致せず未投稿になった)。
+  // ・タイトルに講師名が無い予定は一致とみなさない(2026-08-08の誤配信: 11:00の「⚔️ダンスバトル練習会」
+  //   だけで多賀城の2枚が「実在する」と判定された。BOOMのレッスン予定は必ず【講師名】が入る運用)。
+  // ・代講の印(代講/代行)がある予定は「代講 ○○」の○○、無ければ【】の中の講師が教える人。
+  //   「（代講）」「（代行）」だけを後ろに付けた書き方で、元の講師の画像が通ってしまわないようにする。
+  return lessonMatches(atTime, knownNames, d);
 }
 
 /** 素材の宣言内容。「この素材は 18:30 AOI / 19:30 TARO の告知」をsidecarに書く */

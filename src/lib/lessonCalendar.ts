@@ -18,6 +18,7 @@ const REFRESH_TOKEN_KEY = 'google_calendar_refresh_token';
 export type CalendarLesson = {
   start: string; // 'HH:MM' JST
   summary: string;
+  end?: string; // 'HH:MM' JST(Calendar API経由のときだけ。代講版の画像の終了時刻に使う)
 };
 
 /** 指定日(JST 'YYYY-MM-DD')のレッスンイベント一覧を正本カレンダーから取得 */
@@ -119,7 +120,11 @@ async function fetchViaApi(date: string): Promise<CalendarLesson[] | null> {
     const dt = ev.start?.dateTime; // 終日イベント(date)はレッスンではないので無視
     if (!dt || !ev.summary) continue;
     const hhmm = new Date(dt).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hour12: false });
-    lessons.push({ start: hhmm, summary: ev.summary });
+    const edt = ev.end?.dateTime;
+    const end = edt
+      ? new Date(edt).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hour12: false })
+      : undefined;
+    lessons.push(end ? { start: hhmm, summary: ev.summary, end } : { start: hhmm, summary: ev.summary });
   }
   return lessons;
 }
