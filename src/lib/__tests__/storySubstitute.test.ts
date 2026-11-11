@@ -3,7 +3,7 @@ import { teachersOf, namesInTitle, judgeEntry, applySubstitutes, isAllowedSubsti
 import { matchDeclaredLesson } from '../storyPlan';
 
 const KNOWN = ['K@TTSU', 'AOI', 'TARO', 'KEIKO', 'Ryuki', 'HARUKI', 'HARUKA', 'MY', 'MYU', 'KOKEKO'];
-const ev = (start: string, summary: string, end?: string) => ({ start, summary, end });
+const ev = (start: string, summary: string, end?: string, note?: string) => ({ start, summary, end, note });
 
 // 2026-11-11(水) の実際のカレンダー(18:30 は TAROの代わりに AOI)
 const CAL_1111 = [
@@ -39,6 +39,19 @@ describe('judgeEntry (画像1枚がその日のカレンダーとどう食い違
       swaps: [{ start: '18:30', from: 'TARO', to: 'AOI', end: '20:00', summary: '【AOI】hiphop 入門初級（代行）' }],
       lessons: [{ start: '18:30', instructor: 'AOI' }, { start: '20:00', instructor: 'K@TTSU' }],
     });
+  });
+  it('11/25: 題名は【AOI】のまま説明欄に「代行」→ K@TTSU→AOI の代講', () => {
+    const cal = [
+      ev('18:30', 'TARO hiphop 入門初級', '20:00', '18:30〜20:00\nTARO HIPHOP 入門クラス'),
+      ev('20:00', '【AOI】HOUSE 初級', '21:30', '※この回はK@TTSUの代行でAOIが担当（11/10 K@TTSUから連絡・TARO OK）'),
+    ];
+    const j = judgeEntry(cal, KNOWN, WED);
+    expect(j.kind).toBe('substitute');
+    if (j.kind === 'substitute') expect(j.swaps.map((s) => `${s.start} ${s.from}→${s.to}`)).toEqual(['20:00 K@TTSU→AOI']);
+  });
+  it('説明欄に「代行」の字があっても、講師が宣言どおりなら ok', () => {
+    const cal = [ev('18:30', '【TARO】HIPHOP 入門初級', undefined, '代行のときはLINEでお知らせします'), ev('20:00', '【K@TTSU】HOUSE 初級')];
+    expect(judgeEntry(cal, KNOWN, WED)).toEqual({ kind: 'ok' });
   });
   it('食い違いが無ければ ok', () => {
     const cal = [ev('18:30', '【TARO】HIPHOP 入門初級'), ev('20:00', '【K@TTSU】HOUSE 初級')];

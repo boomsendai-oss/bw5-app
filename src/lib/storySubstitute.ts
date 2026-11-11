@@ -6,11 +6,12 @@
 // ここでは「食い違いが全部、代講で説明できるか」と「誰から誰へ替わったか」を決める。
 // 画像の書き出しは M1 の boom-events-hub/scripts/story_substitute が行う。
 //
-// カレンダーの代講の書き方は2通りある(どちらも実在):
+// カレンダーの代講の書き方は3通りある(どれも実在):
 //   ① 【TARO】キッズHIPHOP 代講 KOKEKO   … 「代講」の後ろが教える人
 //   ② 【AOI】hiphop 入門初級（代行）      … 【】の中が教える人(TAROは「代行」と書くことがある)
+//   ③ 題名は【AOI】HOUSE 初級 のまま、説明欄に「K@TTSUの代行でAOIが担当」… 【】の中が教える人(2026-11-25)
 
-export type CalLesson = { start: string; end?: string | null; summary: string };
+export type CalLesson = { start: string; end?: string | null; summary: string; note?: string | null };
 export type DeclaredLessonLike = { start: string; instructor: string };
 
 export const norm = (v: string) => v.normalize('NFKC').trim().toUpperCase();
@@ -29,8 +30,12 @@ export function namesInTitle(title: string, knownNames: string[]): string[] {
  *   marked=false … 代講の印が無い予定。教える人は「タイトルに出てくる講師名」(従来どおり)
  *   marked=true  … 代講/代行の印がある予定。①「代講 ○○」の○○ → ②【】の中 → ③タイトルの講師名 の順で決める
  */
-export function teachersOf(summary: string, knownNames: string[]): { marked: boolean; teachers: string[] } {
-  if (!MARK.test(summary)) return { marked: false, teachers: namesInTitle(summary, knownNames) };
+export function teachersOf(
+  summary: string,
+  knownNames: string[],
+  note?: string | null
+): { marked: boolean; teachers: string[] } {
+  if (!MARK.test(summary) && !MARK.test(note ?? '')) return { marked: false, teachers: namesInTitle(summary, knownNames) };
   const after = summary.match(/(?:代講|代行)[\s:：]*([^\s　（）()【】]+)/);
   if (after) {
     const hit = namesInTitle(after[1], knownNames);
@@ -47,7 +52,7 @@ export function teachersOf(summary: string, knownNames: string[]): { marked: boo
 /** 宣言レッスン1件がカレンダーのどれかの予定と一致するか(atTime は同じ時刻の予定だけを渡す) */
 export function lessonMatches(atTime: CalLesson[], knownNames: string[], d: DeclaredLessonLike): boolean {
   const who = norm(d.instructor);
-  return atTime.some((l) => teachersOf(l.summary, knownNames).teachers.includes(who));
+  return atTime.some((l) => teachersOf(l.summary, knownNames, l.note).teachers.includes(who));
 }
 
 export type Swap = { start: string; from: string; to: string; end: string | null; summary: string };
@@ -80,7 +85,7 @@ export function judgeEntry(cal: CalLesson[], knownNames: string[], declared: Dec
     }
     const from = norm(d.instructor);
     const cands = atTime
-      .map((l) => ({ l, t: teachersOf(l.summary, knownNames) }))
+      .map((l) => ({ l, t: teachersOf(l.summary, knownNames, l.note) }))
       .filter((x) => x.t.marked)
       .map((x) => ({ l: x.l, to: x.t.teachers.filter((n) => n !== from) }))
       .filter((x) => x.to.length === 1);
