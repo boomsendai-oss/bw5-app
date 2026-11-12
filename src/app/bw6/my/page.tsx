@@ -10,18 +10,20 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { getOne } from '@/lib/db';
 import { todayJst } from '@/lib/dateJst';
-import { canFamilyEdit, deadlineMs, entryPhase, householdViewLabel, payButtonState, payGate, payableAmount } from '@/lib/recital';
-import { getRecitalSettings, listWorks, type HouseholdDetail, type PersonRow } from '@/lib/recitalDb';
+import { canFamilyEdit, deadlineMs, type CastStatus, entryPhase, householdViewLabel, payButtonState, payGate, payableAmount } from '@/lib/recital';
+import { getRecitalSettings, listWorks, type HouseholdDetail, type PersonRow, type WorkRow } from '@/lib/recitalDb';
 import { markMyPageOpened } from '@/lib/recitalFamilyDb';
 import { requireHouseholdByToken } from '@/lib/recitalGuard';
 import { CARD_CHECKING_TEXT, CARD_PAID_RETURN_TEXT, syncCardCheckout } from '@/lib/recitalPayDb';
 import { bankProgressLines, bankRestLine, closedNotice, longJpDate, myTopLines, nextTodos, payAreaText } from '@/lib/recitalMyPage';
 import { FAMILY_ADD_LINE, fiveLines } from '@/lib/recitalPublic';
+import { workEditOptions, type EditWorkLite } from '@/lib/recitalWorkEdit';
 import { FiveLines } from '@/components/recital/FiveLines';
 import { MoneyBox } from '@/components/recital/MoneyBox';
 import { InstaEditor } from './InstaEditor';
 import type { BankGuideData } from './BankGuide';
 import { PaySection } from './PaySection';
+import { WorkEditor, type WorkEditorPerson } from './WorkEditor';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,15 +83,17 @@ async function loadMyPageState(d: HouseholdDetail, x: { checking: boolean }) {
   const payDue = h.pay_due_override ?? settings.pay_due;
   // 延長の世帯は延長の日まで false（判定は canFamilyEdit だけ）
   const afterChangeClose = nowMs > deadlineMs(settings.change_close_at) && !canFamilyEdit(settings, nowMs, h.extend_until);
+  // 作品を足す・やめる（Task 15）を出すか。8 の applyHouseholdEdits が家庭の変更を通す条件と同じ（止めている間・締切のあとは出さない。延長の世帯は延長の日まで）
+  const canEditWorks = canFamilyEdit(settings, nowMs, h.extend_until);
 
   const lines = myTopLines({
     view: d.view, m: d.money, hasIn, hasMaybe, payDue, todayYmd: todayJst(), changeClose: settings.change_close_at, afterChangeClose,
     payMethod: h.pay_method, payShown,
   });
-  const todos = nextTodos({ payState: payShown ? 'show' : 'hidden', remaining: d.money.remaining, payDue, hasMaybe, canEditWorks: false, changeClose: settings.change_close_at });
+  const todos = nextTodos({ payState: payShown ? 'show' : 'hidden', remaining: d.money.remaining, payDue, hasMaybe, canEditWorks, changeClose: settings.change_close_at });
   const closed = closedNotice({ afterChangeClose, remaining: d.money.remaining, payDue, changeClose: settings.change_close_at });
 
-  return { settings, workById, people, hasMaybe, phase, payState, payDue, lines, todos, closed };
+  return { settings, works, workById, people, hasMaybe, phase, payState, payDue, lines, todos, closed, canEditWorks };
 }
 
 /** 「お振込みのご案内」の中身と振込の進み（Task 23・D5 2-20・2-24）。bank_text が空なら案内は null（銀行振込は選べない） */
@@ -117,6 +121,33 @@ function bankViewOf(d: HouseholdDetail, bankText: string, payDue: string, restFr
     lastBank: lastBank ? { date: String(lastBank.bank_date ?? lastBank.paid_on), amount: Number(lastBank.amount) } : null,
   });
   return { guide, progress, today };
+}
+
+/** 作品を足す・やめる（Task 15）に渡す人ごとの行と足せる作品。準備中（form かつ draft）の作品は、まだ足せる人にだけ見せる（選べない） */
+function workEditorPeople(d: HouseholdDetail, people: PersonRow[], works: WorkRow[], maxWorks: number): WorkEditorPerson[] {
+  // works は listWorks の並び（sort_order, id）。行も足せる作品もこの並びで出す
+  const editWorks: EditWorkLite[] = works.map((w) => ({
+    id: Number(w.id), title: w.title, status: w.status, selectable: w.entry_mode === 'form' && w.status === 'open',
+  }));
+  const order = new Map(editWorks.map((w, i) => [w.id, i]));
+  const titleOf = new Map(editWorks.map((w) => [w.id, w.title]));
+  return people.map((p) => {
+    const casts = d.casts
+      .filter((c) => Number(c.person_id) === Number(p.id) && order.has(Number(c.work_id)))
+      .sort((a, b) => order.get(Number(a.work_id))! - order.get(Number(b.work_id))!)
+      .map((c) => ({ workId: Number(c.work_id), status: c.status as CastStatus }));
+    const o = workEditOptions({ paid: d.money.paid, casts, works: editWorks, maxWorks });
+    const live = new Set(o.rows.filter((r) => !r.dropped && (r.status === 'in' || r.status === 'maybe')).map((r) => r.workId));
+    const drafts = live.size < maxWorks
+      ? works.filter((w) => w.entry_mode === 'form' && w.status === 'draft' && !live.has(Number(w.id))).map((w) => ({ id: Number(w.id), title: w.title, draft: true }))
+      : [];
+    return {
+      personId: Number(p.id),
+      name: personName(p),
+      rows: o.rows,
+      addable: [...o.addable.map((id) => ({ id, title: titleOf.get(id) ?? '' })), ...drafts],
+    };
+  });
 }
 
 const CAST_LABEL: Record<string, string> = { in: '出る', maybe: '迷っている', out: 'やめた作品', passed: '見送り' };
@@ -169,7 +200,7 @@ export default async function Bw6MyPage({ searchParams }: { searchParams: Promis
   }
   const d = reread ?? first;
   const h = d.household;
-  const { settings, workById, people, hasMaybe, phase, payState, payDue, lines, todos, closed } = await loadMyPageState(d, { checking });
+  const { settings, works, workById, people, hasMaybe, phase, payState, payDue, lines, todos, closed, canEditWorks } = await loadMyPageState(d, { checking });
   const bankView = bankViewOf(d, settings.bank_text, payDue, settings.bank_rest_from, settings.bank_rest_to);
   const showPaySection = payState === 'show' && !checking;
   const showChecking = checking && payState !== 'hidden';
@@ -252,7 +283,16 @@ export default async function Bw6MyPage({ searchParams }: { searchParams: Promis
           </div>
         )}
         {phase === 'suspended' && <p className={noticeCls}>ただいま受付を止めています。再開までお待ちください</p>}
-        {people.map((p) => {
+        {canEditWorks && (
+          <WorkEditor
+            token={h.edit_token}
+            people={workEditorPeople(d, people, works, settings.max_works_per_person)}
+            paid={d.money.paid}
+            total={d.money.total}
+            remaining={d.money.remaining}
+          />
+        )}
+        {!canEditWorks && people.map((p) => {
           const casts = d.casts
             .filter((c) => Number(c.person_id) === Number(p.id) && workById.has(Number(c.work_id)))
             .sort((a, b) => {

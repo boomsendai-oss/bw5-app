@@ -5,7 +5,8 @@
 import { execute, getAll } from '@/lib/db';
 import { nowUtcIso } from '@/lib/dateJst';
 import { normalizeEmail, normalizePhone } from '@/lib/recital';
-import { buildEntryFeePeople } from '@/lib/recitalEntryDb';
+import { applyHouseholdEdits, buildEntryFeePeople, type HouseholdEdit } from '@/lib/recitalEntryDb';
+import { requireHouseholdByToken } from '@/lib/recitalGuard';
 import { expectedCharges, type ChargeLine } from '@/lib/recitalFee';
 import { sendRecitalMail } from '@/lib/recitalMail';
 
@@ -110,4 +111,46 @@ export async function markMyPageOpened(householdId: number, fromMail: boolean, n
   } else {
     await execute('UPDATE recital_households SET opened_at = COALESCE(opened_at, ?) WHERE id = ?', [at, householdId]);
   }
+}
+
+// ---------- マイページの「作品を足す・やめる」（Task 15。12/8 に出すか決める。出さない時はこの欄ごと git revert で抜く） ----------
+
+export type FamilyEdit = { personId: number; workId: number; status: 'in' | 'out' };
+
+type FamilyEditFail = 'closed' | 'max_works' | 'paid_no_maybe' | 'last_work' | 'invalid';
+
+/** 家庭の変更を 8 の形（cast_set）にする。家庭から来た物の type などは持ち込まない（3つの欄だけを写す） */
+const toCastSets = (edits: FamilyEdit[]): HouseholdEdit[] =>
+  edits.map((e) => ({ type: 'cast_set' as const, personId: e.personId, workId: e.workId, status: e.status }));
+
+/**
+ * 「金額を見る」。書かない。8 の applyHouseholdEdits を dryRun で呼んで返すだけ（確かめも計算も決定と同じ関数。写さない）。
+ * 呼ぶ側が鍵で世帯を引いてから householdId を渡す。
+ */
+export async function previewHouseholdEdits(
+  householdId: number,
+  edits: FamilyEdit[],
+  now: Date = new Date(),
+): Promise<{ ok: true; totalBefore: number; totalAfter: number; remainingBefore: number; remainingAfter: number } | { ok: false; code: FamilyEditFail; message: string }> {
+  const r = await applyHouseholdEdits(householdId, toCastSets(edits), { actor: 'family', by: 'family', now, dryRun: true });
+  if (!r.ok) return r;
+  if (!('remainingBefore' in r)) throw new Error('recital_family:dry_run_shape');
+  return { ok: true, totalBefore: r.totalBefore, totalAfter: r.totalAfter, remainingBefore: r.remainingBefore, remainingAfter: r.remainingAfter };
+}
+
+/**
+ * 「決定する」。鍵（edit_token）で世帯を引き（見つからなければ not_found）、8 の applyHouseholdEdits を家庭として呼んで返すだけ。
+ * その世帯の人か・足す作品が form かつ open か・変えてよい時か（canFamilyEdit）・まとめた世帯でないかは 8 が確かめる（ここで重ねて書かない）。
+ * 変更の控えのメール1通と afterMoneyChanged も 8 が中でする（ここでは送らない・呼ばない）。
+ */
+export async function applyFamilyWorkEdits(
+  token: string,
+  edits: FamilyEdit[],
+  now: Date = new Date(),
+): Promise<{ ok: true; totalBefore: number; totalAfter: number } | { ok: false; code: 'not_found' | FamilyEditFail; message: string }> {
+  const d = await requireHouseholdByToken(token);
+  if (!d) return { ok: false, code: 'not_found', message: 'お申し込みが見つかりません' };
+  const r = await applyHouseholdEdits(Number(d.household.id), toCastSets(edits), { actor: 'family', by: 'family', now });
+  if (!r.ok) return r;
+  return { ok: true, totalBefore: r.totalBefore, totalAfter: r.totalAfter };
 }

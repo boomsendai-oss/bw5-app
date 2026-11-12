@@ -28,8 +28,8 @@ type SendStatus = 'sent' | 'failed' | 'waiting' | 'duplicate';
 
 /** 控え（前の控えの時刻から後の変えた記録で、変更の控えの中身を作る） */
 const CONTROL_KINDS: readonly string[] = ['receipt', 'change', 'complete', 'extra_complete'];
-/** 段階1は、マイページに「作品を足す・やめる」を出さない（出すと決めたら 15 が直す。K221） */
-const MYPAGE_ITEMS_STAGE1 = 'お支払い、インスタ';
+/** マイページに今出ている物（K221）。「作品を足す・やめる」は Task 15（出さないと決めたら、15 のコミットを revert して「お支払い、インスタ」に戻す） */
+const MYPAGE_ITEMS_STAGE1 = 'お支払い、インスタ、作品を足す・やめる';
 /** roster_fix_on が空のときの「次のご連絡」（計画で仮に決めた。12/8 に TARO が見る） */
 const NEXT_CONTACT_DEFAULT = '2月ごろ';
 

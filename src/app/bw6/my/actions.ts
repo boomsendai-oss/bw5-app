@@ -3,6 +3,7 @@
 // ⚠️ 公開Server Actions(認証なし)。理由: 家庭のマイページ（鍵つきURL）から呼ぶため。edit_token の完全一致の1世帯だけを相手にする。
 // ほかの世帯の人・中身は返さない。（21・23・15 がこのファイルに足す。23＝銀行振込を選ぶ・「振り込みました」）
 import { updateInstaHandle } from '@/lib/recitalEntryDb';
+import { applyFamilyWorkEdits, previewHouseholdEdits, type FamilyEdit } from '@/lib/recitalFamilyDb';
 import { requireHouseholdByToken } from '@/lib/recitalGuard';
 import { parseYenInput } from '@/lib/recitalMyPage';
 import {
@@ -85,4 +86,44 @@ export async function markBankToldAction(
     if (msg !== 'recital_pay:bad_input') console.error(`[recital] 振り込みましたの印を付けられませんでした household=${d.household.id}`, msg);
     return { error: '入力を確かめてください。' };
   }
+}
+
+// ---------- 作品を足す・やめる（Task 15。12/8 に出すか決める。出さない時はこの欄ごと git revert で抜く） ----------
+
+const NOT_FOUND = { ok: false as const, code: 'not_found' as const, message: 'お申し込みが見つかりません' };
+const BAD_EDITS = { ok: false as const, code: 'invalid' as const, message: '入力を確かめてください。' };
+// 1回の決定で変える数の上限（人数×作品より十分大きい。形のおかしい大きな配列を通さないため）
+const MAX_EDITS = 50;
+
+/** 家庭から来た変更を、personId・workId（正の整数）・status（'in'／'out'）の3つだけの形にする。ほかの形は null */
+function cleanEdits(edits: unknown): FamilyEdit[] | null {
+  if (!Array.isArray(edits) || edits.length === 0 || edits.length > MAX_EDITS) return null;
+  const out: FamilyEdit[] = [];
+  for (const e of edits) {
+    if (!e || typeof e !== 'object') return null;
+    const { personId, workId, status } = e as Record<string, unknown>;
+    if (!Number.isSafeInteger(personId) || (personId as number) < 1) return null;
+    if (!Number.isSafeInteger(workId) || (workId as number) < 1) return null;
+    if (status !== 'in' && status !== 'out') return null;
+    out.push({ personId: personId as number, workId: workId as number, status });
+  }
+  return out;
+}
+
+/** 「金額を見る」。書かない。鍵の世帯（有効な世帯だけ。まとめた世帯は拒む）の今の中身に当てて、前後の合計と残りを返す */
+export async function previewWorkEditsAction(token: string, edits: FamilyEdit[]) {
+  if (typeof token !== 'string') return NOT_FOUND;
+  const clean = cleanEdits(edits);
+  if (!clean) return BAD_EDITS;
+  const d = await requireHouseholdByToken(token);
+  if (!d || d.household.status !== 'active') return NOT_FOUND;
+  return previewHouseholdEdits(Number(d.household.id), clean);
+}
+
+/** 「決定する」。確かめ（鍵・その世帯の人か・足せる作品か・締切・まとめた世帯）・控えのメール・お金のあとの仕事は applyFamilyWorkEdits（8）の中 */
+export async function saveWorkEditsAction(token: string, edits: FamilyEdit[]) {
+  if (typeof token !== 'string') return NOT_FOUND;
+  const clean = cleanEdits(edits);
+  if (!clean) return BAD_EDITS;
+  return applyFamilyWorkEdits(token, clean);
 }

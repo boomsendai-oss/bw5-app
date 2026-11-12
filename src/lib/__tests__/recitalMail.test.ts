@@ -238,6 +238,12 @@ it('マイページの URL は家庭向けのドメイン', async () => {
   expect(lastCall().text).not.toContain('vercel.app');
 });
 
+it('控えの本文に『作品を足す・やめる』がある（Task 15・K221）', async () => {
+  const hid = await seedHousehold('t-mail', { total: 26500, cast: 'in' });
+  await mail.sendRecitalMail({ kind: 'receipt', householdId: hid }, at('2026-12-20 10:00'));
+  expect(lastCall().text).toContain('作品を足す・やめる');
+});
+
 it('countRecitalMailsToday：今日（JST）の sent＋failed を数え、しきい値以上で warn', async () => {
   const t = at('2026-12-20 12:00');
   const c0 = (await mail.countRecitalMailsToday(t)).count;
