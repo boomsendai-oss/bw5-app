@@ -72,6 +72,15 @@ const JOBS = [
   { from: '11:56', to: '12:30', every: 1, path: '/api/cron/mellojoy-watch', label: 'mellojoy-noon' },
   { at: '12:45', path: '/api/cron/mellojoy-watch', label: 'mellojoy-1245' },
   { at: '13:30', path: '/api/cron/mellojoy-watch', label: 'mellojoy-1330' },
+
+  // ── BW6 発表会（段階1）。朝8時＝夜に待たせた振込の確認メールを出す「ア」と 1/4 の休み明けの声かけ。
+  // 夜7時・8時半＝TARO への入金のスクショの声かけ（出すかどうかはアプリが設定 bank_ask_at などで決める）。
+  // bank_ask_at を変えた時は、この時刻表も合わせて直す（アプリは表に無い時刻を撃たれない）。
+  { at: '08:00', path: '/api/cron/recital-morning', label: 'recital-morning' },
+  { at: '08:05', path: '/api/cron/recital-morning?retry=1', label: 'recital-morning-retry1' },  // 待ちが20通をこえた朝の追い打ち（flush だけ）
+  { at: '08:10', path: '/api/cron/recital-morning?retry=1', label: 'recital-morning-retry2' },
+  { at: '19:00', path: '/api/cron/recital-bank-ask?slot=19:00', label: 'recital-bank-ask-1900' },
+  { at: '20:30', path: '/api/cron/recital-bank-ask?slot=20:30', label: 'recital-bank-ask-2030' },
 ];
 
 /**

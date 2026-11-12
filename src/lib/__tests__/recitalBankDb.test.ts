@@ -39,7 +39,7 @@ const { readHouseholdMoney } = await import('../recitalMoneyDb');
 const { buildRowKey } = await import('../recitalBankBatch');
 const { pickRef } = await import('../recitalRef');
 const bankDb = await import('../recitalBankDb');
-const { ingestBankBatch, bankStartDate, loadMatchHouseholds, listReviewRows, assignBankRow, setBankRowState, restoreBankRow, mergeManualRow, cancelBankPayment } = bankDb;
+const { ingestBankBatch, bankStartDate, loadMatchHouseholds, listReviewRows, assignBankRow, setBankRowState, restoreBankRow, mergeManualRow, cancelBankPayment, getBankAskFacts } = bankDb;
 const { recordManualPayment } = await import('../recitalMoneyDb');
 const { sendPaidMail } = await import('../recitalMail');
 const { readRefFromDesc } = await import('../recitalRef');
@@ -869,5 +869,53 @@ describe('見てほしい入金のボタン：見直し1回目', () => {
     const neu = await insertLedgerRow(ev, { source: 'chat', kind: 'other', amount: 300, balance: 150300 });
     await expect(mergeManualRow(man, neu, 'KEIKO')).rejects.toThrow('bad_state');
     expect(await rowState(man)).toBe('new');
+  });
+});
+
+// Task 24：夜の声かけと朝の入口が使う事実（開始日・前に撮った日・見てほしい入金の数・今日の合った束）。
+// 4つの試験は同じ t-ask を順に育てる（上から順に走る）。
+describe('getBankAskFacts', () => {
+  const ev = 't-ask';
+  /** 束の記録を直に1行（imported_at は UTC ISO・Z 付き＝nowUtcIso の形） */
+  const addImport = (o: { importedAt: string; source: string; check: string; shotOn: string | null }) =>
+    execute(
+      `INSERT INTO recital_imports (event_key, created_at, kind, imported_by, imported_at, shot_on, source, check_result) VALUES (?, ?, 'statement', 'test', ?, ?, ?, ?)`,
+      [ev, o.importedAt, o.importedAt, o.shotOn, o.source, o.check],
+    );
+
+  it('台帳が空なら開始日は「払う」を開けた日の前の日（12/15 に開ければ 12/14）', async () => {
+    await seedEvent(ev);   // pay_open_at='2026-12-15 12:00'
+    await execute(`INSERT INTO recital_settings (event_key, key, value, created_at) VALUES (?, 'pay_ok_at', '2026-12-14 10:00', ?) ON CONFLICT(event_key,key) DO UPDATE SET value=excluded.value`, [ev, new Date().toISOString()]);
+    const f = await getBankAskFacts(ev, new Date('2026-12-15T10:00:00Z'));
+    expect(f).toEqual({ startDate: '2026-12-14', lastShotOn: null, reviewCount: 0, okBatchToday: false });
+  });
+  it('開始日は台帳のいちばん新しい振込の入金の行の日（manual は数えない）', async () => {
+    await insertLedgerRow(ev, { row_date: '2026-12-18', source: 'chat', balance: 150000 });
+    await insertLedgerRow(ev, { row_date: '2026-12-19', source: 'manual', balance: null });
+    expect((await getBankAskFacts(ev, new Date('2026-12-20T10:00:00Z'))).startDate).toBe('2026-12-18');
+  });
+  it('今日の合った束：chat/file の ok だけ・manual と ng は数えない・前に撮った日はいちばん新しい ok の shot_on', async () => {
+    await addImport({ importedAt: '2026-12-20T09:00:00.000Z', source: 'manual', check: 'ok', shotOn: '2026-12-20' });          // 12/20 18:00 JST の manual ok
+    await addImport({ importedAt: '2026-12-20T09:30:00.000Z', source: 'chat', check: 'ng:12/20:26500', shotOn: '2026-12-20' }); // 12/20 18:30 JST の chat ng
+    await addImport({ importedAt: '2026-12-19T14:59:00.000Z', source: 'chat', check: 'ok', shotOn: '2026-12-19' });             // 12/19 23:59 JST の chat ok（前の日）
+    const f = await getBankAskFacts(ev, new Date('2026-12-20T11:00:00Z'));
+    expect(f.okBatchToday).toBe(false);
+    expect(f.lastShotOn).toBe('2026-12-19');
+    await addImport({ importedAt: '2026-12-20T10:10:00.000Z', source: 'file', check: 'ok', shotOn: '2026-12-20' });             // 12/20 19:10 JST の file ok
+    const g = await getBankAskFacts(ev, new Date('2026-12-20T11:00:00Z'));
+    expect(g.okBatchToday).toBe(true);
+    expect(g.lastShotOn).toBe('2026-12-20');
+    // 次の日（JST）になれば、前の日の束は今日の束ではない
+    expect((await getBankAskFacts(ev, new Date('2026-12-20T15:00:00Z'))).okBatchToday).toBe(false);
+  });
+  it('見てほしい入金の数は listReviewRows の数', async () => {
+    const before = (await getBankAskFacts(ev, new Date('2026-12-20T10:00:00Z'))).reviewCount;
+    await insertLedgerRow(ev, { row_date: '2026-12-20', source: 'chat', amount: 26500, balance: 176500, desc_raw: '振込 ヤマダ ハナコ' });
+    const voided = await insertLedgerRow(ev, { row_date: '2026-12-20', source: 'chat', amount: 1000, balance: 177500, desc_raw: '振込 タナカ' });
+    await setBankRowState([voided], 'not_recital', null, 'test');   // closed の行は数えない
+    const f = await getBankAskFacts(ev, new Date('2026-12-20T10:00:00Z'));
+    expect(f.reviewCount).toBe(before + 1);
+    expect(f.reviewCount).toBe((await listReviewRows(ev)).filter((x) => x.group !== 'closed').length);
+    expect((await listReviewRows(ev)).some((x) => x.group === 'closed')).toBe(true);
   });
 });

@@ -9,7 +9,7 @@
 import type { Transaction } from '@libsql/client';
 import { batch, getAll, getOne, withWriteTx } from '@/lib/db';
 import { nowUtcIso, shiftDays, todayJst } from '@/lib/dateJst';
-import { FIRST5_LIMIT, householdView, moneySummary, type RecitalSettings } from '@/lib/recital';
+import { FIRST5_LIMIT, householdView, jstToMs, moneySummary, type RecitalSettings } from '@/lib/recital';
 import { checkBatch, flagRows, normalizeBatch, type BankBatchIn, type LedgerRowLite, type NormRow } from '@/lib/recitalBankBatch';
 import { candidatesFor, decideRow, surnameMatches, type Candidate, type MatchHousehold, type MatchRow, type ReviewKind } from '@/lib/recitalBankMatch';
 import { getRecitalEvent, getRecitalSettings, logChangeTx } from '@/lib/recitalDb';
@@ -103,6 +103,35 @@ async function lastOkDate(eventKey: string): Promise<string | null> {
     [eventKey],
   );
   return r?.t ? todayJst(new Date(String(r.t))) : null;
+}
+
+/**
+ * TARO への声かけ（24）が使う事実。夜の声かけと朝の入口の両方が呼ぶ。名前・金額は返さない。
+ * startDate＝bankStartDate（正本。ここで計算し直さない）。
+ * lastShotOn・okBatchToday＝合った束（kind='statement'・check_result='ok'・source が chat か file）のいちばん新しい1行から。
+ * 手で打った束（manual）と合わなかった束は数えない（K211）。今日＝JST の今日の 0:00 以後（imported_at は UTC ISO の文字のまま比べる）。
+ * reviewCount＝見てほしい入金の件数（listReviewRows のうち、片づいた closed を数えない）。
+ */
+export async function getBankAskFacts(
+  eventKey: string,
+  now: Date,
+): Promise<{ startDate: string; lastShotOn: string | null; reviewCount: number; okBatchToday: boolean }> {
+  const s = await getRecitalSettings(eventKey);
+  const startDate = await bankStartDate(eventKey, s);
+  const last = await getOne(
+    `SELECT shot_on, imported_at FROM recital_imports
+     WHERE event_key = ? AND kind = 'statement' AND check_result = 'ok' AND source IN ('chat', 'file')
+     ORDER BY imported_at DESC, id DESC LIMIT 1`,
+    [eventKey],
+  );
+  const todayStart = nowUtcIso(new Date(jstToMs(todayJst(now))));
+  const reviewCount = (await listReviewRows(eventKey)).filter((r) => r.group !== 'closed').length;
+  return {
+    startDate,
+    lastShotOn: last?.shot_on ? String(last.shot_on) : null,
+    reviewCount,
+    okBatchToday: last?.imported_at != null && String(last.imported_at) >= todayStart,
+  };
 }
 
 // ---------- 当てる材料 ----------
