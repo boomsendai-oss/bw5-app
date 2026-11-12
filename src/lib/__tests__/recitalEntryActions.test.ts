@@ -9,7 +9,9 @@ const mail = vi.hoisted(() => ({
   sendRecitalMail: vi.fn(async () => ({ status: 'sent', logId: 1 })),
   sendPaidMail: vi.fn(async () => ({ kind: 'complete', status: 'waiting', logId: 1 })),
 }));
-vi.mock('@/lib/eventAuth', () => ({ isAuthorizedServer: async () => true }));
+// ログインの確かめ（Task 20 の試験で「ログインしていない」を作るために切りかえる。初めは true）
+const auth = vi.hoisted(() => ({ ok: true }));
+vi.mock('@/lib/eventAuth', () => ({ isAuthorizedServer: async () => auth.ok }));
 vi.mock('next/cache', () => ({ revalidatePath: () => undefined }));
 vi.mock('@/lib/recitalMail', () => mail);
 vi.mock('@/lib/recitalMail.ts', () => mail);
@@ -114,5 +116,53 @@ describe('代わりに直すの確かめ（dryRun・K227）', () => {
       { reason: '電話で聞いた', receivedAtJst: null, staffName: 'TARO', dryRun: true },
     );
     expect(r).toMatchObject({ ok: true, totalBefore: 26500, totalAfter: 32500, remainingBefore: 0, remainingAfter: 6000, extra: 6000 });
+  });
+});
+
+describe('特別な料金・そのほかの金額の直し・まとめる・照合（Task 20）のサーバの守り', () => {
+  it('ログインしていなければ、どれも throw（何も書かない）', async () => {
+    const ev = 't-act-20a'; await seedEvent(ev); await seedRules(ev); const w1 = await seedWork(ev, 'W01');
+    const a = await seedHousehold(ev, { recompute: true, people: [{ casts: [[w1, 'in']] }] });
+    const b = await seedHousehold(ev, { recompute: true, people: [{ casts: [[w1, 'in']] }] });
+    auth.ok = false;
+    try {
+      await expect(act.feeClassAction(a.personIds[0], 'no_coop', '登録もれ', 'TARO', false)).rejects.toThrow('Unauthorized');
+      await expect(act.adjustAction(a.householdId, { direction: 'down', amount: 1000, reason: '試し' }, 'TARO', false)).rejects.toThrow('Unauthorized');
+      await expect(act.voidAdjustAction(a.householdId, 1, '試し', 'TARO')).rejects.toThrow('Unauthorized');
+      await expect(act.mergeAction(b.householdId, a.householdId, { reason: '家族', samePeople: [] }, 'TARO', false)).rejects.toThrow('Unauthorized');
+      await expect(act.matchAction(a.personIds[0], { none: true }, '確かめた', 'TARO', false)).rejects.toThrow('Unauthorized');
+      await expect(act.matchCandidatesAction(a.personIds[0])).rejects.toThrow('Unauthorized');
+      await expect(act.searchHouseholdsAction(ev, '1')).rejects.toThrow('Unauthorized');
+      await expect(act.householdPeopleAction(a.householdId)).rejects.toThrow('Unauthorized');
+    } finally {
+      auth.ok = true;
+    }
+    expect((await core.getOne('SELECT fee_class_override f FROM recital_people WHERE id = ?', [a.personIds[0]])).f).toBeNull();
+    expect((await core.getOne('SELECT status FROM recital_households WHERE id = ?', [b.householdId])).status).toBe('active');
+  });
+
+  it('まとめた世帯は、特別な料金・手の調整・照合・まとめるを失敗で返し、何も書かない', async () => {
+    const ev = 't-act-20b'; await seedEvent(ev); await seedRules(ev); const w1 = await seedWork(ev, 'W01');
+    const a = await seedHousehold(ev, { recompute: true, people: [{ casts: [[w1, 'in']] }] });
+    const b = await seedHousehold(ev, { recompute: true, people: [{ casts: [[w1, 'in']] }], payments: [26500] });
+    expect(await act.mergeAction(b.householdId, a.householdId, { reason: '家族', samePeople: [] }, 'TARO', true)).toMatchObject({ ok: true, totalAfter: 34500, moved: 26500, refund: 0 });
+    expect(await act.mergeAction(b.householdId, a.householdId, { reason: '家族', samePeople: [] }, 'TARO', false)).toMatchObject({ ok: true, totalAfter: 34500 });
+    const changes = await countOf('SELECT COUNT(*) AS n FROM recital_changes WHERE household_id IN (?, ?)', [a.householdId, b.householdId]);
+    expect(await act.mergeAction(b.householdId, a.householdId, { reason: '家族', samePeople: [] }, 'TARO', false))
+      .toEqual({ ok: false, error: 'もうまとめてあります。画面を開き直してください' });
+    expect(await act.adjustAction(b.householdId, { direction: 'up', amount: 1000, reason: '試し' }, 'TARO', false)).toMatchObject({ ok: false });
+    // まとめた b には請求の行ができない（人は a へ移っているので、人の操作は a の世帯で受ける）
+    expect(await countOf("SELECT COUNT(*) AS n FROM recital_charges WHERE household_id = ? AND status = 'active'", [b.householdId])).toBe(0);
+    expect(await countOf('SELECT COUNT(*) AS n FROM recital_changes WHERE household_id IN (?, ?)', [a.householdId, b.householdId])).toBe(changes);
+  });
+
+  it('名前・理由が無ければ失敗で返す／特別な料金の dryRun は書かない', async () => {
+    const ev = 't-act-20c'; await seedEvent(ev); await seedRules(ev); const w1 = await seedWork(ev, 'W01');
+    const a = await seedHousehold(ev, { recompute: true, people: [{ casts: [[w1, 'in']] }] });
+    expect(await act.feeClassAction(a.personIds[0], 'no_coop', '登録もれ', '', true)).toEqual({ ok: false, error: '名前を選んでください' });
+    expect(await act.feeClassAction(a.personIds[0], 'no_coop', ' ', 'TARO', true)).toEqual({ ok: false, error: '理由を入れてください' });
+    expect(await act.feeClassAction(a.personIds[0], 'no_coop', '登録もれ', 'TARO', true)).toMatchObject({ ok: true, changed: true, totalBefore: 26500, totalAfter: 19000 });
+    expect((await core.getOne('SELECT fee_class_override f FROM recital_people WHERE id = ?', [a.personIds[0]])).f).toBeNull();
+    expect(await act.adjustAction(a.householdId, { direction: 'down', amount: 99999, reason: '試し' }, 'TARO', true)).toEqual({ ok: false, error: '今の合計より多くは下げられません' });
   });
 });

@@ -7,14 +7,18 @@
 // あとのタスク（23・20・28）は、このファイルに足す（世帯の画面の操作はここにまとめる）。
 import { revalidatePath } from 'next/cache';
 import { isIsoDate, todayJst } from '@/lib/dateJst';
-import { RECITAL_STAFF_NAMES, jstToMs, recitalMyUrl } from '@/lib/recital';
-import { loadHouseholdDetail } from '@/lib/recitalDb';
+import { RECITAL_STAFF_NAMES, jstToMs, recitalMyUrl, type FeeClass } from '@/lib/recital';
+import { loadHouseholdDetail, searchHouseholds, type HouseholdHit } from '@/lib/recitalDb';
 import { applyHouseholdEdits, changeHouseholdEmail, type HouseholdEdit } from '@/lib/recitalEntryDb';
 import { requireRecitalStaff } from '@/lib/recitalGuard';
 import { sendPaidMail, sendRecitalMail } from '@/lib/recitalMail';
 import { cancelRefund, readHouseholdMoney, recordManualPayment } from '@/lib/recitalMoneyDb';
 import { parseYenInput } from '@/lib/recitalMyPage';
 import { markBankTold } from '@/lib/recitalPayDb';
+import type { MemberLite } from '@/lib/recitalMatch';
+import {
+  addAdjustCharge, decideMemberMatch, listMatchCandidates, mergeHouseholds, setFeeClass, voidAdjustCharge, type FeeChangePreview,
+} from '@/lib/recitalStaffDb';
 import { EDIT_FAIL_LABEL, labelOf, mailStatusLabel } from '../../labels';
 import { editPreview, type EditPreview } from './editorModel';
 
@@ -120,6 +124,7 @@ export async function changeEmailAction(householdId: number, email: string, staf
   } catch (err) {
     const m = errMsg(err);
     if (m.includes('same_email')) return { ok: false, error: 'このアドレスは、ほかの申込で使われています' };
+    if (m.includes('not_active')) return { ok: false, error: NOT_ACTIVE };
     if (m.includes('bad_email')) return { ok: false, error: 'メールアドレスの形で入れてください' };
     if (m.includes('no_household')) return { ok: false, error: '世帯が見つかりません' };
     throw err;
@@ -221,4 +226,182 @@ export async function markBankToldByStaffAction(
   }
   done(householdId);
   return { ok: true };
+}
+
+// =====================================================================
+// Task 20：特別な料金（そのほかの金額の直し）・世帯をまとめる・照合を決める。
+// お金の式と書き込みは src/lib/recitalStaffDb.ts。ここは守り（requireRecitalStaff・名前・まとめた世帯を拒む）と、失敗の文だけ。
+// dryRun は書かない（押す前の確かめ）。合計が変わった時の afterMoneyChanged・変更の控えは lib が中でする。
+// =====================================================================
+
+const HOUSEHOLD_PAGE = '/staff/bw6/entries/[id]';
+
+/** 人の操作のあと：どの世帯の画面かを引かずに、世帯の画面をまとめて出し直す（どれも force-dynamic） */
+function donePerson(): void {
+  revalidatePath(HOUSEHOLD_PAGE, 'page');
+  revalidatePath('/staff/bw6');
+}
+
+/** lib の throw（recital_staff:…）を画面の文にする。知らない物は投げ直す */
+function staffError(e: unknown): string {
+  const m = errMsg(e);
+  if (m.includes('recital_staff:staff_name')) return NAME_ERROR;
+  if (m.includes('recital_staff:reason')) return '理由を入れてください';
+  if (m.includes('recital_staff:not_active')) return NOT_ACTIVE;
+  if (m.includes('recital_staff:no_person')) return '人が見つかりません';
+  if (m.includes('recital_staff:no_member')) return '会員が見つかりません';
+  if (m.includes('recital_staff:fee_class') || m.includes('recital_staff:bad_choice')) return '入れた値を確かめてください';
+  throw e;
+}
+
+const FEE_CLASS_INPUTS: readonly (FeeClass)[] = [null, 'no_coop', 'tshirt_only', 'free'];
+
+/** 特別な料金の種類を直す（金額は打たせない）。dryRun なら「今の合計 → 直したあと」と返す分・追加分だけ返す */
+export async function feeClassAction(
+  personId: number, feeClass: FeeClass, reason: string, staffName: string, dryRun: boolean,
+): Promise<({ ok: true } & FeeChangePreview) | Fail> {
+  await requireRecitalStaff();
+  if (!isId(personId)) return { ok: false, error: '人が見つかりません' };
+  if (!RECITAL_STAFF_NAMES.includes(staffName)) return { ok: false, error: NAME_ERROR };
+  if (!FEE_CLASS_INPUTS.includes(feeClass)) return { ok: false, error: '種類を選んでください' };
+  if (isBlank(reason)) return { ok: false, error: '理由を入れてください' };
+  try {
+    const r = await setFeeClass(personId, feeClass, reason.trim(), staffName, { dryRun: dryRun === true });
+    if (dryRun !== true) donePerson();
+    return { ok: true, ...r };
+  } catch (e) {
+    return { ok: false, error: staffError(e) };
+  }
+}
+
+/** そのほかの金額の直し（3つの種類の外の額だけ）。下げる時は今の合計をこえられない */
+export async function adjustAction(
+  householdId: number,
+  x: { direction: 'down' | 'up'; amount: number; reason: string },
+  staffName: string,
+  dryRun: boolean,
+): Promise<{ ok: true; totalBefore: number; totalAfter: number } | Fail> {
+  await requireRecitalStaff();
+  if (!isId(householdId)) return { ok: false, error: '世帯が見つかりません' };
+  if (!RECITAL_STAFF_NAMES.includes(staffName)) return { ok: false, error: NAME_ERROR };
+  if (x?.direction !== 'down' && x?.direction !== 'up') return { ok: false, error: '下げる・上げるを選んでください' };
+  if (!(Number.isInteger(x.amount) && x.amount >= 1)) return { ok: false, error: '金額は1円以上の整数で入れてください' };
+  if (isBlank(x.reason)) return { ok: false, error: '理由を入れてください' };
+  const bad = await activeCheck(householdId);
+  if (bad) return { ok: false, error: bad };
+  const r = await addAdjustCharge(householdId, { direction: x.direction, amount: x.amount, reason: x.reason.trim() }, staffName, { dryRun: dryRun === true });
+  if (!r.ok) return { ok: false, error: r.code === 'over_total' ? '今の合計より多くは下げられません' : '入れた値を確かめてください' };
+  if (dryRun !== true) done(householdId);
+  return r;
+}
+
+/** 手の調整の行を取り消す（理由必須）。その世帯の生きている adjust の行だけ */
+export async function voidAdjustAction(householdId: number, chargeId: number, reason: string, staffName: string): Promise<{ ok: true } | Fail> {
+  await requireRecitalStaff();
+  if (!isId(householdId) || !isId(chargeId)) return { ok: false, error: '行が見つかりません' };
+  if (!RECITAL_STAFF_NAMES.includes(staffName)) return { ok: false, error: NAME_ERROR };
+  if (isBlank(reason)) return { ok: false, error: '理由を入れてください' };
+  const d = await loadHouseholdDetail(householdId);
+  if (!d) return { ok: false, error: '世帯が見つかりません' };
+  if (d.household.status !== 'active') return { ok: false, error: NOT_ACTIVE };
+  if (!d.charges.some((c) => c.id === chargeId && c.item_code === 'adjust' && c.status === 'active')) {
+    return { ok: false, error: '行が見つかりません（もう取り消したかもしれません）' };
+  }
+  const r = await voidAdjustCharge(chargeId, reason.trim(), staffName);
+  if (!r.ok) return { ok: false, error: '取り消せませんでした（もう取り消したかもしれません）' };
+  done(householdId);
+  return { ok: true };
+}
+
+const MERGE_FAIL_LABEL: Record<string, string> = {
+  same: '同じ世帯です',
+  not_active: 'もうまとめてあります。画面を開き直してください',
+  other_event: 'ちがう発表会の世帯です',
+  has_adjust: 'まとめられる方に「手の調整」があります。先に取り消してください',
+  has_refund_todo: 'まとめられる方に、まだ返していない「返す分」があります。先に片づけてください',
+  bad_pair: '同じ人の組を確かめてください',
+};
+
+/** 世帯をまとめる（from を into へ）。dryRun なら「合計 → 合計」・移す入金・返す分だけ返す */
+export async function mergeAction(
+  fromId: number,
+  intoId: number,
+  x: { reason: string; samePeople: { dropPersonId: number; keepPersonId: number }[] },
+  staffName: string,
+  dryRun: boolean,
+): Promise<{ ok: true; totalBefore: number; totalAfter: number; moved: number; refund: number } | Fail> {
+  await requireRecitalStaff();
+  if (!isId(fromId) || !isId(intoId)) return { ok: false, error: '世帯が見つかりません' };
+  if (!RECITAL_STAFF_NAMES.includes(staffName)) return { ok: false, error: NAME_ERROR };
+  if (isBlank(x?.reason)) return { ok: false, error: '理由を入れてください' };
+  if (!Array.isArray(x.samePeople)) return { ok: false, error: MERGE_FAIL_LABEL.bad_pair };
+  let r: Awaited<ReturnType<typeof mergeHouseholds>>;
+  try {
+    r = await mergeHouseholds(fromId, intoId, { reason: x.reason.trim(), samePeople: x.samePeople }, staffName, { dryRun: dryRun === true });
+  } catch (e) {
+    return { ok: false, error: staffError(e) };
+  }
+  if (!r.ok) return { ok: false, error: labelOf(MERGE_FAIL_LABEL, r.code) };
+  if (dryRun !== true) {
+    revalidatePath('/staff/bw6/entries/' + fromId);
+    revalidatePath('/staff/bw6/entries/' + intoId);
+    revalidatePath('/staff/bw6');
+  }
+  return r;
+}
+
+/** 照合を決める（会員と結ぶ／会員ではない）。dryRun なら金額の前→あとと、事前登録の種類・残る印だけ返す */
+export async function matchAction(
+  personId: number,
+  choice: { memberId: number } | { none: true },
+  reason: string,
+  staffName: string,
+  dryRun: boolean,
+): Promise<({ ok: true } & Awaited<ReturnType<typeof decideMemberMatch>>) | Fail> {
+  await requireRecitalStaff();
+  if (!isId(personId)) return { ok: false, error: '人が見つかりません' };
+  if (!RECITAL_STAFF_NAMES.includes(staffName)) return { ok: false, error: NAME_ERROR };
+  if (isBlank(reason)) return { ok: false, error: '理由を入れてください' };
+  const c = choice && 'none' in choice && choice.none === true ? { none: true as const } : choice && 'memberId' in choice && isId(choice.memberId) ? { memberId: choice.memberId } : null;
+  if (!c) return { ok: false, error: '会員を選んでください' };
+  try {
+    const r = await decideMemberMatch(personId, c, reason.trim(), staffName, { dryRun: dryRun === true });
+    if (dryRun !== true) donePerson();
+    return { ok: true, ...r };
+  } catch (e) {
+    return { ok: false, error: staffError(e) };
+  }
+}
+
+/** 照合の候補（名前・カナ・生年月日・状態）と、その発表会の事前登録 */
+export async function matchCandidatesAction(personId: number): Promise<{ candidates: MemberLite[]; presets: Record<number, string> }> {
+  await requireRecitalStaff();
+  if (!isId(personId)) return { candidates: [], presets: {} };
+  try {
+    return await listMatchCandidates(personId);
+  } catch (e) {
+    if (errMsg(e).includes('recital_staff:no_person')) return { candidates: [], presets: {} };
+    throw e;
+  }
+}
+
+/** 世帯をまとめる欄の探す所（16 の searchHouseholds。鍵・メール・電話は返さない） */
+export async function searchHouseholdsAction(eventKey: string, q: string): Promise<HouseholdHit[]> {
+  await requireRecitalStaff();
+  if (typeof eventKey !== 'string' || eventKey === '' || typeof q !== 'string') return [];
+  return searchHouseholds(eventKey, q.slice(0, 50));
+}
+
+/** 世帯をまとめる欄の「同じ人の組」を作るための、相手の世帯の生きている人（名前・カナ・生年月日だけ。Task 20 で足した名前） */
+export async function householdPeopleAction(householdId: number): Promise<{ id: number; name: string; kana: string; birthday: string }[]> {
+  await requireRecitalStaff();
+  if (!isId(householdId)) return [];
+  const d = await loadHouseholdDetail(householdId);
+  if (!d) return [];
+  return d.people.filter((p) => p.status === 'active').map((p) => ({
+    id: p.id,
+    name: `${p.last_name} ${p.first_name ?? ''}`.trim(),
+    kana: `${p.last_kana ?? ''} ${p.first_kana ?? ''}`.trim(),
+    birthday: p.birthday ?? '',
+  }));
 }

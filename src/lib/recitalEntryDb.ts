@@ -814,8 +814,10 @@ export async function changeHouseholdEmail(householdId: number, email: string, s
   if (!EMAIL_RE.test(e)) throw new Error('recital_entry:bad_email');
   const token = randomBytes(24).toString('hex');
   await withWriteTx(async (tx) => {
-    const [h] = await rowsOf(tx, 'SELECT event_key FROM recital_households WHERE id = ?', [householdId]);
+    const [h] = await rowsOf(tx, 'SELECT event_key, status FROM recital_households WHERE id = ?', [householdId]);
     if (!h) throw new Error('recital_entry:no_household');
+    // まとめた世帯（Task 20）のアドレスは直さない（まとめ先の世帯で直す）
+    if (String(h.status) !== 'active') throw new Error('recital_entry:not_active');
     const eventKey = String(h.event_key);
     const dup = await rowsOf(
       tx,

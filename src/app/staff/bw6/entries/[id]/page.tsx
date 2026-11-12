@@ -3,13 +3,15 @@
 // 発表会の設定は世帯の event_key で読む（?ev= は使わない）。鍵（edit_token）とメールアドレスは画面にも client の部品にも渡さない。
 // 「お支払い」の欄は StaffPaySection、入金の行は PaymentRows にまとめてある（23 が「振り込みましたの印を付ける」を StaffPaySection に足した。
 // 28 が「この入金を取り消す」を PaymentRows の行の横に足す。家庭の部品 src/app/bw6/my/PaySection.tsx とは別の物）。
+// 20 が「特別な料金」（FeeClassPanel）・「世帯をまとめる」（MergePanel）を操作の欄に、「照合を決める」（MatchPanel）を人の横に足した。
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import StaffPageHeader from '@/components/StaffPageHeader';
 import { todayJst } from '@/lib/dateJst';
 import { isAuthorizedServer } from '@/lib/eventAuth';
 import { householdViewLabel, schoolGrade } from '@/lib/recital';
-import { getRecitalEvent, getRecitalSettings, listWorks, loadHouseholdDetail, type HouseholdDetail, type WorkRow } from '@/lib/recitalDb';
+import { getRecitalEvent, getRecitalSettings, listWorks, loadHouseholdDetail, loadMembersLite, type HouseholdDetail, type WorkRow } from '@/lib/recitalDb';
+import { memberWarn } from '@/lib/recitalMatch';
 import { countRecitalMailsToday } from '@/lib/recitalMail';
 import { maybeDoubleRecord } from '@/lib/recitalMoneyDb';
 import {
@@ -19,6 +21,9 @@ import {
 import CopyButtons from './CopyButtons';
 import HouseholdEditor from './HouseholdEditor';
 import type { CastValue, EditorContact, EditorPerson } from './editorModel';
+import FeeClassPanel, { type AdjustRow, type FeePanelPerson } from './FeeClassPanel';
+import MatchPanel from './MatchPanel';
+import MergePanel, { type MergePerson } from './MergePanel';
 import MoneyButtons, { BankToldButton, RefundCancelButton } from './MoneyButtons';
 
 export const dynamic = 'force-dynamic';
@@ -104,7 +109,13 @@ function PaymentRows({ d }: { d: HouseholdDetail }) {
   );
 }
 
-function PeopleSection({ d, works, showDate }: { d: HouseholdDetail; works: Map<number, WorkRow>; showDate: string }) {
+const MEMBER_WARN_LABEL: Record<string, string> = { leave: '休会の会員と合った', withdrawn: '退会の会員と合った' };
+
+function PeopleSection(props: {
+  d: HouseholdDetail; works: Map<number, WorkRow>; showDate: string; warnByMember: Map<number, 'leave' | 'withdrawn' | null>;
+}) {
+  const { d, works, showDate, warnByMember } = props;
+  const canAct = d.household.status === 'active';
   return (
     <Section title="中身">
       {d.people.length === 0 ? (
@@ -114,6 +125,9 @@ function PeopleSection({ d, works, showDate }: { d: HouseholdDetail; works: Map<
           {d.people.map((p) => {
             const casts = d.casts.filter((c) => c.person_id === p.id);
             const grade = p.birthday ? schoolGrade(p.birthday, showDate) : '';
+            const warn = p.member_id == null ? null : warnByMember.get(Number(p.member_id)) ?? null;
+            // 照合を決める：照合の確認待ち・合わない人と、休会・退会の会員と合った人の横（有効な世帯の生きている人だけ）
+            const showMatch = canAct && p.status === 'active' && (p.match_status === 'pending' || p.match_status === 'unmatched' || warn != null);
             return (
               <li key={p.id} className="rounded-lg border border-sand-200 p-3 text-sm">
                 <p className="text-base font-bold">
@@ -125,12 +139,14 @@ function PeopleSection({ d, works, showDate }: { d: HouseholdDetail; works: Map<
                   <span>生年月日 {s(p.birthday)}{grade && `（${grade}）`}</span>
                   {p.fee_class_override && <span className="rounded bg-brand-50 px-2 font-bold text-brand-700">{labelOf(FEE_CLASS_LABEL, p.fee_class_override)}</span>}
                   <span>会員との照合 {labelOf(MATCH_STATUS_LABEL, p.match_status, '—')}</span>
+                  {warn && <span className="font-bold text-red-700">{MEMBER_WARN_LABEL[warn]}</span>}
                   {p.insta_handle && <span className="break-all">インスタ {p.insta_handle}</span>}
                   {p.display_name && <span>載せる名前 {p.display_name}</span>}
                   <span>名前 {p.name_ok ? '○' : '×'}・写真 {p.photo_ok ? '○' : '×'}・SNS {p.sns_ok ? '○' : '×'}</span>
                   <span>Tシャツ {s(p.tshirt_size) || 'なし'}</span>
                 </div>
                 {p.staff_note && <p className="mt-1 break-words text-sand-700">メモ：{p.staff_note}</p>}
+                {showMatch && <MatchPanel personId={p.id} personLabel={`${p.last_name} ${s(p.first_name)}`.trim()} />}
                 <ul className="mt-2 space-y-1">
                   {casts.length === 0 && <li className="text-sand-700">出演の行はありません</li>}
                   {casts.map((c) => {
@@ -163,13 +179,16 @@ export default async function StaffBw6HouseholdPage({ params }: { params: Promis
   const h = d.household;
   const ev = h.event_key;
 
-  const [event, settings, workList, mailsToday, mergedTo] = await Promise.all([
+  const [event, settings, workList, mailsToday, mergedTo, members] = await Promise.all([
     getRecitalEvent(ev),
     getRecitalSettings(ev),
     listWorks(ev),
     countRecitalMailsToday(),
     h.status === 'merged' && h.merged_into != null ? loadHouseholdDetail(Number(h.merged_into)) : Promise.resolve(null),
+    d.people.some((p) => p.member_id != null) ? loadMembersLite() : Promise.resolve([]),
   ]);
+  const memberIds = new Set(d.people.map((p) => p.member_id).filter((x): x is number => x != null).map(Number));
+  const warnByMember = new Map(members.filter((m) => memberIds.has(m.id)).map((m) => [m.id, memberWarn(m)] as const));
   const works = new Map(workList.map((w) => [w.id, w]));
   const liveWorks = workList.filter((w) => w.status !== 'dropped').map((w) => ({ id: w.id, work_code: w.work_code, title: w.title }));
   const activePeople = d.people.filter((p) => p.status === 'active');
@@ -181,6 +200,25 @@ export default async function StaffBw6HouseholdPage({ params }: { params: Promis
     birthday: s(p.birthday), display_name: s(p.display_name), tshirt_size: s(p.tshirt_size), insta_handle: s(p.insta_handle),
     name_ok: Number(p.name_ok), photo_ok: Number(p.photo_ok), sns_ok: Number(p.sns_ok), staff_note: s(p.staff_note),
   }));
+  // 特別な料金・世帯をまとめる（Task 20）に渡す物。手の調整の行の理由は adjust_add の記録から引く
+  const feePeople: FeePanelPerson[] = activePeople.map((p) => ({
+    id: p.id, name: `${p.last_name} ${s(p.first_name)}`.trim(), feeClass: p.fee_class_override === 'no_coop' || p.fee_class_override === 'tshirt_only' || p.fee_class_override === 'free' ? p.fee_class_override : null,
+  }));
+  const adjustReason = new Map<number, string>();
+  for (const c of d.changes) {
+    if (c.action !== 'adjust_add' || !c.after_json) continue;
+    try {
+      const id = Number((JSON.parse(c.after_json) as { chargeId?: unknown }).chargeId);
+      if (Number.isInteger(id) && !adjustReason.has(id)) adjustReason.set(id, c.reason ?? '');
+    } catch { /* 読めない記録は飛ばす */ }
+  }
+  const activeCharges = d.charges.filter((c) => c.status === 'active');
+  const adjusts: AdjustRow[] = activeCharges.filter((c) => c.item_code === 'adjust').map((c) => ({ id: c.id, amount: Number(c.amount), reason: adjustReason.get(c.id) ?? '' }));
+  const rowsBelowZero = activeCharges.reduce((a, c) => a + Number(c.amount), 0) < 0;
+  const mergePeople: MergePerson[] = activePeople.map((p) => ({
+    id: p.id, name: `${p.last_name} ${s(p.first_name)}`.trim(), kana: `${s(p.last_kana)} ${s(p.first_kana)}`.trim(), birthday: s(p.birthday),
+  }));
+
   const editorCasts: Record<string, CastValue> = {};
   for (const c of d.casts) {
     if (!activePeople.some((p) => p.id === c.person_id)) continue;
@@ -233,7 +271,7 @@ export default async function StaffBw6HouseholdPage({ params }: { params: Promis
         </section>
 
         <StaffPaySection d={d} />
-        <PeopleSection d={d} works={works} showDate={event?.show_date ?? ''} />
+        <PeopleSection d={d} works={works} showDate={event?.show_date ?? ''} warnByMember={warnByMember} />
         <PaymentRows d={d} />
 
         <Section title="返す分">
@@ -306,9 +344,13 @@ export default async function StaffBw6HouseholdPage({ params }: { params: Promis
                 tshirtSizes={settings.tshirt_sizes}
               />
             ) : (
-              <Empty>この世帯は「{h.status}」なので、代わりに直す・手で入金を記録・控えを送り直す・メールアドレスを直すはできません。</Empty>
+              <Empty>この世帯は「{h.status}」なので、代わりに直す・手で入金を記録・控えを送り直す・メールアドレスを直す・特別な料金・世帯をまとめるはできません。</Empty>
             )}
             {h.status === 'active' && <MoneyButtons householdId={h.id} remaining={d.money.remaining} today={todayJst()} />}
+            {h.status === 'active' && activePeople.length > 0 && (
+              <FeeClassPanel householdId={h.id} people={feePeople} adjusts={adjusts} rowsBelowZero={rowsBelowZero} />
+            )}
+            {h.status === 'active' && <MergePanel householdId={h.id} eventKey={ev} seq={h.seq} refCode={h.ref_code} people={mergePeople} />}
             <CopyButtons householdId={h.id} refCode={h.ref_code} remaining={d.money.remaining} payDue={payDue} active={h.status === 'active'} />
           </div>
         </Section>
