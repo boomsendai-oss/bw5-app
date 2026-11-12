@@ -49,6 +49,11 @@ describe('いちばん上の文（04 4-2 マイページ）', () => {
     expect(myTopLines(late)).not.toContain(DUE);
     expect(myTopLines({ ...late, payMethod: 'bank' })[1]).toBe('お振込みずみのときは、ご入金の確認に、ふだん1〜2日、土日や祝日をはさむと数日かかることがあります。確認できましたら、メールでお知らせします。');
   });
+  it('期限を過ぎても「払う」が出ていない時（確認中・準備中など）は、『払う』を指す文を出さない（Task 21）', () => {
+    const late = { ...base, view: 'tentative' as const, m: m(26500, 0), todayYmd: '2027-02-11' };
+    expect(myTopLines({ ...late, payShown: false })[0]).toBe('お支払いの期限が過ぎました。お申し込みは、まだ完了していません。');
+    expect(myTopLines({ ...late, payShown: true })[0]).toBe('お支払いの期限が過ぎました。お申し込みは、まだ完了していません。下の『払う』から、今もお支払いいただけます。');
+  });
 });
 
 describe('締切のあとの文（H19）', () => {

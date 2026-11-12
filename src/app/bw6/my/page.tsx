@@ -2,7 +2,8 @@
 // 鍵（edit_token・16進48けた）の完全一致の1世帯だけを出す。形の合わない鍵は DB を引かない（recitalGuard.ts）。
 // 出すのはその世帯の申込の中身・金額・支払いの状態だけ。ほかの世帯の情報・作品ごとの名簿は出さない。
 // 電話・メール・生年月日・スタッフのメモ・メールの記録・変えた記録は、画面にもクライアントの部品にも渡さない（R-66）。
-// 文の正本は設計書 04 4-2「マイページ」。「払う」は Task 21 が MoneyBox の children に入れる（それまでは「準備中」の文）。
+// 文の正本は設計書 04 4-2「マイページ」。「払う」（PaySection・Task 21）は payState が show の時だけ MoneyBox の children に入れる。
+// 開いている支払い（カードの決済の画面）がある世帯は、描く前に Stripe に聞いて合わせる。聞けなければ「ご入金を確認しています」で「払う」を出さない（R-98）。
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
@@ -12,11 +13,13 @@ import { canFamilyEdit, deadlineMs, entryPhase, householdViewLabel, payButtonSta
 import { getRecitalSettings, listWorks, type HouseholdDetail, type PersonRow } from '@/lib/recitalDb';
 import { markMyPageOpened } from '@/lib/recitalFamilyDb';
 import { requireHouseholdByToken } from '@/lib/recitalGuard';
+import { CARD_CHECKING_TEXT, syncCardCheckout } from '@/lib/recitalPayDb';
 import { closedNotice, myTopLines, nextTodos, payAreaText } from '@/lib/recitalMyPage';
 import { FAMILY_ADD_LINE, fiveLines } from '@/lib/recitalPublic';
 import { FiveLines } from '@/components/recital/FiveLines';
 import { MoneyBox } from '@/components/recital/MoneyBox';
 import { InstaEditor } from './InstaEditor';
+import { PaySection } from './PaySection';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,8 +58,9 @@ function Notice({ title, lines }: { title?: string; lines: ReactNode[] }) {
   );
 }
 
-/** 設定・作品・今の時刻から、ページに出す状態と文を決める（時刻を読むのはここだけ） */
-async function loadMyPageState(d: HouseholdDetail) {
+/** 設定・作品・今の時刻から、ページに出す状態と文を決める（時刻を読むのはここだけ）。
+ *  checking＝カードの入金を確かめられなかった／paidReturn＝決済の画面から戻った。どちらも「払う」は出さない */
+async function loadMyPageState(d: HouseholdDetail, x: { checking: boolean; paidReturn: boolean }) {
   const h = d.household;
   const [settings, works] = await Promise.all([getRecitalSettings(h.event_key), listWorks(h.event_key)]);
   const nowMs = Date.now();
@@ -70,28 +74,28 @@ async function loadMyPageState(d: HouseholdDetail) {
   const phase = entryPhase(settings, nowMs, h.extend_until);
   const gate = payGate(settings, nowMs);
   const payState = payButtonState({ gate, view: d.view, m: d.money, refundTodo: d.refundTodo });
-  // 「払う」（Task 21）ができるまでは、払える時も「準備中」として出す。つぎにやることにも出さない（K221）
-  const shownPayState = payState === 'show' ? 'preparing' : payState;
+  // 「払う」のボタンが今この画面に出るか。出ない時は、つぎにやること・期限切れの文でも「払う」を指さない（K221）
+  const payShown = payState === 'show' && !x.checking && !x.paidReturn;
   const payDue = h.pay_due_override ?? settings.pay_due;
   // 延長の世帯は延長の日まで false（判定は canFamilyEdit だけ）
   const afterChangeClose = nowMs > deadlineMs(settings.change_close_at) && !canFamilyEdit(settings, nowMs, h.extend_until);
 
   const lines = myTopLines({
     view: d.view, m: d.money, hasIn, hasMaybe, payDue, todayYmd: todayJst(), changeClose: settings.change_close_at, afterChangeClose,
-    payMethod: h.pay_method,
+    payMethod: h.pay_method, payShown,
   });
-  const todos = nextTodos({ payState: shownPayState, remaining: d.money.remaining, payDue, hasMaybe, canEditWorks: false, changeClose: settings.change_close_at });
+  const todos = nextTodos({ payState: payShown ? 'show' : 'hidden', remaining: d.money.remaining, payDue, hasMaybe, canEditWorks: false, changeClose: settings.change_close_at });
   const closed = closedNotice({ afterChangeClose, remaining: d.money.remaining, payDue, changeClose: settings.change_close_at });
 
-  return { settings, workById, people, hasMaybe, phase, shownPayState, lines, todos, closed };
+  return { settings, workById, people, hasMaybe, phase, payState, lines, todos, closed };
 }
 
 const CAST_LABEL: Record<string, string> = { in: '出る', maybe: '迷っている', out: 'やめた作品', passed: '見送り' };
 
-export default async function Bw6MyPage({ searchParams }: { searchParams: Promise<{ t?: string; from?: string }> }) {
+export default async function Bw6MyPage({ searchParams }: { searchParams: Promise<{ t?: string; from?: string; paid?: string }> }) {
   const sp = await searchParams;
-  const d = await requireHouseholdByToken(one(sp.t));
-  if (!d) {
+  const first = await requireHouseholdByToken(one(sp.t));
+  if (!first) {
     return (
       <Notice
         title="お申し込みが見つかりません"
@@ -99,10 +103,10 @@ export default async function Bw6MyPage({ searchParams }: { searchParams: Promis
       />
     );
   }
-  const h = d.household;
-  if (h.status === 'merged') {
+  if (first.household.status === 'merged') {
     // まとめ先の整理番号だけを読む（まとめ先の鍵・URL・中身は出さない）
-    const to = h.merged_into == null ? null : await getOne('SELECT ref_code FROM recital_households WHERE id = ?', [h.merged_into]);
+    const into = first.household.merged_into;
+    const to = into == null ? null : await getOne('SELECT ref_code FROM recital_households WHERE id = ?', [into]);
     return (
       <Notice
         lines={[
@@ -113,14 +117,35 @@ export default async function Bw6MyPage({ searchParams }: { searchParams: Promis
     );
   }
 
+  const householdId = first.household.id;
   try {
-    await markMyPageOpened(h.id, one(sp.from) === 'mail');
+    await markMyPageOpened(householdId, one(sp.from) === 'mail');
   } catch (e) {
     // 開いた印が書けなくてもページは出す（ログに個人の情報は出さない）
-    console.error(`[recital] マイページを開いた印を書けませんでした household=${h.id}`, e instanceof Error ? e.message : String(e));
+    console.error(`[recital] マイページを開いた印を書けませんでした household=${householdId}`, e instanceof Error ? e.message : String(e));
   }
 
-  const { settings, workById, people, hasMaybe, phase, shownPayState, lines, todos, closed } = await loadMyPageState(d);
+  // 開いている支払いがあれば、描く前に Stripe に聞いて合わせ（払い終わっていれば入金を記録）、世帯を読み直す
+  let checking = false;
+  let reread: HouseholdDetail | null = null;
+  const openCheckout = await getOne("SELECT id FROM recital_checkouts WHERE household_id = ? AND status = 'open' LIMIT 1", [householdId]);
+  if (openCheckout) {
+    try {
+      await syncCardCheckout(householdId);
+    } catch (e) {
+      checking = true;
+      console.error(`[recital] マイページでカードの入金を確かめられませんでした household=${householdId}`, e instanceof Error ? e.message : String(e));
+    }
+    reread = await requireHouseholdByToken(first.household.edit_token);
+  }
+  const d = reread ?? first;
+  const h = d.household;
+  const paidReturn = one(sp.paid) === '1';
+
+  const { settings, workById, people, hasMaybe, phase, payState, lines, todos, closed } = await loadMyPageState(d, { checking, paidReturn });
+  // 決済の画面から戻った時（paidReturn）は PaySection が受付の文だけを出す。確かめられない時は置かない
+  const showPaySection = payState === 'show' && !checking;
+  const showChecking = checking && payState !== 'hidden';
 
   // 人ごとの内わけ（生きている請求の行）。人の付かない行は「ご家族」にまとめる
   const nameById = new Map(d.people.map((p) => [Number(p.id), personName(p)]));
@@ -158,8 +183,12 @@ export default async function Bw6MyPage({ searchParams }: { searchParams: Promis
         lastPaid={lastPayment ? { method: lastPayment.method, paidOn: lastPayment.paid_on } : null}
         manyPeople={people.length > 1}
         hasMaybe={hasMaybe}
-        payText={payAreaText(shownPayState, settings.pay_open_at)}
-      />
+        payText={showChecking ? CARD_CHECKING_TEXT : payAreaText(payState, settings.pay_open_at)}
+      >
+        {showPaySection && (
+          <PaySection token={h.edit_token} paidReturn={paidReturn} remaining={d.money.remaining} toldAmount={h.bank_told_at == null ? null : Number(h.bank_told_amount ?? 0)} />
+        )}
+      </MoneyBox>
 
       {todos.length > 0 && (
         <section className={boxCls}>

@@ -6,7 +6,7 @@
 import type { Transaction } from '@libsql/client';
 import { getOne, withWriteTx } from '@/lib/db';
 import { isIsoDate, nowUtcIso } from '@/lib/dateJst';
-import type { HouseholdView, MoneySummary } from '@/lib/recital';
+import { payableAmount, type HouseholdView, type MoneySummary } from '@/lib/recital';
 import { logChangeTx, readMoneyViewTx } from '@/lib/recitalDb';
 
 // ---------- 型（split.md ③） ----------
@@ -283,10 +283,26 @@ export async function recordManualPayment(
 
 // ---------- お金が変わったあと ----------
 
-/** お金が変わったあとの仕事（中身は 21 がカードの作り直し、23 がご案内の出し直しを足す）。書き込み（withWriteTx）の中から呼ばない。 */
+/**
+ * お金が変わったあとの仕事（21 がカードの作り直し、23 がご案内の出し直しを足す）。書き込み（withWriteTx）の中から呼ばない。
+ * 失敗は console.error だけで、呼んだ操作は止めない（throw しない）。
+ */
 export async function afterMoneyChanged(householdId: number, cause: 'total' | 'payment'): Promise<void> {
-  void householdId;
   void cause;
+  // カード（Task 21）：開いている支払いの額が今の払う額（0 も含む）とちがえば切る。新しい画面は、次に家庭が「払う」を押した時に作る
+  try {
+    const open = await getOne("SELECT amount FROM recital_checkouts WHERE household_id = ? AND status = 'open' ORDER BY id LIMIT 1", [householdId]);
+    if (open) {
+      const cur = await readHouseholdMoney(householdId);
+      if (Number(open.amount) !== payableAmount(cur.m, cur.told)) {
+        // recitalPayDb はこのファイルを読むので、関数の中で読む
+        const { expireOpenCheckout } = await import('./recitalPayDb');
+        await expireOpenCheckout(householdId, 'amount_changed');
+      }
+    }
+  } catch (e) {
+    console.error(`[recital] カードの決済の画面の作り直しに失敗しました household=${householdId}`, e instanceof Error ? e.message : String(e));
+  }
 }
 
 /** 同じファイルの中から afterMoneyChanged を呼ぶ時の通り道（試験の spy 用。ほかのファイルからは使わない） */

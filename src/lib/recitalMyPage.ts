@@ -8,13 +8,16 @@ import { jpDate, slashDate, yenJa } from './recitalPublic';
 export type MyTopInput = {
   view: HouseholdView; m: MoneySummary; hasIn: boolean; hasMaybe: boolean; payDue: string; todayYmd: string;
   changeClose: string; afterChangeClose: boolean; payMethod: string | null;
+  /** 「払う」が今この画面に出ているか（Task 21）。false の時は期限切れの文から『払う』を指す文を外す。省くと true */
+  payShown?: boolean;
 };
 
 type PayState = 'hidden' | 'before' | 'preparing' | 'refund_hold' | 'show';
 
 const TENTATIVE_LINE = 'いまは『仮受付』です。お支払いが済むと、『申込完了』になります。';
 const MAYBE_LINE = '迷っている作品がある方は、決まってからお支払いください。お支払いのあとは、お返しできません。';
-const OVERDUE_LINE = 'お支払いの期限が過ぎました。お申し込みは、まだ完了していません。下の『払う』から、今もお支払いいただけます。';
+const OVERDUE_HEAD = 'お支払いの期限が過ぎました。お申し込みは、まだ完了していません。';
+const OVERDUE_PAY = '下の『払う』から、今もお支払いいただけます。';
 const BANK_DAYS_LINE =
   'お振込みずみのときは、ご入金の確認に、ふだん1〜2日、土日や祝日をはさむと数日かかることがあります。確認できましたら、メールでお知らせします。';
 
@@ -33,7 +36,7 @@ export function myTopLines(x: MyTopInput): string[] {
   }
   const overdue = x.todayYmd > x.payDue.slice(0, 10) && x.m.remaining > 0;
   const dueOrOverdue = overdue
-    ? [OVERDUE_LINE, ...(x.payMethod === 'bank' ? [BANK_DAYS_LINE] : [])]
+    ? [x.payShown === false ? OVERDUE_HEAD : OVERDUE_HEAD + OVERDUE_PAY, ...(x.payMethod === 'bank' ? [BANK_DAYS_LINE] : [])]
     : [`お支払いは、${jpDate(x.payDue)}までです。今すぐでも、あとからでも大丈夫です。`];
 
   switch (x.view) {
