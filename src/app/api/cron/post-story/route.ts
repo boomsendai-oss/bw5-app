@@ -6,6 +6,7 @@ import { pickNextQueueItem, markQueueItemPosted } from '@/lib/storyQueue';
 import { WEEKDAY_FILES, findChainMediaList, loadSidecar, checkSchedule, resolveMentions, type ChainMedia } from '@/lib/storyPlan';
 import { getDayPlan, listDaySlots } from '@/lib/storyDayPlan';
 import { alreadyPostedToday } from '@/lib/slotWatch';
+import { LEGACY_ORIGIN } from '@/lib/appOrigin';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,7 +19,7 @@ export const maxDuration = 300;
 // 正準ベースURL。cron/watchdog/デプロイ固有URLでoriginが変わると、素材URLが変わって
 // 冪等ガード・claimロックがすり抜け二重投稿する事故があった(2026-07-22)。素材URLは常にこの
 // 安定エイリアスから作り、重複判定はorigin非依存の pathname で行う。
-const SITE_ORIGIN = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '') || 'https://bw5-app.vercel.app';
+const SITE_ORIGIN = LEGACY_ORIGIN;
 // URLからoriginを剥がしたパス(= スロットの安定ID)。重複判定はこれで行う。
 // 末尾の #HH:MM は「同じ画像を1日に2回出す枠」を別物として扱うための識別子(下記 dedupKey)。
 // pathname だけにすると、9/24のように同じ素材を12:30と21:00に置いた2枠が

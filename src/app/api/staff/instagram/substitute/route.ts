@@ -5,6 +5,7 @@ import { todayJst, weekdayJst, nowUtcIso } from '@/lib/dateJst';
 import { planSubstitutes, loadSubstitutes, resolveMentions } from '@/lib/storyPlan';
 import { isAllowedSubstituteUrl } from '@/lib/storySubstitute';
 import { notifyTaro } from '@/lib/notify';
+import { LEGACY_ORIGIN } from '@/lib/appOrigin';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,7 +19,7 @@ export const maxDuration = 60;
 // 認証: 管理パスワード(x-admin-password)またはスタッフのログイン。
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
-const ORIGIN = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '') || 'https://bw5-app.vercel.app';
+const ORIGIN = LEGACY_ORIGIN;
 
 export const GET = withAuth(async (req: NextRequest) => {
   const date = req.nextUrl.searchParams.get('date') ?? '';

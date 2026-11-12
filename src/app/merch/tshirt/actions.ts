@@ -28,6 +28,7 @@ import {
 import { buildTshirtCheckoutParams, buildTshirtLineItems } from '@/lib/tshirtStripe';
 import { sendTshirtOrderEmail } from '@/lib/tshirtEmail';
 import { createBf6CheckoutSession } from '@/lib/bf6Stripe';
+import { FALLBACK_HOST } from '@/lib/appOrigin';
 
 async function clientIp(): Promise<string> {
   const h = await headers();
@@ -114,7 +115,7 @@ async function startCheckoutForToken(token: string): Promise<TshirtCheckoutResul
   if (!o) return { ok: false, error: 'ご注文が見つかりません' };
   if (o.paid) return { ok: false, error: 'このご注文はお支払い済みです' };
   const h = await headers();
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'bw5-app.vercel.app';
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? FALLBACK_HOST;
   const proto = h.get('x-forwarded-proto') ?? 'https';
   const backUrl = `${proto}://${host}/merch/tshirt?t=${token}`;
   try {

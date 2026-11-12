@@ -26,6 +26,7 @@ import {
 import { buildBf7CheckoutFormParams, buildBf7LineItems, createBf7CheckoutSession } from '@/lib/bf7Stripe';
 import { sendBf7OrderEmail } from '@/lib/bf7Email';
 import { todayJst } from '@/lib/dateJst';
+import { FALLBACK_HOST } from '@/lib/appOrigin';
 
 async function clientIp(): Promise<string> {
   const h = await headers();
@@ -130,7 +131,7 @@ export async function startBf7Checkout(token: string): Promise<Bf7CheckoutResult
   }
 
   const h = await headers();
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'bw5-app.vercel.app';
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? FALLBACK_HOST;
   const proto = h.get('x-forwarded-proto') ?? 'https';
   const completeUrl = `${proto}://${host}/bf7/complete?t=${token}`;
 

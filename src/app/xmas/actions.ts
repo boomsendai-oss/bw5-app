@@ -37,6 +37,7 @@ import { buildAudioReceivedEmail, sendPartyMail, sendPartyOrderEmail } from '@/l
 import { makeAudioTicket } from '@/lib/partyAudioTicket';
 import { resolveAudioCredential } from '@/lib/partyAudio';
 import { isXmasPreview } from '@/lib/partyPreview';
+import { FALLBACK_HOST } from '@/lib/appOrigin';
 
 const EV = PARTY_EVENT_KEY;
 
@@ -159,7 +160,7 @@ export async function startXmasCheckout(token: string): Promise<XmasCheckoutResu
     }
   }
   const h = await headers();
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'bw5-app.vercel.app';
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? FALLBACK_HOST;
   const proto = h.get('x-forwarded-proto') ?? 'https';
   const myUrl = `${proto}://${host}/xmas/my?t=${token}`;
   // Stripeの決済ページの有効期限は最短30分。仮押さえもその期限(+1分)まで延ばし、

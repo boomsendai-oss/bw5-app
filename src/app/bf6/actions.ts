@@ -37,6 +37,7 @@ import {
 } from '@/lib/bf6Stripe';
 import { sendBf6OrderEmail } from '@/lib/bf6Email';
 import { validateBf6SsmEntry, type Bf6SsmEntryInput } from '@/lib/bf6';
+import { FALLBACK_HOST } from '@/lib/appOrigin';
 
 async function clientIp(): Promise<string> {
   const h = await headers();
@@ -142,7 +143,7 @@ export async function startBf6Checkout(token: string): Promise<Bf6CheckoutResult
   }
 
   const h = await headers();
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'bw5-app.vercel.app';
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? FALLBACK_HOST;
   const proto = h.get('x-forwarded-proto') ?? 'https';
   const completeUrl = `${proto}://${host}/bf6/complete?t=${token}`;
 

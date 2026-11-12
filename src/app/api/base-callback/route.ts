@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exchangeCodeForToken } from '@/lib/base';
+import { STAFF_ORIGIN } from '@/lib/appOrigin';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
         <h1>✅ BASE 連携完了！</h1>
         <p>access_token を保存しました。</p>
         <p>BW5アプリの物販ページで BASE 商品が表示されるようになります。</p>
-        <p><a href="https://bw5-app.vercel.app/admin">管理画面に戻る</a></p>
+        <p><a href="${STAFF_ORIGIN}/admin">管理画面に戻る</a></p>
       </body></html>`,
       { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
     );

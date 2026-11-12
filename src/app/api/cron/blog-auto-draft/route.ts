@@ -17,6 +17,7 @@ import {
   submitDraftBatch,
   todayJst,
 } from '@/lib/blogAutoDraft';
+import { STAFF_ORIGIN } from '@/lib/appOrigin';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,7 +35,7 @@ export const maxDuration = 60;
 // 公開はしない: 下書き(is_published=0)を作るだけ。公開は /staff/blog でTAROが承認する。
 
 const TARO_EMAIL = 'boom.sendai@gmail.com';
-const STAFF_URL = 'https://bw5-app.vercel.app/staff/blog';
+const STAFF_URL = `${STAFF_ORIGIN}/staff/blog`;
 const MAX_UNREVIEWED = 3;
 
 function cronAuthorized(req: NextRequest): boolean {

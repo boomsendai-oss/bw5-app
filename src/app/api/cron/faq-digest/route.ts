@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { faqLogDb } from '@/lib/faqLogDb';
 import { sendEmail } from '@/lib/email';
 import { formatFaqDigest, type FaqDigestInput } from '@/lib/faqDigest';
+import { STAFF_ORIGIN } from '@/lib/appOrigin';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -15,7 +16,7 @@ export const maxDuration = 60;
 // ログはボット専用DB(FAQBOT_LOG_DB_*)にあり会員DB(bw5)とは別系。ここは読むだけ。
 // 認証は他cronと同じ CRON_SECRET(Vercelが Authorization: Bearer で送る)。
 const TARO_EMAIL = 'boom.sendai@gmail.com';
-const BASE_URL = 'https://bw5-app.vercel.app';
+const BASE_URL = STAFF_ORIGIN;
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 

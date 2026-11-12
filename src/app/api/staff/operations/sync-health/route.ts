@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { execute, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
 import { notifyTaro } from '@/lib/notify';
+import { STAFF_ORIGIN } from '@/lib/appOrigin';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
           subject: '日次同期が失敗しました',
           body:
             `${message ?? '詳細不明'}\n\n` +
-            `確認先: ${process.env.NEXT_PUBLIC_BASE_URL ?? 'https://bw5-app.vercel.app'}/staff/notifications\n` +
+            `確認先: ${STAFF_ORIGIN}/staff/notifications\n` +
             `ログ: 事務所Mac の auto_sync/logs/`,
         });
       } catch (e) {

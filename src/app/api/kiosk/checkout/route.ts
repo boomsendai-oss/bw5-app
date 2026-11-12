@@ -12,6 +12,7 @@ import {
 import { buildKioskCheckoutFormParams, createKioskCheckoutSession } from '@/lib/kioskStripe';
 import { checkRateLimit } from '@/lib/eventAuth';
 import { getAll } from '@/lib/db';
+import { FALLBACK_HOST } from '@/lib/appOrigin';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
   const created = await createKioskStripeOrder(items);
   if (!created.ok) return NextResponse.json({ error: created.error }, { status: 409 });
 
-  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'bw5-app.vercel.app';
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? FALLBACK_HOST;
   const proto = req.headers.get('x-forwarded-proto') ?? 'https';
   const base = `${proto}://${host}`;
 

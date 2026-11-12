@@ -14,8 +14,9 @@ import { todayJst } from './dateJst';
 import { getAdCost, getTrafficChannels } from './ga4';
 import { getActiveMemberCount, getMonthlyFinance, NON_CUSTOMER_TYPES_SQL } from './kpiMetrics';
 import { lastFullWeek, type WeeklyReportInput, type WindowCounts } from './weeklyReport';
+import { STAFF_ORIGIN } from '@/lib/appOrigin';
 
-const BASE_URL = 'https://bw5-app.vercel.app';
+const BASE_URL = STAFF_ORIGIN;
 
 function num(v: unknown): number {
   return Number(v ?? 0);

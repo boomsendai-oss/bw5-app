@@ -5,6 +5,7 @@
 // 文に金額と名前を書かない（知らせは Pushover とメールに出るため）。
 import { shiftDays, todayJst } from './dateJst';
 import type { PayGate, RecitalSettings } from './recital';
+import { STAFF_ORIGIN } from '@/lib/appOrigin';
 
 /** JST の 'YYYY-MM-DD HH:MM'（shouldAskTaro の nowJst。定期の入口が今の時刻から作る） */
 export function nowJstOf(now: Date): string {
@@ -12,7 +13,7 @@ export function nowJstOf(now: Date): string {
 }
 
 /** 声かけの文に載せる「見てほしい入金」の画面 */
-export const BANK_URL = 'https://bw5-app.vercel.app/staff/bw6/bank';
+export const BANK_URL = `${STAFF_ORIGIN}/staff/bw6/bank`;
 
 /** 撮る画面（GMO の入出金明細の一覧＝行ごとの残高が出る画面）。いつもの文と休み明けの文の2行目 */
 const SHOT_LINE = 'GMO アプリの「入出金明細」（一覧の画面）を撮って送ってください。';

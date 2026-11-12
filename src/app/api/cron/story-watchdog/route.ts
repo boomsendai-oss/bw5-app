@@ -9,6 +9,7 @@ import { evaluateShiftSyncFreshness, evaluateMemberTagFreshness } from '@/lib/sh
 import { findUpcomingReturns, isNotifyWindow, buildReturnNotice } from '@/lib/kyukaiWatch';
 import { listDaySlots } from '@/lib/storyDayPlan';
 import { findOverdueSlots, describeOverdueSlot, hhmmToMinutes } from '@/lib/slotWatch';
+import { LEGACY_ORIGIN } from '@/lib/appOrigin';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -16,7 +17,7 @@ export const maxDuration = 60;
 
 // 正準ベースURL。post-story と必ず同じoriginで素材URLを作らないと、投稿済みを"未投稿"と誤検知して
 // 自己修復が二重投稿を起こす(2026-07-22の事故原因)。判定も origin非依存の pathname で行う。
-const SITE_ORIGIN = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/$/, '') || 'https://bw5-app.vercel.app';
+const SITE_ORIGIN = LEGACY_ORIGIN;
 // post-story と同じ規則(末尾 #HH:MM は同じ素材を1日2回出す枠の識別子)。ここが食い違うと
 // 投稿済みを未投稿と誤検知して警報が鳴り続ける。
 function slotKey(u: string): string {

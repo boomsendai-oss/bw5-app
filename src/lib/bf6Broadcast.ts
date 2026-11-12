@@ -12,6 +12,7 @@ import { getBf6Settings } from './bf6Db';
 import { toOrderLine } from './bf6CashDb';
 import { sendEmail } from './email';
 import { nowUtcIso, todayJst } from './dateJst';
+import { LEGACY_ORIGIN } from '@/lib/appOrigin';
 
 /**
  * 宛先の範囲。テンプレートごとに変える。
@@ -47,7 +48,7 @@ export type Bf6BroadcastTemplate = {
 export type Bf6BroadcastAttachment = { filename: string; path: string };
 
 /** 添付画像を取りに行く先。publicは本番と同じものが配信されている。 */
-const PUBLIC_BASE_URL = 'https://bw5-app.vercel.app';
+const PUBLIC_BASE_URL = LEGACY_ORIGIN;
 
 const CALL_TIME_BODY = `BOOMER'S FIGHT!!! vol.6 にエントリーいただき、ありがとうございます。
 

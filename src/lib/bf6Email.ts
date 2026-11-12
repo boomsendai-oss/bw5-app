@@ -3,12 +3,13 @@
 import { sendEmail } from '@/lib/email';
 import { bf6DivisionLabel, bf6GradeLabel, formatReceiptNo } from '@/lib/bf6';
 import type { OwnBf6Order } from '@/lib/bf6Db';
+import { LEGACY_ORIGIN } from '@/lib/appOrigin';
 
 // 告知はすべて boomersfight.vercel.app で統一している(bw5-app も同じサイトに解決するが
 // 受け手に「別サイト?」と見せないため、メール内のリンクも告知側のドメインに揃える)。
 const BASE_URL = 'https://boomersfight.vercel.app';
 // 添付画像を取りに行く先(本番の公開URL)。メールはサーバ側から送るので絶対URLが要る
-const PUBLIC_BASE_URL = 'https://bw5-app.vercel.app';
+const PUBLIC_BASE_URL = LEGACY_ORIGIN;
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 
 export function buildBf6OrderEmail(order: OwnBf6Order, editToken: string): { subject: string; text: string } {

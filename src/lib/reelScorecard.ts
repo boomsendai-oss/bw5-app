@@ -6,6 +6,7 @@
 // 使う側: 月次サマリーメール(insights-monthly cron)・判断日リマインダー。
 
 import { getAll } from './db';
+import { STAFF_ORIGIN } from '@/lib/appOrigin';
 
 export type ReelRow = {
   media_id: string;
@@ -138,6 +139,6 @@ export function formatScorecardText(sc: Scorecard): string {
   L.push('');
   L.push(`【講評】${sc.commentary}`);
   L.push('');
-  L.push('詳細: https://bw5-app.vercel.app/staff/instagram の「投稿パフォーマンス」');
+  L.push(`詳細: ${STAFF_ORIGIN}/staff/instagram の「投稿パフォーマンス」`);
   return L.join('\n');
 }

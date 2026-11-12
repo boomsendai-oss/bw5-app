@@ -9,13 +9,14 @@
  */
 
 import { execute, getOne } from '@/lib/db';
+import { LEGACY_ORIGIN } from '@/lib/appOrigin';
 
 const BASE_API = 'https://api.thebase.in/1';
 const OAUTH_BASE = 'https://api.thebase.in/1/oauth';
 
 const REDIRECT_URI =
   process.env.BASE_REDIRECT_URI ||
-  'https://bw5-app.vercel.app/api/base-callback';
+  `${LEGACY_ORIGIN}/api/base-callback`;
 
 const CLIENT_ID = process.env.BASE_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.BASE_CLIENT_SECRET || '';

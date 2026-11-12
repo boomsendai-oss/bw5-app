@@ -14,6 +14,7 @@ import { execute, getAll, getOne } from './db';
 import { getInstagramAuth, GRAPH_BASE } from './instagram';
 import { notifyTaro } from './notify';
 import { decideAutoReply, statusAfter, type DmKind } from './instagramDmRules';
+import { STAFF_ORIGIN } from '@/lib/appOrigin';
 
 export type InboundEvent = {
   senderId: string;
@@ -269,7 +270,7 @@ export async function handleInboundMessage(ev: InboundEvent): Promise<{ stored: 
     autoKind ? `自動返信: ${autoKind} を送信しました` : `自動返信: なし(${decision.kind ? sendError : (decision as { reason: string }).reason})`,
     `状態: ${status === 'needs_reply' ? '返信待ち(TAROの返信が必要)' : status === 'new' ? '本文なし(メンション/シェア/画像のみ・自動返信なし)' : '自動案内済み'}`,
     '',
-    '台帳・返信: https://bw5-app.vercel.app/staff/instagram/dm',
+    `台帳・返信: ${STAFF_ORIGIN}/staff/instagram/dm`,
   ];
   try {
     await notifyTaro({ subject: `インスタDM ${who}${status === 'needs_reply' ? '【返信待ち】' : ''}`, body: lines.join('\n'), subjectPrefix: '[BOOM DM]' });

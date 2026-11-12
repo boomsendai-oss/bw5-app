@@ -4,6 +4,7 @@
 // - 同時1端末: ハートビート方式(生存TTL内の別セッションがいたら拒否)
 // - 再生URL: Cloudflareの署名付きトークン(短寿命JWT)で保護
 import { createHmac, createSign, randomBytes } from 'node:crypto';
+import { LEGACY_ORIGIN } from '@/lib/appOrigin';
 
 // 紛らわしい文字(0/O/1/I/L)を除いたキー用文字集合
 const KEY_CHARS = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
@@ -75,7 +76,7 @@ export function buildStreamKeyEmail(p: {
     `■ 視聴キー: ${p.streamKey}`,
     '',
     '▼ 視聴ページ(当日はこちらから)',
-    'https://bw5-app.vercel.app/bf6/stream/watch',
+    `${LEGACY_ORIGIN}/bf6/stream/watch`,
     '',
     '・視聴ページでこの視聴キーを入力するだけでご覧いただけます',
     '・ご家族など別の方に渡す場合は、この視聴キーをそのままお送りください(キーだけで視聴できます)',

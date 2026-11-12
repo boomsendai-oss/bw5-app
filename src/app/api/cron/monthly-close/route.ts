@@ -4,6 +4,7 @@ import { findMissingRecurringExpenses } from '@/lib/recurringExpenseWatch';
 import { getAll } from '@/lib/db';
 import { syncCalendarActuals, type SyncResult } from '@/lib/calendarSync';
 import { recalcPayroll, recalcStudioBilling, getCloseStatus, detectRoomConflicts } from '@/lib/monthlyClose';
+import { STAFF_ORIGIN } from '@/lib/appOrigin';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -197,7 +198,7 @@ export async function GET(req: NextRequest) {
       for (const e of errors) lines.push(`  - ${e}`);
     }
     lines.push('');
-    lines.push('確定・明細配布・振込CSVは https://bw5-app.vercel.app/staff/payroll から。');
+    lines.push(`確定・明細配布・振込CSVは ${STAFF_ORIGIN}/staff/payroll から。`);
 
     await notifyTaro({
       subject: `[月次締め] ${prevYm} 給与${yen(status.payrollTotal)} / スタジオ${yen(status.studioTotal)}${errors.length ? ' ※エラーあり' : ''}`,

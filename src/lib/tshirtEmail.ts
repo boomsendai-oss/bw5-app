@@ -61,12 +61,13 @@ export function buildTshirtOrderEmail(
 // 送信(失敗しても呼び出し元の処理は止めない・BF6と同方針)。宛先はログに出さない。
 import { sendEmail } from '@/lib/email';
 import type { StoredOrder } from '@/lib/tshirtOrderDb';
+import { LEGACY_ORIGIN } from '@/lib/appOrigin';
 
 export async function sendTshirtOrderEmail(
   order: StoredOrder,
   editToken: string,
   kind: 'ordered' | 'paid',
-  baseUrl = 'https://bw5-app.vercel.app'
+  baseUrl = LEGACY_ORIGIN
 ): Promise<void> {
   if (!order.email) return;
   try {
