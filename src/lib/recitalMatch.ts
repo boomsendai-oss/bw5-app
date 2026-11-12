@@ -68,13 +68,17 @@ function collectHits(p: PersonForMatch, members: MemberLite[]): { both: MemberLi
 
 const ids = (ms: MemberLite[]): number[] => ms.map((m) => m.id);
 
+/** 退会（withdrew）・休会（leave）の会員なら印。照合の warn と、スタッフの「見てほしいこと」2番が使う */
+export function memberWarn(m: MemberLite): 'leave' | 'withdrawn' | null {
+  return m.status === 'withdrew' ? 'withdrawn' : m.status === 'leave' ? 'leave' : null;
+}
+
 /** 申込の人を会員に照らし合わせる（05 5-8）。退会・休会の人と自動で合ったときは warn を付ける（止めない） */
 export function matchMember(p: PersonForMatch, members: MemberLite[]): MemberMatch {
   const { both, kana, kanji } = collectHits(p, members);
   if (both.length === 1) {
     const hit = both[0];
-    const warn = hit.status === 'withdrew' ? 'withdrawn' : hit.status === 'leave' ? 'leave' : null;
-    return { status: 'auto', memberId: hit.id, candidateIds: [hit.id], warn };
+    return { status: 'auto', memberId: hit.id, candidateIds: [hit.id], warn: memberWarn(hit) };
   }
   if (both.length >= 2) return { status: 'pending', memberId: null, candidateIds: ids(both), warn: null };
   if (kana.length > 0) return { status: 'pending', memberId: null, candidateIds: ids(kana), warn: null };

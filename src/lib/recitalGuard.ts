@@ -1,8 +1,14 @@
 // BW6 発表会（段階1）の守りを1か所に（split.md ③）。サーバ専用（DB を読む）。
-// Task 14 が先に作った：家庭のマイページの鍵（edit_token）で世帯を引く2つ。スタッフの守り requireRecitalStaff は Task 16 が足す。
+// Task 14 が先に作った：家庭のマイページの鍵（edit_token）で世帯を引く2つ。スタッフの守り requireRecitalStaff は Task 16 が足した。
 // 鍵の形（16進48けた・小文字）が合わなければ DB を引かない。合えば edit_token の完全一致で1世帯だけを引く。
 import { getOne } from '@/lib/db';
+import { isAuthorizedServer } from '@/lib/eventAuth';
 import { loadHouseholdDetail, type HouseholdDetail } from '@/lib/recitalDb';
+
+/** スタッフの Server Action・画面の頭で呼ぶ。ログインしていなければ throw（画面だけの守りにしない） */
+export async function requireRecitalStaff(): Promise<void> {
+  if (!(await isAuthorizedServer())) throw new Error('Unauthorized');
+}
 
 const TOKEN_RE = /^[0-9a-f]{48}$/;
 

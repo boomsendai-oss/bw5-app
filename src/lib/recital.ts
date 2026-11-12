@@ -3,7 +3,7 @@
 // 設定の日時は JST 'YYYY-MM-DD HH:MM'、日付は 'YYYY-MM-DD'。比べるときは jstToMs/deadlineMs でミリ秒にしてから。
 // 記録の日時は UTC ISO（nowUtcIso）。
 
-import { isIsoDate, nowUtcIso } from './dateJst';
+import { isIsoDate, nowUtcIso, shiftDays, todayJst } from './dateJst';
 
 export const RECITAL_EVENT = { live: 'bw6', test: 'bw6-test', smoke: 'bw6-smoke' } as const;
 
@@ -135,6 +135,30 @@ export const RECITAL_PUBLIC_ORIGIN = 'https://event.boom-sendai.com';
 export function recitalMyUrl(token: string, opts?: { fromMail?: boolean }): string {
   const base = `${RECITAL_PUBLIC_ORIGIN}/bw6/my?t=${encodeURIComponent(token)}`;
   return opts?.fromMail ? `${base}&from=mail` : base;
+}
+
+/** スタッフの画面の ?ev= を発表会のキーにする。RECITAL_EVENT の値に一字一句合うものだけ通し、ほかは本番。 */
+export function pickStaffEventKey(v: string | null | undefined): string {
+  const keys: readonly string[] = Object.values(RECITAL_EVENT);
+  return typeof v === 'string' && keys.includes(v) ? v : RECITAL_EVENT.live;
+}
+
+/**
+ * 「振り込みました」のまま BANK_TOLD_WAIT_DAYS 日たったか。押した日（JST の日付）の次の日から今日（JST）までのうち、
+ * restFrom〜restTo（両端ふくむ）に入らない日を数える。29 の listToldWaiting もこれを使う（2つ書かない）。
+ */
+export function bankToldWaitDue(toldAtUtc: string, nowMs: number, restFrom: string, restTo: string): boolean {
+  const toldMs = Date.parse(toldAtUtc);
+  if (Number.isNaN(toldMs) || Number.isNaN(nowMs)) return false;
+  const today = todayJst(new Date(nowMs));
+  let d = shiftDays(todayJst(new Date(toldMs)), 1);
+  let n = 0;
+  while (d <= today) {
+    if (!(d >= restFrom && d <= restTo)) n++;
+    if (n >= BANK_TOLD_WAIT_DAYS) return true;
+    d = shiftDays(d, 1);
+  }
+  return false;
 }
 
 export function normalizePhone(x: string): string {

@@ -8,16 +8,27 @@ import { nowUtcIso } from '@/lib/dateJst';
 import {
   RECITAL_SETTING_DEFAULTS,
   RECITAL_SETTING_KEYS_LOCKED,
+  RECITAL_STAFF_NAMES,
+  bankToldWaitDue,
   checkSettingValue,
+  countPeople,
   householdView,
+  isCountedCast,
   moneySummary,
+  normalizePhone,
   parseRecitalSettings,
+  payGate,
+  type CastStatus,
+  type CountPerson,
+  type FeeClass,
   type HouseholdView,
   type MoneySummary,
+  type PeopleCounts,
   type RecitalSettings,
 } from '@/lib/recital';
+import { normalizeKana } from '@/lib/csvUtil';
 import { feeCheck, type FeeRule } from '@/lib/recitalFee';
-import type { MemberLite } from '@/lib/recitalMatch';
+import { matchFeePreset, memberWarn, normalizeBirthday, type MemberLite } from '@/lib/recitalMatch';
 import { recitalResetStatements } from '@/lib/recitalReset';
 
 // ---------- 型（各表の列そのまま） ----------
@@ -435,6 +446,300 @@ export async function logChangeTx(
       json(c.before), json(c.after), c.actor, c.reason ?? null, c.isException ? 1 : 0, nowUtcIso(),
     ],
   });
+}
+
+// ---------- スタッフの最初の画面（Task 16）：人数・見てほしいこと・探す ----------
+
+/** 発表会の世帯ごとのお金（式4行）。生きている請求・入金の全部・返す分 todo を、表ごとに1回だけ読む（世帯ごとに引かない） */
+async function readMoneyByHousehold(eventKey: string): Promise<Map<number, MoneySummary>> {
+  const acc = new Map<number, { c: number[]; p: number[]; r: number[] }>();
+  const at = (hid: number) => {
+    let e = acc.get(hid);
+    if (!e) { e = { c: [], p: [], r: [] }; acc.set(hid, e); }
+    return e;
+  };
+  for (const r of await getAll("SELECT household_id, amount FROM recital_charges WHERE event_key = ? AND status = 'active'", [eventKey])) at(Number(r.household_id)).c.push(Number(r.amount));
+  for (const r of await getAll('SELECT household_id, amount FROM recital_payments WHERE event_key = ? AND household_id IS NOT NULL', [eventKey])) at(Number(r.household_id)).p.push(Number(r.amount));
+  for (const r of await getAll("SELECT household_id, amount FROM recital_refunds WHERE event_key = ? AND status = 'todo'", [eventKey])) at(Number(r.household_id)).r.push(Number(r.amount));
+  const out = new Map<number, MoneySummary>();
+  for (const [hid, e] of acc) out.set(hid, moneySummary({ chargeAmounts: e.c, paymentAmounts: e.p, refundTodoAmounts: e.r }));
+  return out;
+}
+
+const ZERO_MONEY: MoneySummary = { total: 0, paid: 0, remaining: 0, overpaid: 0 };
+
+function toFeeClass(v: unknown): FeeClass {
+  return v === 'free' || v === 'no_coop' || v === 'tshirt_only' ? v : null;
+}
+
+/** 人数（05 5-9）。active の世帯の active の人ごとに CountPerson を作って countPeople に渡す */
+export async function countRecitalPeople(eventKey: string, now?: Date): Promise<PeopleCounts> {
+  const ev = await getRecitalEvent(eventKey);
+  const isTestEvent = ev?.is_test === 1;
+  const people = await getAll(
+    `SELECT p.id, p.household_id, p.category, p.fee_class_override
+     FROM recital_people p JOIN recital_households h ON h.id = p.household_id
+     WHERE p.event_key = ? AND p.status = 'active' AND h.status = 'active'`,
+    [eventKey],
+  );
+  const casts = await getAll(
+    `SELECT c.person_id, c.status, w.fee_type, w.status AS work_status
+     FROM recital_casts c JOIN recital_works w ON w.id = c.work_id WHERE c.event_key = ?`,
+    [eventKey],
+  );
+  const money = await readMoneyByHousehold(eventKey);
+  const castCount = new Map<number, { counted: number; maybe: number }>();
+  for (const c of casts) {
+    const pid = Number(c.person_id);
+    const e = castCount.get(pid) ?? { counted: 0, maybe: 0 };
+    const work = { fee_type: String(c.fee_type), status: String(c.work_status) };
+    if (isCountedCast(work, { status: String(c.status) as CastStatus })) e.counted++;
+    if (c.status === 'maybe' && work.status !== 'dropped') e.maybe++;
+    castCount.set(pid, e);
+  }
+  const list: CountPerson[] = people.map((p) => {
+    const cc = castCount.get(Number(p.id)) ?? { counted: 0, maybe: 0 };
+    return {
+      category: String(p.category),
+      feeClass: toFeeClass(p.fee_class_override),
+      countedIn: cc.counted,
+      maybeCount: cc.maybe,
+      householdRemaining: (money.get(Number(p.household_id)) ?? ZERO_MONEY).remaining,
+      isTestEvent,
+    };
+  });
+  return countPeople(list, now ?? new Date());
+}
+
+export type AttentionItem = { no: 1 | 2 | 3 | 4 | 5 | 8; label: string; href: string; householdId?: number; personId?: number };
+
+const yen = (n: number) => `${n.toLocaleString('ja-JP')}円`;
+const entryHref = (householdId: number) => `/staff/bw6/entries/${householdId}`;
+const BANK_HREF = '/staff/bw6/bank';
+const str = (v: unknown) => (v == null ? '' : String(v));
+const kanaKeyOf = (v: unknown) => normalizeKana(str(v).normalize('NFKC'));
+const dismissKey = (no: number, householdId: number | null, personId: number | null) => `${no}:${householdId ?? 'null'}:${personId ?? 'null'}`;
+
+/**
+ * 見てほしいこと（1・2・3・4・5・8 の順）。何も無ければ []。
+ * 1番と3番は、recital_changes の attention_dismissed（after_json の {no, householdId, personId} が同じ）があれば出さない。
+ */
+export async function listAttention(eventKey: string, now?: Date): Promise<AttentionItem[]> {
+  const nowMs = (now ?? new Date()).getTime();
+  const settings = await getRecitalSettings(eventKey);
+  const households = (await getAll('SELECT * FROM recital_households WHERE event_key = ? ORDER BY seq, id', [eventKey])).map((r) => plain<HouseholdRow>(r));
+  const byId = new Map(households.map((h) => [Number(h.id), h]));
+  const active = households.filter((h) => h.status === 'active');
+  const activeIds = new Set(active.map((h) => Number(h.id)));
+  const people = (await getAll("SELECT * FROM recital_people WHERE event_key = ? AND status = 'active' ORDER BY seq, id", [eventKey]))
+    .map((r) => plain<PersonRow>(r))
+    .filter((p) => p.household_id != null && activeIds.has(Number(p.household_id)));
+  const money = await readMoneyByHousehold(eventKey);
+  const dismissed = new Set<string>();
+  for (const r of await getAll("SELECT after_json FROM recital_changes WHERE event_key = ? AND action = 'attention_dismissed'", [eventKey])) {
+    try {
+      const a = JSON.parse(String(r.after_json)) as { no?: number; householdId?: number | null; personId?: number | null };
+      dismissed.add(dismissKey(Number(a.no), a.householdId ?? null, a.personId ?? null));
+    } catch { /* 読めない行は無視 */ }
+  }
+  const ref = (hid: number) => byId.get(hid)?.ref_code ?? '';
+  const fullName = (p: PersonRow) => `${p.last_name}${p.first_name ?? ''}`;
+  const out: AttentionItem[] = [];
+
+  // 1番：同じ人・同じご家族かも（1組の世帯につき1件・後の世帯に付ける）
+  const peopleOf = new Map<number, PersonRow[]>();
+  for (const p of people) {
+    const hid = Number(p.household_id);
+    peopleOf.set(hid, [...(peopleOf.get(hid) ?? []), p]);
+  }
+  const personKey = (p: PersonRow): string | null => {
+    const k = kanaKeyOf(str(p.last_kana) + str(p.first_kana));
+    const b = normalizeBirthday(p.birthday);
+    return k && b ? `${k}|${b}` : null;
+  };
+  for (let j = 0; j < active.length; j++) {
+    const later = active[j];
+    const laterPeople = peopleOf.get(Number(later.id)) ?? [];
+    const laterPhone = normalizePhone(str(later.phone));
+    const laterContact = str(later.contact_last_name).trim();
+    const laterContactKana = kanaKeyOf(later.contact_last_kana);
+    for (let i = 0; i < j; i++) {
+      const earlier = active[i];
+      const earlierKeys = new Set((peopleOf.get(Number(earlier.id)) ?? []).map(personKey).filter((k): k is string => k !== null));
+      const samePerson = laterPeople.find((p) => {
+        const k = personKey(p);
+        return k !== null && earlierKeys.has(k);
+      });
+      const refs = `（${earlier.ref_code}・${later.ref_code}）`;
+      let item: AttentionItem | null = null;
+      if (samePerson) {
+        item = { no: 1, label: `同じ人が2回申し込んでいるかもしれません${refs}`, href: entryHref(Number(later.id)), householdId: Number(later.id), personId: Number(samePerson.id) };
+      } else {
+        const samePhone = laterPhone !== '' && laterPhone === normalizePhone(str(earlier.phone));
+        const sameFamily = laterContact !== '' && laterContact === str(earlier.contact_last_name).trim()
+          && laterContactKana === kanaKeyOf(earlier.contact_last_kana);
+        if (samePhone || sameFamily) {
+          item = { no: 1, label: `同じご家族が2回申し込んでいるかもしれません${refs}`, href: entryHref(Number(later.id)), householdId: Number(later.id) };
+        }
+      }
+      if (item && !dismissed.has(dismissKey(1, item.householdId ?? null, item.personId ?? null))) out.push(item);
+    }
+  }
+
+  // 2番：会員との照合
+  const members = await loadMembersLite();
+  const memberById = new Map(members.map((m) => [m.id, m]));
+  for (const p of people) {
+    const hid = Number(p.household_id);
+    const who = `${ref(hid)} ${fullName(p)}`;
+    let label: string | null = null;
+    if (p.match_status === 'pending') label = `会員との照合の確認待ち：${who}`;
+    else if (p.match_status === 'unmatched') label = `会員と合わない申込：${who}`;
+    else if (p.match_status === 'auto' && p.member_id != null) {
+      const m = memberById.get(Number(p.member_id));
+      const warn = m ? memberWarn(m) : null;
+      if (warn === 'leave') label = `休会中の会員と合いました：${who}`;
+      if (warn === 'withdrawn') label = `退会した会員と合いました：${who}`;
+    }
+    if (label) out.push({ no: 2, label, href: entryHref(hid), householdId: hid, personId: Number(p.id) });
+  }
+
+  // 3番：特別な料金の対象かも（事前登録の会員とだけ照らす）
+  const presets = (await getAll('SELECT member_id, fee_class FROM recital_fee_presets WHERE event_key = ?', [eventKey]))
+    .map((r) => ({ memberId: Number(r.member_id), feeClass: toFeeClass(r.fee_class) }))
+    .filter((x): x is { memberId: number; feeClass: Exclude<FeeClass, null> } => x.feeClass !== null);
+  if (presets.length > 0) {
+    const presetIds = new Set(presets.map((x) => x.memberId));
+    const presetMembers = members.filter((m) => presetIds.has(m.id));
+    for (const p of people) {
+      if (str(p.fee_class_override).trim() !== '') continue;
+      const r = matchFeePreset(
+        { lastKana: str(p.last_kana), firstKana: str(p.first_kana), lastName: p.last_name, firstName: str(p.first_name), birthday: p.birthday },
+        presets,
+        presetMembers,
+      );
+      if (!r || !('suspect' in r)) continue;
+      const hid = Number(p.household_id);
+      if (dismissed.has(dismissKey(3, hid, Number(p.id)))) continue;
+      out.push({ no: 3, label: `特別な料金の対象かもしれません：${ref(hid)} ${fullName(p)}`, href: entryHref(hid), householdId: hid, personId: Number(p.id) });
+    }
+  }
+
+  // 4番：入金（払うを開けた後だけ）。(a)(b) は 28・29 ができるまでの仮の SQL（28 が listReviewRows、29 が listToldWaiting に置きかえる）
+  if (payGate(settings, nowMs) === 'open') {
+    const rows = await getAll(
+      `SELECT r.id, r.row_date FROM recital_bank_rows r
+       LEFT JOIN (SELECT bank_transaction_id, SUM(amount) AS paid FROM recital_payments WHERE bank_transaction_id IS NOT NULL GROUP BY bank_transaction_id) x
+         ON x.bank_transaction_id = r.id
+       WHERE r.event_key = ? AND r.dir = 'in' AND r.kind = 'transfer'
+         AND (r.state IN ('new', 'hold') OR (r.state = 'matched' AND COALESCE(x.paid, 0) < r.amount))
+       ORDER BY r.row_date, r.id`,
+      [eventKey],
+    );
+    for (const r of rows) out.push({ no: 4, label: `見てほしい入金：${str(r.row_date)}`, href: BANK_HREF });
+    for (const h of active) {
+      if (!h.bank_told_at) continue;
+      if ((money.get(Number(h.id)) ?? ZERO_MONEY).remaining <= 0) continue;
+      if (!bankToldWaitDue(h.bank_told_at, nowMs, settings.bank_rest_from, settings.bank_rest_to)) continue;
+      out.push({ no: 4, label: `『振り込みました』のまま3日：${h.ref_code}`, href: BANK_HREF, householdId: Number(h.id) });
+    }
+  }
+
+  // 5番：返金の待ち（1行1件）と、残りもある世帯の「当てるか決めて」
+  const refunds = await getAll("SELECT id, household_id, amount, waiting_reply FROM recital_refunds WHERE event_key = ? AND status = 'todo' ORDER BY id", [eventKey]);
+  const refundsOf = new Map<number, typeof refunds>();
+  for (const r of refunds) {
+    const hid = Number(r.household_id);
+    refundsOf.set(hid, [...(refundsOf.get(hid) ?? []), r]);
+  }
+  for (const h of households) {
+    const hid = Number(h.id);
+    const rs = refundsOf.get(hid);
+    if (!rs) continue;
+    for (const r of rs) {
+      const tail = Number(r.waiting_reply) === 1 ? '（返事待ち）' : '';
+      out.push({ no: 5, label: `返金の待ち：${h.ref_code} ${yen(Number(r.amount))}${tail}`, href: entryHref(hid), householdId: hid });
+    }
+    if ((money.get(hid) ?? ZERO_MONEY).remaining > 0) {
+      out.push({ no: 5, label: `返す分を、足した作品に当てるか、決めてください：${h.ref_code}`, href: entryHref(hid), householdId: hid });
+    }
+  }
+
+  // 8番：その世帯のいちばん新しい送った／送れなかったメールが failed
+  const mails = await getAll(
+    `SELECT m.household_id, m.status FROM recital_mail_log m
+     JOIN (SELECT household_id, MAX(id) AS id FROM recital_mail_log
+           WHERE event_key = ? AND household_id IS NOT NULL AND status IN ('sent', 'failed') GROUP BY household_id) last
+       ON last.id = m.id`,
+    [eventKey],
+  );
+  const failed = new Set(mails.filter((m) => m.status === 'failed').map((m) => Number(m.household_id)));
+  for (const h of active) {
+    const hid = Number(h.id);
+    if (failed.has(hid)) out.push({ no: 8, label: `届かなかったメール：${h.ref_code}`, href: entryHref(hid), householdId: hid });
+  }
+  return out;
+}
+
+/** 1番・3番の「問題なし」。記録には番号だけを入れる（名前・カナを入れない） */
+export async function dismissAttention(
+  eventKey: string,
+  item: { no: 1 | 3; householdId?: number; personId?: number },
+  staffName: string,
+): Promise<void> {
+  if (!RECITAL_STAFF_NAMES.includes(staffName)) throw new Error('recital_attention:staff_name');
+  if (item.no !== 1 && item.no !== 3) throw new Error('recital_attention:bad_no');
+  await withWriteTx(async (tx) => {
+    await logChangeTx(tx, {
+      eventKey,
+      householdId: item.householdId ?? null,
+      personId: item.personId ?? null,
+      action: 'attention_dismissed',
+      after: { no: item.no, householdId: item.householdId ?? null, personId: item.personId ?? null },
+      actor: staffName,
+    });
+  });
+}
+
+/** 探す欄の1行。鍵（edit_token）・メール・電話は返さない（client の部品でも使うため） */
+export type HouseholdHit = { id: number; ref_code: string; contact_name: string; status: string; seq: number };
+
+/**
+ * 世帯を探す。4けたの数字なら整理番号、ほかは連絡する人の姓名（そのまま部分一致）と、連絡する人・世帯の人のカナ（normalizeKana して部分一致）。
+ * merged の世帯も出す。新しい順に20件まで。
+ */
+export async function searchHouseholds(eventKey: string, q: string): Promise<HouseholdHit[]> {
+  const t = q.normalize('NFKC').trim();
+  if (t === '') return [];
+  const rows = await getAll(
+    `SELECT id, seq, ref_code, status, contact_last_name, contact_first_name, contact_last_kana, contact_first_kana
+     FROM recital_households WHERE event_key = ? ORDER BY seq DESC, id DESC`,
+    [eventKey],
+  );
+  const toHit = (r: (typeof rows)[number]): HouseholdHit => ({
+    id: Number(r.id),
+    ref_code: str(r.ref_code),
+    contact_name: `${str(r.contact_last_name)} ${str(r.contact_first_name)}`.trim(),
+    status: str(r.status),
+    seq: Number(r.seq),
+  });
+  if (/^\d{4}$/.test(t)) return rows.filter((r) => str(r.ref_code) === t).slice(0, 20).map(toHit);
+
+  const kq = normalizeKana(t);
+  const personKana = new Map<number, string[]>();
+  for (const p of await getAll('SELECT household_id, last_kana, first_kana FROM recital_people WHERE event_key = ? AND household_id IS NOT NULL', [eventKey])) {
+    const hid = Number(p.household_id);
+    personKana.set(hid, [...(personKana.get(hid) ?? []), kanaKeyOf(str(p.last_kana) + str(p.first_kana))]);
+  }
+  const hits = rows.filter((r) => {
+    const last = str(r.contact_last_name);
+    const first = str(r.contact_first_name);
+    if ((last + first).includes(t) || `${last} ${first}`.includes(t)) return true;
+    if (kq === '') return false;
+    if (kanaKeyOf(str(r.contact_last_kana) + str(r.contact_first_kana)).includes(kq)) return true;
+    return (personKana.get(Number(r.id)) ?? []).some((k) => k.includes(kq));
+  });
+  return hits.slice(0, 20).map(toHit);
 }
 
 // ---------- テストデータを消す ----------

@@ -178,6 +178,12 @@ const CARDS: CardDef[] = [
     description: 'スペシャルナンバーの申込一覧・入金チェック・CSV(会員先行11/8〜)',
   },
   {
+    href: '/staff/bw6',
+    icon: PartyPopper,
+    title: 'BW6 発表会（申込・お支払い）',
+    description: '申込の数・見てほしいこと・作品・設定（本番 2027/4/11）',
+  },
+  {
     href: '/staff/xmas',
     icon: Gift,
     title: 'クリスマスパーティー2026',
