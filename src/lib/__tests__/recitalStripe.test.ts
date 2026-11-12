@@ -7,6 +7,7 @@ import {
   expireRecitalCheckout,
   retrieveRecitalCheckout,
   stripeKeyFor,
+  stripeModeForSession,
 } from '../recitalStripe';
 
 const base = { eventKey: 't-pay', householdId: 12, checkoutId: 34, amount: 26500, email: 'family@example.invalid', refCode: '1007', successUrl: 'https://event.boom-sendai.com/bw6/my?t=aa&paid=1', cancelUrl: 'https://event.boom-sendai.com/bw6/my?t=aa', expiresAt: 1765800000 };
@@ -68,6 +69,15 @@ describe('stripeKeyFor', () => {
   });
 });
 
+describe('stripeModeForSession', () => {
+  it('番号の頭で試しか本番かを決める。分からなければ null', () => {
+    expect(stripeModeForSession('cs_test_a1')).toBe('test');
+    expect(stripeModeForSession('cs_live_a1')).toBe('live');
+    expect(stripeModeForSession('cs_x')).toBeNull();
+    expect(stripeModeForSession('')).toBeNull();
+  });
+});
+
 describe('Stripe に聞く・切る・作る', () => {
   it('retrieve：聞けなかったら throw・開いていれば url を返す', async () => {
     vi.stubEnv('STRIPE_TEST_SECRET_KEY', 'sk_test_y');
@@ -114,9 +124,12 @@ describe('Stripe に聞く・切る・作る', () => {
   });
   it('create：作れなかったら throw（Stripe のエラーはログだけ）', async () => {
     vi.stubEnv('STRIPE_TEST_SECRET_KEY', 'sk_test_y');
-    vi.stubGlobal('fetch', vi.fn(async () => jsonRes(400, { error: { code: 'parameter_invalid', message: 'x' } })));
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes(400, { error: { code: 'parameter_invalid', message: 'x', param: 'customer_email', type: 'invalid_request_error' } })));
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     await expect(createRecitalCheckout('test', buildRecitalCheckoutParams(base))).rejects.toThrow('決済ページの作成に失敗しました。時間をおいてお試しください');
     expect(err).toHaveBeenCalled();
+    // Stripe の message（メールが入ることがある）はログに出さない
+    expect(JSON.stringify(err.mock.calls)).not.toContain('"x"');
+    expect(err.mock.calls[0]).toContain('parameter_invalid');
   });
 });

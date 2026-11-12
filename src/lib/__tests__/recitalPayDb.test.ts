@@ -111,7 +111,7 @@ async function addWork(hid: number): Promise<void> {
 // ---------- Stripe の差しかえ ----------
 
 const API = 'https://api.stripe.com/v1/checkout/sessions';
-const stripe = { n: 0, created: [] as URLSearchParams[], expired: [] as string[], states: new Map<string, Record<string, unknown> | 'fail'>() };
+const stripe = { n: 0, created: [] as URLSearchParams[], expired: [] as string[], states: new Map<string, Record<string, unknown> | 'fail'>(), auth: new Map<string, string>() };
 
 function jsonRes(status: number, body: unknown) {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
@@ -126,6 +126,7 @@ vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     return jsonRes(200, { id, url: `https://checkout.stripe.com/c/pay/${id}` });
   }
   const id = decodeURIComponent(url.slice(API.length + 1).replace(/\/expire$/, ''));
+  stripe.auth.set(`${method} ${id}`, String((init?.headers as Record<string, string> | undefined)?.Authorization ?? ''));
   if (method === 'POST' && url.endsWith('/expire')) {
     stripe.expired.push(id);
     return jsonRes(200, { id, status: 'expired' });
@@ -136,7 +137,7 @@ vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
 }));
 
 function resetStripe(): void {
-  stripe.n = 0; stripe.created = []; stripe.expired = []; stripe.states.clear();
+  stripe.n = 0; stripe.created = []; stripe.expired = []; stripe.states.clear(); stripe.auth.clear();
 }
 const stripeState = (id: string, s: Record<string, unknown> | 'fail') => stripe.states.set(id, s);
 const sentParams = (i: number) => stripe.created[i];
@@ -358,5 +359,50 @@ describe('Task 21 開いている支払い（作る・聞く・切る）', () =>
   it('鍵の合わない URL は throw', async () => {
     await expect(startCardPayment('0'.repeat(48), {})).rejects.toThrow();
     await expect(startCardPayment('bad', {})).rejects.toThrow();
+  });
+  it('読んでから行を入れるまでに入金が入ったら、古い額で作らずに busy（作り直さない・行も増えない）', async () => {
+    const { hid: h, token: t } = await newHousehold();
+    // 開いている行（Stripe では開いているが url が無い）→ 6 で切る → 切る呼び出しの間にスタッフの入金が入る形
+    await seedOpenCheckout(h, { sessionId: 'cs_test_race', amount: 26500 });
+    stripeState('cs_test_race', { status: 'open', url: null });
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if ((init?.method ?? 'GET') === 'POST' && url.endsWith('/cs_test_race/expire')) {
+        // afterMoneyChanged が走る前の入金（開いている行はもう閉じているので、afterMoneyChanged は何もしない）
+        await withWriteTx((tx) => insertPaymentTx(tx, { householdId: h, method: 'cash', amount: 1000, paidOn: '2026-12-21', source: 'manual', confirmedBy: '試し' }, '試し'));
+      }
+      return realFetch(url, init);
+    }));
+    const before = createCalls();
+    try {
+      await expect(startCardPayment(t, {})).rejects.toMatchObject({ code: 'busy' });
+    } finally {
+      vi.stubGlobal('fetch', realFetch);
+    }
+    expect(createCalls()).toBe(before);
+    expect(await openRows(h)).toEqual([]);
+    expect(Number((await core.getOne('SELECT COUNT(*) AS n FROM recital_checkouts WHERE household_id = ?', [h])).n)).toBe(1);
+    // もう一度押せば、新しい額で作る（番号が種の cs_test_9 などとぶつからないよう、数えを先へ進める）
+    stripe.n = Math.max(stripe.n, 100);
+    await startCardPayment(t, {});
+    expect(lastParams().get('line_items[0][price_data][unit_amount]')).toBe('25500');
+  });
+  it('聞く・切るの鍵は決済の画面の番号（cs_live_／cs_test_）で選ぶ（stripe_mode を変えても置き去りにしない）', async () => {
+    vi.stubEnv('STRIPE_SECRET_KEY', 'sk_live_dummy');
+    try {
+      const { hid: h } = await newHousehold();   // t-pay は stripe_mode=test
+      await seedOpenCheckout(h, { sessionId: 'cs_live_k1', amount: 26500 });
+      await syncCardCheckout(h);
+      expect(stripe.auth.get('GET cs_live_k1')).toBe('Bearer sk_live_dummy');
+      await pay.expireOpenCheckout(h, '試し');
+      expect(stripe.auth.get('POST cs_live_k1')).toBe('Bearer sk_live_dummy');
+      const { hid: h2 } = await newHousehold();
+      await seedOpenCheckout(h2, { sessionId: 'cs_test_k2', amount: 26500 });
+      await syncCardCheckout(h2);
+      expect(stripe.auth.get('GET cs_test_k2')).toBe('Bearer sk_test_dummy');
+    } finally {
+      vi.unstubAllEnvs();
+      process.env.STRIPE_TEST_SECRET_KEY = 'sk_test_dummy';
+    }
   });
 });

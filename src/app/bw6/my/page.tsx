@@ -13,7 +13,7 @@ import { canFamilyEdit, deadlineMs, entryPhase, householdViewLabel, payButtonSta
 import { getRecitalSettings, listWorks, type HouseholdDetail, type PersonRow } from '@/lib/recitalDb';
 import { markMyPageOpened } from '@/lib/recitalFamilyDb';
 import { requireHouseholdByToken } from '@/lib/recitalGuard';
-import { CARD_CHECKING_TEXT, syncCardCheckout } from '@/lib/recitalPayDb';
+import { CARD_CHECKING_TEXT, CARD_PAID_RETURN_TEXT, syncCardCheckout } from '@/lib/recitalPayDb';
 import { closedNotice, myTopLines, nextTodos, payAreaText } from '@/lib/recitalMyPage';
 import { FAMILY_ADD_LINE, fiveLines } from '@/lib/recitalPublic';
 import { FiveLines } from '@/components/recital/FiveLines';
@@ -59,8 +59,8 @@ function Notice({ title, lines }: { title?: string; lines: ReactNode[] }) {
 }
 
 /** 設定・作品・今の時刻から、ページに出す状態と文を決める（時刻を読むのはここだけ）。
- *  checking＝カードの入金を確かめられなかった／paidReturn＝決済の画面から戻った。どちらも「払う」は出さない */
-async function loadMyPageState(d: HouseholdDetail, x: { checking: boolean; paidReturn: boolean }) {
+ *  checking＝カードの入金を確かめられなかった（「払う」は出さない） */
+async function loadMyPageState(d: HouseholdDetail, x: { checking: boolean }) {
   const h = d.household;
   const [settings, works] = await Promise.all([getRecitalSettings(h.event_key), listWorks(h.event_key)]);
   const nowMs = Date.now();
@@ -75,7 +75,7 @@ async function loadMyPageState(d: HouseholdDetail, x: { checking: boolean; paidR
   const gate = payGate(settings, nowMs);
   const payState = payButtonState({ gate, view: d.view, m: d.money, refundTodo: d.refundTodo });
   // 「払う」のボタンが今この画面に出るか。出ない時は、つぎにやること・期限切れの文でも「払う」を指さない（K221）
-  const payShown = payState === 'show' && !x.checking && !x.paidReturn;
+  const payShown = payState === 'show' && !x.checking;
   const payDue = h.pay_due_override ?? settings.pay_due;
   // 延長の世帯は延長の日まで false（判定は canFamilyEdit だけ）
   const afterChangeClose = nowMs > deadlineMs(settings.change_close_at) && !canFamilyEdit(settings, nowMs, h.extend_until);
@@ -140,12 +140,12 @@ export default async function Bw6MyPage({ searchParams }: { searchParams: Promis
   }
   const d = reread ?? first;
   const h = d.household;
-  const paidReturn = one(sp.paid) === '1';
-
-  const { settings, workById, people, hasMaybe, phase, payState, lines, todos, closed } = await loadMyPageState(d, { checking, paidReturn });
-  // 決済の画面から戻った時（paidReturn）は PaySection が受付の文だけを出す。確かめられない時は置かない
+  const { settings, workById, people, hasMaybe, phase, payState, lines, todos, closed } = await loadMyPageState(d, { checking });
   const showPaySection = payState === 'show' && !checking;
   const showChecking = checking && payState !== 'hidden';
+  // 決済の画面から戻った（?paid=1）時の受付の文は、今の状態と合う時だけ（残りが無い・確認中）。
+  // URL に paid=1 が残っていても、残りがあれば「払う」をふつうに出す
+  const showPaidReturn = one(sp.paid) === '1' && (checking || d.money.remaining === 0);
 
   // 人ごとの内わけ（生きている請求の行）。人の付かない行は「ご家族」にまとめる
   const nameById = new Map(d.people.map((p) => [Number(p.id), personName(p)]));
@@ -185,8 +185,11 @@ export default async function Bw6MyPage({ searchParams }: { searchParams: Promis
         hasMaybe={hasMaybe}
         payText={showChecking ? CARD_CHECKING_TEXT : payAreaText(payState, settings.pay_open_at)}
       >
+        {showPaidReturn && (
+          <p className="rounded-xl border border-sand-300 bg-sand-100 px-4 py-3 text-base font-bold leading-relaxed text-navy-700">{CARD_PAID_RETURN_TEXT}</p>
+        )}
         {showPaySection && (
-          <PaySection token={h.edit_token} paidReturn={paidReturn} remaining={d.money.remaining} toldAmount={h.bank_told_at == null ? null : Number(h.bank_told_amount ?? 0)} />
+          <PaySection token={h.edit_token} remaining={d.money.remaining} toldAmount={h.bank_told_at == null ? null : Number(h.bank_told_amount ?? 0)} />
         )}
       </MoneyBox>
 

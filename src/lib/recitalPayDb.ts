@@ -9,19 +9,23 @@ import { payableAmount, payButtonState, payGate, recitalMyUrl } from '@/lib/reci
 import { getRecitalSettings } from '@/lib/recitalDb';
 import { requireHouseholdByToken } from '@/lib/recitalGuard';
 import { sendPaidMail } from '@/lib/recitalMail';
-import { afterMoneyChanged, insertPaymentTx, readHouseholdMoney } from '@/lib/recitalMoneyDb';
+import { afterMoneyChanged, insertPaymentTx, readHouseholdMoney, readHouseholdMoneyTx } from '@/lib/recitalMoneyDb';
 import {
   buildRecitalCheckoutParams,
   createRecitalCheckout,
   expireRecitalCheckout,
   retrieveRecitalCheckout,
+  stripeModeForSession,
   type RecitalCheckoutState,
+  type RecitalStripeMode,
 } from '@/lib/recitalStripe';
 
 /** 決済の画面が切れるまで（分）。設計書 5-6・K55 */
 export const RECITAL_CHECKOUT_MINUTES = 30;
 /** カードの入金を Stripe に確かめられなかった時の文（「払う」は出さない。04 4-2・R-98） */
 export const CARD_CHECKING_TEXT = 'ご入金を確認しています';
+/** 決済の画面から戻った時（?paid=1）の文。残りが無い・確認中の時だけ出す（04 4-2） */
+export const CARD_PAID_RETURN_TEXT = 'お支払いを受け付けました。完了のメールが届きます。この画面は、閉じて大丈夫です。もう一度払う必要は、ありません。';
 /** 番号（stripe_session_id）がまだ空の行を「作っている途中」と見る時間。これより前の物だけ閉じる */
 const CREATING_GRACE_MS = 60_000;
 
@@ -59,6 +63,12 @@ function isPastGrace(createdAt: string): boolean {
 async function closeStaleEmptyRow(row: OpenRow): Promise<void> {
   if (row.sessionId != null || !isPastGrace(row.createdAt)) return;
   await execute("UPDATE recital_checkouts SET status = 'closed' WHERE id = ? AND status = 'open' AND stripe_session_id IS NULL", [row.id]);
+}
+
+/** 開いている画面を聞く・切る時の鍵：番号の頭（cs_test_／cs_live_）で選ぶ。分からない時だけ今の stripe_mode。
+ *  作ったあとに stripe_mode を変えても、前の画面を聞けずに置き去りにしないため */
+async function modeForRow(row: OpenRow, sessionId: string): Promise<RecitalStripeMode> {
+  return stripeModeForSession(sessionId) ?? (await getRecitalSettings(row.eventKey)).stripe_mode;
 }
 
 function isUniqueViolation(e: unknown): boolean {
@@ -133,8 +143,7 @@ async function syncOpenCheckout(householdId: number): Promise<{ row: OpenRow; st
     await closeStaleEmptyRow(row);
     return null;
   }
-  const s = await getRecitalSettings(row.eventKey);
-  const state = await retrieveRecitalCheckout(s.stripe_mode, row.sessionId);
+  const state = await retrieveRecitalCheckout(await modeForRow(row, row.sessionId), row.sessionId);
   if (state.status === 'complete' && state.payment_status === 'paid') {
     if (state.amount_total == null || state.amount_total <= 0) throw new Error('recital_pay:no_amount');
     await recordCardPayment({
@@ -164,8 +173,7 @@ export async function expireOpenCheckout(householdId: number, reason: string): P
   if (!row) return;
   await execute("UPDATE recital_checkouts SET status = 'closed' WHERE id = ? AND status = 'open'", [row.id]);
   if (row.sessionId != null) {
-    const s = await getRecitalSettings(row.eventKey);
-    const ok = await expireRecitalCheckout(s.stripe_mode, row.sessionId);
+    const ok = await expireRecitalCheckout(await modeForRow(row, row.sessionId), row.sessionId);
     if (!ok) console.error(`[recital] Stripe の決済の画面を切れませんでした household=${householdId} checkout=${row.id}`);
   }
   console.log(`[recital] カードの決済の画面を閉じました household=${householdId} checkout=${row.id} reason=${reason}`);
@@ -222,11 +230,14 @@ export async function startCardPayment(
     }
   }
 
-  // 7. 開いている行を入れる（部分一意で1つまで）
+  // 7. 開いている行を入れる（部分一意で1つまで）。読んだあと（6 で Stripe を待つ間など）に入金や合計が変わっていたら、
+  //    古い額で作らないよう書き込みの中で読み直し、ちがえば入れずに「もう一度押してください」
   const expiresAtSec = Math.floor(Date.now() / 1000) + RECITAL_CHECKOUT_MINUTES * 60;
   let checkoutId: number;
   try {
     checkoutId = await withWriteTx(async (tx) => {
+      const cur = await readHouseholdMoneyTx(tx, householdId);
+      if (payableAmount(cur.m, cur.told) !== amount) throw busy();
       const ins = await tx.execute({
         sql: "INSERT INTO recital_checkouts (event_key, household_id, amount, status, created_at, expires_at) VALUES (?, ?, ?, 'open', ?, ?)",
         args: [h.event_key, householdId, amount, nowUtcIso(), new Date(expiresAtSec * 1000).toISOString()],
@@ -235,6 +246,7 @@ export async function startCardPayment(
       return Number(ins.lastInsertRowid);
     });
   } catch (e) {
+    if (e instanceof RecitalPayError) throw e;
     if (isUniqueViolation(e)) throw busy();
     throw e;
   }

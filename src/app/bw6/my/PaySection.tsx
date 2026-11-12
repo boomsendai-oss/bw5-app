@@ -2,6 +2,7 @@
 
 // BW6 発表会のマイページの「払う」（Task 21。04 4-2・5-6、決まりの紙 2-20 の表）。
 // payState が show の時だけ、MoneyBox の children に入る。ほかの状態の文は 14 の payAreaText（ここでは書かない）。
+// 決済の画面から戻った時の受付の文は page.tsx が出す（残りが無い・確認中の時だけ）。
 // 選べるのはカードと銀行振込だけ（現金は出さない。決まり 16）。銀行振込の中身は Task 23（この段は「準備中」で押せない）。
 // 金額は家庭から送らない（サーバでその時の今の残りから出す）。受け取るのは鍵・残り・振込の印の金額だけ（R-66）。
 import { useState, useTransition } from 'react';
@@ -16,17 +17,13 @@ const subBtnCls = 'block w-full rounded-xl border-2 border-navy-700 bg-white px-
 const smallLinkCls = 'block w-full bg-transparent px-2 py-1 text-center text-sm text-navy-700 underline disabled:opacity-40';
 const msgCls = 'rounded-xl border border-sand-300 bg-sand-100 px-4 py-3 text-base font-bold leading-relaxed text-navy-700';
 
-export function PaySection({ token, paidReturn, remaining, toldAmount }: { token: string; paidReturn: boolean; remaining: number; toldAmount: number | null }) {
+export function PaySection({ token, remaining, toldAmount }: { token: string; remaining: number; toldAmount: number | null }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>('idle');
   const [error, setError] = useState<string | null>(null);
   const [bankNote, setBankNote] = useState(false);
   const [goUrl, setGoUrl] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-
-  if (paidReturn) {
-    return <p className={msgCls}>お支払いを受け付けました。完了のメールが届きます。この画面は、閉じて大丈夫です。もう一度払う必要は、ありません。</p>;
-  }
 
   const payCard = (opts: { confirmNotBank?: boolean; confirmTold?: boolean }) => {
     setError(null);
@@ -90,6 +87,9 @@ export function PaySection({ token, paidReturn, remaining, toldAmount }: { token
             もう振り込みました
           </button>
           {bankNote && <p className="text-center text-sm">銀行振込は、準備中です</p>}
+          <button type="button" className={smallLinkCls} disabled={pending} onClick={() => setStep('idle')}>
+            もどる
+          </button>
         </div>
       )}
 

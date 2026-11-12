@@ -54,6 +54,13 @@ export function stripeKeyFor(mode: RecitalStripeMode): string {
   throw new Error(NOT_READY);
 }
 
+/** 決済の画面の番号の頭（cs_test_／cs_live_）から、作った時の試し・本番を出す。分からなければ null */
+export function stripeModeForSession(sessionId: string): RecitalStripeMode | null {
+  if (sessionId.startsWith('cs_test_')) return 'test';
+  if (sessionId.startsWith('cs_live_')) return 'live';
+  return null;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any -- Stripe の応答は動的構造 */
 async function readJson(res: Response): Promise<any> {
   try {
@@ -73,7 +80,8 @@ export async function createRecitalCheckout(mode: RecitalStripeMode, params: URL
   });
   const body = await readJson(res);
   if (!res.ok || !body?.url || !body?.id) {
-    console.error('[recital] checkout session create failed', res.status, body?.error?.code, body?.error?.message);
+    // Stripe の message はメールなどを含むことがあるので出さない（code・param・type だけ）
+    console.error('[recital] checkout session create failed', res.status, body?.error?.code, body?.error?.param, body?.error?.type);
     throw new Error(CREATE_FAILED);
   }
   return { id: String(body.id), url: String(body.url) };
@@ -91,7 +99,7 @@ export async function retrieveRecitalCheckout(mode: RecitalStripeMode, sessionId
   }
   const body = await readJson(res);
   if (!res.ok || !body || typeof body.status !== 'string') {
-    console.error('[recital] checkout session retrieve failed', res.status, body?.error?.code);
+    console.error('[recital] checkout session retrieve failed', res.status, body?.error?.code, body?.error?.param, body?.error?.type);
     throw new Error('recital_stripe:retrieve_failed');
   }
   const pi = body.payment_intent;
