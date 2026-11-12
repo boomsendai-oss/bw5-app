@@ -16,6 +16,10 @@ import {
   pickNext,
   classifyByEnabled,
   findStalled,
+  splitStalled,
+  externalStallReason,
+  EXTERNAL_STALL_REASON_LABELS,
+  type ExternalStallReason,
   MAX_ATTEMPTS,
   CROSSPOST_PLATFORMS,
   type CrosspostRow,
@@ -164,31 +168,57 @@ export async function POST(req: NextRequest) {
   // Xの24時間枠で外した行(pickable)ではなく actionable から数える —
   // 枠待ちは時間が経てば解決するが、打ち止めは人が手を入れるまで解決しないため。
   const stalled = findStalled(actionable);
+  // 打ち止めのうち、X の前払いクレジット切れ(402)や Threads/Meta の鍵の期限切れは
+  // コードを直しても解決しない「外部の理由(お金・本人のログイン待ち)」なので赤くしない
+  // (ワークフローが ::warning:: で件数と理由を出すだけ)。それ以外の打ち止めは今までどおり赤。
+  // 判定は splitStalled / externalStallReason に閉じこめてある(広げると「永久に緑」が再発する)。
+  const { blocking: stalledBlocking, external: stalledExternal } = splitStalled(stalled);
+  const externalReasons: Record<string, number> = {};
+  for (const r of stalledExternal) {
+    externalReasons[r.externalReason] = (externalReasons[r.externalReason] ?? 0) + 1;
+  }
   const stalledInfo = {
     stalled: stalled.length,
+    /** 赤くする打ち止め(外部の理由以外) */
+    stalledBlocking: stalledBlocking.length,
+    /** 外部の理由で止まっている打ち止め(警告のみ) */
+    stalledExternal: stalledExternal.length,
+    stalledExternalReasons: Object.entries(externalReasons).map(([reason, count]) => ({
+      reason,
+      count,
+      label: EXTERNAL_STALL_REASON_LABELS[reason as ExternalStallReason],
+    })),
     stalledRows: stalled.map((r) => ({
       id: r.id,
       reelId: r.reel_id,
       platform: r.platform,
       attempts: r.attempts,
       error: r.error ?? null,
+      externalReason: externalStallReason(r),
     })),
   };
-  const stalledNote = `打ち止め${stalled.length}件(${stalled
-    .map((r) => `#${r.id} reel${r.reel_id}/${r.platform}`)
-    .join(', ')}) — ${MAX_ATTEMPTS}回失敗して自動再試行を諦めた行が未配信のまま残っています。手動対応が必要`;
+  const stalledOk = stalledBlocking.length === 0;
+  const stalledNote = stalledBlocking.length > 0
+    ? `打ち止め${stalledBlocking.length}件(${stalledBlocking
+        .map((r) => `#${r.id} reel${r.reel_id}/${r.platform}`)
+        .join(', ')}) — ${MAX_ATTEMPTS}回失敗して自動再試行を諦めた行が未配信のまま残っています。手動対応が必要`
+    : stalledExternal.length > 0
+      ? `外部の理由で止まっている打ち止め${stalledExternal.length}件(${stalledInfo.stalledExternalReasons
+          .map((x) => `${x.label} ${x.count}件`)
+          .join(' / ')})`
+      : '';
 
   const target = pickNext(pickable);
   if (!target) {
     return NextResponse.json({
       // 「配信対象なし」と「打ち止めで諦めた」を混同しない。後者は未完了の仕事が残っている
-      ok: stalled.length === 0,
+      ok: stalledOk,
       posted: false,
       added,
       skipped: toSkip.length,
       revived: toRevive.length,
       ...stalledInfo,
-      note: stalled.length > 0
+      note: stalledNote
         ? stalledNote
         : toRevive.length > 0
         ? '復活した行を次回実行で処理します'
@@ -206,10 +236,10 @@ export async function POST(req: NextRequest) {
   );
   if ((claim.rowsAffected ?? 0) === 0) {
     return NextResponse.json({
-      ok: stalled.length === 0,
+      ok: stalledOk,
       posted: false,
       ...stalledInfo,
-      note: `#${target.id} は別プロセスが処理中${stalled.length > 0 ? ` / ${stalledNote}` : ''}`,
+      note: `#${target.id} は別プロセスが処理中${stalledNote ? ` / ${stalledNote}` : ''}`,
     });
   }
 
@@ -251,8 +281,15 @@ export async function POST(req: NextRequest) {
         platform: target.platform,
         error: message,
         justStalled,
+        ...stalledInfo,
         stalled: stalled.length + (justStalled ? 1 : 0),
-        stalledRows: stalledInfo.stalledRows,
+        // 今回の失敗で打ち止めになった行も、外部の理由かどうかで振り分けて数える。
+        // (この応答は ok:false なので、どちらにしても今回の実行は赤になる)
+        ...(justStalled
+          ? externalStallReason({ ...target, status: 'failed', attempts: attemptsNow, error: message })
+            ? { stalledExternal: stalledInfo.stalledExternal + 1 }
+            : { stalledBlocking: stalledInfo.stalledBlocking + 1 }
+          : {}),
       },
       { status: 200 }
     );
@@ -387,14 +424,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       // 今回の1件は成功しても、別に打ち止めの行が残っているなら全体としては正常ではない。
       // ここを ok:true にすると「毎回1件は成功するので永久に緑」という穴が残る
-      ok: stalled.length === 0,
+      ok: stalledOk,
       posted: true,
       platform: target.platform,
       reelId: reel.id,
       permalink,
       added,
       ...stalledInfo,
-      ...(stalled.length > 0 ? { note: stalledNote } : {}),
+      ...(stalledNote ? { note: stalledNote } : {}),
     });
   } catch (e) {
     return await fail(e instanceof Error ? e.message : String(e));

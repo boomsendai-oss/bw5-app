@@ -57,9 +57,19 @@ jobs:
           # (未配信の行が残っているのに永久に緑)。route は打ち止め件数を stalled で返し、
           # 1件以上なら ok:false にするので下の ok チェックでも赤くなるが、
           # 「今回の配信が失敗した」のか「打ち止めの行が残っている」のかを分けて出す。
-          STALLED=$(echo "$BODY" | jq -r '.stalled // 0' 2>/dev/null || echo 0)
-          if [ "$STALLED" != "0" ]; then
-            echo "::error::自動再試行を諦めた配信先が ${STALLED}件あります(未配信のまま放置されます)。原因を直して該当行を pending/attempts=0 に戻してください: $BODY"
+          # 打ち止めのうち、外部の理由(Xの前払いクレジット切れ 402 / Threads・Metaの鍵の期限切れ)
+          # だけで止まっている行は、コードを直しても解決しない(お金の判断・本人のログイン待ち)ので
+          # 赤にせず ::warning:: を1行出すだけにする。判定は route 側の splitStalled
+          # (src/lib/crosspost.ts・狭い一致だけ外部扱い)。それ以外の打ち止めは今までどおり赤。
+          # stalledBlocking が無い古い応答(デプロイ前)は stalled 全体を赤の対象として扱う。
+          BLOCKING=$(echo "$BODY" | jq -r '.stalledBlocking // .stalled // 0' 2>/dev/null || echo 0)
+          EXTERNAL=$(echo "$BODY" | jq -r '.stalledExternal // 0' 2>/dev/null || echo 0)
+          if [ "$EXTERNAL" != "0" ]; then
+            REASONS=$(echo "$BODY" | jq -r '[.stalledExternalReasons[]? | "\(.label) \(.count)件"] | join(" / ")' 2>/dev/null || echo "")
+            echo "::warning::外部の理由で止まっている配信先が ${EXTERNAL}件あります(赤にはしません): ${REASONS}"
+          fi
+          if [ "$BLOCKING" != "0" ]; then
+            echo "::error::自動再試行を諦めた配信先が ${BLOCKING}件あります(未配信のまま放置されます)。原因を直して該当行を pending/attempts=0 に戻してください: $BODY"
             exit 1
           fi
           echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
