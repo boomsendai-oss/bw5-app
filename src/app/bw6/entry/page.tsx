@@ -3,7 +3,6 @@
 // 受付の状態は表示だけ。「送る」の判定は Server Action(actions.ts)の中で本物の状態から行う(R-40)。
 import { randomBytes } from 'node:crypto';
 import Link from 'next/link';
-import { payGate } from '@/lib/recital';
 import { todayJst } from '@/lib/dateJst';
 import { listPublicWorks } from '@/lib/recitalFamilyDb';
 import { fiveLines, jpOpenLabel } from '@/lib/recitalPublic';
@@ -64,7 +63,6 @@ export default async function Bw6EntryPage({ searchParams }: { searchParams: Pro
       todayYmd={todayJst()}
       works={works}
       fiveLines={fiveLines(s)}
-      gate={payGate(s, ctx.nowMs)}
       settings={{
         tshirtSizes: s.tshirt_sizes,
         maxWorks: s.max_works_per_person,

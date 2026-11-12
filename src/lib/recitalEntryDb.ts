@@ -184,10 +184,17 @@ export async function precheckEntry(
 
 // ---------- 金額の材料（submitEntry と 13 の quoteEntry の両方が呼ぶ） ----------
 
+/**
+ * 料金の材料。規則・作品・事前登録・会員は1回だけ読み、照合（presetClasses）も1回だけ。
+ * opts は 13 の quoteEntry 用（submitEntry は付けない）：
+ *   formOpenOnly … フォームで選べない作品（form かつ open でない）を数えない
+ *   withAllIn    … 迷っている作品を全部「出る」にした形の feePeopleAllIn も返す（同じ照合の結果を使う）
+ */
 export async function buildEntryFeePeople(
   eventKey: string,
   people: FeeInputPerson[],
-): Promise<{ rules: FeeRule[]; feePeople: FeePerson[]; presetClasses: FeeClass[] }> {
+  opts?: { formOpenOnly?: boolean; withAllIn?: boolean },
+): Promise<{ rules: FeeRule[]; feePeople: FeePerson[]; presetClasses: FeeClass[]; feePeopleAllIn?: FeePerson[] }> {
   const rules = await listFeeRules(eventKey);
   const works = new Map((await listWorks(eventKey)).map((w) => [Number(w.id), w]));
   const presetRows = await getAll('SELECT member_id, fee_class FROM recital_fee_presets WHERE event_key = ?', [eventKey]);
@@ -199,15 +206,19 @@ export async function buildEntryFeePeople(
     const hit = matchFeePreset(p, presets, members);
     return hit && 'feeClass' in hit ? hit.feeClass : null;
   });
-  const feePeople: FeePerson[] = people.map((p, i) => {
+  const toFeePeople = (allIn: boolean): FeePerson[] => people.map((p, i) => {
     const cs: FeeCast[] = [];
     for (const c of p.works) {
       const w = works.get(c.workId);
-      if (w) cs.push({ status: c.status, fee_type: w.fee_type, work_status: w.status, work_code: w.work_code, title: w.title, extra_fee: w.extra_fee });
+      if (!w || (opts?.formOpenOnly && !isSelectable(w))) continue;
+      cs.push({ status: allIn ? 'in' : c.status, fee_type: w.fee_type, work_status: w.status, work_code: w.work_code, title: w.title, extra_fee: w.extra_fee });
     }
     return { personId: i + 1, seq: i + 1, feeClass: presetClasses[i], ...feeCounts(cs) };
   });
-  return { rules, feePeople, presetClasses };
+  const feePeople = toFeePeople(false);
+  return opts?.withAllIn
+    ? { rules, feePeople, presetClasses, feePeopleAllIn: toFeePeople(true) }
+    : { rules, feePeople, presetClasses };
 }
 
 /** 料金に使う出演1つ（出演の状態＋作品の料金の種類・状態） */

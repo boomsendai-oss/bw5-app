@@ -103,14 +103,14 @@ describe('申込フォームの Server Actions は、画面から来た eventKey
       ['t-entrypub-real', recitalPreviewKey('t-entrypub-real')],
       ['t-entrypub-none', recitalPreviewKey('t-entrypub-none')],
     ];
-    const countBefore = await core.getAll('SELECT id FROM recital_households');
+    const countBefore = await core.getAll("SELECT id FROM recital_households WHERE event_key LIKE 't-entrypub%'");
     for (const [ev, pv] of forged) {
       const sub = seed.entryFor(ev, 'b'.repeat(32), [{ firstName: '偽子', firstKana: 'ニセコ', birthday: '2015-06-01', works: [{ workId: w.W01, status: 'in' }] }], { email: 'forged@example.com', phone: '09000000099' });
       expect(await actions.submitEntryAction(sub, pv)).toEqual({ ok: false, code: 'invalid', message: 'このページからは送れません。' });
       expect(await actions.precheckEntryAction(ev, pv, { email: 'a@example.com', phone: '', people: [] })).toMatchObject({ ok: false, code: 'invalid' });
       expect(await actions.quoteEntryAction(ev, pv, quotePeople)).toMatchObject({ ok: false, code: 'invalid' });
     }
-    const countAfter = await core.getAll('SELECT id FROM recital_households');
+    const countAfter = await core.getAll("SELECT id FROM recital_households WHERE event_key LIKE 't-entrypub%'");
     expect(countAfter.length).toBe(countBefore.length);
   });
 
@@ -137,5 +137,27 @@ describe('申込フォームの Server Actions は、画面から来た eventKey
     expect(after.length - before.length).toBe(3);
     const keys = await core.getAll(`SELECT key FROM rate_limits WHERE key LIKE 'bw6:resend-to:%'`);
     expect(keys.every((k) => !String(k.key).includes('@'))).toBe(true);
+  });
+
+  it('画面6 で答えたあとの2回目の確かめ（noResend）は、同じ電話の世帯へ URL のメールをもう送らない', async () => {
+    const actions = await import('@/app/bw6/entry/actions');
+    const { recitalPreviewKey } = await import('../recitalPreview');
+    const pv = recitalPreviewKey(EV);
+    const x = { email: 'other-family@example.com', phone: '090-1234-5678', people: [] };
+    const count = async () => (await core.getAll(`SELECT id FROM recital_mail_log WHERE mail_kind='resend_url' AND event_key = ?`, [EV])).length;
+    const c0 = await count();
+    expect(await actions.precheckEntryAction(EV, pv, x)).toMatchObject({ ok: true, samePhone: true });
+    const c1 = await count();
+    expect(c1 - c0).toBe(1); // 1回目は送る
+    expect(await actions.precheckEntryAction(EV, pv, { ...x, noResend: true })).toMatchObject({ ok: true, samePhone: true });
+    expect(await count()).toBe(c1); // 答えたあとの2回目は送らない
+  });
+
+  it('送れた時は、送った時点の支払いの鍵（gate）も返す', async () => {
+    const actions = await import('@/app/bw6/entry/actions');
+    const { recitalPreviewKey } = await import('../recitalPreview');
+    const sub = seed.entryFor(EV, 'c'.repeat(32), [{ firstName: '三郎', firstKana: 'サブロウ', birthday: '2013-07-07', works: [{ workId: w.W05, status: 'in' }] }], { email: 'gate@example.com', phone: '09000000077' });
+    const r = await actions.submitEntryAction(sub, recitalPreviewKey(EV));
+    expect(r.ok && r.gate).toBe('open');
   });
 });

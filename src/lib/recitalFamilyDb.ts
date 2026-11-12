@@ -4,7 +4,6 @@
 // URL の送り直しは、申込があるかを返り値の数でしか返さない（宛先も世帯の番号も返さない。画面には出さない）。
 import { getAll } from '@/lib/db';
 import { normalizeEmail, normalizePhone } from '@/lib/recital';
-import { listWorks } from '@/lib/recitalDb';
 import { buildEntryFeePeople } from '@/lib/recitalEntryDb';
 import { expectedCharges, type ChargeLine } from '@/lib/recitalFee';
 import { sendRecitalMail } from '@/lib/recitalMail';
@@ -56,22 +55,14 @@ export type QuotePerson = {
 
 /**
  * 画面3・5 の金額。書かない。材料は submitEntry と同じ buildEntryFeePeople、計算は同じ expectedCharges。
+ * 材料（規則・作品・事前登録・会員）は1回だけ読み、照合の結果を両方の計算に使う。
  * personId は people の並びの番号（1から）。フォームで選べない作品（form かつ open でない）は数えない。
  * totalIfAllIn は、迷っている作品を全部「出る」にしたときの合計。
  */
 export async function quoteEntry(eventKey: string, people: QuotePerson[]): Promise<{ lines: ChargeLine[]; total: number; totalIfAllIn: number }> {
-  const selectable = new Set(
-    (await listWorks(eventKey)).filter((w) => w.entry_mode === 'form' && w.status === 'open').map((w) => Number(w.id)),
-  );
-  const clean = people.map((p) => ({ ...p, works: (p.works ?? []).filter((c) => selectable.has(Number(c.workId))) }));
-  const hasMaybe = clean.some((p) => p.works.some((c) => c.status === 'maybe'));
-  const allIn = clean.map((p) => ({ ...p, works: p.works.map((c) => ({ workId: c.workId, status: 'in' as const })) }));
-  const [now, ifAllIn] = await Promise.all([
-    buildEntryFeePeople(eventKey, clean),
-    hasMaybe ? buildEntryFeePeople(eventKey, allIn) : Promise.resolve(null),
-  ]);
-  const charges = expectedCharges(now.rules, now.feePeople, null);
-  const totalIfAllIn = ifAllIn ? expectedCharges(ifAllIn.rules, ifAllIn.feePeople, null).total : charges.total;
+  const { rules, feePeople, feePeopleAllIn } = await buildEntryFeePeople(eventKey, people, { formOpenOnly: true, withAllIn: true });
+  const charges = expectedCharges(rules, feePeople, null);
+  const totalIfAllIn = feePeopleAllIn ? expectedCharges(rules, feePeopleAllIn, null).total : charges.total;
   return { lines: charges.lines, total: charges.total, totalIfAllIn };
 }
 

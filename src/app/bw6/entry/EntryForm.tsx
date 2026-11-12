@@ -30,11 +30,11 @@ type Settings = {
 };
 type Props = {
   eventKey: string; pv: string | null; qs: string; preview: boolean; submitKey: string; todayYmd: string;
-  works: PublicWork[]; fiveLines: string[]; gate: PayGate; settings: Settings;
+  works: PublicWork[]; fiveLines: string[]; settings: Settings;
 };
 type Step = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 type Quote = { lines: ChargeLine[]; total: number; totalIfAllIn: number };
-type Done = { token: string; refCode: string; view: HouseholdView; total: number; hasMaybe: boolean };
+type Done = { token: string; refCode: string; view: HouseholdView; total: number; hasMaybe: boolean; gate: PayGate };
 
 const btnPrimary = 'block w-full rounded-xl bg-navy-700 px-4 py-3 text-center text-base font-bold text-white disabled:opacity-40';
 const btnSecondary = 'block w-full rounded-xl border-2 border-navy-700 bg-white px-4 py-3 text-center text-base font-bold text-navy-700 disabled:opacity-40';
@@ -49,6 +49,7 @@ const SAME_PHONE_LINE = 'ご家族のお申し込みが、すでにあります�
 const SAME_PERSON_LINE = '同じお名前・同じ生年月日のお申し込みが、もうあります。ご家族が申し込んでいないか、確かめてください。';
 const COOP_LINE = '協力チケットは、1家族に3枚です。ご家族やお友だちに渡せる入場券です。';
 const FAMILY_BEST_LINE = 'ご家族の中で、いちばんお得になる組み合わせで計算しています。';
+const QUOTE_FAILED = '金額を出せませんでした。もう一度お試しください';
 
 let tempSeq = 0;
 function newPerson(): DraftPerson {
@@ -101,7 +102,7 @@ function Field({ label, hint, error, children }: { label: string; hint?: ReactNo
   );
 }
 
-export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, works, fiveLines, gate, settings: st }: Props) {
+export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, works, fiveLines, settings: st }: Props) {
   const storageKey = `bw6-entry-draft:${eventKey}`;
   const hasTshirt = st.tshirtSizes.length > 0;
   const stepCount = hasTshirt ? 7 : 6;
@@ -125,6 +126,7 @@ export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, work
   const [chkRefund, setChkRefund] = useState(false);
   const [chkOthers, setChkOthers] = useState(false);
   const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoteFailed, setQuoteFailed] = useState(false);
   const [done, setDone] = useState<Done | null>(null);
   const [fDay, setFDay] = useState('');
   const [fPlace, setFPlace] = useState('');
@@ -190,15 +192,22 @@ export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, work
     return JSON.stringify(people);
   }, [draft]);
   const quoteSeq = useRef(0);
+  const sendingRef = useRef(false);
   useEffect(() => {
     if (step !== 3 && step !== 5 && step !== 6) return;
     const my = ++quoteSeq.current;
     const t = setTimeout(async () => {
       try {
         const r = await quoteEntryAction(eventKey, pv, JSON.parse(quoteKey) as QuotePerson[]);
-        if (my === quoteSeq.current && r.ok) setQuote({ lines: r.lines, total: r.total, totalIfAllIn: r.totalIfAllIn });
+        if (my !== quoteSeq.current) return;
+        if (r.ok) {
+          setQuote({ lines: r.lines, total: r.total, totalIfAllIn: r.totalIfAllIn });
+          setQuoteFailed(false);
+        } else {
+          setQuoteFailed(true);
+        }
       } catch {
-        /* 金額が取れない時は前の答えのまま */
+        if (my === quoteSeq.current) setQuoteFailed(true); // 「…」のままにせず、出せなかったと知らせる
       }
     }, step === 3 ? 400 : 0);
     return () => clearTimeout(t);
@@ -316,7 +325,8 @@ export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, work
   }
 
   async function send() {
-    if (busy) return;
+    if (sendingRef.current) return; // 素早い2回押しでも state はまだ古いので、ref で止める
+    sendingRef.current = true;
     setBusy(true);
     setMsg(null);
     setServerErrors({});
@@ -331,6 +341,8 @@ export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, work
           firstKana: toKatakana(p.sameAsContact ? draft.contact.firstKana : p.firstKana).trim(),
           birthday: p.birthday,
         })),
+        // 知らせを出した1回目で URL のメールはもう送った。答えたあとの2回目では送り直さない
+        noResend: samePhoneNotice || samePersonNotice,
       });
       if (!pre.ok) { setMsg(pre.message); return; }
       let stop = false;
@@ -344,7 +356,7 @@ export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, work
       if (r.ok) {
         finished = true;
         try { localStorage.removeItem(storageKey); } catch { /* 消せなくても進む */ }
-        setDone({ token: r.token, refCode: r.refCode, view: r.view, total: r.total, hasMaybe });
+        setDone({ token: r.token, refCode: r.refCode, view: r.view, total: r.total, hasMaybe, gate: r.gate });
         go(7);
         return;
       }
@@ -358,11 +370,15 @@ export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, work
     } catch {
       setMsg(RECITAL_MSG.busy);
     } finally {
-      if (!finished) setBusy(false);
+      if (!finished) {
+        sendingRef.current = false;
+        setBusy(false);
+      }
     }
   }
 
   // ---------- 表示の部品 ----------
+  const totalText = quoteFailed ? <span className="text-base text-red-700">{QUOTE_FAILED}</span> : quote ? yenJa(quote.total) : '…';
   const person = draft.people[personIdx];
   const personLines = (i: number) => (quote?.lines ?? []).filter((l) => l.personId === i + 1);
   const householdLines = (quote?.lines ?? []).filter((l) => l.personId == null);
@@ -625,7 +641,7 @@ export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, work
         {serverErrors[`people.${personIdx}.works`] && <p className={errCls}>{serverErrors[`people.${personIdx}.works`]}</p>}
         <div className={`${boxCls} space-y-2`}>
           <p className="text-sm font-bold">ご家族の合計（いま）</p>
-          <p className="text-3xl font-bold">{quote ? yenJa(quote.total) : '…'}</p>
+          <p className="text-3xl font-bold">{totalText}</p>
           {draft.people.length > 1 && <p className="text-xs">{FAMILY_BEST_LINE}</p>}
           <p className="pt-2 text-sm font-bold">{personName(draft, p)}さんの内わけ</p>
           {lineList(personLines(personIdx))}
@@ -664,7 +680,7 @@ export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, work
         <h2 className="text-xl font-bold">金額</h2>
         <div className={`${boxCls} space-y-3`}>
           <p className="text-sm font-bold">ご家族の合計</p>
-          <p className="text-4xl font-bold">{quote ? yenJa(quote.total) : '…'}</p>
+          <p className="text-4xl font-bold">{totalText}</p>
           {draft.people.map((p, i) => (
             <div key={p.tempId} className="border-t border-sand-200 pt-2">
               <p className="text-sm font-bold">{personName(draft, p)}さん</p>
@@ -682,7 +698,7 @@ export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, work
           <p>お申し込みのときは、お支払いはありません。お支払いは、お申し込みのすぐあとから {jpDate(st.payDue)}まで、いつでもできます。お支払いいただいた時点で、お申し込み完了です。</p>
           <p>{FAMILY_BEST_LINE}</p>
           {coopLine && <p>{coopLine.label}。{COOP_LINE}</p>}
-          {hasMaybe && quote && (
+          {hasMaybe && quote && !quoteFailed && (
             <>
               <p className="font-bold">迷っている作品は、金額に入っていません。出ると決めると {yenJa(quote.totalIfAllIn)} になります</p>
               <p>{MAYBE_LINE}</p>
@@ -739,7 +755,7 @@ export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, work
         ))}
         <div className={boxCls}>
           <p className="text-sm font-bold">合計</p>
-          <p className="text-2xl font-bold">{quote ? yenJa(quote.total) : '…'}</p>
+          <p className="text-2xl font-bold">{totalText}</p>
         </div>
 
         {st.privacyText.trim() !== '' && (
@@ -813,7 +829,7 @@ export function EntryForm({ eventKey, pv, qs, preview, submitKey, todayYmd, work
       </section>
     );
   } else if (step === 7 && done) {
-    const ds = doneScreen({ view: done.view, total: done.total, gate, payOpenAt: st.payOpenAt, payDue: st.payDue, hasMaybe: done.hasMaybe });
+    const ds = doneScreen({ view: done.view, total: done.total, gate: done.gate, payOpenAt: st.payOpenAt, payDue: st.payDue, hasMaybe: done.hasMaybe });
     body = (
       <section className="space-y-4">
         <h2 className="text-xl font-bold">送りました</h2>

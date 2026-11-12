@@ -8,14 +8,19 @@
 import { createHash } from 'node:crypto';
 import { headers } from 'next/headers';
 import { checkRateLimit } from '@/lib/eventAuth';
-import { RECITAL_RATE, normalizeEmail, normalizePhone } from '@/lib/recital';
+import { RECITAL_RATE, normalizeEmail, normalizePhone, payGate, type PayGate } from '@/lib/recital';
+import { getRecitalSettings } from '@/lib/recitalDb';
 import { precheckEntry, submitEntry, type EntrySubmission, type SubmitResult } from '@/lib/recitalEntryDb';
 import { quoteEntry, resendMyPageUrl, type QuotePerson } from '@/lib/recitalFamilyDb';
 import type { ChargeLine } from '@/lib/recitalFee';
 import { RECITAL_MSG } from '@/lib/recitalPublic';
 import { checkPublicEventKey } from '../context';
 
-export type EntryActionResult = SubmitResult | { ok: false; code: 'rate'; message: string };
+// 送れた時は、送った時点の支払いの鍵（payGate）も返す（画面7 の文は、ページを開いた時ではなく送った時の状態で出す）
+export type EntryActionResult =
+  | (Extract<SubmitResult, { ok: true }> & { gate: PayGate })
+  | Extract<SubmitResult, { ok: false }>
+  | { ok: false; code: 'rate'; message: string };
 
 const INVALID_PAGE = 'このページからは送れません。';
 const MAX_PEOPLE = 10;
@@ -40,11 +45,14 @@ async function resendLimited(eventKey: string, by: { email: string } | { phone: 
   }
 }
 
-/** 画面1（phone ''・people []）と画面6 の「送る」の前の確かめ。書かない。相手の中身は返さない */
+/**
+ * 画面1（phone ''・people []）と画面6 の「送る」の前の確かめ。書かない。相手の中身は返さない。
+ * noResend＝画面6 で「家族ではない」「それでも進む」などに答えたあとの2回目。URL のメールはもう送ったので送り直さない。
+ */
 export async function precheckEntryAction(
   eventKey: string,
   pv: string | null,
-  x: { email: string; phone: string; people: { lastKana: string; firstKana: string; birthday: string }[] },
+  x: { email: string; phone: string; people: { lastKana: string; firstKana: string; birthday: string }[]; noResend?: boolean },
 ): Promise<{ ok: true; sameEmail: boolean; samePhone: boolean; samePersonIdx: number[] } | { ok: false; code: 'rate' | 'invalid'; message: string }> {
   if (typeof eventKey !== 'string' || !(await checkPublicEventKey(eventKey, typeof pv === 'string' ? pv : null))) {
     return { ok: false, code: 'invalid', message: INVALID_PAGE };
@@ -58,8 +66,10 @@ export async function precheckEntryAction(
     lastKana: str(p?.lastKana), firstKana: str(p?.firstKana), birthday: str(p?.birthday),
   }));
   const r = await precheckEntry(eventKey, { email, phone, people });
-  if (r.sameEmail) await resendLimited(eventKey, { email });
-  if (r.samePhone) await resendLimited(eventKey, { phone });
+  if (x?.noResend !== true) {
+    if (r.sameEmail) await resendLimited(eventKey, { email });
+    if (r.samePhone) await resendLimited(eventKey, { phone });
+  }
   return { ok: true, sameEmail: r.sameEmail, samePhone: r.samePhone, samePersonIdx: r.samePersonIdx };
 }
 
@@ -91,5 +101,7 @@ export async function submitEntryAction(s: EntrySubmission, pv: string | null): 
   if (!(await checkRateLimit(`bw6:submit:${await ip()}`, ...RECITAL_RATE.submit))) {
     return { ok: false, code: 'rate', message: RECITAL_MSG.rate };
   }
-  return submitEntry(s);
+  const r = await submitEntry(s);
+  if (!r.ok) return r;
+  return { ...r, gate: payGate(await getRecitalSettings(s.eventKey), Date.now()) };
 }
