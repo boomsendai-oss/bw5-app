@@ -15,7 +15,7 @@ import { getAll } from '@/lib/db';
 import { cronAuthorized } from '@/lib/inboxAlert/cronAuth';
 import { notifyTaro } from '@/lib/notify';
 import { payGate } from '@/lib/recital';
-import { MORNING_SLOT, buildAskMessage, nowJstOf, shouldAskTaro } from '@/lib/recitalAsk';
+import { BANK_URL, MORNING_SLOT, buildAskMessage, nowJstOf, shouldAskTaro } from '@/lib/recitalAsk';
 import { getBankAskFacts } from '@/lib/recitalBankDb';
 import { getRecitalSettings } from '@/lib/recitalDb';
 import { flushWaitingMails } from '@/lib/recitalMail';
@@ -23,9 +23,6 @@ import { flushWaitingMails } from '@/lib/recitalMail';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
-
-/** 声かけの文の url（休み明けの文には出ないが、buildAskMessage の形に合わせて渡す） */
-const BANK_URL = 'https://bw5-app.vercel.app/staff/bw6/bank';
 
 async function handle(req: NextRequest) {
   if (!cronAuthorized(req.headers)) {

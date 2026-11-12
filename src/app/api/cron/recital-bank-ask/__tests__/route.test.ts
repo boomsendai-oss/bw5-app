@@ -56,6 +56,7 @@ describe('/api/cron/recital-bank-ask', () => {
   it('slot の形がちがえば 400', async () => {
     expect((await POST(req('/api/cron/recital-bank-ask?slot=7pm', auth))).status).toBe(400);
     expect((await POST(req('/api/cron/recital-bank-ask', auth))).status).toBe(400);
+    expect((await POST(req('/api/cron/recital-bank-ask?slot=08:00', auth))).status).toBe(400);   // 朝8時は recital-morning の時刻
     expect(getAll).not.toHaveBeenCalled();
   });
   it('条件がそろえば TARO に1回（頭は【BOOM】BW6）・試しの発表会には出さない', async () => {
@@ -65,7 +66,7 @@ describe('/api/cron/recital-bank-ask', () => {
     const res = await POST(req('/api/cron/recital-bank-ask?slot=19:00', auth));
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify.mock.calls[0][0]).toMatchObject({ subject: '入金のスクショをお願いします', subjectPrefix: '【BOOM】BW6' });
-    expect(notify.mock.calls[0][0].body).toBe('BW6 入金のスクショをお願いします。\n開始日は 12月18日。前に撮ったのは 12月19日。\n見てほしい入金 2件　https://bw5-app.vercel.app/staff/bw6/bank');
+    expect(notify.mock.calls[0][0].body).toBe('BW6 入金のスクショをお願いします。\nGMO アプリの「入出金明細」（一覧の画面）を撮って送ってください。\n開始日は 12月18日。前に撮ったのは 12月19日。\n見てほしい入金 2件　https://bw5-app.vercel.app/staff/bw6/bank');
     expect(getBankAskFacts).toHaveBeenCalledTimes(1);
     expect(getBankAskFacts).toHaveBeenCalledWith('bw6', expect.any(Date));
     expect(vi.mocked(getAll).mock.calls[0][0]).toMatch(/is_test\s*=\s*0/);
@@ -90,5 +91,28 @@ describe('/api/cron/recital-bank-ask', () => {
     vi.mocked(getRecitalSettings).mockResolvedValue({ ...settings, pay_ok_at: null });
     expect(await (await POST(req('/api/cron/recital-bank-ask?slot=19:00', auth))).json()).toEqual({ ok: true, asked: 0 });
     expect(notify).not.toHaveBeenCalled();
+    expect(getBankAskFacts).not.toHaveBeenCalled();   // 出さない夜は事実（listReviewRows）を読まない
+  });
+  it('「払う」を開ける前・休みの日も、事実を読まずに出さない', async () => {
+    events([{ event_key: 'bw6', is_test: 0 }]);
+    vi.setSystemTime(new Date('2026-12-14T10:00:00Z'));   // JST 12/14 19:00（開ける前）
+    expect(await (await POST(req('/api/cron/recital-bank-ask?slot=19:00', auth))).json()).toEqual({ ok: true, asked: 0 });
+    vi.setSystemTime(new Date('2026-12-31T10:00:00Z'));   // JST 12/31 19:00（休み）
+    expect(await (await POST(req('/api/cron/recital-bank-ask?slot=19:00', auth))).json()).toEqual({ ok: true, asked: 0 });
+    expect(getBankAskFacts).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
+  });
+  it('1つの発表会が落ちても、ほかの発表会は続ける（ログに中身を出さない）', async () => {
+    vi.setSystemTime(new Date('2026-12-20T10:00:00Z'));
+    events([{ event_key: 'bw6-a', is_test: 0 }, { event_key: 'bw6-b', is_test: 0 }]);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.mocked(getBankAskFacts).mockRejectedValueOnce(new Error('db: 振込 ヤマダ ハナコ 26500'));
+    const res = await POST(req('/api/cron/recital-bank-ask?slot=19:00', auth));
+    expect(await res.json()).toEqual({ ok: true, asked: 1 });
+    expect(getBankAskFacts).toHaveBeenCalledWith('bw6-b', expect.any(Date));
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(err).toHaveBeenCalled();
+    expect(err.mock.calls.flat().join(' ')).not.toMatch(/ヤマダ|26500/);
+    err.mockRestore();
   });
 });

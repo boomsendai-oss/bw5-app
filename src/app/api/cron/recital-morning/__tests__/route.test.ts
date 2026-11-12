@@ -69,7 +69,7 @@ describe('/api/cron/recital-morning', () => {
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify.mock.calls[0][0]).toEqual({
       subject: '入金のスクショをお願いします（休み明け）',
-      body: '休みの間の分を、お願いします。\n開始日を 12月29日 にして、まとめて撮ってください。',
+      body: '休みの間の分を、お願いします。\nGMO アプリの「入出金明細」（一覧の画面）を撮って送ってください。\n開始日を 12月29日 にして、まとめて撮ってください。',
       subjectPrefix: '【BOOM】BW6',
     });
     expect(getBankAskFacts).toHaveBeenCalledWith('bw6', expect.any(Date));

@@ -44,16 +44,16 @@ describe('buildAskMessage', () => {
   it('いつもの文：金額と名前を書かない', () => {
     const m = buildAskMessage({ startDate: '2026-12-14', lastShotOn: '2026-12-20', reviewCount: 3, url: 'https://bw5-app.vercel.app/staff/bw6/bank' });
     expect(m.subject).toBe('入金のスクショをお願いします');
-    expect(m.body).toBe('BW6 入金のスクショをお願いします。\n開始日は 12月14日。前に撮ったのは 12月20日。\n見てほしい入金 3件　https://bw5-app.vercel.app/staff/bw6/bank');
+    expect(m.body).toBe('BW6 入金のスクショをお願いします。\nGMO アプリの「入出金明細」（一覧の画面）を撮って送ってください。\n開始日は 12月14日。前に撮ったのは 12月20日。\n見てほしい入金 3件　https://bw5-app.vercel.app/staff/bw6/bank');
     expect(m.body).not.toMatch(/円/);
   });
   it('見てほしい入金が0件ならその行を出さない・前に撮った日が無ければ開始日だけ', () => {
-    expect(buildAskMessage({ startDate: '2026-12-14', lastShotOn: null, reviewCount: 0, url: 'u' }).body).toBe('BW6 入金のスクショをお願いします。\n開始日は 12月14日。');
+    expect(buildAskMessage({ startDate: '2026-12-14', lastShotOn: null, reviewCount: 0, url: 'u' }).body).toBe('BW6 入金のスクショをお願いします。\nGMO アプリの「入出金明細」（一覧の画面）を撮って送ってください。\n開始日は 12月14日。');
   });
   it('休み明けの文', () => {
     const m = buildAskMessage({ startDate: '2026-12-29', lastShotOn: '2026-12-29', reviewCount: 0, url: 'u', afterRest: true });
     expect(m.subject).toBe('入金のスクショをお願いします（休み明け）');
-    expect(m.body).toBe('休みの間の分を、お願いします。\n開始日を 12月29日 にして、まとめて撮ってください。');
+    expect(m.body).toBe('休みの間の分を、お願いします。\nGMO アプリの「入出金明細」（一覧の画面）を撮って送ってください。\n開始日を 12月29日 にして、まとめて撮ってください。');
   });
 });
 

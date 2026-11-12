@@ -11,6 +11,12 @@ export function nowJstOf(now: Date): string {
   return `${todayJst(now)} ${new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(11, 16)}`;
 }
 
+/** 声かけの文に載せる「見てほしい入金」の画面 */
+export const BANK_URL = 'https://bw5-app.vercel.app/staff/bw6/bank';
+
+/** 撮る画面（GMO の入出金明細の一覧＝行ごとの残高が出る画面）。いつもの文と休み明けの文の2行目 */
+const SHOT_LINE = 'GMO アプリの「入出金明細」（一覧の画面）を撮って送ってください。';
+
 /** 休み明けの朝の声かけの時刻（Worker の recital-morning が撃つ時刻） */
 export const MORNING_SLOT = '08:00';
 
@@ -42,16 +48,16 @@ function md(ymd: string): string {
 
 /**
  * 声かけの文。subject に頭（【BOOM】BW6）は付けない（notifyTaro の subjectPrefix が付ける）。
- * 「見てほしい入金」の行は1件以上の時だけ（終わりに全角空白1つ＋url）。
+ * 2行目は撮る画面（SHOT_LINE）。「見てほしい入金」の行は1件以上の時だけ（終わりに全角空白1つ＋url）。
  */
 export function buildAskMessage(x: { startDate: string; lastShotOn: string | null; reviewCount: number; url: string; afterRest?: boolean }): { subject: string; body: string } {
   if (x.afterRest) {
     return {
       subject: '入金のスクショをお願いします（休み明け）',
-      body: `休みの間の分を、お願いします。\n開始日を ${md(x.startDate)} にして、まとめて撮ってください。`,
+      body: `休みの間の分を、お願いします。\n${SHOT_LINE}\n開始日を ${md(x.startDate)} にして、まとめて撮ってください。`,
     };
   }
-  const lines = ['BW6 入金のスクショをお願いします。'];
+  const lines = ['BW6 入金のスクショをお願いします。', SHOT_LINE];
   lines.push(`開始日は ${md(x.startDate)}。${x.lastShotOn ? `前に撮ったのは ${md(x.lastShotOn)}。` : ''}`);
   if (x.reviewCount > 0) lines.push(`見てほしい入金 ${x.reviewCount}件　${x.url}`);
   return { subject: '入金のスクショをお願いします', body: lines.join('\n') };
