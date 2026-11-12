@@ -8,7 +8,7 @@
 
 **Tech Stack:** Next.js 16（App Router・Server Actions）・TypeScript・Turso（libsql）・Vercel Hobby（関数は60秒まで）・vitest・Stripe Checkout（fetch で直接）・nodemailer（Gmail）・Cloudflare Workers（boom-cron の `JOBS`）。
 
-**Spec:** 設計書 第5版（iCloud の `BOOM/成果物/BW6_進行システム設計/BW6_進行のしくみ_設計書_第5版.md`。作業用の写し `bw6-design/rev2/design-v5.md`・章ごと `bw6-design/rev2/ch/*.md`）と決まりの紙 `bw6-design/rev2/decisions-v5.md`。食いちがったら決まりの紙が勝つ。名前の正本は `bw6-plan/split.md` の③。
+**Spec:** 設計書 第5版（iCloud の `BOOM/成果物/BW6_進行システム設計/BW6_進行のしくみ_設計書_第5版.md`。作業用の写し `.superpowers/sdd/2026-11-12-bw6-recital-stage1/ref/design-v5.md`）と決まりの紙 `.superpowers/sdd/2026-11-12-bw6-recital-stage1/ref/decisions-v5.md`。食いちがったら決まりの紙が勝つ。名前の正本は `.superpowers/sdd/2026-11-12-bw6-recital-stage1/ref/split.md` の③（③にもとからある名前で、この計画が形を変えた物〔`setSuspended` の理由5つ・`matchFeePreset` の漢字の名前・`sendPaidMail` の返り値・`stripe_recheck`・`forceWait`・`limit`・`url`・`afterRest`・`flagged`・`searchHouseholds` の返す型 など〕は、③の方をもう直してある。③に無い新しい名前は、この計画の各まとまりの「足した名前」の表が正本）。以下、この計画で「③」「split.md」「設計書」「決まりの紙」と書いた物は、すべてこの `ref/` の中の3つのファイルを指す（作業場所の `.superpowers/sdd/` は git に入らない。別の Mac で作るときは iCloud の設計フォルダの控えを同じ場所に置く）。
 
 ---
 
@@ -25,7 +25,7 @@
 - 関数は60秒まで。長くなる所は件数の上限（束 `BANK_BATCH_MAX_ROWS = 400`、待ちのメールは1回20通、1つの束でその場で送るのは10通まで）で切り、`maxDuration = 60` を書く。
 - bw5-app は公開リポジトリ。計画・コード・台帳SQL・試験・コミット文に、実名・電話・メール・口座番号・振込先の文・鍵・乱数を書かない（例は `example.com`・`example.invalid`・架空の名前・`090-1234-5678` の形だけ）。`bank_text`・`ref_skip`・鍵は本番の設定の画面か Vercel の環境変数だけに入れる。
 - 変えた記録（`recital_changes`）・ログ・`console.*`・エラー文に、メール・電話・生年月日・インスタ・名義を残さない（R-18。`logChangeTx` が伏せる）。
-- 家庭に渡すマイページの URL は Task 2 の `recitalMyUrl(token)`（`RECITAL_PUBLIC_ORIGIN = 'https://event.boom-sendai.com'`）だけで作る。`NEXT_PUBLIC_BASE_URL` と `location.origin` は使わない。
+- 家庭に渡すマイページの URL は Task 2 の `recitalMyUrl(token)`（`RECITAL_PUBLIC_ORIGIN = 'https://event.boom-sendai.com'`）だけで作る。`NEXT_PUBLIC_BASE_URL` と `location.origin` は使わない。例外は2つだけ：家庭の画面の中の相対リンク（13 の送りましたの画面のボタン `/bw6/my?t=<token>` など。URL を外へ渡さない）と、家庭に渡さないスタッフの試し用の URL（18 の試し用の URL）。
 - 入力欄（input・select・textarea）は全部、文字色と下地色を両方書く（bw5-app は body が白文字）。家庭の画面は生成り色 `#faf6f1` の下地に紺 `#101040` の文字。オレンジ（BW5 の色）を家庭の画面に使わない。
 - 確かめの窓（`confirm()`）は使わない。お金・設定・確定のボタンは2段階ボタンと名前の選択（`RECITAL_STAFF_NAMES`）。
 - Next.js 16 の書き方は、作る前に `node_modules/next/dist/docs/` の該当ページを読む（`AGENTS.md`）。`searchParams`・`params` は Promise。
@@ -36,8 +36,8 @@
 ## Review Focus
 
 1. **同じ入金の行を2人が同時に当てる**（TARO と KEIKO が別々の画面から「この世帯に当てる」）→ 1つだけ通り、入金は1行・メールは1通。試験は Task 28（`Promise.allSettled` の2本）。
-2. **カードと振込の二重**（カードの画面を開いたまま振込が全額で当たる／振込で払い終わった世帯にカードの完了の知らせ）→ 開いている画面を切る・こえた分は返す分1番（`source_payment_id` はカードの入金）・完了メールは出ない。試験は Task 21・22・9。
-3. **iPhone の全角数字・全角ハイフン**（電話「０９０－１２３４－５６７８」、金額「２６５００」「26,500円」、探す欄の「２７１４」、摘要の「振込　２７１４　ヤマダ」）→ 半角と同じ物として読む。試験は Task 2（`normalizePhone`）・7・13・16・23（`parseYenInput`）・25。
+2. **カードと振込の二重**（カードの画面を開いたまま振込が全額で当たる／振込で払い終わった世帯にカードの完了の知らせ）→ 開いている画面を切る・こえた分は返す分1番（`source_payment_id` は、その返す分を作った入金＝あとから来た方。決まりの紙 K200。理由の文に「カードの方を Stripe で返す」を添える）・完了メールは出ない。試験は Task 21・22・9。
+3. **iPhone の全角数字・全角ハイフン**（電話「０９０－１２３４－５６７８」、金額「２６５００」「26,500円」、探す欄の「４８２３」、摘要の「振込　４８２３　ヤマダ」）→ 半角と同じ物として読む。試験は Task 2（`normalizePhone`）・7・13・16・23（`parseYenInput`）・25。
 4. **銀行の名義のゆれ**（半角カナ、長音の `ｰ`・`-`、頭の番号のあとの区切り「ー」「‐」）→ 姓が合えば合う。試験は Task 26（`surnameMatches`）と Task 4（`readRefFromDesc`）。
 5. **時刻ちょうどの鍵**（12/15 11:59:59.999 と 12:00:00、1/31 23:59:59.999 と 2/1 0:00、夜 21:00 ちょうど、`pay_open_at` が読めない形）→ 境目のとおりに開く・閉じる・送る、読めなければ開けない側。試験は Task 2（`payGate`・`entryPhase`）・8（`change_close_at`）・10（夜の待ち）。
 
@@ -46,11 +46,11 @@
 ## タスクの並び（全30タスク）
 
 - 基（1〜5）：1 と 2〜5 は同時に始めてよい（2〜5 は純関数）。1 は 6 から後の全部の DB タスクの前提。
-- 申（6〜11）：6 → 7・9・10 → 8（7 のコミットの後。同じ `recitalEntryDb.ts`）→ 11（6 の後。同じ `recitalDb.ts`。11 の種の後半は 12/13（日））。
-- 家（12〜15）：12 は 2・6 の後。13 は 7 の後。14 は 8・10 の後。15 は 8・14 の後（12/8（火）に出すか決める。切っても 12〜14 は動く）。
-- ス（16〜20）：16 は 2・6 の後／17 は 6 の後／18 は 3・6・11 の後／19 は 8・9・10 の後／20 は 8・9・5・18・21 の後（12/8 に出すか決める逃げ道）。ス の中は 16→17→18→19→20。
-- 払（21〜24）：21 は 9・10・14 の後 → 22。23 は 9・10・14・19 の後。24 は 10・27・28 の後（`listReviewRows`・`bankStartDate` を使う）。
-- 振（25〜30）：25・26 は 2・4 の後すぐ。27 は 9・10・25・26 の後。28 は 27・16・19 の後。29 は 28・16 の後。30 は 25・27 の後。
+- 申（6〜11）：6 → 7・9 → 10（9 のコミットの後。10 の試験は 9 の `insertPaymentTx` を本物で使う）→ 8（7 のコミットの後。同じ `recitalEntryDb.ts`）→ 11（6 の後。同じ `recitalDb.ts`。11 の種の後半は 12/13（日））。
+- 家（12〜15）：12 は 2・6 の後。13 は 7 の後。14 は 8・10 の後。15 は 8・14 の後（12/8（火）に出すか決める。切っても 12〜14 は動く）。**15 は 21・23 のコミットの後に作る**（15・21・23 が同じ `src/app/bw6/my/page.tsx`・`actions.ts` を直す。15 を最後にして、15 の後にこの2つと `recitalMail.ts` の `mypageItems` を直すタスクを置かない。12/8 に出さないと決めたら、15 のコミットを `git revert` で抜く。先に入れてから外すと重なって外せない）。
+- ス（16〜20）：16 は 2・6 の後／17 は 6 の後／18 は 3・6・11 の後／19 は 8・9・10 の後／20 は 8・9・5・18・21 の後（12/8 に出すか決める逃げ道）。ス の中は 16→17→18→19→20。14 と 17 は同じ `recitalEntryDb.ts` に足すので同時にしない（先に始めた方のコミットの後にもう片方）。
+- 払（21〜24）：21 は 9・10・14 の後 → 22。23 は 9・10・14・19 の後。世帯の画面 `src/app/staff/bw6/entries/[id]/page.tsx`・`actions.ts` を触る順は **19 → 23 → 20 → 28**（20 は 21 の後でもあるので、23 → 20 の順で進める）。24 は 10・27・28 の後（`listReviewRows`・`bankStartDate` を使う）。
+- 振（25〜30）：25・26 は 2・4 の後すぐ。27 は 9・10・25・26 の後。28 は 27・16・19・23・20 の後。29 は 28・16 の後。30 は 25・27 の後。`recitalBankDb.ts` と `recitalBankDb.test.ts` を触る順は **27 → 28 → 29 → 24**（24 は 29 のコミットの後に始める）。
 - 締切から逆に見た道：24 の `JOBS` は 12/13（日）までに出す → 27・28 は 12/11（金）までに終える。間に合わないと分かった時点で止まって知らせる（24 だけを先に出す道は無い）。通し試し1は 1〜11・21〜23・25〜29 ができた時、通し試し2は 12/8（火）。
 
 ## 手元の画面の確かめ（全部の「`npm run dev` で見る」の段に効く）
@@ -64,6 +64,8 @@
 4. 手元の `data/bw5.db` には `migrate.mjs` を流さない（`schema_migrations` が4件しか無く、古い台帳が約115本「未適用」に出て MIGRATE FAILED になる）。台帳の正しさは、台帳SQLを全部流す DB の試験で確かめる。
 
 ## 出す手順（本番の DB とコードを出す順）
+
+作業場所 `bw5-app-recital` には、`data/`（本体 `../bw5-app/data` へのリンク。試験のDB `./data/test_recital_*.db` もここにできる）と `.env.production.local` を用意してある。どちらかが無ければ、作らずに止まって知らせる（親フォルダの無い `file:./data/…db` は libsql が開けない。鍵のファイルを自分で写さない）。
 
 1. Task 1 のコミットのあと、表を読むコードを push する前に：`node --env-file=.env.production.local scripts/migrate.mjs --dry-run` → 出るのが `20261113_recital_stage1.sql` の1本だけと見る（ほかが出たら止まって知らせる）→ `--dry-run` を外して流す → 表ができたことを読むだけで確かめる。表は今ある表にさわらないので、公開のページが無いうちに流してよい。
 2. Task 6 の試しの種 `20261114_recital_seed_test.sql` は、表のあとに同じ形（`--dry-run` → 外す）で流す。表がまだ本番に無ければ流さずに止まって知らせる。
@@ -223,7 +225,7 @@ describe('(d) payments の CHECK（世帯か注文のどちらか1つ）', () =>
      VALUES ('t-schema-ck', ?, ?, 'cash', 1000, '2026-12-20', 'manual', ?)`, [hh, to, NOW]);
   it('両方 NULL は弾く', async () => { await expect(ins(null, null)).rejects.toThrow(/CHECK/i); });
   it('両方入っているのも弾く', async () => { await expect(ins(1, 1)).rejects.toThrow(/CHECK/i); });
-  it('片方だけなら入る', async () => { await ins(1, null); await ins(null, 1); });
+  it('片方だけなら入る', async () => { await expect(ins(1, null)).resolves.toBeDefined(); await expect(ins(null, 1)).resolves.toBeDefined(); });
 });
 ```
 
@@ -645,6 +647,7 @@ git commit -m "feat(bw6): 発表会の段階1の表（19表）と索引を台帳
   - `parseRecitalSettings(rows: { key: string; value: string }[]): RecitalSettings`
   - `jstToMs(jst: string): number`／`deadlineMs(jst: string): number`
   - `entryPhase(s: RecitalSettings, nowMs: number, extendUntil?: string | null): EntryPhase`
+  - `canFamilyEdit(s: RecitalSettings, nowMs: number, extendUntil?: string | null): boolean`（足した名前。家庭が作品を足す・やめる・迷っている→出る、をしてよいか。8 の `applyHouseholdEdits`・14 の `afterChangeClose`・15 の欄を出す条件の3つが、全部これを使う。判定を2か所に書かない）
   - `payGate(s: RecitalSettings, nowMs: number): PayGate`
   - `isCountedCast(work: { fee_type: string; status: string }, cast: { status: CastStatus }): boolean`
   - `moneySummary(x: { chargeAmounts: number[]; paymentAmounts: number[]; refundTodoAmounts: number[] }): MoneySummary`
@@ -671,7 +674,7 @@ git commit -m "feat(bw6): 発表会の段階1の表（19表）と索引を台帳
 ```ts
 import { describe, it, expect } from 'vitest';
 import {
-  parseRecitalSettings, jstToMs, deadlineMs, entryPhase, payGate, isCountedCast, moneySummary,
+  parseRecitalSettings, jstToMs, deadlineMs, entryPhase, canFamilyEdit, payGate, isCountedCast, moneySummary,
   householdView, householdViewLabel, payableAmount, payButtonState, countPeople, schoolGrade, ageOn,
   recitalMyUrl, checkSettingValue, normalizePhone, normalizeEmail, RECITAL_SETTING_KEYS_SHOWN, RECITAL_SETTING_KEYS_LOCKED, type CountPerson, type MoneySummary,
 } from '../recital';
@@ -742,6 +745,14 @@ describe('受付の状態（5-4）', () => {
   });
   it('日時の設定が読めなければ開けない', () => {
     expect(entryPhase(S({ entry_open_at: '12/15' }), J(2027, 1, 10))).toBe('suspended');
+  });
+  it('canFamilyEdit：受付中かつ change_close_at まで。延長の世帯は延長の日まで（4-2・K219）', () => {
+    expect(canFamilyEdit(S(), J(2027, 1, 31, 23, 59, 59, 999))).toBe(true);
+    expect(canFamilyEdit(S(), J(2027, 2, 1, 0, 0))).toBe(false);
+    expect(canFamilyEdit(S({ change_close_at: '2027-01-20 23:59' }), J(2027, 1, 25))).toBe(false);
+    expect(canFamilyEdit(S(), J(2027, 2, 3), '2027-02-05 23:59')).toBe(true);
+    expect(canFamilyEdit(S(), J(2027, 2, 6), '2027-02-05 23:59')).toBe(false);
+    expect(canFamilyEdit(S({ suspended: '1' }), J(2027, 1, 10))).toBe(false);
   });
 });
 
@@ -969,9 +980,10 @@ Expected: FAIL（`Cannot find module '../recital'`）
   | メール | `test_mail_to` | 空か、`@` を1つ含み空白が無い |
   | 文 | そのほか（`consent_items`・`privacy_text`・`extra_costs_text`・`schedule_text`・`line_url`・`bank_text`・`tshirt_give_to`） | 4000字まで |
   `RECITAL_SETTING_KEYS_SHOWN` に、上の表に無い鍵が入っていたら、文として扱わずに止まって知らせる。
-- `parseRecitalSettings`：`RECITAL_SETTING_DEFAULTS` の上に行を重ねて `raw` にする。数は `parseInt`（数でなければ初めの値）、並びは `,` で割って `trim`・空を捨てる、`suspended`＝`raw.suspended !== '0'`、`mail_bcc_staff`＝`=== '1'`、`stripe_mode`＝`=== 'live' ? 'live' : 'test'`、`pay_ok_at`・`bank_audit_done_at`・`roster_fix_on`・`tshirt_order_on`・`name_fix_close_at` は空なら `null`。
+- `parseRecitalSettings`：`RECITAL_SETTING_DEFAULTS` の上に行を重ねて `raw` にする。数は `parseInt`（数でなければ初めの値）、並びは `,` で割って `trim`・空を捨てる（`fee_check_first` は、さらに各要素を `parseInt` し、1つでも数でなければ並び全体を初めの値の並びにする）、`suspended`＝`raw.suspended !== '0'`、`mail_bcc_staff`＝`=== '1'`、`stripe_mode`＝`=== 'live' ? 'live' : 'test'`、`pay_ok_at`・`bank_audit_done_at`・`roster_fix_on`・`tshirt_order_on`・`name_fix_close_at` は空なら `null`。
 - `jstToMs`：`/^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?$/` に合えば `Date.UTC(…, 時−9, 分)`。合わなければ `NaN`。`deadlineMs`：時刻ありは `jstToMs + 60_000 − 1`、日付だけは `jstToMs + 86_400_000 − 1`。
 - `entryPhase`：`suspended` → `'suspended'`。`entry_open_at`・`entry_close_at` のどちらかが `NaN` → `'suspended'`。`now < jstToMs(open)` → `'before'`。`now ≤ deadlineMs(close)` → `'open'`。`extendUntil` があり `now ≤ deadlineMs(extendUntil)` → `'open'`。ほかは `'closed'`。
+- `canFamilyEdit`：`entryPhase(s, nowMs, extendUntil) === 'open'` で、しかも「`nowMs ≤ deadlineMs(change_close_at)`」か「`extendUntil` があり `nowMs ≤ deadlineMs(extendUntil)`」のとき true（`change_close_at` が `NaN` なら延長の世帯だけ true）。延長の世帯は、その日まで受付中と同じに変えられる（設計書 4-2 の受付の表・K219）。
 - `payGate`：`pay_open_at` が `NaN` か `now < jstToMs(pay_open_at)` → `'before'`。`pay_ok_at` が `null` → `'preparing'`。ほかは `'open'`。
 - `moneySummary`：`total = max(0, Σcharge)`・`paid = Σpayment − Σtodo`・`remaining = max(0, total − paid)`・`overpaid = max(0, paid − total)`。
 - `householdView`：①`!hasIn && !hasMaybe` → none ②`paid ≤ 0 && !hasIn && hasMaybe` → tentative ③`remaining === 0` → complete ④`paid > 0 && remaining > 0` → complete_extra ⑤tentative。
@@ -1017,6 +1029,7 @@ git commit -m "feat(bw6): 発表会の型・設定の読み・受付と支払い
 - `feeClass`：`no_coop`＝式のとおり／`tshirt_only`＝n≥1 のとき `family` の `tshirt` 規則の行1つだけ（`extra_work` も作らない）／`free`＝行を作らない（`extra_work` も作らない）。`tshirt_only`・`free` は1人目の候補にしない。
 - 世帯の行 `coop_ticket`（`personId: null`・`ref` ''）は、1人目がいて、その人が `no_coop` でないときだけ、`first` の `coop_ticket` 規則から1行。
 - 1人目（R-83）：候補＝n≥1 で `tshirt_only`・`free` でない人。候補を1人ずつ1人目に置いた世帯の合計が最小の人。同じ額なら `currentFirstPersonId` がその中にいればその人、いなければ `seq` の小さい人。候補0なら `null`。
+- 行の並び（`lines` の順。7 の試験が `ORDER BY id` でくらべるので、7 はこの順のまま INSERT する）：1人目を先に、ほかの人は `seq` の順。1人の中は、使った規則の `sort_order` の順（`add_work` は k の小さい順）、そのあとに `extra_work`。世帯の行 `coop_ticket` は、1人目の行の中で、`coop_ticket` 規則の `sort_order` の位置に置く（設計書 03 3-4 の規則8行では、1人目の `tshirt` の直後・`add_work` の前）。例：1人2作品 → base・tshirt・coop_ticket・add_work(2)。
 - `diffCharges`：`active` の `itemCode === 'adjust'` は見ない。鍵＝`${personId ?? ''}|${itemCode}|${ref}`。同じ鍵で `amount` も同じ生きている行は残す（同じ鍵が2つあれば2つ目から void）。それ以外の生きている行は `voidIds`。残した行に当たらない期待の行は `add`。`label` のちがいは見ない。
 - `feeCheck`：`first[i]` ＝1人・(i+1)作品の世帯の合計（i＜`checkFirst.length`）、`family` ＝1作品ずつ2人の世帯の合計 − 1人・1作品の合計。`tentative = rules.some(r => r.is_tentative === 1)`。`ok`＝並びが同じ・`family === checkFamily`・`!tentative`。
 
@@ -1251,6 +1264,7 @@ git commit -m "feat(bw6): 料金の規則から請求の行・1人目・行の�
   - `isValidRef(code: string): boolean`（`/^[1-9]\d{3}$/` かつ4けたを通した `c === 0`）
   - `pickRef(used: ReadonlySet<string>, skip: readonly string[], rand: () => number): string | null`（100〜999 に検査の数字を付けた900個から、`RESERVED_REFS`・`skip`・`used` を除いた並び〔小さい順〕の `Math.floor(rand() × 長さ)` 番目。空なら `null`）
   - `readRefFromDesc(descRaw: string): { ref: string | null; refOk: boolean; nameRaw: string; descNorm: string }`
+  - `REF_SEPARATORS: string`（足した名前。番号のあとの区切り1文字の並び。26 が使う）
 
 摘要の読み方（D5 2-16・K140）：
 1. `descNorm` ＝ `descRaw.normalize('NFKC')` から空白（`\s`）を全部取った物。
@@ -1298,7 +1312,7 @@ describe('出す（pickRef）', () => {
     expect(RESERVED_REFS).toHaveLength(10);
     for (const r of RESERVED_REFS) expect(isValidRef(r)).toBe(true);
   });
-  it('使い切るまで出すと 890個（ref_skip の検査に合う分だけ減る）。欠番・skip・使用ずみを出さず、重ならない', () => {
+  it('使い切るまで出すと 888個（890個から ref_skip の検査に合う2つが減る）。欠番・skip・使用ずみを出さず、重ならない', () => {
     const skip = ['2008', '3009', '4827', 'abc'];
     const used = new Set<string>();
     let seed = 7;
@@ -1330,7 +1344,7 @@ describe('摘要から読む（D5 2-16 の読む位置）', () => {
     ['振込 482 ヤマダハナコ', null, false, '482ヤマダハナコ'],
     ['振込 48231 ヤマダハナコ', null, false, '48231ヤマダハナコ'],
     ['振込 ヤマダハナコ 4823', null, false, 'ヤマダハナコ4823'],
-    ['2714 ヤマダハナコ', null, false, '2714ヤマダハナコ'],   // 頭に「振込」が無ければ番号を読まない（決まり。読む役は Task 30 で「振込」から写す）
+    ['4823 ヤマダハナコ', null, false, '4823ヤマダハナコ'],   // 頭に「振込」が無ければ番号を読まない（決まり。読む役は Task 30 で「振込」から写す）
     ['ヤマダハナコ 4823', null, false, 'ヤマダハナコ4823'],
   ] as const)('%s', (raw, ref, ok, name) => {
     const r = readRefFromDesc(raw);
@@ -1347,7 +1361,7 @@ Expected: FAIL（`Cannot find module '../recitalRef'`）
 
 - [ ] **Step 3: `src/lib/recitalRef.ts` を書く**
 
-Interfaces と「摘要の読み方」のとおり。表 `T` は設計書のまま10行を写す（行と列を取りちがえない：`T[今の c][けたの数字]`）。ファイルの頭に1行「例の番号は 4827（検査に合わない）。これより外の番号・名前を例に作らない（D5 2-16）」。
+Interfaces と「摘要の読み方」のとおり。表 `T` は設計書のまま10行を写す（行と列を取りちがえない：`T[今の c][けたの数字]`）。ファイルの頭に1行「例の番号は 4827（検査に合わない）。検査に合う例が要る時は欠番（`RESERVED_REFS`）の番号だけを使う。これより外の番号・名前を例に作らない（D5 2-16・K139）」。区切りの文字の並びは `export const REF_SEPARATORS = '-‐‑‒–—―−ー・.,、。/'` として出し、3 の読み方はこれを使う（26 の `surnameMatches` も import して使う。写さない）。
 
 - [ ] **Step 4: 試験を回して通るのを見る**
 
@@ -1502,6 +1516,7 @@ git commit -m "feat(bw6): 会員照合（カナ＋生年月日）と特別な料
 - `MemberLite.status` の値の約束 `'active' | 'withdrew' | 'leave'`（`'leave'` は Task 6 の `loadMembersLite` が `member_type = '休会'` から入れる）
 - Task 2 に移した・足した名前：`RECITAL_PUBLIC_ORIGIN`・`recitalMyUrl`（家庭に渡すマイページの URL。10・14・19・21 が使う）、`checkSettingValue`（設定の値の確かめ。6 と 18 が使う）、`normalizePhone`・`normalizeEmail`（7・13・16 が使う）
 - 試験のDBの置き場 `./data/test_recital_schema.db`（Task 1）
+- `canFamilyEdit(s, nowMs, extendUntil?)`（Task 2。家庭が変えてよいかの判定の1本化。8・14・15 が使う）、`REF_SEPARATORS`（Task 4。区切りの文字の並び。26 が使う）（2026-11-12 の事前点検で足した）
 - 学年の言葉 `未就学`・`年少`・`年中`・`年長`・`小1`〜`小6`・`中1`〜`中3`・`高1`〜`高3`・`大人`（`schoolGrade` の返す値。設計書に形が無いので決めた）
 
 ---
@@ -1509,10 +1524,10 @@ git commit -m "feat(bw6): 会員照合（カナ＋生年月日）と特別な料
 ## まとまり「申」：申込の書き込み・お金の核・メール・データ（タスク 6〜11）
 
 このまとまりは、家・ス・払・振の全部が呼ぶ「書き込みの核」を作る。画面は作らない。
-並び：**6 → 7・8・9・10 → 11（11 の種の後半は 12/13（日））**。ただし同じファイルをさわるので、**8 は 7 のコミットの後**（どちらも `recitalEntryDb.ts`）、**11 は 6 の後**（どちらも `recitalDb.ts`）。9 と 10 は 7 と並べて進めてよい。
+並び：**6 → 7・9 → 10（9 のコミットの後）→ 8（7 のコミットの後）→ 11（11 の種の後半は 12/13（日））**（計画の頭の「タスクの並び」と同じ）。**8 は 7 のコミットの後**（どちらも `recitalEntryDb.ts`）、**10 は 9 のコミットの後**（10 の試験は 9 の `insertPaymentTx`・`readHouseholdMoney` を本物で使う）、**11 は 6 の後**（どちらも `recitalDb.ts`）。9 は 7 と並べて進めてよい。
 7・8 は 9（`afterMoneyChanged`）と 10（`sendRecitalMail`）を呼ぶ。試験ではこの2つを `vi.mock` で差しかえる。9・10 のファイルがまだ無くて読み込みで落ちるときは、**中身を自分で作らずに止まって知らせる**。
 
-正本：名前は `bw6-plan/split.md` の③、列は設計書 03 3-4・3-9、値の言葉は決まりの紙 6-1・6-3。数字の例は設計書 05 のまま試験に入れる。
+正本：名前は `.superpowers/sdd/2026-11-12-bw6-recital-stage1/ref/split.md` の③、列は設計書 03 3-4・3-9、値の言葉は決まりの紙 6-1・6-3。数字の例は設計書 05 のまま試験に入れる。
 
 ### このまとまりで気をつける所（Review Focus の候補。各行の試験は持ち主のタスクに足してある）
 1. メールアドレスの大文字・小文字、前後の空白だけがちがう2回目の申込 → 同じメールとして止まる（Task 7 `same email ignores case and spaces`）。
@@ -1532,7 +1547,7 @@ git commit -m "feat(bw6): 会員照合（カナ＋生年月日）と特別な料
 - Test: `src/lib/__tests__/recitalDb.test.ts`
 
 **Interfaces:**
-- Consumes: Task 1 の表（`recital_*` の19表）。Task 2 の `RecitalSettings`・`parseRecitalSettings`・`RECITAL_SETTING_DEFAULTS`・`RECITAL_SETTING_KEYS_LOCKED`・`checkSettingValue`・`moneySummary`・`householdView`・`HouseholdView`・`MoneySummary`。Task 3 の `feeCheck`・`FeeRule`。Task 5 の `MemberLite`。`@/lib/db` の `execute`・`getAll`・`getOne`・`batch`・`withWriteTx`、`@/lib/dateJst` の `nowUtcIso`。
+- Consumes: Task 1 の表（`recital_*` の19表）。Task 2 の `RecitalSettings`・`parseRecitalSettings`・`RECITAL_SETTING_DEFAULTS`・`RECITAL_SETTING_KEYS_LOCKED`・`checkSettingValue`・`moneySummary`・`householdView`・`HouseholdView`・`MoneySummary`。Task 3 の `feeCheck`・`FeeRule`。Task 5 の `MemberLite`。`@/lib/db` の `execute`・`getAll`・`getOne`・`batch`・`withWriteTx`、`@/lib/dateJst` の `nowUtcIso`。`Transaction` の型は `import type { Transaction } from '@libsql/client'`（`db.ts` は出していない。`bf6Db.ts:7` と同じ書き方。7〜10・27・28 も同じ）。
 - Produces（家・ス・払・振と 7〜11 が使う）:
   - `type RecitalEvent = { event_key: string; title: string; show_date: string; rehearsal_date: string; venue: string; is_test: number }`
   - `type HouseholdRow / PersonRow / CastRow / ChargeRow / PaymentRow / RefundRow / MailRow / ChangeRow / WorkRow` … 各表の列そのまま（snake_case）
@@ -1547,6 +1562,7 @@ git commit -m "feat(bw6): 会員照合（カナ＋生年月日）と特別な料
   - `loadMembersLite(): Promise<MemberLite[]>`（足した名前。`boom_members` の `id, full_name, full_name_kana, birthday, status, member_type` を読み、`member_type`='休会' なら `status`='leave'、`status`='withdrew' はそのまま。会員を `MemberLite` に詰めるのは 7・13・16・18・20 の全部がこれを使う。自分で詰めない）
   - `listWorks(eventKey): Promise<WorkRow[]>`・`saveWork(eventKey, w: WorkInput, staffName): Promise<{ id: number; workCode: string }>`・`listWorkCounts(eventKey): Promise<Map<number, { in: number; maybe: number; paid: number; unpaid: number; snsNg: boolean }>>`
   - `loadHouseholdDetail(householdId): Promise<HouseholdDetail|null>`
+  - `readMoneyViewTx(tx: Transaction | null, householdId: number): Promise<{ m: MoneySummary; view: HouseholdView; refundTodo: number; hasIn: boolean; hasMaybe: boolean }>`（足した名前。世帯のお金と見え方を出す決め方の正本。`tx` が null なら `@/lib/db` の `getAll` で読む。`loadHouseholdDetail`・`listWorkCounts`（世帯ごとの残り）・9 の `readHouseholdMoneyTx` の3つが、全部これを呼ぶ。同じ計算をほかに書かない）
   - `logChangeTx(tx, c): Promise<void>`（split.md ③の型）
   - 試験の決まり：DB の試験は、自分の `event_key`（`t-xxx`）の行だけを見る。試験のDBには台帳SQLが全部流れるので、種の `bw6-test`（と 12/13 からは `bw6`・`bw6-smoke`）の行も入っている。「`is_test=0` の発表会を全部回す」関数の試験は、数の期待に種の行を含めるか、`event_key` でしぼって数える。
   - 試験の下ごしらえ（足した名前）：`setupRecitalTestDb(name: string): Promise<void>`・`seedRecitalTestEvent(eventKey: string, opts?: { isTest?: 0|1; settings?: Record<string,string> }): Promise<{ workIds: Record<string, number> }>`・`seedHousehold(eventKey: string, opts: { total: number; cast: 'in'|'maybe'|'out'; payMethod?: string|null }): Promise<number>`
@@ -1554,7 +1570,7 @@ git commit -m "feat(bw6): 会員照合（カナ＋生年月日）と特別な料
 - [ ] **Step 1: 試験の下ごしらえ `recitalTestSeed.ts` を書く**
 
   中身は3つ。どれも `../db` を**関数の中で** `await import` する（環境変数を先に入れるため）。
-  - `setupRecitalTestDb(name)`：`process.env.TURSO_DATABASE_URL = 'file:./data/test_recital_<name>.db'`、`delete process.env.TURSO_AUTH_TOKEN`・`delete process.env.SKIP_DB_INIT`、そのファイルと `-shm`・`-wal` を消す → `initDb()` → `scripts/migrations/*.sql` を名前順に全部流す（`bf7EntryDb.test.ts` 1〜25行と同じ。`--` で始まる行を除き `;` で割る。失敗は飛ばす）。
+  - `setupRecitalTestDb(name)`：`process.env.TURSO_DATABASE_URL = 'file:./data/test_recital_<name>.db'`、`delete process.env.TURSO_AUTH_TOKEN`・`delete process.env.SKIP_DB_INIT`、そのファイルと `-shm`・`-wal` を消す → `initDb()` → `scripts/migrations/*.sql` を名前順に全部流す（`bf7EntryDb.test.ts` 1〜25行と同じ。`--` で始まる行を除き `;` で割る。失敗は飛ばす。発表会の台帳SQLにはコメントを書かないので、`--` を除く処理は今ある台帳のため）。
   - `seedRecitalTestEvent(eventKey, opts)`：`recital_events` に1行（`is_test` は既定 1、`title` は `'試し'`、`show_date` `'2027-04-11'`、`rehearsal_date` `'2027-04-10'`、`venue` `'若林区文化センター'`）。設定の行：`entry_open_at`=`'2026-11-01 00:00'`・`pay_open_at`=`'2026-11-01 00:00'`・`pay_ok_at`=`'2026-11-01 00:00'`・`suspended`=`'0'`・`stripe_mode`=`'test'`・`test_mail_to`=`'test@example.com'`・`mail_bcc_staff`=`'0'`・`bank_text`=`'TEST-BANK-TEXT'`・`consent_items`=`'同意の文（試し）'`、そのあと `opts.settings` で上書き。料金の規則8行（03 3-4 の表そのまま：first base 1〜1 16000×1／first tshirt 1〜1 3000×1／first coop_ticket 1〜1 2500×3／first add_work 2〜2 6000×1／first add_work 3〜NULL 3000×1／family base 1〜1 5000×1／family tshirt 1〜1 3000×1／family add_work 2〜NULL 3000×1、`is_tentative` 0）。作品12本（`work_code` と中身）：`W01`〜`W07`＝`counted`・`form`・`open`／`W08`＝`not_counted`・`form`・`open`／`W09`＝`counted`・`form`・`draft`／`W10`＝`counted`・`staff`・`open`／`W11`＝`extra`・`extra_fee` 3000・`form`・`open`／`W12`＝`separate`・`none`・`open`。題は `'作品A'` のような仮の名前。返り値は `work_code`→`id`。
   - `seedHousehold(eventKey, opts)`：世帯1つ（`seq`・`ref_code` は発表会の中の最大+1。`ref_code` は `String(1000+seq)`。`edit_token` は48けた hex、`email` は `'h<seq>@example.com'`）、人1人、`W01` への出演1つ（`opts.cast`）、`opts.total>0` なら `item_code='base'` で額 `opts.total` の請求1行。返り値は世帯の id。
 
@@ -1705,7 +1721,7 @@ describe('loadHouseholdDetail', () => {
 
 - [ ] **Step 4: 試しの種 `20261114_recital_seed_test.sql` を書く**
 
-  `bw6-test` の発表会1行（`is_test`=1。題・日付・会場は上の下ごしらえと同じ形）、設定（`suspended`='0'・`stripe_mode`='test'・`pay_ok_at`・`entry_open_at`・`pay_open_at` は `'2026-11-13 00:00'`・`mail_bcc_staff`='0'）、料金の規則8行、作品5本（仮の題。`W01`〜`W03` は `counted`・`form`・`open`、`W04` は `draft`、`W05` は `extra`・`extra_fee` 3000）。決まり：`INSERT OR IGNORE` か `INSERT … SELECT … WHERE NOT EXISTS`（2回流しても増えない）。`created_at` は `strftime('%Y-%m-%dT%H:%M:%fZ','now')`。**行の中にコメントを書かない**（コメントは文の前の独立した行）。**文字の値の中に `;` を書かない**（試験と `migrate.mjs` は `;` で割る）。鍵・乱数・`bank_text`・`ref_skip`・`test_mail_to`・実名を書かない。
+  `bw6-test` の発表会1行（`is_test`=1。題・日付・会場は上の下ごしらえと同じ形）、設定（`suspended`='0'・`stripe_mode`='test'・`pay_ok_at`・`entry_open_at`・`pay_open_at` は `'2026-11-13 00:00'`・`mail_bcc_staff`='0'）、料金の規則8行、作品5本（仮の題。`W01`〜`W03` は `counted`・`form`・`open`、`W04` は `draft`、`W05` は `extra`・`extra_fee` 3000）。決まり：一意の索引がある表（発表会・設定・作品）は `INSERT OR IGNORE`、一意の索引が無い料金の規則は `INSERT … SELECT … WHERE NOT EXISTS (SELECT 1 FROM recital_fee_rules WHERE event_key='bw6-test')`（どちらも2回流しても増えない。規則に `INSERT OR IGNORE` を使うと2回目で8行増える）。`created_at` は `strftime('%Y-%m-%dT%H:%M:%fZ','now')`。**コメントは1行も書かない**（Global Constraints「台帳SQLにはコメントを書かない」。種のSQLも同じ）。**文字の値の中に `;` を書かない**（試験と `migrate.mjs` は `;` で割る）。鍵・乱数・`bank_text`・`ref_skip`・`test_mail_to`・実名を書かない。
 
 - [ ] **Step 5: `src/lib/recitalDb.ts` の関数を作る（Produces の型どおり）**
 
@@ -1717,7 +1733,8 @@ describe('loadHouseholdDetail', () => {
   - `setSuspended(on=false)`：`feeCheck(rules, s.fee_check_first, s.fee_check_family)` の `tentative` → `'tentative'`、`ok` でない → `'fee_check'`、`consent_items` が空白だけ → `'consent_empty'`、`privacy_text` が空白だけ → `'privacy_empty'`、`line_url` が空白だけ → `'line_empty'`（この順。使い道の知らせと公式LINEの道が無いまま受付を開けないため。03 3-4・D4 2-11）。通れば `'0'`＋`entry_opened`。`on=true` はいつでも `'1'`＋`entry_suspended`。
   - `saveWork`：新しい作品は `withWriteTx` の中で、その発表会の `work_code` の数字の最大＋1（`dropped` も数える）を2けた以上で `W13` の形に。直すときは `work_code` を変えない。`recital_work_classes`・`recital_work_instructors`（どちらも `event_key` を入れる）は、その作品の行を消して入れ直す（この2つのつなぎの表だけ。ほかの表の行は消さない）。
   - `listWorkCounts`：`in`・`maybe` は「人 `active`・世帯 `active`」の出演の数。`paid`／`unpaid` は `in` の出演のうち世帯の残りが 0／>0 の数（残りは世帯ごとに `moneySummary`）。`snsNg` は `in` の人に `sns_ok`=0 がいるか。
-  - `loadHouseholdDetail`：`money` は「生きている請求の行の額・入金の行の額全部・返す分 `todo` の額」で `moneySummary`。`view` は `householdView({ hasIn, hasMaybe, paid, remaining })`。`hasIn`／`hasMaybe` は「人 `active` で、作品が `dropped` でない出演」の `in`／`maybe` があるか。`refundTodo` は `todo` の合計。`mails`・`changes` は新しい順。
+  - `readMoneyViewTx`：`m` は「生きている請求の行の額・入金の行の額全部・返す分 `todo` の額」で `moneySummary`。`view` は `householdView({ hasIn, hasMaybe, paid, remaining })`。`hasIn`／`hasMaybe` は「人 `active` で、作品が `dropped` でない出演」の `in`／`maybe` があるか。`refundTodo` は `todo` の合計。
+  - `loadHouseholdDetail`：`money`・`view`・`refundTodo` は `readMoneyViewTx(null, householdId)` のまま。`mails`・`changes` は新しい順。`listWorkCounts` の世帯の残りも、世帯ごとに `readMoneyViewTx(null, id)` で出す（世帯の数が多くて遅ければ、同じ決め方を SQL 1本にまとめてよいが、試験で `readMoneyViewTx` と同じ値になることを1つ確かめる）。
   - `logChangeTx`：`before`/`after` を JSON にする前に、鍵の名前が `email`・`phone`・`birthday`・`insta_handle`・`instaHandle`・`bank_told_name`・`bankToldName`・`payer_name_raw`・`payerNameRaw`・`desc_raw`・`desc_norm`・`bank_desc`・`name` の値を、入れ子（オブジェクト・配列）までたどって、値があれば `'(伏せた)'`、空なら `null` に置きかえる。名義を渡す側は `name` か `bank_told_name` の鍵で渡す。`actor` が空なら throw。`created_at`=`nowUtcIso()`。
 
 - [ ] **Step 6: 通ることを確かめる**
@@ -1750,7 +1767,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: Task 6 の `getRecitalEvent`・`getRecitalSettings`・`listFeeRules`・`loadMembersLite`・`logChangeTx`。Task 2 の `entryPhase`・`isCountedCast`・`householdView`・`ageOn`・`jstToMs`・`normalizePhone`・`normalizeEmail`。Task 3 の `expectedCharges`・`FeeRule`・`FeePerson`。Task 4 の `pickRef`・`isValidRef`・`RESERVED_REFS`。Task 5 の `matchMember`・`matchFeePreset`・`MemberLite`。Task 10 の `sendRecitalMail`（試験では mock）。`@/lib/csvUtil` の `normalizeKana`（同じ名前の別物を使わない）。`@/lib/dateJst` の `nowUtcIso`・`todayJst`・`isIsoDate`。`node:crypto` の `randomBytes`。
 - Produces（Task 13 が呼ぶ）:
-  - `precheckEntry(eventKey, { email, phone, people }): Promise<{ sameEmail: boolean; samePhone: boolean; samePersonIdx: number[] }>`。**書かない・送らない**。URL のメールを送るのは 13 の `precheckEntryAction` だけ（そこで `bw6:resend-to:` の回数も数える。2か所で送ると2通になる）。空の電話（`''`）は「同じ」と返さない。
+  - `precheckEntry(eventKey, { email, phone, people }): Promise<{ sameEmail: boolean; samePhone: boolean; samePersonIdx: number[] }>`。**書かない・送らない**。同じ電話・同じメールの URL のメールを送るのは 13 の `precheckEntryAction` だけ（そこで `bw6:resend-to:` の回数も数える。2か所で送ると2通になり、回数の上限も効かない。設計書 4-2 画面6「送る回数には、上限を置く」）。例外は `submitEntry` の (い)（画面1 の確かめのあと、書き込みの直前に同じメールの世帯ができていた時の受け止め）だけ。`submitEntry` の `same_phone` は返すだけで送らない。空の電話（`''`）は「同じ」と返さない。
   - 電話とメールのそろえ方は Task 2 の `normalizePhone`・`normalizeEmail`（純関数。13 の画面の確かめも同じ物を使うので、DB のファイルには置かない）。電話は数字だけの形で DB に入れ、同じ電話のくらべもこの形で行う。
   - `buildEntryFeePeople(eventKey, people: { lastName: string; firstName: string; lastKana: string; firstKana: string; birthday: string | null; works: { workId: number; status: 'in' | 'maybe' }[] }[]): Promise<{ rules: FeeRule[]; feePeople: FeePerson[]; presetClasses: (FeeClass | null)[] }>`（書かない。規則・作品・事前登録の照らし合わせ〔`loadMembersLite`＋`matchFeePreset`〕から `FeePerson` を作る。`personId` は並びの番号（1から）。`submitEntry` と 13 の `quoteEntry` の両方がこれを呼ぶ。同じ計算を2か所に書かない）
   - `submitEntry(s: EntrySubmission, now?: Date): Promise<SubmitResult>`（型は split.md ③）。`s.submitKey` は `randomBytes(16).toString('hex')`（32けた hex）で 13 がページを出す時に作る。形がちがえば `invalid`。
@@ -1889,7 +1906,7 @@ it('全角の電話でも通り、半角ハイフンの電話と同じ電話に�
 });
 it('buildEntryFeePeople は送る時と同じ額（1人2作品 → 32,500）', async () => {
   const b = await entry.buildEntryFeePeople('t-entry', [{ lastName: 'テスト', firstName: 'イチ', lastKana: 'テスト', firstKana: 'イチ', birthday: '2015-04-02', works: [{ workId: W.W01, status: 'in' }, { workId: W.W02, status: 'in' }] }]);
-  expect(expectedCharges(b.rules, b.feePeople, null).reduce((x, l) => x + l.amount, 0)).toBe(32500);
+  expect(expectedCharges(b.rules, b.feePeople, null).total).toBe(32500);
   expect(b.presetClasses).toEqual([null]);
 });
 ```
@@ -1904,13 +1921,13 @@ it('buildEntryFeePeople は送る時と同じ額（1人2作品 → 32,500）', a
   `submitEntry` の順（03 3-4・05 5-2・04 4-2「送る」のあと）：
   1. 書き込みの前：`getRecitalEvent`（無ければ `invalid`）→ `getRecitalSettings` → `entryPhase(s, now.getTime())` が `open` でなければその code。
   2. 中身を調べる（どれか欠ければ `invalid`＋`fieldErrors`）：名前・カナ（カタカナ・長音・空白だけ）・メール（`normalizeEmail` のあと `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`）・電話（`normalizePhone` のあと10〜11けた。全角の数字・ハイフンも通す）・生年月日（`isIsoDate`・未来でない）・人は1〜10人・1人に「出る」か「迷っている」が1つ以上で `max_works_per_person` 以下・同じ作品を2回選ばない・作品はこの発表会の `entry_mode`=`form` かつ `status`=`open`・`isContact` の人は `ageOn(birthday, todayJst(now)) >= min_self_apply_age`・`tshirtSize` は `tshirt_sizes` の中か null（一覧が空なら null だけ）・インスタは前後の空白を取り、空なら null・`consentAccepted`。
-  3. `confirmNotFamily` が false で同じ電話（`normalizePhone` の形でくらべる）の `active` 世帯がある → `same_phone`（その世帯へ `resend_url` を送る）。`confirmSamePerson` が false で同じ「`normalizeKana`(セイ＋メイ)＋生年月日」の `active` の人がいる → `same_person`。
+  3. `confirmNotFamily` が false で同じ電話（`normalizePhone` の形でくらべる）の `active` 世帯がある → `same_phone`（**送らない**。URL のメールは 13 の `precheckEntryAction` が回数の上限つきで送る）。`confirmSamePerson` が false で同じ「`normalizeKana`(セイ＋メイ)＋生年月日」の `active` の人がいる → `same_person`。
   4. 金額の材料：`buildEntryFeePeople(eventKey, people)`（事前登録の照らし合わせ〔`recital_fee_presets` と `loadMembersLite()` で人ごとに `matchFeePreset`。`{feeClass}` のときだけ印に使う〕と `FeePerson` 作り。13 の `quoteEntry` と同じ関数）。
   5. `withWriteTx` の中（往復は「読む2回＋世帯1回＋人1回（`tx.batch`）＋出演・請求・記録1回（`tx.batch`）」まで）：
      - (あ) 同じ `submit_key` の世帯があれば何も書かず、その世帯の今の値で `replay: true`。
      - (い) `email = ?`（`normalizeEmail` の値。入れる時も同じ形なので一致でくらべる）の `active` 世帯があれば何も書かず `same_email`（URL のメールは書き込みの外で）。
      - (う) `seq` ＝発表会の最大＋1（ぶつかって一意の決まりに当たったら throw → `busy`。やり直しの輪は作らない）。`ref_code` ＝ この書き込みの中で読んだ使用ずみの番号の集まりと `s.ref_skip` を渡して `pickRef(used, skip, Math.random)`。null なら throw（番号切れ。止まって知らせる類いの事故なので `busy` で返し、ログに残す）。INSERT が `ref_code` の一意に当たったら、その番号を集まりに足して選び直す（3回まで）。
-     - (え) 世帯：`edit_token`＝`randomBytes(24).toString('hex')`、`source`=`form`、`status`=`active`、`email` は `normalizeEmail` の値、`phone` は `normalizePhone` の値、`applied_at`・`created_at`。人：`seq` は最大＋1、`match_status`=`pending`（照合の前の仮）、`display_name`＝`姓 + ' ' + 名`、`name_ok`/`photo_ok`/`sns_ok`=1、`fee_class_override` は 4 の結果、`status`=`active`。出演：`source`=`form`、`in` は `decided_at` も入れる。請求：`expectedCharges(rules, feePeople, null)` の行を `due_on`=`pay_due`・`status`=`active` で。`FeePerson.counted` は `isCountedCast` の数、`extraWorks` は `extra` の作品で `in` の物（`{ workCode, label: title, fee: extra_fee }`）。変えた記録：`action`=`apply`・`actor`=`family`・`after`＝人数・出演の数・合計だけ。
+     - (え) 世帯：`edit_token`＝`randomBytes(24).toString('hex')`、`source`=`form`、`status`=`active`、`email` は `normalizeEmail` の値、`phone` は `normalizePhone` の値、`applied_at`・`created_at`。人：`seq` は最大＋1、`match_status`=`pending`（照合の前の仮）、`display_name`＝`姓 + ' ' + 名`、`name_ok`/`photo_ok`/`sns_ok`=1、`fee_class_override` は 4 の結果、`status`=`active`。出演：`source`=`form`、`in` は `decided_at` も入れる。請求：`expectedCharges(rules, feePeople, null)` の行を、その順のまま `due_on`=`pay_due`・`status`=`active` で。**請求の `person_id` は、`FeePerson.personId`（並びの番号 1〜）を、INSERT した `recital_people.id` に付けかえてから入れる**（付けかえないと 8 の作り直しで鍵が合わず全部の行が void になる）。世帯の行 `coop_ticket` は `null` のまま。`FeePerson.counted` は `isCountedCast` の数、`extraWorks` は `extra` の作品で `in` の物（`{ workCode, label: title, fee: extra_fee }`）。変えた記録：`action`=`apply`・`actor`=`family`・`after`＝人数・出演の数・合計だけ。
   6. 書き込みのあと：`loadMembersLite()` で人ごとに `matchMember` → `member_id`（`auto` のときだけ）と `match_status` を UPDATE。失敗しても申込は成り立つ（`pending` のまま残る）。
   7. メール（書き込みの外。失敗しても `ok: true`）：見え方が `complete`（合計0円で「出る」あり）なら `{ kind: 'complete', householdId, dedupeKey: 'complete:<id>' }`、それ以外は `{ kind: 'receipt', householdId }`。`replay` のときは送らない。
   8. `SQLITE_BUSY`・`database is locked`・`seq` の一意エラーは `busy` に変える。そのほかの例外は投げ直す。
@@ -1942,7 +1959,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Test: `src/lib/__tests__/recitalEntryDb.test.ts`（同じファイルに `describe` を足す）
 
 **Interfaces:**
-- Consumes: Task 7 の `submitEntry`（試験で世帯を作る）。Task 6 の `loadHouseholdDetail`・`getRecitalSettings`・`logChangeTx`。Task 2 の `entryPhase`・`deadlineMs`・`moneySummary`。Task 3 の `expectedCharges`・`diffCharges`。Task 9 の `afterMoneyChanged`・Task 10 の `sendRecitalMail`（どちらも試験では mock）。
+- Consumes: Task 7 の `submitEntry`（試験で世帯を作る）。Task 6 の `loadHouseholdDetail`・`getRecitalSettings`・`logChangeTx`。Task 2 の `entryPhase`・`canFamilyEdit`・`deadlineMs`・`moneySummary`・`normalizePhone`。Task 3 の `expectedCharges`・`diffCharges`。Task 9 の `afterMoneyChanged`・Task 10 の `sendRecitalMail`（どちらも試験では mock）。
 - Produces（Task 14・15・19・20 が呼ぶ）:
   - `type HouseholdEdit`・`type EditCtx`（split.md ③のまま）
   - `applyHouseholdEdits(householdId, edits, ctx)`（返り値は split.md ③）。失敗の文：`closed`＝「お申し込みと変更の受付は、1月31日（日）で終わりました。中身を変えたいときは、公式LINEでお知らせください。」／`max_works`＝「1人5作品までです。」（数は設定から）／`paid_no_maybe`＝「お支払いのあとは、『まだ迷っている』に戻せません。」／`last_work`＝「出演を全部やめるときは、公式LINEでお知らせください。」／`invalid`＝「入力を確かめてください。」
@@ -2109,6 +2126,14 @@ describe('決まり', () => {
     const other = (await seedRecitalTestEvent('t-entry-other8')).workIds.W02;
     expect(await entry.applyHouseholdEdits(id, [{ type: 'cast_set', personId: P, workId: other, status: 'in' }], { actor: 'TARO', by: 'staff', reason: 'x', now: NOW })).toMatchObject({ ok: false, code: 'invalid' });
   });
+  it('ほかの世帯の人を指した直しは invalid（家庭・スタッフ・dryRun とも）', async () => {
+    const id = await apply(['W01']);
+    const { pids } = await applyKids([{ in: ['W01'] }]);   // 別の世帯の人
+    const ed = [{ type: 'cast_set' as const, personId: pids[0], workId: W.W02, status: 'in' as const }];
+    expect(await entry.applyHouseholdEdits(id, ed, { actor: 'family', by: 'family', now: NOW })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await entry.applyHouseholdEdits(id, ed, { actor: 'TARO', by: 'staff', reason: 'x', now: NOW })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await entry.applyHouseholdEdits(id, ed, { actor: 'TARO', by: 'staff', reason: 'x', now: NOW, dryRun: true })).toMatchObject({ ok: false, code: 'invalid' });
+  });
   it('合計が変わったら afterMoneyChanged(id,"total") と change のメール1通。変わらない直し（電話）は afterMoneyChanged を呼ばない', async () => {
     const id = await apply(['W01']); amc.mockClear(); sendRecitalMail.mockClear();
     await set(id, P, 'W02', 'in');
@@ -2168,13 +2193,14 @@ describe('決まり', () => {
 
   - `applyHouseholdEdits`：
     - 世帯が無い・`merged` → `invalid`。`ctx.by`=`staff` で `reason` が空 → `invalid`。
-    - 家庭（`by`=`family`）は `cast_set` だけ（`person`・`contact` は `invalid`）。`entryPhase(s, now, household.extend_until)` が `open` で、しかも今 ≤ `deadlineMs(change_close_at)` のときだけ。ちがえば `closed`。
+    - 家庭（`by`=`family`）は `cast_set` だけ（`person`・`contact` は `invalid`）。Task 2 の `canFamilyEdit(s, now, household.extend_until)` が true のときだけ（受付中かつ `change_close_at` まで。延長の世帯は延長の日まで）。ちがえば `closed`。14・15 も同じ関数で欄を出し入れする（判定を3か所に書かない）。
+    - `cast_set`・`person` の `personId` は、その世帯の `active` の人でなければ `invalid`（家庭・スタッフ・`dryRun` の全部がここを通る。15 は鍵から世帯を引くだけで、人の確かめはここに任せる）。
     - `cast_set`：作品はこの発表会で `dropped` でない物。家庭は `entry_mode`=`form` かつ `status`=`open` の作品だけ足せる。家庭は「出る＋迷っている」が `max_works_per_person` をこえたら `max_works`（スタッフは通す）。払った額 > 0 で `in`→`maybe` は `paid_no_maybe`（家庭もスタッフも）。家庭で、払った額 > 0、`in`→`out`、その人の最後の `in`（`maybe` は数えない）なら `last_work`。出演の行が無ければ足す（`source` は家庭 `mypage`／スタッフ `staff`）、あれば同じ行の `status` を変える（`out` は `withdrawn_at`、`in` は `decided_at`）。記録の `action`：新しい行か `out`→`in`/`maybe` は `cast_add`、`maybe`→`in` と `in`→`maybe` は `cast_decide`、`→out` は `cast_out`。`received_at`＝`ctx.receivedAt`。
-    - `person`：`name_ok`/`photo_ok`/`sns_ok` は `flags_edit`、`insta_handle` は `insta_edit`、ほかは `person_edit`。`contact`：`contact_edit`。前後の値は Task 6 の伏せ方に任せる（生の値を渡してよい）。
+    - `person`：`name_ok`/`photo_ok`/`sns_ok` は `flags_edit`、`insta_handle` は `insta_edit`、ほかは `person_edit`。`contact`：`contact_edit`。`contact.fields.phone` は Task 2 の `normalizePhone` を通し、10〜11けたでなければ `invalid`（7 が入れる形と同じ数字だけの形で入れる。くらべる形がずれると「同じ電話」が当たらない）。前後の値は Task 6 の伏せ方に任せる（生の値を渡してよい）。
     - 全部を1つの `withWriteTx` で書き、最後に同じ書き込みの中で `recomputeChargesTx`。
     - 書き込みのあと：合計が変わっていれば `afterMoneyChanged(householdId, 'total')`。メールは `{ kind: 'change', householdId }` を1通。ただし直したのが `staff_note`・`name_ok`・`photo_ok`・`sns_ok`・`pay_due_override` だけのときは送らない。
     - `ctx.dryRun`：上の確かめと `recomputeChargesTx` を同じ `withWriteTx` の中で通し、`totalAfter` と払った額を読んだら印の例外（`'recital_entry:dry_run'`）を投げて巻き戻し、外で捕まえて返す。メール・`afterMoneyChanged`・変えた記録は残らない。
-  - `recomputeChargesTx`：規則・人（`active`）・出演＋作品・生きている請求の行を読む。今の1人目は「`item_code`=`base` で、`unit_amount` が `first` の `base` の規則の額と同じ行」の人（無ければ null）。`expectedCharges(rules, people, currentFirst)` → `diffCharges(active, lines)`。`voidIds` は `status='void'`・`void_reason='recompute'`・`voided_at`、`add` は `due_on`=`pay_due` で足す。合計は生きている行（`adjust` も）の和を0未満なら0にした数。変わったら `logChangeTx` の `total_changed`（`before:{ total }`・`after:{ total }`）。
+  - `recomputeChargesTx`：規則・人（`active`）・出演＋作品・生きている請求の行を読む。今の1人目は「`item_code`=`base` で、`unit_amount` が `first` の `base` の規則の額と同じ行」の人（無ければ null）。`FeePerson.personId` には `recital_people.id` を入れる（7 が請求の `person_id` に入れた値と同じ）。`expectedCharges(rules, people, currentFirst)` → `diffCharges(active, lines)`。`voidIds` は `status='void'`・`void_reason='recompute'`・`voided_at`、`add` は `due_on`=`pay_due` で足す。合計は生きている行（`adjust` も）の和を0未満なら0にした数。変わったら `logChangeTx` の `total_changed`（`before:{ total }`・`after:{ total }`）。
   - `changeHouseholdEmail`：形がちがえば `'recital_entry:bad_email'`、同じ発表会のほかの `active` 世帯が同じメールなら `'recital_entry:same_email'`。メールと `edit_token` を1回の書き込みで変え、`email_edit`（`after:{ field: 'email' }`）と `token_regenerated` を記録。書き込みのあと、新しいアドレスへ `{ kind: 'resend_url', householdId }`。
   - `regenerateToken`：新しい `edit_token`＋`token_regenerated`。メールは送らない（スタッフが URL を写す）。
   - 人を足す・全部やめる・世帯をまとめる操作は段階1のこの関数に入れない。必要に見えたら止まって知らせる。
@@ -2214,6 +2240,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `PaymentInput.source` の語は `manual`／`stripe_webhook`／`stripe_recheck`／`bank_auto`／`bank_staff`（`stripe_recheck` はここで入れておく。21 は使うだけ）
   - 「振り込みました」の印を閉じた時の記録の形（**28 の取り消しはこれだけを読む**）：`action`=`payment_recorded`、`after`＝`{ paymentId, method, amount, source, bankRowId, refundId }`、`before`＝`{ told: { at, date, amount, by } | null }`。名義は記録に残さない（R-18）。別の `bank_told` の記録は書かない。
   - `afterMoneyChanged(householdId, cause: 'total'|'payment'): Promise<void>`（中身は空で作る。21 がカードの作り直し、23 がご案内の出し直しを足す）
+  - `__internal = { notifyMoneyChanged(householdId, cause) }`（足した名前。同じファイルの中から `afterMoneyChanged` を呼ぶ時の通り道。試験の spy 用。ほかのファイルからは使わない）
+  - `maybeDoubleRecord(payments: { source: string; memo: string | null; amount: number }[]): boolean`（足した名前。純関数。「`source`=`manual` で `memo` が『移した』でないプラスの行」と「`source` が `stripe_webhook` か `stripe_recheck` の行」が両方ある時 true。9 の手順6の理由の文と、19 の世帯の画面の「二重の記録かもしれません」の両方がこれを使う。条件を2か所に書かない）
   - `refundForDecrease(x: { totalBefore: number; paid: number; totalAfter: number }): number`（足した名前。純関数。返す額＝max(0, min(前の合計, 払った額) − あとの合計)。20 と後の計画の「出演とりやめ」が使う）
 
 - [ ] **Step 1: 落ちる試験 `recitalMoneyDb.test.ts` を書く**
@@ -2221,7 +2249,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```ts
 // 頭：await setupRecitalTestDb('money'); await seedRecitalTestEvent('t-money'); const money = await import('../recitalMoneyDb');
 // pay(hid, amount, method='bank', extra={}) … core.withWriteTx((tx) => money.insertPaymentTx(tx, { householdId: hid, method, amount, paidOn: '2026-12-21', source: 'bank_staff', ...extra }, 'TARO'))
-// bankRow(amount, eventKey='t-money') … recital_bank_rows に state='matched'・dir='in'・kind='transfer'・source='chat' の1行を足して id を返す
+// bankRow(amount, eventKey='t-money') … recital_bank_rows に state='matched'・dir='in'・kind='transfer'・source='chat' の1行を足して id を返す（`row_key` は呼ぶたびに変える。例：`'t|' + 連番`。同じ値だと `ux_recital_bank_rows_key` に当たる）
 describe('返す額の例（05 5-7 の12行）', () => {
   it.each([
     ['合同で1つへる（1人3作品・全部払った）', 35500, 35500, 32500, 3000],
@@ -2329,13 +2357,20 @@ describe('守り', () => {
     await pay(hid, 26500, 'card', { source: 'stripe_webhook' });
     expect((await core.getOne('SELECT bank_told_amount a FROM recital_households WHERE id=?', [hid])).a).toBe(26500);
   });
-  it('カードと振込の両方で払われたら、返す分はカードの入金に結び「（カードの方を Stripe で返す）」（2-25）', async () => {
+  it('カードと振込の両方で払われたら、返す分は作ったもとの入金（あとから来た方）に結び「（カードの方を Stripe で返す）」（K200・2-25）', async () => {
     const hid = await seedHousehold('t-money', { total: 26500, cast: 'in' });
     const card = await pay(hid, 26500, 'card', { source: 'stripe_webhook' });
     const bank = await pay(hid, 26500, 'bank', { bankRowId: await bankRow(26500) });
     const ref = await core.getOne('SELECT amount, source_payment_id, reason FROM recital_refunds WHERE id=?', [bank.refundId]);
-    expect([Number(ref.amount), Number(ref.source_payment_id)]).toEqual([26500, card.paymentId]);
+    expect([Number(ref.amount), Number(ref.source_payment_id)]).toEqual([26500, bank.paymentId]);
     expect(ref.reason).toContain('（カードの方を Stripe で返す）');
+    // 逆の順（振込が先・カードがあと）も、結ぶのはあとから来たカードの入金
+    const hid2 = await seedHousehold('t-money', { total: 26500, cast: 'in' });
+    await pay(hid2, 26500, 'bank', { bankRowId: await bankRow(26500) });
+    const card2 = await pay(hid2, 26500, 'card', { source: 'stripe_webhook' });
+    const ref2 = await core.getOne('SELECT source_payment_id, reason FROM recital_refunds WHERE id=?', [card2.refundId]);
+    expect(Number(ref2.source_payment_id)).toBe(card2.paymentId);
+    expect(ref2.reason).toContain('（カードの方を Stripe で返す）');
   });
   it('stripe_recheck で記録したあとに手で現金を記録 → 返す分の理由に「（二重の記録かもしれません）」', async () => {
     const hid = await seedHousehold('t-money', { total: 26500, cast: 'in' });
@@ -2364,6 +2399,10 @@ describe('守り', () => {
     const hid = await seedHousehold('t-money', { total: 26500, cast: 'in' });
     const spy = vi.spyOn(money.__internal, 'notifyMoneyChanged');
     await money.recordManualPayment(hid, { method: 'cash', amount: 1000, paidOn: '2026-12-21', memo: '' }, 'TARO');
+    expect(spy).toHaveBeenCalledWith(hid, 'payment');
+    spy.mockClear();
+    const p = await pay(hid, 32500);                       // 残り 25,500 をこえた 7,000 の返す分ができる
+    await money.cancelRefund(p.refundId!, 'そのまま預かる', 'TARO');
     expect(spy).toHaveBeenCalledWith(hid, 'payment');
   });
   it('6番の返す分は「お支払いずみの分」まで（K217）', async () => {
@@ -2397,20 +2436,20 @@ describe('守り', () => {
 
 - [ ] **Step 3: 関数を作る**
 
-  - `readHouseholdMoneyTx`：生きている請求の行の額・入金の行の額全部・返す分 `todo` の額 → `moneySummary`。`view` は Task 6 の `loadHouseholdDetail` と同じ決め方（`hasIn`・`hasMaybe`）。`refundTodo` は `todo` の合計。`told` は `bank_told_at` があれば `{ at, date, name, amount, by }`、無ければ null。`payMethod` は `pay_method`。
+  - `readHouseholdMoneyTx`：`m`・`view`・`refundTodo` は Task 6 の `readMoneyViewTx(tx, householdId)` を呼んでそのまま使う（同じ計算をここに書かない）。`told` は `bank_told_at` があれば `{ at, date, name, amount, by }`、無ければ null。`payMethod` は `pay_method`。
   - `insertPaymentTx` の順（05 5-6・5-7、K199・K200・K202・K207）：
     1. 形：`amount` は0でない整数、`method`・`source` は値の言葉の中、`paidOn` は `YYYY-MM-DD`、世帯がある。ちがえば `bad_input`。`event_key` は世帯の物を使う。
     2. `before` ＝ `readHouseholdMoneyTx`。
     3. `bankRowId` があるとき：その行がこの発表会の物でなければ `bad_input`。「その行×この世帯」の入金の和 > 0 で、今の額がプラスなら `live_exists`。「その行」の入金の和＋今の額 > 行の `amount` なら `row_over`。
     4. 入れたあとの払った額（入金の和＋今の額−返す分 `todo`）が0未満なら `negative`。
     5. 入金の行を INSERT（`bank_transaction_id`・`bank_date`・`bank_desc`・`payer_name_raw`・`stripe_*`・`confirmed_by`・`memo`・`created_at`）。
-    6. 返す分1番：今の額がプラス、`method` が `adjust` でない、`before.view` が `none` でない、今の額 > `before.remaining` のとき、`createRefundTx({ amount: 今の額 − before.remaining, reasonNo: 1, reason: '入金を記録して残りをこえた', sourcePaymentId, createdBy: 'system' })`。`sourcePaymentId` はふつう今の入金。ただし同じ世帯に生きている `card` の入金と `bank` の入金が両方ある時は、どちらの順で来ても `card` の入金にし、理由の後ろに「（カードの方を Stripe で返す）」を付ける（2-25）。同じ世帯に `source`=`manual` の入金と `stripe_webhook` か `stripe_recheck` の入金が両方あれば、理由の後ろに「（二重の記録かもしれません）」。
+    6. 返す分1番：今の額がプラス、`method` が `adjust` でない、`before.view` が `none` でない、今の額 > `before.remaining` のとき、`createRefundTx({ amount: 今の額 − before.remaining, reasonNo: 1, reason: '入金を記録して残りをこえた', sourcePaymentId, createdBy: 'system' })`。`sourcePaymentId` は**いつも今の入金**（その返す分を作ったもとの入金。その入金を 28 で取り消す時に、この返す分を一緒に片づけるため。決まりの紙 K200・3-9 の `source_payment_id`）。同じ世帯に生きている `card` の入金と `bank` の入金が両方ある時は、どちらの順で来ても、理由の後ろに「（カードの方を Stripe で返す）」を付けるだけ（返す相手はカード。決まりの紙 2-25・1007行。結ぶ先は変えない）。理由の後ろの「（二重の記録かもしれません）」は、下の `maybeDoubleRecord` が true の時だけ付ける。
     7. 振込（`method`=`bank`）でプラスのときだけ、「振り込みました」の5列を NULL にする。
     8. `logChangeTx`：`action`=`payment_recorded`、`after`＝`{ paymentId, method, amount, source, bankRowId, refundId }`、`before`＝`{ told: { at, date, amount, by } | null }`（名義は入れない。28 の取り消しがここから at・date・amount・by を戻す。名義は戻らない）。
     9. `after` を読み直して返す。
   - `createRefundTx`：`amount` は正の整数、`reasonNo` は 1・2・3・4・6、`reason` は空でない。6番は `readHouseholdMoneyTx` の `m.overpaid` 以下（こえたら `over_overpaid`）。`status`=`todo`。記録 `refund_created`（6番は `isException: true`）。
   - `cancelRefund`：理由が空・`todo` でない → `bad_input`。`cancelled` にして `refund_cancelled`（理由つき）。書き込みのあと `afterMoneyChanged(householdId, 'payment')`（同じファイルの中からは `__internal.notifyMoneyChanged` を通して呼ぶ。試験が spy で見るため。`export const __internal = { notifyMoneyChanged: (id, cause) => afterMoneyChanged(id, cause) }`）。
-  - `recordManualPayment`：`method` は `cash`・`adjust` だけ。`adjust` はメモ必須。`cash` はプラスだけ、`adjust` は0でない整数。`withWriteTx` で `insertPaymentTx`（`source`=`manual`・`confirmedBy`=staffName）。書き込みのあと `afterMoneyChanged(householdId, 'payment')`。
+  - `recordManualPayment`：`method` は `cash`・`adjust` だけ。`adjust` はメモ必須。`cash` はプラスだけ、`adjust` は0でない整数。`withWriteTx` で `insertPaymentTx`（`source`=`manual`・`confirmedBy`=staffName）。書き込みのあと `__internal.notifyMoneyChanged(householdId, 'payment')` を通して `afterMoneyChanged` を呼ぶ（`cancelRefund` と同じ。試験の spy が見る）。
   - `afterMoneyChanged`：何もしないで返す（中身は 21・23）。書き込みの中から呼ばない、とコメントを1行。
   - カードの異議・返金を記録・返す分を作るボタンは後の計画。ここに入れたくなったら止まって知らせる。
 
@@ -2456,7 +2495,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```ts
 // 見本の data は試験の中で1つ作る：refCode '4827'、contactName 'ヤマダ ハナコ'、eventLine 'BW6（2027年4月11日（日）・若林区文化センター）'、
 // chargeLines 本体 16,000／Tシャツ 3,000／協力チケット3枚 7,500／2作品目 6,000、m { total: 32500, paid: 0, remaining: 32500, overpaid: 0 }、
-// payDue '2月10日（水）'、payDueLong '2027年2月10日（水）'、payNotice 'open'、guide.bankText 'TEST-BANK-TEXT'、guide.nameLine '4827 ヤマダ ハナコ'
+// payDue '2月10日（水）'、payDueLong '2027年2月10日（水）'、payNotice 'open'、guide { amount: 32500, bankText: 'TEST-BANK-TEXT', nameLine: '4827 ヤマダ ハナコ', restLine: null }
+// 型で必須の残り（myUrl・people・hasMaybe・zeroComplete・payOpenLabel・changeCloseLabel・mypageItems・nextContact）も D に入れる（例：myUrl 'https://event.boom-sendai.com/bw6/my?t=' + 'a'.repeat(48)、people [{ name: 'ヤマダ タロウ', inWorks: ['作品A（W01）', '作品B（W02）'], maybeWorks: [] }]、hasMaybe false、zeroComplete false、payOpenLabel '12月15日（火）'、changeCloseLabel '1月31日（日）23:59'、mypageItems 'お支払い、インスタ'、nextContact '2月ごろ'）
+// CH（変更の控えの見本）＝ { lines: ['ヤマダ タロウ「作品B（W02）」を足しました'], totalBefore: 26500, totalAfter: 32500, kind: 'unpaid', afterFeb1: false, refundAmount: 0 }
 it('件名9つが決まりの紙 6-3 と 04 4-2 のまま', () => {
   const s = (k, over = {}) => buildRecitalMail(k, { ...D, ...over }).subject;
   expect(s('receipt')).toBe('【BOOM】BW6 お申し込みを受け付けました（仮受付）（整理番号 4827）');
@@ -2642,7 +2683,7 @@ it('countRecitalMailsToday：今日（JST）の sent＋failed を数え、しき
   expect(c.count).toBeGreaterThanOrEqual(RECITAL_MAIL_DAILY_WARN);
   expect(c.warn).toBe(true);
   expect((await mail.countRecitalMailsToday(at('2026-12-21 08:00'))).warn).toBe(false);
-});
+}, 120_000);   // 数百回まわすので既定の5秒では足りない
 it('flushWaitingMails は1回に20通まで', async () => {
   await seedRecitalTestEvent('t-mail-cap');
   for (let i = 0; i < 25; i++) {
@@ -2667,7 +2708,7 @@ it('ご案内：振込でない世帯・残り0・bank_text が空・返す分�
   const done = await seedHousehold('t-mail', { total: 26500, cast: 'in', payMethod: 'bank' });
   await cardPay(done, 26500); await mail.maybeResendBankGuide(done); expect(await n(done)).toBe(0);
   const big = await seedHousehold('t-mail', { total: 32500, cast: 'in', payMethod: 'bank' });
-  await cardPay(big, 26500);   // 残り 6,000
+  await cardPay(big, 32500);   // 全額。下の返す分 6,000 で 払った額 26,500・残り 6,000＝返す分 6,000（返す分 ≧ 残り になるのは入金 ≧ 合計 の時だけ。5-7・K220）
   await core.execute("INSERT INTO recital_refunds (event_key, household_id, amount, reason_no, reason, status, created_at, created_by) VALUES ('t-mail', ?, 6000, 4, 'テスト', 'todo', ?, 'TARO')", [big, new Date().toISOString()]);
   await mail.maybeResendBankGuide(big); expect(await n(big)).toBe(0);
   const nob = await seedHousehold('t-mail', { total: 26500, cast: 'in', payMethod: 'bank' });
@@ -2712,22 +2753,24 @@ export type RecitalMailData = {
   guide?: { amount: number; bankText: string; nameLine: string; restLine: string | null };
 };
 ```
-  本文は次の見本のまま（◯ の所に data を差し込む。金額は `toLocaleString('ja-JP')`＋`円`）：受付の控え・変更の控え・URL の送り直し＝設計書 04 4-2「自動メール」の見本と下の表（`survey-ch04-05.md` 2-5 に写しあり）。お振込みのご案内・申込完了（カード・現金／振込）・追加分・あと◯円＝決まりの紙 2-24 と 07 7-8（`survey-ch06-11.md` 6-3 に写しあり）。決まり：頭は「（名前）様」「こんにちは、BOOMダンススクールです。」、終わりは「こまったときは、公式LINEでお知らせください。」「BOOMダンススクール」と、いちばん終わりに「このメールに心当たりがないときは、そのままにしてください。」。ご案内のメールは画面の文の「このページの『振り込みました』」「このページから、カードでも」を「マイページの」に置きかえ、［コピーする］と銀行ごとの早見は入れず、最後に「作品を足したときは、…古くなります。」を1行足す。払い方の表示は `card`＝カード・`bank`＝銀行振込・`cash`＝現金（`adjust` は「現金」と同じ形の件名で、払い方の行を書かない）。`change.kind` ごとの「■ 金額」の下の行は 04 4-2 の表の5行のまま（`afterFeb1` のときは「当てられます」の文を出さない、`no_money` は金額の■を出さない）。`resend_url` には `contactName` 以下の頭を付けない（見本どおり2行＋最後の1行）。`change.merged` があるときは、「■ 変わったこと」の頭に「ご家族のお申し込みが2つに分かれていました。1つにまとめて、金額を直しました。」と「これからは、整理番号 {intoRefCode} のマイページをお使いください。」の2行を出す（20 の世帯をまとめる時の控え。合わせて試験を1つ：`change: { ...CH, merged: { intoRefCode: '5724' } }` の本文に '5724' と「1つにまとめて」がある）。`RECITAL_MAIL_DAILY_WARN` は、作る前に U5（Gmail の1日の送信上限。今のアプリの送り口のアカウントの種類で決まる）を調べて、その8割の数を置く（調べて分からなければ 400 にして、止まって知らせる）。
+  本文は次の見本のまま（◯ の所に data を差し込む。金額は `toLocaleString('ja-JP')`＋`円`）：受付の控え・変更の控え・URL の送り直し＝設計書 04 4-2「自動メール」の見本と下の表（`.superpowers/sdd/2026-11-12-bw6-recital-stage1/ref/design-v5.md` の 1584〜1664行あたり）。お振込みのご案内・申込完了（カード・現金／振込）・追加分・あと◯円＝決まりの紙 2-24 と 07 7-8（`.superpowers/sdd/2026-11-12-bw6-recital-stage1/ref/design-v5.md` の 4104〜4210行あたり。決まりの紙は `.superpowers/sdd/2026-11-12-bw6-recital-stage1/ref/decisions-v5.md`）。決まり：頭は「（名前）様」「こんにちは、BOOMダンススクールです。」、終わりは「こまったときは、公式LINEでお知らせください。」「BOOMダンススクール」と、いちばん終わりに「このメールに心当たりがないときは、そのままにしてください。」。ご案内のメールは画面の文の「このページの『振り込みました』」「このページから、カードでも」を「マイページの」に置きかえ、［コピーする］と銀行ごとの早見は入れず、最後に「作品を足したときは、…古くなります。」を1行足す。払い方の表示は `card`＝カード・`bank`＝銀行振込・`cash`＝現金（`adjust` は「現金」と同じ形の件名で、払い方の行を書かない）。`change.kind` ごとの「■ 金額」の下の行は 04 4-2 の表の5行のまま（`afterFeb1` のときは「当てられます」の文を出さない、`no_money` は金額の■を出さない）。`resend_url` には `contactName` 以下の頭を付けない（見本どおり2行＋最後の1行）。`change.merged` があるときは、「■ 変わったこと」の頭に「ご家族のお申し込みが2つに分かれていました。1つにまとめて、金額を直しました。」と「これからは、整理番号 {intoRefCode} のマイページをお使いください。」の2行を出す（20 の世帯をまとめる時の控え。合わせて試験を1つ：`change: { ...CH, merged: { intoRefCode: '5724' } }` の本文に '5724' と「1つにまとめて」がある）。`RECITAL_MAIL_DAILY_WARN` は、作る前に U5（Gmail の1日の送信上限。今のアプリの送り口のアカウントの種類で決まる）を調べて、その8割の数を置く（調べて分からなければ 400 にして、止まって知らせる）。
 
   `sendEmailNoBcc`：`sendEmail` と同じ送り方で `bcc` を付けない。鍵が無ければ `throw new Error('mail_not_configured')`。
 
 - [ ] **Step 5: `recitalMail.ts` の関数を作る**
 
   - `sendRecitalMail`：
-    1. 世帯・発表会・設定を読む。宛先は世帯の `email`。`is_test`=1 なら `test_mail_to`（空なら送らず `failed`「test_mail_to が空」）。宛先が無ければ `failed`。
-    2. `dedupeKey` があれば、その鍵の行がもうあるとき `{ status: 'duplicate', logId }`。無ければ `recital_mail_log` に `status`=`waiting`・`sent_at` NULL で先に1行入れる（一意に当たったら `duplicate`）。
-    3. `forceWait` なら `waiting` のまま返す。`deferAtNight` で、JST の時刻が `MAIL_SEND_FROM`(08:00) より前か `MAIL_SEND_UNTIL`(21:00) より後（分でくらべる。21:00 ちょうどは送る）なら、`waiting` のまま返す。
-    4. `isMailConfigured()` が false → `failed`「メールの鍵が無い」。
-    5. data を作って `buildRecitalMail` → `mail_bcc_staff` が false なら `sendEmailNoBcc`、true なら `sendEmail`。送れたら `sent`・`sent_at`。投げられたら `failed`、`error` は「送信に失敗」＋例外の `code`（あれば）だけ（宛先・氏名を書かない）。
+    1. 世帯・発表会・設定を読む。
+    2. `dedupeKey` があれば、その鍵の行がもうあるとき `{ status: 'duplicate', logId }`。無ければ `recital_mail_log` に `status`=`waiting`・`sent_at` NULL で先に1行入れる（一意に当たったら `duplicate`）。**このあとの失敗も、全部この行を `failed` にして残す**（送った記録を残し、失敗した分をスタッフが送り直せるように。7-7）。
+    3. `forceWait` なら `waiting` のまま返す。`deferAtNight` で、JST の時刻が `MAIL_SEND_FROM`(08:00) より前か `MAIL_SEND_UNTIL`(21:00) より後（分でくらべる。21:00 ちょうどは送る）なら、`waiting` のまま返す。**待ちの判定は宛先の確かめより先**（決まりの紙 K202 の待ちのメール。宛先は送る時に確かめる）。
+    4. 宛先：世帯の `email`。`is_test`=1 なら `test_mail_to`（空なら送らず `failed`「test_mail_to が空」）。宛先が無ければ `failed`。`flushWaitingMails` で送る時も、ここから先を通る。
+    5. `isMailConfigured()` が false → `failed`「メールの鍵が無い」。
+    6. data を作って `buildRecitalMail` → `mail_bcc_staff` が false なら `sendEmailNoBcc`、true なら `sendEmail`。送れたら `sent`・`sent_at`。投げられたら `failed`、`error` は「送信に失敗」＋例外の `code`（あれば）だけ（宛先・氏名を書かない）。
     - data の作り方：`loadHouseholdDetail` と設定から。`myUrl` は Task 2 の `recitalMyUrl(token, { fromMail })`（`receipt` と0円の `complete` は `fromMail: true`。`NEXT_PUBLIC_BASE_URL` は使わない）。世帯が `merged` の時は `change.merged` に `{ intoRefCode: まとめ先の整理番号 }` を入れる。`payNotice` は `payGate(s, now)`。`mypageItems` は段階1は「お支払い、インスタ」（作品を足す・やめるを出すと決めたら 15 が直す）。`nextContact` は `roster_fix_on` があればその月の「◯月ごろ」、空なら「2月ごろ」（計画で仮に決めた。12/8 に TARO が見る）。`change` は、この世帯の前の控え（`receipt`・`change`・`complete`・`extra_complete` の記録）の `created_at` より後の変えた記録から作る（`cast_add`＝「（名前）『（作品）』を足しました」、`cast_out`＝「…をやめました」、`cast_decide`＝「…を『出る』にしました」、`person_edit`／`insta_edit`／`contact_edit`＝「お名前を直しました」／「インスタの欄を直しました」／「連絡先を直しました」。前後の合計は `total_changed` から）。`paid` は `dedupeKey` が `bank_paid:<id>` ならその入金、ほかは世帯のいちばん新しい `adjust` でないプラスの入金。`guide.amount` は `payableAmount(m, told)`、`restLine` は今日（JST）が `bank_rest_to` 以前なら決まりの紙の1行（日付は設定から）、過ぎたら null。
-  - `sendPaidMail(householdId, paymentId, via, opts)`：返り値は `{ status: 'none' }` か `{ kind, status, logId }`。世帯の見え方が `none`（出演なし）なら、どのメールも出さない（返すか戻すかは TARO か KEIKO が決め、家庭へは人が公式LINEで伝える。場面10・44）。今の残りが0のとき、その入金から作った返す分の額が入金の額と同じ（＝もう払い済みだった。K188）なら出さない。そうでなければ、この世帯に `complete` の記録（`cancelled` 以外）があれば `extra_complete`、無ければ `complete`。残りが >0 なら `opts.sendRemaining` のときだけ `remaining`。鍵は `via`=`bank` なら `bank_paid:<paymentId>`＋`deferAtNight: true`、ほかは `complete` のときだけ `complete:<householdId>`（`extra_complete` は NULL）。
+  - `sendPaidMail(householdId, paymentId, via, opts)`：返り値は `{ status: 'none' }` か `{ kind, status, logId }`。世帯の見え方が `none`（出演なし）なら、どのメールも出さない（返すか戻すかは TARO か KEIKO が決め、家庭へは人が公式LINEで伝える。場面10・44）。今の残りが0のとき、その入金の `payment_recorded` の記録の `after.refundId`（＝`insertPaymentTx` が返した `refundId`。Task 9 で返す分の `source_payment_id` はいつもその入金）の返す分の額が、入金の額と同じ（＝もう払い済みだった。K188）なら出さない。そうでなければ、この世帯に `complete` の記録（`cancelled` 以外）があれば `extra_complete`、無ければ `complete`。残りが >0 なら `opts.sendRemaining` のときだけ `remaining`。鍵は `via`=`bank` なら `bank_paid:<paymentId>`＋`deferAtNight: true`、ほかは `complete` のときだけ `complete:<householdId>`（`extra_complete` は NULL）。
   - `flushWaitingMails`：JST の時刻が 08:00〜21:00 の外なら `{ sent: 0, failed: 0 }`。中なら、その発表会の `waiting` の行を古い順に `limit`（20）通まで（関数は60秒まで。残りは次の回）、行の `mail_kind` と `dedupe_key`（`bank_paid:<id>` なら入金を読み直す）で作り直して送り、同じ行を `sent`／`failed` にする。
   - `cancelWaitingMailsTx(tx, paymentId)`：`dedupe_key`=`'bank_paid:'+paymentId` で `waiting` の行を `cancelled`。
+  - メールの記録（`recital_mail_log`）の `created_at` は、渡された `now` から `nowUtcIso(now)` で入れる（試験が時刻を渡して数えるため。`new Date()` を使わない）。`sent_at` も同じ `now`。
   - `countRecitalMailsToday(now)`：`created_at` が JST の今日（`todayJst(now)` の 0:00〜24:00 を UTC に直した範囲）の行のうち `status` が `sent`・`failed` の数。`warn`＝`count >= RECITAL_MAIL_DAILY_WARN`。
   - `maybeResendBankGuide(householdId)`：`pay_method`=`bank`、`bank_text` が空でない、返す分 `todo` < 残り、`payableAmount(m, told)` > 0 のときだけ。いちばん新しいご案内の記録（`cancelled` 以外）の鍵の金額と今の金額が同じなら出さない。出すときの鍵は `bank_guide:<id>:<金額>:<その世帯のご案内の記録の数＋1>`。
   - 段階2のメール（`pay_guide` など）は作らない。必要に見えたら止まって知らせる。
@@ -2825,7 +2868,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
   `20261213_recital_seed_bw6.sql`：`bw6` の発表会1行（`is_test`=0）、設定は `suspended`='1'・`stripe_mode`='live'・`mail_bcc_staff`='0' だけ（`pay_ok_at`・`bank_text`・`ref_skip`・`test_mail_to` の行は作らない＝画面から入れる。`consent_items`・`privacy_text`〔SNS の1行入り〕・`line_url` も画面から入れる。空のままだと Task 6 の `setSuspended` が受付を開けない）、料金の規則8行（03 3-4 の表）。作品は種に入れない（12/1 から画面で入れる）。
   `20261213_recital_seed_smoke.sql`：`bw6-smoke`（`is_test`=1・`stripe_mode`='live'・`suspended`='0'・`pay_ok_at` 入り）。料金の規則の額は **TARO が決めた額**（split.md ④A-2）。額の返事がまだなら、このファイルは作らずに止まって知らせる。
-  2本とも：`INSERT OR IGNORE` か `WHERE NOT EXISTS`、行の中にコメントを書かない、文字の値に `;` を書かない、鍵・乱数・`bank_text`・`ref_skip`・名前を書かない。
+  2本とも：発表会・設定は `INSERT OR IGNORE`、料金の規則は一意の索引が無いので必ず `INSERT … SELECT … WHERE NOT EXISTS (SELECT 1 FROM recital_fee_rules WHERE event_key='bw6')`（`bw6-smoke` も同じ形。`INSERT OR IGNORE` だと流し直しで行が増える）、コメントは1行も書かない（Global Constraints）、文字の値に `;` を書かない、鍵・乱数・`bank_text`・`ref_skip`・名前を書かない。
 
 - [ ] **Step 7: 種を確かめて流す**
 
@@ -2852,6 +2895,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - 試験の下ごしらえ `src/lib/__tests__/recitalTestSeed.ts`：`setupRecitalTestDb`・`seedRecitalTestEvent`・`seedHousehold`（DB の試験の全部が使う）
 - 投げる `Error.message` の決まった値：`recital_setting:locked|unknown|bad_value`、`recital_entry:bad_email|same_email`、`recital_money:bad_input|live_exists|row_over|negative|over_overpaid`、`sendEmailNoBcc` の `mail_not_configured`
 - `submitKey` の形：`randomBytes(16).toString('hex')`（32けた hex。13 が作る）
+- `readMoneyViewTx(tx | null, householdId)`（`src/lib/recitalDb.ts`。お金と見え方の決め方の正本。6・9 が使う）、`maybeDoubleRecord(payments)`（`src/lib/recitalMoneyDb.ts`。「二重の記録かもしれません」の条件。9・19 が使う）、`__internal.notifyMoneyChanged`（`src/lib/recitalMoneyDb.ts`。試験の spy 用）（2026-11-12 の事前点検で足した）
 
 ---
 
@@ -2889,7 +2933,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes:
   - 2：`RECITAL_EVENT`、`RecitalSettings`、`parseRecitalSettings(rows)`、`EntryPhase`、`entryPhase(s, nowMs, extendUntil?)`、`jstToMs(jst)`
   - 3：`FeeRule`、`FeePerson`、`expectedCharges(rules, people, currentFirstPersonId)`
-  - 6：`RecitalEvent`、`getRecitalEvent(eventKey)`、`getRecitalSettings(eventKey)`
+  - 6：`RecitalEvent`、`getRecitalEvent(eventKey)`、`getRecitalSettings(eventKey)`、`listFeeRules(eventKey)`（料金の早見のページが使う。ほかに同じ関数を作らない）
 - Produces:
   - `src/lib/recitalPreview.ts`：`recitalPreviewKey(eventKey: string): string`（32けたの16進）、`isRecitalPreview(eventKey: string, v: string | null | undefined): boolean`、`resolvePreviewEvent(ev: string | null | undefined, pv: string | null | undefined, evIsTest: boolean): { eventKey: string; preview: boolean }`
   - `src/lib/recitalPublic.ts`：`yenJa(n: number): string`、`jpDate(ymdOrJst: string): string`、`slashDate(ymdOrJst: string): string`、`slashDateTime(jst: string): string`、`jpOpenLabel(jst: string): string`、`fiveLines(s: RecitalSettings): string[]`、`type FeeTableData = { first: number[]; familyFirst: number; familyAdd: number; examples: { label: string; total: number }[] }`、`feeTableFromRules(rules: FeeRule[], maxWorks: number): FeeTableData`、`publicPhase(real: EntryPhase, preview: boolean, nowMs: number, s: RecitalSettings): EntryPhase`、`FAMILY_ADD_LINE: string`、`RECITAL_MSG: { rate: string; busy: string }`
@@ -3146,6 +3190,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - 10：`sendRecitalMail({ kind: 'resend_url', householdId })`
   - 6：`listFeeRules`（`recitalDb.ts`）。12：`getRecitalPublicContext`、`checkPublicEventKey`、`yenJa`・`jpDate`・`slashDateTime`・`jpOpenLabel`、`FAMILY_ADD_LINE`、`RECITAL_MSG`
   - 既存：`checkRateLimit(key, max, windowSec)`（`@/lib/eventAuth`）、`todayJst()`（`@/lib/dateJst`）
+- 型の読み方の決まり：client の部品（`'use client'` の `EntryForm`・`WorkCard`・`WorkEditor` など）がサーバのファイル（`recitalEntryDb.ts`・`recitalFamilyDb.ts`・`recitalDb.ts` など、DB や `node:crypto` を読むファイル）の型を使う時は、必ず `import type { … }` で読む（ふつうの import だとサーバのコードがブラウザ用に入り、Vercel のビルドで落ちうる。M1 ではビルドを回さないので気づけない）。15・16〜20・21・23 の client の部品も同じ。
 - Produces:
   - `src/lib/recitalEntryForm.ts`：
     ```ts
@@ -3289,13 +3334,13 @@ Expected: FAIL（`Cannot find module '../recitalEntryForm'`）
 - [ ] **Step 4: 通るのを確かめる**
 
 Run: `npx vitest run src/lib/__tests__/recitalEntryForm.test.ts`
-Expected: PASS（16件）
+Expected: PASS（17件）
 
 - [ ] **Step 5: 試験の種と DB の試験を書く（落ちる）**
 
 `src/lib/__tests__/recitalFamilySeed.ts`：
 - `seedFamilyEvent(core, ev)`：`recital_events` に `(ev, '試し', '2027-04-11', '2027-04-10', '試しの会場', is_test=1)`、`recital_settings` に `entry_open_at='2026-01-01 00:00'`・`pay_open_at='2026-01-01 00:00'`・`pay_ok_at='2026-01-01 00:00'`・`suspended='0'`、`recital_fee_rules` に 03 3-4 の8行（`recitalPublic.test.ts` の `RULES` と同じ数）、`recital_works` に W01〜W06（`entry_mode='form'`・`status='open'`・`fee_type='counted'`・`kind='class'`・`title='W01の作品'`…）、W07（`form`・`draft`）、W08（`staff`・`open`）。W01 に `recital_work_instructors` の行（`display_name='イントラA'`）。返り値 `w` は `{ W01: id, … }`。表に NOT NULL の列がほかにあれば、それも入れる（1 の表の作りに合わせる）。
-- `entryFor(ev, submitKey, people, contact?)`：連絡する人は `ヤマダ タロウ`・`a@example.com`・`09012345678`（`contact` で上書き）、同意は true、確かめの2つは false。`people` は `{ firstName, firstKana, birthday, works }` だけ受けて、姓は `山田`／`ヤマダ`。
+- `entryFor(ev, submitKey, people, contact?)`：連絡する人は `ヤマダ タロウ`・`a@example.com`・`09012345678`（`contact` で上書き）、同意は true、`confirmNotFamily` は false、`confirmSamePerson` は **true**（15 の試験は同じ「花子 2015-05-01」を何度も作るため。7 の試験の `sub` と同じ。13・14 の試験は同じ人を作らないので変わらない）。`people` は `{ firstName, firstKana, birthday, works }` だけ受けて、姓は `山田`／`ヤマダ`。
 
 ```ts
 // src/lib/__tests__/recitalEntryPublicDb.test.ts（頭は bf7EntryDb.test.ts 1〜25行の形。DB は ./data/test_recital_entrypub.db）
@@ -3346,7 +3391,10 @@ describe('quoteEntry（画面3・5 の金額）は「送る」と同じ額', () 
 
 describe('resendMyPageUrl（申込があるかは返り値でしか分からない。画面には出さない）', () => {
   it('知らないメールは0件で、メールの記録も作らない', async () => {
+    const before = await core.getAll(`SELECT id FROM recital_mail_log WHERE mail_kind='resend_url'`);
     expect(await fam.resendMyPageUrl(EV, { email: 'none@example.com' })).toEqual({ sent: 0 });
+    const after = await core.getAll(`SELECT id FROM recital_mail_log WHERE mail_kind='resend_url'`);
+    expect(after.length).toBe(before.length);
   });
   it('大文字・前後の空白をそろえて、生きている世帯へ1通（resend_url）', async () => {
     const before = await core.getAll(`SELECT id FROM recital_mail_log WHERE mail_kind='resend_url'`);
@@ -3371,7 +3419,7 @@ Expected: FAIL（`fam.listPublicWorks is not a function`）
 
 - `listPublicWorks(eventKey)`：`entry_mode='form' AND status IN ('open','draft')`、`sort_order, id` の順。`instructors` は `recital_work_instructors.display_name` を `sort_order` の順。
 - `quoteEntry(eventKey, people)`：書かない。7 の `buildEntryFeePeople(eventKey, people)` → `expectedCharges(rules, feePeople, null)`（`submitEntry` と同じ関数。計算を2か所に書かない）。`personId` は `people` の並びの番号（1から）。`totalIfAllIn` は全部の `maybe` を `in` にした合計。`status` が `open` でない作品は数えない。
-- `resendMyPageUrl(eventKey, by)`：`status='active'` の世帯を、メールは `lower(trim(email))`、電話は数字だけにしてくらべる。当たった世帯ごとに `sendRecitalMail({ kind: 'resend_url', householdId })`。返すのは送った数だけ（宛先も世帯の番号も返さない）。
+- `resendMyPageUrl(eventKey, by)`：`status='active'` の世帯を、Task 2 の `normalizeEmail`・`normalizePhone` でそろえた値でくらべる（世帯の `email`・`phone` は 7 が同じ形で入れているので一致でくらべる。全角の数字・ハイフンもここでそろう。自分でそろえ方を書かない）。当たった世帯ごとに `sendRecitalMail({ kind: 'resend_url', householdId })`。返す `sent` は **`sendRecitalMail` を呼んだ世帯の数**（試験は鍵の無い状態で回すので、記録は `failed` でも 1 と数える。宛先も世帯の番号も返さない）。
 
 - [ ] **Step 8: 通るのを確かめる**
 
@@ -3387,7 +3435,7 @@ Expected: PASS（8件）
 
 頭に公開のわけ：「⚠️ 公開Server Actions(認証なし)。理由: BW6 の出演申込は公開フォームから受けるため。申込を列挙する道は作らない。同じメール・同じ電話の時も相手の中身は返さない。金額はサーバで計算し直す。eventKey は checkPublicEventKey で確かめる（試しの発表会は鍵が合う時だけ）。」 IP は `x-forwarded-for` の先頭（`src/app/xmas/actions.ts` の `ip()` の形）。
 
-- `precheckEntryAction(eventKey: string, pv: string | null, x: { email: string; phone: string; people: { lastKana: string; firstKana: string; birthday: string }[] }): Promise<{ ok: true; sameEmail: boolean; samePhone: boolean; samePersonIdx: number[] } | { ok: false; code: 'rate' | 'invalid'; message: string }>`：`checkPublicEventKey` → `checkRateLimit('bw6:precheck:'+ip, ...RECITAL_RATE.precheck)` → `precheckEntry`。`sameEmail` なら `resendMyPageUrl(eventKey, { email })`、`samePhone` なら `resendMyPageUrl(eventKey, { phone })`。どちらも先に `checkRateLimit('bw6:resend-to:'+<メールか電話の sha256 先頭16けた>, ...RECITAL_RATE.resendEmail)` を見て、超えていたら送らない（表示は変えない）。rate のキーに生のメール・電話を入れない。画面1 からは `phone: ''`・`people: []` で呼び、`sameEmail` だけを見る。7 の `precheckEntry` が空の電話を「同じ」と返すなら、止まって知らせる。
+- `precheckEntryAction(eventKey: string, pv: string | null, x: { email: string; phone: string; people: { lastKana: string; firstKana: string; birthday: string }[] }): Promise<{ ok: true; sameEmail: boolean; samePhone: boolean; samePersonIdx: number[] } | { ok: false; code: 'rate' | 'invalid'; message: string }>`：`checkPublicEventKey` → `checkRateLimit('bw6:precheck:'+ip, ...RECITAL_RATE.precheck)` → `precheckEntry`。`sameEmail` なら `resendMyPageUrl(eventKey, { email })`、`samePhone` なら `resendMyPageUrl(eventKey, { phone })`。どちらも先に `checkRateLimit('bw6:resend-to:'+<`normalizeEmail`／`normalizePhone` でそろえたあとのメールか電話の sha256 先頭16けた>, ...RECITAL_RATE.resendEmail)` を見て（そろえる前の値で取ると、空白や大文字を変えるだけで回数の上限をすり抜けられる）、超えていたら送らない（表示は変えない）。rate のキーに生のメール・電話を入れない。画面1 からは `phone: ''`・`people: []` で呼び、`sameEmail` だけを見る。7 の `precheckEntry` が空の電話を「同じ」と返すなら、止まって知らせる。
 - `quoteEntryAction(eventKey, pv, people: QuotePerson[])`：`checkPublicEventKey` → `quoteEntry`。連打よけは付けない（R-33：金額の計算には付けない）。`EntryForm` は人ごとに `lastName`・`firstName`（「連絡する人と同じ」なら連絡する人の名前）も渡す。
 - `submitEntryAction(s: EntrySubmission, pv: string | null): Promise<EntryActionResult>`：`checkPublicEventKey(s.eventKey, pv)` が false なら `{ ok: false, code: 'invalid', message: 'このページからは送れません。' }` → `checkRateLimit('bw6:submit:'+ip, ...RECITAL_RATE.submit)` が false なら `{ ok: false, code: 'rate', message: RECITAL_MSG.rate }` → `submitEntry(s)` の結果をそのまま返す。受付の状態・同じメール・控えのメール・照合は 7 の中（ここで重ねてやらない）。本番 `bw6` の試し用の鍵で開いた画面から送ると、7 が受付前として断る（R-40）。それでよい。
 
@@ -3406,7 +3454,7 @@ Expected: PASS（8件）
 - 画面3：上の文3つ、しぼる欄（曜日＝月〜日のボタンで `slotLabel` に「◯曜」を含むか／会場＝文字欄で `slotLabel` に含むか／担当イントラ＝`instructors` の名前の select）、`WorkCard` の一覧、MOCCHIN の1行「MOCCHINナンバーのお申し込みは、別のページです」＋`/mocchin` へのリンク、`workCountNotice`、下に世帯の今の合計（大きく）とこの人の内わけ（`quoteEntryAction` を選ぶたびに 400ms 待って呼び、最後の答えを出す）。「もう1人、家族を足す」で画面2・3をくり返し、2人目から「ご家族の中で、いちばんお得になる組み合わせで計算しています。」。選べる数が `max_works_per_person` に達したら、ほかのカードの「出る」「まだ迷っている」を押せなくする。
 - 画面4：人ごとにサイズ（`tshirt_sizes` と「あとで決める」）、「色は、デザインが決まったらお知らせします」。
 - 画面5：`quoteEntryAction` の答えで合計（大きく）・人ごとの内わけ・4-2 の文（①・家族・協力チケット・`extra_costs_text`・迷っている作品がある時の2文。「出ると決めると {yenJa(totalIfAllIn)} になります」）。
-- 画面6：中身（メールは大きく）・直すボタン・`privacy_text`・`consent_items`（6つ）・チェック2つ（「お支払いのあとはお返しできないことを、確かめました」「ほかの5つを読みました」。2つとも付くまで「送る」を押せない）。「送る」の前に `precheckEntryAction`（電話と人も渡す）：`samePhone` は「ご家族のお申し込みが、すでにあります。マイページをご確認ください。」と「家族ではない」（選ぶと `confirmNotFamily=true`）、`samePersonIdx` があれば「同じお名前・同じ生年月日のお申し込みが、もうあります。ご家族が申し込んでいないか、確かめてください。」と「それでも進む」（`confirmSamePerson=true`）。相手の名前は出さない。ボタンの上の文は、合計0円で「出る」がある時「送ると、お申し込みが完了します。お支払いはありません。」、ほかは「送ると『仮受付』になります。このあと、マイページからお支払いいただけます。」。
+- 画面6：中身（メールは大きく）・直すボタン・`privacy_text`・`consent_items`（6つ。設定の文1本を改行で分け、空の行は捨てて1つずつ出す）・チェック2つ（「お支払いのあとはお返しできないことを、確かめました」「ほかの5つを読みました」。2つとも付くまで「送る」を押せない）。「送る」の前に `precheckEntryAction`（電話と人も渡す）：`samePhone` は「ご家族のお申し込みが、すでにあります。マイページをご確認ください。」と「家族ではない」（選ぶと `confirmNotFamily=true`）、`samePersonIdx` があれば「同じお名前・同じ生年月日のお申し込みが、もうあります。ご家族が申し込んでいないか、確かめてください。」と「それでも進む」（`confirmSamePerson=true`）。相手の名前は出さない。ボタンの上の文は、合計0円で「出る」がある時「送ると、お申し込みが完了します。お支払いはありません。」、ほかは「送ると『仮受付』になります。このあと、マイページからお支払いいただけます。」。
 - 「送る」：押したらすぐ押せなくする → `submitEntryAction(draftToSubmission(...), pv)`。`ok:false` の `code` ごと：`busy`・`rate` はその `message` を出して押せる状態にもどす（同じ `submitKey` のまま。二重にならない）／`same_phone`・`same_person` は画面6 の知らせにもどす／`same_email` は画面1 の止めと同じ文／`invalid` は `fieldErrors` をその欄に／`before`・`closed`・`suspended` はその `message`。
 - 画面7：`doneScreen` の文とボタン（行き先は `/bw6/my?t=<token>`）、整理番号（4けた）と今の金額、次にやること①「控えのメールが届いたか、確かめてください。」だけ（②LINE で自分に送る・③Tシャツは段階1では出さない。K221）、「控えが届いていないとき」→ 公式LINE（`line_url`）、`FAMILY_ADD_LINE`。
 - 入力欄は全部 `RECITAL_INPUT_CLS`。
@@ -3443,7 +3491,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes:
-  - 2：`HouseholdView`、`MoneySummary`、`householdViewLabel(v, remaining)`、`payGate`、`payButtonState({ gate, view, m, refundTodo })`、`entryPhase(s, nowMs, extendUntil)`
+  - 2：`HouseholdView`、`MoneySummary`、`householdViewLabel(v, remaining)`、`payGate`、`payButtonState({ gate, view, m, refundTodo })`、`entryPhase(s, nowMs, extendUntil)`、`canFamilyEdit(s, nowMs, extendUntil)`、`deadlineMs`
   - 6：`HouseholdDetail`、`loadHouseholdDetail(householdId)`、`listWorks(eventKey)`、`getRecitalSettings`、`logChangeTx(tx, {...})`
   - 8：（このタスクでは呼ばない。15 が呼ぶ）
   - 10：`sendRecitalMail`（`resendMyPageUrl` の中で）
@@ -3663,16 +3711,16 @@ Expected: PASS（7件）
 - [ ] **Step 11: `src/app/bw6/my/page.tsx` を作る**
 
 頭に公開のわけ（鍵の完全一致の1世帯だけ）。`metadata = { title: 'BW6 マイページ', robots: { index: false, follow: false }, referrer: 'no-referrer' }`。
-1. `const d = await requireHouseholdByToken(t)`。null か `d.household.status === 'merged'` なら「お申し込みが見つかりません」と「URLが正しいかご確認ください。マイページのURLは、こちらからもう一度メールで受け取れます。」＋ `/bw6/resend` へのリンクだけ（merged の時の文は仮。20 が世帯をまとめる形を作った時に見直す）。
+1. `const d = await requireHouseholdByToken(t)`。null なら「お申し込みが見つかりません」と「URLが正しいかご確認ください。マイページのURLは、こちらからもう一度メールで受け取れます。」＋ `/bw6/resend` へのリンクだけ。`d.household.status === 'merged'` なら、まとめ先（`merged_into`）の `ref_code` だけを読み、「ご家族のお申し込みは、整理番号 {まとめ先の ref_code} のマイページに1つにまとめました。新しいマイページのURLは、メールでお送りしています。」と「届いていないときは、こちらからもう一度受け取れます。」＋ `/bw6/resend` へのリンクだけ（まとめ先の鍵・URL・中身は出さない。10 の変更の控えの merged の文に合わせた。計画で決めた文なので 12/8 に TARO が見る。20 はこの出し方を変えない）。
 2. `markMyPageOpened(d.household.id, from === 'mail')`。
-3. `settings = getRecitalSettings(d.household.event_key)`、`works = listWorks(...)`、`phase = entryPhase(settings, nowMs, d.household.extend_until)`、`gate = payGate(settings, nowMs)`、`payState = payButtonState({ gate, view: d.view, m: d.money, refundTodo: d.refundTodo })`、`payDue = d.household.pay_due_override ?? settings.pay_due`、`hasIn`／`hasMaybe` は `d.casts` の `in`／`maybe`（作品が `dropped` の行は数えない）。
+3. `settings = getRecitalSettings(d.household.event_key)`、`works = listWorks(...)`、`phase = entryPhase(settings, nowMs, d.household.extend_until)`、`gate = payGate(settings, nowMs)`、`payState = payButtonState({ gate, view: d.view, m: d.money, refundTodo: d.refundTodo })`、`payDue = d.household.pay_due_override ?? settings.pay_due`、`hasIn`／`hasMaybe` は `d.casts` の `in`／`maybe`（作品が `dropped` の行は数えない）。`afterChangeClose = nowMs > deadlineMs(settings.change_close_at) && !canFamilyEdit(settings, nowMs, d.household.extend_until)`（延長の世帯は延長の日まで false。Task 2 の `canFamilyEdit`。判定をここに書き直さない）。
 4. 上から：`MoneyBox`（`viewLabel = householdViewLabel(d.view, d.money.remaining)`、`lines = myTopLines(...)`、`payText = payAreaText(payState, settings.pay_open_at)`。`payState === 'show'` の時は、21 ができるまで `payText` に「お支払いは、準備中です」を入れる。21 がここを `children` の `<PaySection …/>` に置きかえる）→ つぎにやること（`nextTodos`。`canEditWorks` は 14 では false）→ お申し込みの中身（人ごと・作品ごとに「出る」「迷っている」。`out` は薄く「やめた作品」、作品が `dropped` は「スクールの都合で、なくなりました」。`closedNotice` があれば上に。`phase === 'suspended'` の時は「ただいま受付を止めています。再開までお待ちください」）→ `FAMILY_ADD_LINE` → 載せる名前・インスタ（`InstaEditor`。`phase === 'suspended'` の時は値を見せるだけ）→ `FiveLines` → こまったら（「カードも銀行振込もむずかしいときは、公式LINEでご相談ください。」＋公式LINE のボタン `rel="noreferrer noopener"`）。
 5. クライアント部品へ渡すのは、`token`・人の id と名前とインスタ・作品の名前と状態・金額の数だけ。電話・メール・生年月日・`staff_note`・`mails`・`changes` は渡さない（R-66）。
 6. 「払う」の文の下の「うまく進まないときは、ブラウザで開いてください」は 21 が付ける。
 
 - [ ] **Step 12: `/bw6/resend` を作る**
 
-- actions.ts の頭：「⚠️ 公開Server Action(認証なし)。理由: 公式LINE の『発表会』ボタンからURLを送り直すため。答えはいつも同じ文（申込があるかは出さない）。IP とメールの両方で回数を数える。」 `resendUrlAction(eventKey, pv, email)`：`checkPublicEventKey` が false なら答えの文だけ返す → `checkRateLimit('bw6:resend:'+ip, ...RECITAL_RATE.resendIp)` と `checkRateLimit('bw6:resend-to:'+<メールの sha256 先頭16けた>, ...RECITAL_RATE.resendEmail)`（13 と同じキー）のどちらかが false なら `{ message: RECITAL_MSG.rate }` → `resendMyPageUrl(eventKey, { email })`（送った数は見ない）→ `{ message: 'お申し込みがあれば、マイページのURLを送りました' }`。メールの形が合わない時も同じ文（形で申込の有無が分からないように）。
+- actions.ts の頭：「⚠️ 公開Server Action(認証なし)。理由: 公式LINE の『発表会』ボタンからURLを送り直すため。答えはいつも同じ文（申込があるかは出さない）。IP とメールの両方で回数を数える。」 `resendUrlAction(eventKey, pv, email)`：`checkPublicEventKey` が false なら答えの文だけ返す → `checkRateLimit('bw6:resend:'+ip, ...RECITAL_RATE.resendIp)` と `checkRateLimit('bw6:resend-to:'+<`normalizeEmail` でそろえたメールの sha256 先頭16けた>, ...RECITAL_RATE.resendEmail)`（13 と同じキー）のどちらかが false なら `{ message: RECITAL_MSG.rate }` → `resendMyPageUrl(eventKey, { email })`（送った数は見ない）→ `{ message: 'お申し込みがあれば、マイページのURLを送りました' }`。メールの形が合わない時も同じ文（形で申込の有無が分からないように）。
 - page.tsx：`getRecitalPublicContext`。見出し「マイページのURLを送ります」、メール欄（`RECITAL_INPUT_CLS`）とボタン（`ResendForm.tsx`、`'use client'`。押したら答えの文を出し、ボタンは押せなくする）。「控えが届かないときは、公式LINEでお知らせください。」＋公式LINE。
 
 - [ ] **Step 13: 画面を目で確かめる（M5）**
@@ -3704,9 +3752,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Create: `src/app/bw6/my/WorkEditor.tsx`
 - Modify: `src/app/bw6/my/actions.ts`（2つ足す）、`src/app/bw6/my/page.tsx`（`WorkEditor` を置く1か所と `canEditWorks`）
 - Modify: `src/lib/recitalMail.ts`（`mypageItems` の1行だけ）
-- Test: `src/lib/__tests__/recitalWorkEdit.test.ts`、`src/lib/__tests__/recitalWorkEditDb.test.ts`
+- Test: `src/lib/__tests__/recitalWorkEdit.test.ts`、`src/lib/__tests__/recitalWorkEditDb.test.ts`、`src/lib/__tests__/recitalMail.test.ts`（1つ足す）
 
-切れる形：このタスクの変更は上のファイルだけ。出さないと決めたら、このタスクのコミットを入れない（14 のマイページは「見る・インスタ」のまま動く）。控えのメールの「（　）の中」（K221）は、このタスクが直す：`recitalMail.ts` の `mypageItems` を「お支払い、インスタ」から「お支払い、インスタ、作品を足す・やめる」に変える（このコミットに入れる。入れないと決めたら、メールも元のまま）。`recitalMail.test.ts` に「控えの本文に『作品を足す・やめる』がある」を1つ足す。
+切れる形：このタスクの変更は上のファイルだけ。**21・23 のコミットの後に作る**（「タスクの並び」）。出さないと決めたら、このタスクのコミットを `git revert` で抜く（14 のマイページは「見る・インスタ」のまま動く）。控えのメールの「（　）の中」（K221）は、このタスクが直す：`recitalMail.ts` の `mypageItems` を「お支払い、インスタ」から「お支払い、インスタ、作品を足す・やめる」に変える（このコミットに入れる。入れないと決めたら、メールも元のまま）。`recitalMail.test.ts` に「控えの本文に『作品を足す・やめる』がある」を1つ足す。
 
 **Interfaces:**
 - Consumes:
@@ -3812,8 +3860,8 @@ Expected: FAIL（`Cannot find module '../recitalWorkEdit'`）
 
 - [ ] **Step 3: `src/lib/recitalWorkEdit.ts` を作る**
 
-- `workEditOptions`：その人の出演だけを渡される。作品が `dropped` の行は全部 false。`canToIn = status==='maybe'`。`canOut`：`in`・`maybe` で、`paid > 0 && status==='in' && その人の in の数===1` の時だけ false で `lineOnly=true`。`lastBeforePay = paid===0 && in＋maybe の数===1`。`addable`＝`selectable` の作品のうち、その人が `in`・`maybe` でない物（`out` は入る）。`in＋maybe ≥ maxWorks` なら空。足すのは「出る」だけ（ボタンは「作品を足す」「出るに変える」「この作品をやめる」の3つ。4-2）。
-- `editConfirmText`：品目ごとに1行（`add`＝「『X』を足します。」、`to_in`＝払う前「『X』に出ます。」／払ったあと「『X』を足します。」、`out`＝「『X』をやめます。」、`last_out`＝「（名前）さんの出演を取りやめます。Tシャツも取り消します。」）。そのあと、払う前は「金額が A から B に変わります。」（変わらなければ出さない）。払ったあとは、`remainingAfter − remainingBefore > 0` なら「作品を足すと、追加で ◯円 のお支払いが出ます。」、足す品目があって0なら「お支払いずみの分が当たるので、追加のお支払いはありません。」（この1文はこちらで決めた仮の文。12/8 に TARO が見る）、`wasIn` の `out` があれば最後に「お支払いずみの分は、お返しできません。よろしいですか？」。`confirmLabel` は品目が `out` 1つで払ったあとなら「この作品をやめる」、ほかは「決定する」。
+- `workEditOptions`：その人の出演だけを渡される。作品が `dropped` の行は全部 false で、`in＋maybe` の数にも入れない（取りやめの作品は数えない）。`canToIn = status==='maybe'`。`canOut`：`in`・`maybe` で、`paid > 0 && status==='in' && その人の in の数===1` の時だけ false で `lineOnly=true`。`lastBeforePay = paid===0 && in＋maybe の数===1`。`addable`＝`selectable` の作品のうち、その人が `in`・`maybe` でない物（`out` は入る）。`in＋maybe ≥ maxWorks` なら空。足すのは「出る」だけ（ボタンは「作品を足す」「出るに変える」「この作品をやめる」の3つ。4-2）。
+- `editConfirmText`：品目ごとに1行（`add`＝「『X』を足します。」、`to_in`＝払う前「『X』に出ます。」／払ったあと「『X』を足します。」、`out`＝「『X』をやめます。」、`last_out`＝「（名前）さんの出演を取りやめます。Tシャツも取り消します。」）。そのあと、払う前は「金額が A から B に変わります。」（変わらなければ出さない）。払ったあとは、`remainingAfter − remainingBefore > 0` なら「作品を足すと、追加で ◯円 のお支払いが出ます。」、足す品目があって0で、しかも `totalAfter > totalBefore` なら「お支払いずみの分が当たるので、追加のお支払いはありません。」（場面C の 26,500→32,500 では出て、合計が変わらない入れ替えでは出ない。この1文はこちらで決めた仮の文。12/8 に TARO が見る時に、入れ替えで出ないことも一緒に見てもらう）、`wasIn` の `out` があれば最後に「お支払いずみの分は、お返しできません。よろしいですか？」。`confirmLabel` は品目が `out` 1つで払ったあとなら「この作品をやめる」、ほかは「決定する」。
 
 - [ ] **Step 4: 通るのを確かめる**
 
@@ -3916,8 +3964,8 @@ Expected: FAIL（`fam.previewHouseholdEdits is not a function`）
 
 - [ ] **Step 7: `recitalFamilyDb.ts` に2つを足す**
 
-- `previewHouseholdEdits(householdId, edits, now)`：8 の `applyHouseholdEdits(householdId, edits.map((e) => ({ type: 'cast_set', ...e })), { actor: 'family', by: 'family', now, dryRun: true })` を呼んで返すだけ（確かめも計算も 8 と同じ関数。写さない）。
-- `applyFamilyWorkEdits(token, edits, now)`：`requireHouseholdByToken`（null なら `not_found`）→ 人がその世帯にいるか・足す作品が `entry_mode='form'` かつ `status='open'` か（ちがえば `invalid`）→ `applyHouseholdEdits(householdId, edits.map((e) => ({ type: 'cast_set', ...e })), { actor: 'family', by: 'family', now })` → 結果を返すだけ。変更の控えのメールと `afterMoneyChanged` は 8 の `applyHouseholdEdits` が中でする（8 の Interfaces の約束）ので、ここでは送らない・呼ばない。
+- `previewHouseholdEdits(householdId, edits, now)`：8 の `applyHouseholdEdits(householdId, edits.map((e) => ({ type: 'cast_set' as const, ...e })), { actor: 'family', by: 'family', now, dryRun: true })` を呼んで返すだけ（確かめも計算も 8 と同じ関数。写さない）。
+- `applyFamilyWorkEdits(token, edits, now)`：`requireHouseholdByToken`（null なら `not_found`）→ `applyHouseholdEdits(householdId, edits.map((e) => ({ type: 'cast_set' as const, ...e })), { actor: 'family', by: 'family', now })` → 結果を返すだけ。人がその世帯にいるか・足す作品が `entry_mode='form'` かつ `status='open'` か・変えてよい時か（`canFamilyEdit`）は、8 の `applyHouseholdEdits` が確かめる（家庭・スタッフ・`dryRun` の全部が同じ道を通る。ここで重ねて書かない）。変更の控えのメールと `afterMoneyChanged` は 8 の `applyHouseholdEdits` が中でする（8 の Interfaces の約束）ので、ここでは送らない・呼ばない。
 
 - [ ] **Step 8: 通るのを確かめる**
 
@@ -3928,7 +3976,12 @@ Expected: PASS（9件）
 
 - actions.ts に足す：`previewWorkEditsAction(token, edits)`（`requireHouseholdByToken` → `previewHouseholdEdits`）と `saveWorkEditsAction(token, edits)`（`applyFamilyWorkEdits`）。`edits` は `status` が `'in'`・`'out'` の物だけ通す（ほかの形は `invalid`）。
 - `WorkEditor`（`'use client'`）：props は `token`・人ごとの `{ personId, name, rows: EditRow[], addable: { id, title }[] }`・`paid`・`total`・`remaining` だけ。順は「えらぶ → 金額を見る → 決定」（4-2）。各行に「出るに変える」「この作品をやめる」、`lineOnly` の行は「出演を全部やめるときは、公式LINEでお知らせください。」、人ごとに「作品を足す」（`addable` から選ぶ select、`RECITAL_INPUT_CLS`）。選んだ変更はためておき、「金額を見る」で `previewWorkEditsAction` → `editConfirmText` の文とボタン（`confirmLabel`）→ 押したら `saveWorkEditsAction`（押したらすぐ押せなくする）。`ok:false` は `message` を出す。決定のあとは `router.refresh()`。準備中の作品は「準備中（決まったら、マイページから足せます）」と見せて選べない。
-- page.tsx：「お申し込みの中身」の欄に `WorkEditor` を置く。出すのは `entryPhase(settings, nowMs, extend_until) === 'open'` の時だけ（`change_close_at` を過ぎたら・止めている間は出さない）。「出演なし」の世帯も、この時は「作品を足す」を出す。`nextTodos` の `canEditWorks` を、`WorkEditor` を出す時は true にする。
+- page.tsx：「お申し込みの中身」の欄に `WorkEditor` を置く。出すのは Task 2 の `canFamilyEdit(settings, nowMs, extend_until)` が true の時だけ（8 が通す条件と同じ。`change_close_at` を過ぎたら・止めている間は出さない。延長の世帯は延長の日まで出す）。「出演なし」の世帯も、この時は「作品を足す」を出す。`nextTodos` の `canEditWorks` を、`WorkEditor` を出す時は true にする。
+
+- [ ] **Step 9b: 控えのメールの「（　）の中」を直す（K221）**
+
+`src/lib/recitalMail.ts` の `mypageItems` を「お支払い、インスタ」から「お支払い、インスタ、作品を足す・やめる」に変える（この1行だけ）。`src/lib/__tests__/recitalMail.test.ts` に「控えの本文に『作品を足す・やめる』がある」を1つ足す（`sendRecitalMail({ kind: 'receipt', … })` の `sendEmailNoBcc` の本文で見る）。
+Run: `npx vitest run src/lib/__tests__/recitalMail.test.ts` → PASS
 
 - [ ] **Step 10: 画面を目で確かめる（M5）**
 
@@ -3939,7 +3992,8 @@ Expected: PASS（9件）
 ```bash
 git add src/lib/recitalWorkEdit.ts src/lib/recitalFamilyDb.ts \
   src/lib/__tests__/recitalWorkEdit.test.ts src/lib/__tests__/recitalWorkEditDb.test.ts \
-  src/app/bw6/my/WorkEditor.tsx src/app/bw6/my/actions.ts src/app/bw6/my/page.tsx
+  src/app/bw6/my/WorkEditor.tsx src/app/bw6/my/actions.ts src/app/bw6/my/page.tsx \
+  src/lib/recitalMail.ts src/lib/__tests__/recitalMail.test.ts
 git commit -m "feat(bw6): マイページの作品を足す・やめる
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -3954,7 +4008,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 3. 画面3 の合計は、選ぶたびにサーバの `quoteEntry` で出す（事前登録の人も画面3 から正しい額。連打よけは付けない＝R-33）。
 4. フォームから送る人の `category` はいつも `student`（フォームでは会員かを聞かない）。
 5. マイページで足すのは「出る」だけ（「まだ迷っている」で足すボタンは作らない。4-2 のボタン3つに合わせた）。
-6. まとめられた世帯（`status='merged'`）の古い鍵は「見つかりません」と出す（20 が世帯をまとめる時に見直す）。
+6. まとめられた世帯（`status='merged'`）の古い鍵は、まとめ先の整理番号つきの文と URL の送り直しへのリンクだけを出す（14 の Step 11。12/8 に TARO が文を見る）。
 7. 「払った金額・払い方・日」は、プラスの入金のいちばん新しい1行の払い方と日、金額は「お支払いずみ」の合計で出す（取り消しのマイナスの行を家庭に見せない）。
 
 ---
@@ -4029,7 +4083,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `src/lib/recitalGuard.ts`：`requireRecitalStaff(): Promise<void>`（だめなら `throw new Error('Unauthorized')`）／`isTokenShape(t: unknown): t is string`（`/^[0-9a-f]{48}$/`）／`requireHouseholdByToken(t: string | null | undefined): Promise<HouseholdDetail | null>`
   - `src/lib/recital.ts`：`pickStaffEventKey(v: string | null | undefined): string`／`bankToldWaitDue(toldAtUtc: string, nowMs: number, restFrom: string, restTo: string): boolean`
   - `src/lib/recitalMatch.ts`：`memberWarn(m: MemberLite): 'leave' | 'withdrawn' | null`
-  - `src/lib/recitalDb.ts`：`countRecitalPeople(eventKey: string, now?: Date): Promise<PeopleCounts>`／`type AttentionItem = { no: 1 | 2 | 3 | 4 | 5 | 8; label: string; href: string; householdId?: number; personId?: number }`／`listAttention(eventKey: string, now?: Date): Promise<AttentionItem[]>`／`dismissAttention(eventKey: string, item: { no: 1 | 3; householdId?: number; personId?: number }, staffName: string): Promise<void>`／`searchHouseholds(eventKey: string, q: string): Promise<HouseholdRow[]>`
+  - `src/lib/recitalDb.ts`：`countRecitalPeople(eventKey: string, now?: Date): Promise<PeopleCounts>`／`type AttentionItem = { no: 1 | 2 | 3 | 4 | 5 | 8; label: string; href: string; householdId?: number; personId?: number }`／`listAttention(eventKey: string, now?: Date): Promise<AttentionItem[]>`／`dismissAttention(eventKey: string, item: { no: 1 | 3; householdId?: number; personId?: number }, staffName: string): Promise<void>`／`type HouseholdHit = { id: number; ref_code: string; contact_name: string; status: string; seq: number }`（足した名前。`contact_name`＝連絡する人の姓＋' '＋名）／`searchHouseholds(eventKey: string, q: string): Promise<HouseholdHit[]>`（③の `HouseholdRow[]` から絞った。鍵 `edit_token`・メール・電話を返さない。20 の `MergePanel`・29 の探す欄はどちらも client の部品で使うので、19 の「鍵を初めの HTML に入れない」に合わせる）
   - `src/components/recital/StaffNamePicker.tsx`：`default function StaffNamePicker(props: { value: string; onChange: (name: string) => void }): JSX.Element`
   - `src/lib/__tests__/recitalStaffSeed.ts`（17〜20 の試験も使う）：
     ```ts
@@ -4137,6 +4191,8 @@ Expected: PASS
 - `charges` は1つの数ごとに `item_code='base'`・`ref=''`・`person_id`＝1人目の id・`status='active'` の行（数える試験のためだけ）。`recompute: true` の時は `charges` を使わず、人と出演を入れたあと `withWriteTx((tx) => recomputeChargesTx(tx, id, 'test'))`（8）で作る。
 - `payments` は1つの数ごとに `method='cash'`・`source='manual'`・`paid_on='2026-12-20'`。`refundsTodo` は `recital_refunds` に `status='todo'`・`reason_no=1`。
 - `seedWork` の `status` の初めの値は `open`、`fee_type` は `counted`。
+- `seedHousehold` の初めの値：人の `category`='student'・`match_status`='none'（`matchStatus` を渡した時だけ変える）・`fee_class_override`=null、世帯の `phone` は `'0900000' + seq を4けた`（`phone` で上書き）、連絡する人の姓は `'試験' + seq`・カナは `'シケン' + 'アイウエオカキクケコ'[seq % 10]`（`contactLast`・`contactLastKana` で上書き）、`email` は `'s' + seq + '@example.com'`。電話と姓を世帯ごとに変えるのは、1番「同じ電話」「同じ家族」の試験が、渡した物でだけ当たるようにするため。
+- `seedMember`：`boom_members` の NOT NULL の列を全部うめる（`hacomono_member_id` は NOT NULL UNIQUE＝`'seed-' + 連番`。`schema.ts:270〜282`）。`status` の初めの値は `'active'`。
 - 6 の `recitalTestSeed.ts` の `seedHousehold` とは引数の形がちがうので、`recitalStaffSeed.ts` は別に作る（6 のファイルは変えない）。どの試験がどれを使うか：6〜11・21〜24・27〜28 の DB の試験は `recitalTestSeed.ts`、13〜15 は `recitalFamilySeed.ts`、16〜20 は `recitalStaffSeed.ts`。1つの試験ファイルで2つの `seedHousehold` を混ぜない（使う時は `import * as staffSeed` のように名前を分ける）。
 
 - [ ] **Step 10: DB の試験を書く（落ちる）**
@@ -4206,7 +4262,7 @@ describe('listAttention', () => {
     expect((await db.listAttention(ev, now)).filter((i) => i.no === 4)).toHaveLength(2);
     expect((await db.listAttention(ev, new Date('2027-02-07T12:00:00+09:00'))).filter((i) => i.no === 4)).toHaveLength(1);
   });
-  it('5番：返す分 todo 6,000 → 「6,000円」の1件。残りもある世帯は「返す分を、足した作品に当てるか、決めてください」も出る', async () => { /* refundsTodo: [6000] */ });
+  it('5番：返す分 todo 6,000 → 「6,000円」の1件。残りもある世帯は「返す分を、足した作品に当てるか、決めてください」も出る', async () => { /* 世帯1：charges [26500]・payments [32500]・refundsTodo [6000]（払った額 26,500・残り0）→ no=5 は1件／世帯2：charges [32500]・payments [32500]・refundsTodo [6000]（払った額 26,500・残り 6,000）→ no=5 は2件（返金の待ち＋当てるか決めて） */ });
   it('8番：いちばん新しいメールが failed → 出る／その後 sent → 出ない', async () => { /* recital_mail_log に2行 */ });
   it('名前を選んでいない「問題なし」は拒む', async () => {
     await expect(db.dismissAttention('t-home-a1', { no: 1, householdId: 1 }, '')).rejects.toThrow('staff_name');
@@ -4252,12 +4308,12 @@ Expected: FAIL（`db.countRecitalPeople is not a function`）
   | 1 | 別の `active` の世帯どうしで、(a) 人の `normalizeKana(last_kana+first_kana)` と `birthday` が同じ（同じ人かも）、(b) 電話（`normalizePhone` の形）が同じ、(c) 連絡する人の `contact_last_name` が同じで `normalizeKana(contact_last_kana)` も同じ（同じ家族かも）。1組の世帯につき1件、後の世帯（`seq` が大きい方）に付ける。(a) があれば (a) を出す。`personId` は (a) のときだけ後の人 | (a)「同じ人が2回申し込んでいるかもしれません（<前の整理番号>・<後の整理番号>）」／(b)(c)「同じご家族が2回申し込んでいるかもしれません（…・…）」 |
   | 2 | `match_status` が `pending` か `unmatched` の人。または `auto` で `member_id` の会員が `memberWarn` ≠ null の人（スタッフが決めた `manual` になれば消える） | 「会員との照合の確認待ち：<整理番号> <姓><名>」／「会員と合わない申込：…」／「休会中の会員と合いました：…」／「退会した会員と合いました：…」 |
   | 3 | `fee_class_override` が空の人で、`matchFeePreset(人, 発表会の事前登録, 登録された会員だけの MemberLite)` が `{ suspect: true }` | 「特別な料金の対象かもしれません：<整理番号> <姓><名>」 |
-  | 4 | `payGate(s, now) === 'open'` の時だけ。(a) `recital_bank_rows` の `dir='in' AND kind='transfer'` で、`state IN ('new','hold')` か、`state='matched'` で、その行の `bank_transaction_id` を持つ入金の合計が行の金額より少ない行、1行1件（28 の `listReviewRows` と同じ条件にする）。(b) `active` で残りがあり、`bank_told_at` があり、`bankToldWaitDue(bank_told_at, now, s.bank_rest_from, s.bank_rest_to)` の世帯、1世帯1件 | (a)「見てほしい入金：<row_date>」／(b)「『振り込みました』のまま3日：<整理番号>」 |
+  | 4 | `payGate(s, now.getTime()) === 'open'` の時だけ（`payGate`・`bankToldWaitDue` はミリ秒を受ける。`Date` を渡さない）。(a) `recital_bank_rows` の `dir='in' AND kind='transfer'` で、`state IN ('new','hold')` か、`state='matched'` で、その行の `bank_transaction_id` を持つ入金の合計が行の金額より少ない行、1行1件。(b) `active` で残りがあり、`bank_told_at` があり、`bankToldWaitDue(bank_told_at, now.getTime(), s.bank_rest_from, s.bank_rest_to)` の世帯、1世帯1件。**(a)(b) は 28・29 ができるまでの仮の SQL**。28 が (a) を `listReviewRows(eventKey)` の `group !== 'closed'` の行に、29 が (b) を `listToldWaiting(eventKey, now)` に置きかえる（条件を2か所に持たない。28・29 の Step にある） | (a)「見てほしい入金：<row_date>」／(b)「『振り込みました』のまま3日：<整理番号>」 |
   | 5 | `recital_refunds` の `todo` 1行1件。加えて、todo があり残りもある世帯に1件 | 「返金の待ち：<整理番号> <金額>円」（`waiting_reply=1` なら後ろに「（返事待ち）」）／「返す分を、足した作品に当てるか、決めてください：<整理番号>」 |
   | 8 | その世帯の `recital_mail_log` のうち `status IN ('sent','failed')` のいちばん新しい行が `failed` | 「届かなかったメール：<整理番号>」 |
   1番と3番は、`recital_changes` に `action='attention_dismissed'` で `after_json` の `{no, householdId, personId}`（`personId` が無ければ `null`）が同じ行があれば出さない。
 - `dismissAttention`：名前を確かめ、`withWriteTx` の中で `logChangeTx(tx, { eventKey, householdId, personId, action: 'attention_dismissed', after: { no, householdId: householdId ?? null, personId: personId ?? null }, actor: staffName })`。after には番号だけを入れる（名前・カナを入れない）。
-- `searchHouseholds`：`q` を `normalize('NFKC')` して前後の空白をとって、空なら `[]`（LINE で聞いた「２７１４」を全角で打っても当たる）。4けたの数字なら `ref_code` が同じ世帯。それ以外は、連絡する人の姓名（そのまま部分一致）と、連絡する人・世帯の人のカナ（`normalizeKana` してから部分一致）。`merged` の世帯も出す（整理番号は両方残るため）。新しい順に20件まで。
+- `searchHouseholds`：`q` を `normalize('NFKC')` して前後の空白をとって、空なら `[]`（LINE で聞いた「４８２３」を全角で打っても当たる）。4けたの数字なら `ref_code` が同じ世帯。それ以外は、連絡する人の姓名（そのまま部分一致）と、連絡する人・世帯の人のカナ（`normalizeKana` してから部分一致）。`merged` の世帯も出す（整理番号は両方残るため）。新しい順に20件まで。
 
 - [ ] **Step 14: 回して通るのを見る**
 
@@ -4321,7 +4377,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `src/lib/recitalDb.ts`：`listWorkPickOptions(): Promise<{ classes: { id: number; label: string }[]; instructors: { id: number; name: string }[] }>`
   - `src/lib/recitalEntryDb.ts`：`dropWork(workId: number, confirmCount: number, staffName: string): Promise<{ ok: true; households: number } | { ok: false; code: 'not_found' | 'count_changed' | 'paid_household'; count: number; households?: number }>`
 
-**WorkInput について**：この画面が `saveWork` に渡すのは、03 3-4 の「第1」の列（`kind`・`title`・`class_label`・`slot_label`・`target_label`・`genre`・`entry_mode`・`fee_type`・`extra_fee`・`capacity`・`status`・`public_note`・`staff_note`・`sort_order`）と、`classes: { lesson_master_id: number | null; label: string }[]`・`instructors: { instructor_id: number | null; display_name: string; role: 'choreo' | 'perform' | 'assist'; sort_order: number }[]`（6 の `WorkInput` が正本。snake_case のまま。`sort_order` は画面の行の順に 1 から）。W番号は `saveWork` が登録順に付け、この画面からは変えない。
+**WorkInput について**：この画面が `saveWork` に渡すのは、03 3-4 の「第1」の列（`kind`・`title`・`class_label`・`slot_label`・`target_label`・`genre`・`entry_mode`・`fee_type`・`extra_fee`・`capacity`・`status`・`public_note`・`staff_note`・`sort_order`・`merged_into`〔新しい作品では null、直す時は今の値のまま。6 の `WorkInput` で必須〕）と、`classes: { lesson_master_id: number | null; label: string }[]`・`instructors: { instructor_id: number | null; display_name: string; role: 'choreo' | 'perform' | 'assist'; sort_order: number }[]`（6 の `WorkInput` が正本。snake_case のまま。`sort_order` は画面の行の順に 1 から）。W番号は `saveWork` が登録順に付け、この画面からは変えない。
 
 - [ ] **Step 1: 試験を書く（落ちる）**
 
@@ -4389,7 +4445,7 @@ Expected: PASS
 `labels.ts` に足す言葉：kind（class→クラス作品／instructor→イントラナンバー／guest→ゲスト／club→ダンス部／special→スペシャル／ending→エンディング／external→外部振付）、entry_mode（form→フォームで受ける／staff→スタッフが入れる／none→受けない）、fee_type（counted→作品の数に数える／not_counted→数えない（お金なし）／extra→別料金／separate→別建て（MOCCHIN））、status（draft→準備中／open→受付中／fixed→確定／dropped→取りやめ）、role（choreo→振付／perform→出演もする／assist→補助）。
 `actions.ts`：
 - `saveWorkAction(ev: string, w: WorkInput & { id?: number }, staffName: string): Promise<{ ok: true; workCode: string } | { ok: false; error: string }>`：`requireRecitalStaff`→名前→`listWorkCounts` でその作品の `in + maybe` が1以上なのに `fee_type` か `extra_fee` を変えようとしていたら「申込がある作品の料金の扱いは、変えられません」で拒む（請求が作り直されないため）。`status: 'dropped'` が来たら拒む（取りやめは `dropWorkAction` だけ）→`saveWork`→`revalidatePath`。
-- `dropWorkAction(workId: number, confirmCount: number, staffName: string)`：2段階ボタンの1回目で「この作品に申込が N人あります。取りやめますか」（N は今の `in + maybe`）を見せ、2回目で `dropWork(workId, N, staffName)`。`paid_household` は「お支払いずみの世帯が N世帯あります。今は取りやめられません。TARO に知らせてください」、`count_changed` は「人数が変わりました。画面を開き直してください」。
+- `dropWorkAction(workId: number, confirmCount: number, staffName: string)`：2段階ボタンの1回目で「この作品に申込が N人あります。取りやめますか」（N は今の `in + maybe`）を見せ、2回目で `dropWork(workId, N, staffName)`（N は**1回目に画面に出した数**を client から渡す。サーバで数え直した数を渡すと `count_changed` が出なくなる）。`paid_household` は「お支払いずみの世帯が N世帯あります。今は取りやめられません。TARO に知らせてください」、`count_changed` は「人数が変わりました。画面を開き直してください」。
 
 - [ ] **Step 6: 印刷用 `/staff/bw6/works/print` を作る**
 
@@ -4494,8 +4550,8 @@ Expected: FAIL（`db.saveFeeRule is not a function`）
 
 - [ ] **Step 3: `src/lib/recitalDb.ts` に5つを作る**
 
-- `saveFeeRule`：名前を確かめる→「`suspended`=0、または `recital_changes` にその発表会の `entry_opened` の行が1つでもある、または `is_test=0` の世帯が1つでもある」なら `opened`（03 3-4・決まり3：受付を開けたら料金の設定は変えない。止め直しても戻らない）→`payer_role`・`item_code` が `FeeRule` の値か、`nth_from ≥ 1`、`nth_to` は空か `≥ nth_from`、`unit_amount ≥ 0`、`qty ≥ 1` でなければ `invalid`→`id` があれば UPDATE、無ければ INSERT。
-- `listFeePresets`：`recital_fee_presets` を `boom_members` と左結合し、会員を `loadMembersLite` と同じ詰め方で `MemberLite` にする（会員の名前・カナ・生年月日はこの表に写さない。3-9）。
+- `saveFeeRule`：名前を確かめる→「`suspended`=0、または `recital_changes` にその発表会の `entry_opened` の行が1つでもある、または その発表会が `is_test=0` で、世帯が1つでもある」なら `opened`（世帯の表に `is_test` の列は無い。発表会の `is_test` を見る）（03 3-4・決まり3：受付を開けたら料金の設定は変えない。止め直しても戻らない）→`payer_role`・`item_code` が `FeeRule` の値か、`nth_from ≥ 1`、`nth_to` は空か `≥ nth_from`、`unit_amount ≥ 0`、`qty ≥ 1` でなければ `invalid`→`id` があれば UPDATE、無ければ INSERT。
+- `listFeePresets`：`recital_fee_presets` をその発表会で読み、6 の `loadMembersLite()` を1回呼んで `member_id` で引き当てて `MemberLite` を付ける（`boom_members` を自分で結合して詰めない。6 の決まり「詰めるのは全部 `loadMembersLite`」。会員の名前・カナ・生年月日はこの表に写さない。3-9）。引き当たらない会員は `member: null`。
 - `saveFeePreset`：名前→会員が無ければ `no_member`→`(event_key, member_id)` が同じ行があれば `fee_class`・`memo` を直し、無ければ INSERT（`created_by`＝名前）。
 - `deleteFeePreset`：名前→その発表会の行だけ消す。もう申し込んだ人の印は変わらない（K226。消しても、足しても）。
 - `searchMembers`：空白をとって空なら `[]`。`loadMembersLite()` の結果を `normalizeKana(full_name_kana)` が `normalizeKana(q)` を含む、または `full_name`（空白をとった物）が `q`（空白をとった物）を含む、で20件まで。カナの比べ方は JS 側で行う（会員は約220件）。
@@ -4556,13 +4612,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Test: `src/lib/__tests__/recitalLineReplies.test.ts`・`src/lib/__tests__/recitalEntriesStaff.test.ts`
 
 **Interfaces:**
-- Consumes（2）: `householdViewLabel(v, remaining)`・`moneySummary`・`householdView`・`HouseholdView`・`RECITAL_STAFF_NAMES`・`jstToMs`・`recitalMyUrl(token)`
-- Consumes（6）: `loadHouseholdDetail(householdId)`・`getRecitalSettings`・`HouseholdDetail`
+- Consumes（2）: `householdViewLabel(v, remaining)`・`moneySummary`・`householdView`・`HouseholdView`・`RECITAL_STAFF_NAMES`・`jstToMs`・`recitalMyUrl(token)`・`RECITAL_PUBLIC_ORIGIN`・`schoolGrade`
+- Consumes（6）: `loadHouseholdDetail(householdId)`・`getRecitalSettings`・`getRecitalEvent`・`listWorks`・`HouseholdDetail`
 - Consumes（8）: `applyHouseholdEdits(householdId, edits: HouseholdEdit[], ctx: EditCtx)`（中で変更の控えを送り `afterMoneyChanged` を呼ぶ）・`changeHouseholdEmail(householdId, email, staffName): Promise<{ token: string }>`（中で新しいアドレスへ `resend_url` を送る）・`HouseholdEdit`
-- Consumes（9）: `recordManualPayment(householdId, { method: 'cash' | 'adjust'; amount; paidOn; memo }, staffName): Promise<{ paymentId; after }>`・`cancelRefund(refundId, reason, staffName)`（どちらも中で `afterMoneyChanged` を呼ぶ。このタスクは呼ばない）
+- Consumes（9）: `recordManualPayment(householdId, { method: 'cash' | 'adjust'; amount; paidOn; memo }, staffName): Promise<{ paymentId; after }>`・`maybeDoubleRecord(payments)`・`cancelRefund(refundId, reason, staffName)`（どちらも中で `afterMoneyChanged` を呼ぶ。このタスクは呼ばない）
 - Consumes（10）: `sendRecitalMail({ kind, householdId, dedupeKey?, via? })`・`sendPaidMail(householdId, paymentId, via, opts?)`・`countRecitalMailsToday(now?)`
 - Consumes（16）: `requireRecitalStaff`・`pickStaffEventKey`・`StaffNamePicker`・`recitalStaffSeed.ts`
-- Consumes（既存）: `weekdayJst`・`todayJst`（`src/lib/dateJst.ts`）
+- Consumes（既存）: `weekdayJst`・`todayJst`・`isIsoDate`（`src/lib/dateJst.ts`）
 - Produces:
   - `src/lib/recitalDb.ts`：
     ```ts
@@ -4608,8 +4664,8 @@ Expected: FAIL（`Cannot find module '../recitalLineReplies'`）
 
 - [ ] **Step 3: `src/lib/recitalLineReplies.ts` を作る**
 
-`RECITAL_LINE_REPLIES` の `title` と `text` は、設計書 `ch/ap.md` の「D. 公式LINEの返事のひな形」の表の「家庭の言葉（題）」と「返す文（案）」を、**一字一句**写す（`text` は外側のかぎかっこ「」を除く）。置きかえは2つだけ：文の中の「2月10日（水）」→ `{期限}`、「（送り直しのページのURL）」→ `{送り直しURL}`。`key` は `'1'`〜`'10'` と `'tsunagi'`。
-`fillLineReply`：`{整理番号}`→`refCode`、`{残り}`→`remaining.toLocaleString('ja-JP') + '円'`、`{期限}`→`payDue` から「M月D日（曜）」（曜は `weekdayJst(payDue)` から。文に曜日を直書きしない）、`{送り直しURL}`→`resendUrl`。2番の「（◯月◯日）」はスタッフが入れる所なので、そのまま残す。文は案で、受付の前に TARO が直す（直すのはこのファイル）。
+`RECITAL_LINE_REPLIES` の `title` と `text` は、設計書 `.superpowers/sdd/2026-11-12-bw6-recital-stage1/ref/design-v5.md` の付録「D. 公式LINEの返事のひな形（10個と、つなぎの1つ）」（6381行あたり）の表の「家庭の言葉（題）」と「返す文（案）」を、**一字一句**写す（`text` は外側のかぎかっこ「」を除く）。置きかえは2つだけ：文の中の「2月10日（水）」→ `{期限}`、「（送り直しのページのURL）」→ `{送り直しURL}`。`key` は `'1'`〜`'10'` と `'tsunagi'`。
+`fillLineReply`：`{整理番号}`→`refCode`、`{残り}`→`remaining.toLocaleString('ja-JP') + '円'`、`{期限}`→`payDue` から「M月D日（曜）」（曜は `'日月火水木金土'[weekdayJst(payDue)]`。`weekdayJst` は 0〜6 の数を返す。文に曜日を直書きしない）、`{送り直しURL}`→`resendUrl`。2番の「（◯月◯日）」はスタッフが入れる所なので、そのまま残す。文は案で、受付の前に TARO が直す（直すのはこのファイル）。
 
 - [ ] **Step 4: 回して通るのを見る**
 
@@ -4676,7 +4732,7 @@ Expected: PASS
 - [ ] **Step 10: 世帯の画面 `/staff/bw6/entries/[id]` を作る**
 
 `loadHouseholdDetail(id)`。無ければ `notFound()`。発表会の設定は世帯の `event_key` で読む（`?ev=` は使わない）。上から（04 4-4）：
-1. 整理番号（大きく）・合計・払った額・残り（大きく）・状態（`householdViewLabel`）・「お支払いずみの分 N円」（`overpaid > 0` の時）・`merged` なら「まとめた（まとめ先：<整理番号>へのリンク）」。入金の行に `source='manual'` で `memo` が「移した」でないプラスの行と、`source` が `stripe_webhook` か `stripe_recheck` の行が両方あれば「二重の記録かもしれません」（9 の手順6と同じ条件）。
+1. 整理番号（大きく）・合計・払った額・残り（大きく）・状態（`householdViewLabel`）・「お支払いずみの分 N円」（`overpaid > 0` の時）・`merged` なら「まとめた（まとめ先：<整理番号>へのリンク）」。Task 9 の `maybeDoubleRecord(d.payments)` が true なら「二重の記録かもしれません」（9 の手順6の理由の文と同じ関数。条件をここに書き直さない）。
 2. `StaffPaySection`「お支払い」：払い方（`pay_method`：card→カード／bank→銀行振込／cash→現金／空→まだ選んでいない）・「振り込みました」の印（日・お名前・金額・押した時・`bank_told_by`：family→家庭／staff→スタッフ）と「確認中」。
 3. 中身：人ごとに、名前・カナ・生年月日・学年（`schoolGrade(birthday, show_date)`）・特別な料金の印・会員との照合（`MATCH_STATUS_LABEL`）・インスタ・名前/写真/SNS の印・Tシャツ・出演（W番号・作品名・状態）。
 4. `PaymentRows` 入金の行：日・金額・払い方（bank→銀行振込／card→カード／cash→現金／adjust→調整）・どこから（bank_auto→自動で当てた／bank_staff→人が当てた／stripe_webhook→カード／manual→手で）・メモ。
@@ -4697,7 +4753,7 @@ Expected: PASS
 - 「公式LINEのひな形」：11行の題を並べ、押すと `fillLineReply(text, { refCode, remaining, payDue: 世帯の pay_due_override か設定の pay_due, resendUrl: RECITAL_PUBLIC_ORIGIN + '/bw6/resend' })` を見せて［写す］。
 
 `[id]/actions.ts`（どれも1行目 `requireRecitalStaff()`、名前のいるものは `RECITAL_STAFF_NAMES` を確かめる、最後に `revalidatePath('/staff/bw6/entries/' + id)`）：
-- `editHouseholdAction(householdId, edits: HouseholdEdit[], x: { reason: string; receivedAtJst: string | null; staffName: string })`：理由が空なら拒む。`receivedAtJst`（`YYYY-MM-DDTHH:MM`）は `jstToMs` で UTC ISO に直して `receivedAt` へ→`applyHouseholdEdits(householdId, edits, { actor: staffName, by: 'staff', reason, receivedAt })`。変更の控えと `afterMoneyChanged` は 8 が中でするので、ここでは送らない・呼ばない。
+- `editHouseholdAction(householdId, edits: HouseholdEdit[], x: { reason: string; receivedAtJst: string | null; staffName: string })`：理由が空なら拒む。`receivedAtJst`（`datetime-local` の `YYYY-MM-DDTHH:MM`）は `T` を空白に置きかえてから `jstToMs` に渡し（`jstToMs` は空白区切りしか読まない）、`NaN` なら「日時を確かめてください」で返す。読めたら UTC ISO に直して `receivedAt` へ→`applyHouseholdEdits(householdId, edits, { actor: staffName, by: 'staff', reason, receivedAt })`。変更の控えと `afterMoneyChanged` は 8 が中でするので、ここでは送らない・呼ばない。
 - `myPageUrlAction(householdId): Promise<{ url: string }>`：`recitalMyUrl(edit_token)`（Task 2。家庭向けの `https://event.boom-sendai.com/bw6/my?t=…`）。記録・ログに鍵を出さない。
 - `resendReceiptAction(householdId)`：`sendRecitalMail({ kind: 'receipt', householdId })` の `status` を返す（08 の「直ったあとに控えを送り直す」）。
 - `changeEmailAction(householdId, email, staffName)`：空白をとって、`@` を1つ含み空白が無いか見る→`changeHouseholdEmail`（新しいアドレスへの `resend_url` は 8 が中で送る。ここでは送らない）。
@@ -4828,7 +4884,7 @@ describe('mergeHouseholds（5-2・5-7 の例）', () => {
     const A = await one('t-sd-m1', [['W1']], [26500]); const B = await one('t-sd-m1', [['W1']], [26500]);
     const r = await staff.mergeHouseholds(B.h, A.h, { reason: '家族', samePeople: [] }, N);
     expect(r).toEqual({ ok: true, totalBefore: 53000, totalAfter: 34500, moved: 26500, refund: 18500 });
-    expect(await core.getAll(`SELECT household_id, method, amount, memo FROM recital_payments WHERE memo='移した' ORDER BY amount`)).toEqual([
+    expect(await core.getAll(`SELECT household_id, method, amount, memo FROM recital_payments WHERE event_key='t-sd-m1' AND memo='移した' ORDER BY amount`)).toEqual([
       { household_id: B.h, method: 'adjust', amount: -26500, memo: '移した' }, { household_id: A.h, method: 'adjust', amount: 26500, memo: '移した' }]);
     expect(await core.getOne(`SELECT status, merged_into FROM recital_households WHERE id=?`, [B.h])).toEqual({ status: 'merged', merged_into: A.h });
     expect(await core.getOne(`SELECT reason_no, amount FROM recital_refunds WHERE household_id=?`, [A.h])).toEqual({ reason_no: 2, amount: 18500 });
@@ -4857,19 +4913,19 @@ describe('mergeHouseholds（5-2・5-7 の例）', () => {
   it('2回目は not_active（お金は動かない）／同じ世帯は same／もとに手の調整があれば has_adjust', async () => {
     const A = await one('t-sd-m4', [['W1']], [26500]); const B = await one('t-sd-m4', [['W1']], [26500]); const C = await one('t-sd-m4', [['W1']]);
     await staff.mergeHouseholds(B.h, A.h, { reason: '家族', samePeople: [] }, N);
-    const pays = (await core.getOne(`SELECT COUNT(*) n FROM recital_payments`))?.n;
+    const pays = (await core.getOne(`SELECT COUNT(*) n FROM recital_payments WHERE household_id IN (?, ?)`, [A.h, B.h]))?.n;
     expect(await staff.mergeHouseholds(B.h, A.h, { reason: '家族', samePeople: [] }, N)).toEqual({ ok: false, code: 'not_active' });
-    expect((await core.getOne(`SELECT COUNT(*) n FROM recital_payments`))?.n).toBe(pays);
+    expect((await core.getOne(`SELECT COUNT(*) n FROM recital_payments WHERE household_id IN (?, ?)`, [A.h, B.h]))?.n).toBe(pays);
     expect(await staff.mergeHouseholds(A.h, A.h, { reason: '家族', samePeople: [] }, N)).toEqual({ ok: false, code: 'same' });
     await staff.addAdjustCharge(C.h, { direction: 'down', amount: 1000, reason: '試し' }, N);
     expect(await staff.mergeHouseholds(C.h, A.h, { reason: '家族', samePeople: [] }, N)).toEqual({ ok: false, code: 'has_adjust' });
   });
   it('dryRun は数だけ返し、もとの世帯は active のまま', async () => {
     const A = await one('t-sd-m5', [['W1']], [26500]); const B = await one('t-sd-m5', [['W1']], [26500]);
-    const pays = (await core.getOne(`SELECT COUNT(*) n FROM recital_payments`))?.n;
+    const pays = (await core.getOne(`SELECT COUNT(*) n FROM recital_payments WHERE household_id IN (?, ?)`, [A.h, B.h]))?.n;
     expect(await staff.mergeHouseholds(B.h, A.h, { reason: '家族', samePeople: [] }, N, { dryRun: true })).toMatchObject({ ok: true, totalAfter: 34500, refund: 18500 });
     expect((await core.getOne(`SELECT status FROM recital_households WHERE id=?`, [B.h]))?.status).toBe('active');
-    expect((await core.getOne(`SELECT COUNT(*) n FROM recital_payments`))?.n).toBe(pays);
+    expect((await core.getOne(`SELECT COUNT(*) n FROM recital_payments WHERE household_id IN (?, ?)`, [A.h, B.h]))?.n).toBe(pays);
   });
 });
 
@@ -4895,8 +4951,8 @@ Expected: FAIL（`Cannot find module '../recitalStaffDb'`）
 - [ ] **Step 3: `setFeeClass`・`addAdjustCharge`・`voidAdjustCharge` を作る**
 
 `setFeeClass`（1つの `withWriteTx`）：名前→人を読む（`active`、世帯も `active`。ちがえば throw）→今の印と同じなら何も書かずに `{ changed: false, … }`（合計は今の値）→`before = readHouseholdMoneyTx`→印を書く→`recomputeChargesTx(tx, 世帯, staffName)`→`after = readHouseholdMoneyTx`→`refund = refundForDecrease({ totalBefore: before.m.total, paid: before.m.paid, totalAfter: after.m.total })`（Task 9。払っていなければ 0 になる）。`refund > 0` なら `createRefundTx(tx, { householdId, amount: refund, reasonNo: 3, reason: '払ったあとに、スタッフが特別な料金の種類を直した', createdBy: 'system' })`→`extra = max(0, after.m.remaining − before.m.remaining)`→`logChangeTx(tx, { action: 'fee_class_set', before: { feeClass: 前 }, after: { feeClass: 後 }, reason, actor: staffName, isException: false })`。`adjustActive`＝生きている `adjust` の行の合計。tx の外：合計が変わったら `sendRecitalMail({ kind: 'change', householdId })` と `afterMoneyChanged(householdId, 'total')`。
-`addAdjustCharge`：`amount` は1以上の整数、理由が空でない（ちがえば `invalid`）→下げる時、`amount > 今の合計` なら `over_total`→`recital_charges` に `item_code='adjust'`・`ref=''`・`label='手の調整'`・`qty=1`・`unit_amount=amount=`（下げる時はマイナス）・`status='active'`・`due_on`＝設定の `pay_due`→`logChangeTx(action: 'adjust_add', isException: true, after: { amount }, reason)`。返す分は作らない（K217）。tx の外は `setFeeClass` と同じ。
-`voidAdjustCharge`：`item_code='adjust'` で `active` の行だけ。`status='void'`・`void_reason`・`voided_at=nowUtcIso()`→`logChangeTx(action: 'adjust_void', isException: true)`。tx の外は同じ。
+`addAdjustCharge`：`amount` は1以上の整数、理由が空でない（ちがえば `invalid`）→下げる時、`amount > 今の合計` なら `over_total`→`recital_charges` に `item_code='adjust'`・`ref=''`・`label='手の調整'`・`qty=1`・`unit_amount=amount=`（下げる時はマイナス）・`status='active'`・`due_on`＝設定の `pay_due`→`logChangeTx(action: 'adjust_add', isException: true, after: { amount }, reason)`→同じ tx の中で、前後の合計（生きている行の和を0未満なら0）がちがえば `logChangeTx(action: 'total_changed', before: { total }, after: { total })`（8 の `recomputeChargesTx` と同じ形。10 の変更の控えの前後の合計と 27 の `totalBeforeLastDrop` は `total_changed` だけを読むため。`recomputeChargesTx` は通らないので、ここで書く）。返す分は作らない（K217）。tx の外は `setFeeClass` と同じ。
+`voidAdjustCharge`：`item_code='adjust'` で `active` の行だけ。`status='void'`・`void_reason`・`voided_at=nowUtcIso()`→`logChangeTx(action: 'adjust_void', isException: true)`→合計が変われば `addAdjustCharge` と同じ形で `total_changed` も書く。tx の外は同じ。
 
 - [ ] **Step 4: 回して、特別な料金と adjust の試験が通るのを見る**
 
@@ -4911,11 +4967,11 @@ Expected: PASS
 3. `samePeople` の各組：`dropPersonId` と `keepPersonId` が from と into に1人ずつでなければ `bad_pair`。
 4. `from` の人を全部 `household_id = into` に移す。`samePeople` の `dropPersonId` は `status='withdrawn'`・`merged_into=keepPersonId`、その人の `in`・`maybe` の出演は `out`（`withdrawn_at=nowUtcIso()`・`withdraw_reason='同じ人の二重（世帯をまとめた）'`）。
 5. `recomputeChargesTx(tx, into, staffName)` と `recomputeChargesTx(tx, from, staffName)`（from の行は全部 void になる）。
-6. `P = from の入金の amount の合計`。`P ≠ 0` なら、入金の行を2つ直接 INSERT：from に `−P`、into に `+P`（どちらも `method='adjust'`・`source='manual'`・`memo='移した'`・`paid_on=todayJst()`・`confirmed_by=staffName`）。それぞれ `logChangeTx(action: 'payment_recorded', after: { amount, memo: '移した', fromId, intoId })`。**`insertPaymentTx` は使わない**（わけ：入金が残りをこえた時に1番の返す分を作る働きがあり、まとめる時の返す分は2番で、下の8で作るため）。`event_ledger` にも出さない（5-2）。
+6. `P = from の入金の amount の合計`。`P ≠ 0` なら、入金の行を2つ直接 INSERT：from に `−P`、into に `+P`（どちらも `method='adjust'`・`source='manual'`・`memo='移した'`・`paid_on=todayJst()`・`confirmed_by=staffName`）。それぞれ `logChangeTx(action: 'payment_recorded', before: { told: null }, after: { paymentId, method: 'adjust', amount, source: 'manual', bankRowId: null, refundId: null, memo: '移した', fromId, intoId })`（9 の `payment_recorded` の形に `memo`・`fromId`・`intoId` を足しただけ。`paymentId` はその INSERT の id。28 の取り消しは同じ形を読む）。**`insertPaymentTx` は使わない**（わけ：入金が残りをこえた時に1番の返す分を作る働きがあり、まとめる時の返す分は2番で、下の8で作るため）。`event_ledger` にも出さない（5-2）。
 7. 「振り込みました」の印：from に印があり into に無ければ、5つの列を into へ写す。from の5つの列は空にする。変えた記録には日と金額だけ（名義は入れない）。
 8. `from` を `status='merged'`・`merged_into=into`。`after = readHouseholdMoneyTx(into)`。`totalBefore = bf.m.total + bi.m.total`、`paidSum = bf.m.paid + bi.m.paid`、`refund = refundForDecrease({ totalBefore, paid: paidSum, totalAfter: after.m.total })`（Task 9）。`refund > 0` なら `createRefundTx(tx, { householdId: into, amount: refund, reasonNo: 2, reason: '世帯をまとめた', createdBy: 'system' })`。
 9. `logChangeTx(householdId: into, action: 'household_merged', before: { fromId, intoId, totalBefore }, after: { totalAfter: after.m.total, refund }, reason, actor: staffName)`。整理番号は、どちらも変えない。
-tx の外（`dryRun` でない時）：`expireOpenCheckout(fromId, 'merged')`→`afterMoneyChanged(intoId, 'total')`→`sendRecitalMail({ kind: 'change', householdId: intoId })`→`sendRecitalMail({ kind: 'change', householdId: fromId })`。`merged` の世帯へ送る変更の控えの中身（まとめ先の整理番号と「ご家族のお申し込みが2つに分かれていました。1つにまとめて、金額を直しました。」）は 10 の `RecitalMailData.change.merged` が持つ。`merged` の世帯の鍵でマイページを開いた時の出し方も 14 の範囲（無ければ止まって知らせる）。
+tx の外（`dryRun` でない時）：`expireOpenCheckout(fromId, 'merged')`→`afterMoneyChanged(intoId, 'total')`→`sendRecitalMail({ kind: 'change', householdId: intoId })`→`sendRecitalMail({ kind: 'change', householdId: fromId })`。`merged` の世帯へ送る変更の控えの中身（まとめ先の整理番号と「ご家族のお申し込みが2つに分かれていました。1つにまとめて、金額を直しました。」）は 10 の `RecitalMailData.change.merged` が持つ。`merged` の世帯の鍵でマイページを開いた時の出し方は 14 が作る（まとめ先の整理番号つきの文。ここでは変えない。14 にその分岐が無ければ止まって知らせる）。
 
 - [ ] **Step 6: 回して、まとめる試験が通るのを見る**
 
@@ -4938,7 +4994,7 @@ Expected: PASS
 - `FeeClassPanel`「特別な料金」：人を選ぶ→種類（ふつう／協力チケットなし／Tシャツ代だけ／参加費なし）と理由→「たしかめる」で `feeClassAction(…, { dryRun: true })` の結果を「今の合計 ◯円 → 直したあと ◯円」「返す分 ◯円」か「追加分 ◯円」で出し、`adjustActive ≠ 0` なら「手の調整 ◯円があります」→「直す」で `dryRun: false`。合計が上がる時は「押す前に、公式LINEで家庭に一言伝えてください」を出す。中に、たたんだ「そのほかの金額の直し」：下げる／上げる・金額・理由→たしかめる（`dryRun`）→足す。生きている `adjust` の行の一覧と、行ごとの「取り消す」（理由必須）。合計が 0 と数えられている時は「行の合計が 0 より小さいので、合計は 0 と数えています」。
 - `MergePanel`「世帯をまとめる」：相手の世帯を整理番号か名前で探す（`searchHouseholds`）→どちらに残すか（初めの値は、先に申し込んだ方＝`seq` が小さい方を残す）→同じ人の組（カナと生年月日が同じ人の組を初めから並べ、残す人を選ぶ）→理由→たしかめる（`dryRun`）で「合計 ◯円 → ◯円」「移す入金 ◯円」「返す分 ◯円」→まとめる。結果が `not_active` なら「もうまとめてあります。画面を開き直してください」。
 - `MatchPanel`「照合を決める」（`match_status` が `pending`・`unmatched` の人、休会・退会と合った人の横）：候補（`listMatchCandidates`。名前・カナ・生年月日・状態・事前登録の種類）と、会員を探す欄（`searchMembers`）→選ぶ→たしかめる（`dryRun`）で、金額が変わる時は「今の合計 → 結んだあと」、印が残る時は「登録は ◯◯、今は △△」→結ぶ。横に「会員ではない」。
-`[id]/actions.ts` に足す：`feeClassAction(personId, feeClass, reason, staffName, dryRun)`・`adjustAction(householdId, x, staffName, dryRun)`・`voidAdjustAction(householdId, chargeId, reason, staffName)`・`mergeAction(fromId, intoId, x, staffName, dryRun)`・`matchAction(personId, choice, reason, staffName, dryRun)`・`matchCandidatesAction(personId)`。どれも `requireRecitalStaff()`→lib→`revalidatePath`（まとめた時は両方の世帯の画面と `/staff/bw6`）。
+`[id]/actions.ts` に足す：`feeClassAction(personId, feeClass, reason, staffName, dryRun)`・`adjustAction(householdId, x, staffName, dryRun)`・`voidAdjustAction(householdId, chargeId, reason, staffName)`・`mergeAction(fromId, intoId, x, staffName, dryRun)`・`matchAction(personId, choice, reason, staffName, dryRun)`・`matchCandidatesAction(personId)`・`searchHouseholdsAction(eventKey, q)`（`MergePanel` の探す欄。16 の `searchHouseholds` を呼び `HouseholdHit[]` を返すだけ）。`MatchPanel` の探す欄は 18 の `src/app/staff/bw6/settings/actions.ts` の `searchMembersAction(q)` を import して使う（ここに同じ物を作らない）。どれも `requireRecitalStaff()`→lib→`revalidatePath`（まとめた時は両方の世帯の画面と `/staff/bw6`）。
 
 - [ ] **Step 10: 画面を見て確かめる（M5）**
 
@@ -4981,17 +5037,19 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `src/app/staff/bw6/labels.ts` | 画面の言葉の表（照合・作品・メール・入金。見え方は `householdViewLabel`） | 16〜19 |
 | 各 `actions.ts` | `dismissAttentionAction`／`saveWorkAction`・`dropWorkAction`／`saveSettingAction`・`openEntryAction`・`suspendEntryAction`・`openPayAction`・`saveFeeRuleAction`・`searchMembersAction`・`saveFeePresetAction`・`deleteFeePresetAction`・`previewPathAction`・`resetTestDataAction`／`editHouseholdAction`・`myPageUrlAction`・`resendReceiptAction`・`changeEmailAction`・`recordManualPaymentAction`・`cancelRefundAction`・`feeClassAction`・`adjustAction`・`voidAdjustAction`・`mergeAction`・`matchAction`・`matchCandidatesAction` | 16〜20 |
 | 世帯の画面の中の部品名 | `StaffPaySection`（23 が足す所）・`PaymentRows`（28 が足す所） | 19・23・28 |
+| `src/lib/recitalDb.ts` | `type HouseholdHit = { id; ref_code; contact_name; status; seq }`（`searchHouseholds` の返す型。鍵・メール・電話を持たない） | 16・20・29 |
+| `src/app/staff/bw6/entries/[id]/actions.ts` | `searchHouseholdsAction(eventKey, q)` | 20 |
 | （6 と合わせる形） | `WorkInput` の `classes: { lesson_master_id: number \| null; label: string }[]` と `instructors: { instructor_id: number \| null; display_name: string; role: 'choreo' \| 'perform' \| 'assist'; sort_order: number }[]`（6 の形が正本） | 17 |
 
 ---
 
 ## 払（pay）支払い：カード・お振込みのご案内・振り込みました・声かけ — タスク 21〜24
 
-並び：21 は 9・10・14 の後 → 22。23 は 9・10・14・19 の後。24 は 10 と 28 の後（28 の `listReviewRows` と 27 の `bankStartDate` を使う。**12/13（日）までに `JOBS` を出す**。27・28 が 12/11 までに終わらない時は、24 を先に出す道は無いので、その時点で止まって知らせる）。
+並び：21 は 9・10・14 の後 → 22。23 は 9・10・14・19 の後。24 は 10 と 28 と 29 の後（28 の `listReviewRows` と 27 の `bankStartDate` を使う。`recitalBankDb.ts` と `recitalBankDb.test.ts` を 27→28→29→24 の順で足すので、29 のコミットの後に始める。**12/13（日）までに `JOBS` を出す**。27・28 が 12/11 までに終わらない時は、24 を先に出す道は無いので、その時点で止まって知らせる）。
 見直し：21・22・23 はお金にさわるので、最後の見直しは Fable。24 は通常の見直し。
 作る係への決まり（4つとも）：**計画に書いていないことに当たったら、自分で決めずに、止まって知らせる。** 迷いやすい所には、その場所に「止まる」と書いた。
 
-このまとまりで使う正本：設計書 05 5-6（カード・開いている支払い・「振り込みました」・TARO への声かけ・メール）、03 3-4 households・payments、03 3-9 checkouts・imports、04 4-2 マイページ・お振込みのご案内、07 7-5、決まりの紙 `decisions-v5.md` 2-6・2-20・2-22・2-24（食いちがえば決まりの紙）。
+このまとまりで使う正本：設計書 05 5-6（カード・開いている支払い・「振り込みました」・TARO への声かけ・メール）、03 3-4 households・payments、03 3-9 checkouts・imports、04 4-2 マイページ・お振込みのご案内、07 7-5、決まりの紙 `.superpowers/sdd/2026-11-12-bw6-recital-stage1/ref/decisions-v5.md` 2-6・2-20・2-22・2-24（食いちがえば決まりの紙）。
 
 ### このまとまりの Review Focus（全体の Review Focus へ合わせる候補）
 1. 家庭が「払う」を2つのタブで同時に押す → 開いている支払いは1つだけ（部分一意で2つ目を弾き、「もう一度押してください」）。試験は 21 の Step 5。
@@ -5097,8 +5155,10 @@ Expected: PASS
 
 準備（このファイルの中の関数）：
 - `seedPayEvent(eventKey, stripeMode)`：`recital_events` に1行（`is_test=1`）、`recital_settings` に `entry_open_at='2026-01-01 00:00'`・`entry_close_at`／`change_close_at`＝`'2099-01-31 23:59'`・`pay_open_at='2026-01-01 00:00'`・`pay_ok_at='2026-01-01 00:00'`・`pay_due='2099-02-10'`・`suspended='0'`・`stripe_mode`・`bank_text='（試しの振込先）'`・`test_mail_to='test@example.invalid'`、料金の規則は 3 の試験と同じ8行（03 3-4 の規則）、作品2本（`entry_mode='form'`・`status='open'`・`fee_type='counted'`）。
-- `submitEntry` で1世帯（1人・1作品）。**最初に合計が 26,500 であることを確かめる**（ちがえば規則の入れ方のまちがい。止まって知らせる）。
-- `newHousehold(): Promise<{ hid: number; token: string }>`：上と同じ形でもう1世帯足す（試験ごとに別の世帯が要る時）。
+- `newHousehold(): Promise<{ hid: number; token: string }>`：`submitEntry` で1世帯（1人・1作品・合計 26,500）を足す。呼ぶたびに `submitKey`・メール・電話を変える。**最初の1回で合計が 26,500 であることを確かめる**（ちがえば規則の入れ方のまちがい。止まって知らせる）。
+- `seedOpenCheckout(hid, x: { sessionId: string; amount: number })`：`recital_checkouts` に `status='open'`・`stripe_session_id`・`amount`・`event_key`・`household_id`・`created_at` の1行を直に入れて id を返す（Stripe に作らせずに「開いている画面」を用意する時）。
+- **このファイルは 21・22・23 が足していく。タスクごとに `describe('Task 21 ...')`・`describe('Task 22 ...')`・`describe('Task 23 ...')` を分け、各 `describe` の頭（`beforeAll`）で自分の世帯を作る。ほかのタスクの `describe` の世帯を使わない**（Global Constraints「自分の event_key の行だけ見る」と同じ考え。続けて使うと前のタスクの入金で残りがずれる）。
+- Task 21 の `describe`：`beforeAll` で `({ hid, token } = await newHousehold())` と fetch の数え（`cs_test_<n>` の n）を 0 に戻す。`hid`・`token` を使うのは最初の3つの試験（作る→同じURL→作り直し。この順に回る）だけ。ほかの試験は、試験の頭で自分の世帯を `newHousehold()` で作る（下の `hid2`〜`hid6`・`token2`〜`token6`）。
 - fetch は `vi.stubGlobal` で、POST `/v1/checkout/sessions` → `{ id: 'cs_test_<n>', url: 'https://checkout.stripe.com/c/pay/cs_test_<n>' }`、GET `/v1/checkout/sessions/<id>` → 試験ごとに決める状態、POST `.../expire` → ok。`STRIPE_TEST_SECRET_KEY='sk_test_dummy'`。
 
 ```ts
@@ -5132,16 +5192,19 @@ it('振込で全額当たり残り0になると、開いているカードの画
   expect(expireCalls()).toContain(sid);
 });
 it('2つのタブで同時に押しても開いている行は1つ', async () => {
+  const { hid: hid2, token: token2 } = await newHousehold();
   const rs = await Promise.allSettled([startCardPayment(token2, {}), startCardPayment(token2, {})]);
   expect(await openRows(hid2)).toHaveLength(1);
   expect(rs.filter((x) => x.status === 'fulfilled').length).toBeGreaterThanOrEqual(1);
 });
 it('振込を選んだ世帯は1回聞く', async () => {
+  const { hid: hid3, token: token3 } = await newHousehold();
   await execute("UPDATE recital_households SET pay_method='bank' WHERE id=?", [hid3]);
   expect(await startCardPayment(token3, {})).toEqual({ blocked: 'ask_bank' });
   expect(await startCardPayment(token3, { confirmNotBank: true })).toHaveProperty('url');
 });
 it('「振り込みました」の印がある間は止める・残りが印より多ければ差額だけ（K204：32,500−26,500＝6,000）', async () => {
+  const { hid: hid4, token: token4 } = await newHousehold();
   await execute("UPDATE recital_households SET bank_told_at=?, bank_told_date='2026-12-20', bank_told_name='4827 ヤマダ ハナコ', bank_told_amount=26500, bank_told_by='family' WHERE id=?", [nowUtcIso(), hid4]);
   expect(await startCardPayment(token4, { confirmNotBank: true })).toEqual({ blocked: 'told_open' });
   await addWork(hid4);                                   // applyHouseholdEdits で2作品目 → 32,500
@@ -5152,6 +5215,8 @@ it('印の額が残り以上なら金額は変えない（26,500）', async () =
 it('支払いの鍵が閉じていれば not_open（pay_ok_at が空）', async () => { /* t-pay-closed：pay_ok_at を入れない → { blocked: 'not_open' } */ });
 it('残り0なら nothing_due', async () => { /* 26500 を cash で記録 → { blocked: 'nothing_due' } */ });
 it('sync：払い終わっていたら1回だけ記録（source=stripe_recheck・pi も入る）', async () => {
+  const { hid: hid5 } = await newHousehold();
+  await seedOpenCheckout(hid5, { sessionId: 'cs_test_9', amount: 26500 });
   stripeState('cs_test_9', { status: 'complete', payment_status: 'paid', amount_total: 26500, payment_intent: 'pi_9' });
   await syncCardCheckout(hid5); await syncCardCheckout(hid5);
   expect(await payments(hid5)).toEqual([{ method: 'card', amount: 26500, source: 'stripe_recheck', stripe_session_id: 'cs_test_9', stripe_pi_id: 'pi_9' }]);
@@ -5174,10 +5239,10 @@ Expected: FAIL（`startCardPayment` が無い）
   3. `getRecitalSettings`・`readHouseholdMoney` を読み直し、`payButtonState({ gate: payGate(s, Date.now()), view, m, refundTodo })` が `before`/`preparing` → `{ blocked: 'not_open' }`、`refund_hold` → `refund_hold`、`hidden` → `nothing_due`。
   4. 印（`told`）が開いていて `confirmTold` が無い → `told_open`。印が無く `payMethod==='bank'` で `confirmNotBank` が無い → `ask_bank`（K194）。
   5. `amount = payableAmount(m, told)`。0 以下 → `nothing_due`。
-  6. 開いている行があり、`amount` が同じで、Stripe が `open` → その `url` を返す。額がちがう・`stripe_session_id` が空の行・Stripe が `open` でない → `expireOpenCheckout(householdId, 'amount_changed')`。
+  6. 開いている行があり、`amount` が同じで、Stripe が `open` → その `url` を返す。額がちがう・Stripe が `open` でない → `expireOpenCheckout(householdId, 'amount_changed')`。`stripe_session_id` が空の行は、`created_at` から60秒より前の物だけを `closed` にする（もう1つのタブが作っている途中の行を閉じないため）。60秒以内の空の行があれば、作らずに throw（画面は「もう一度押してください」）。
   7. `withWriteTx` で `recital_checkouts` に `status='open'`・`amount`・`created_at`・`expires_at`（今＋30分。UTC ISO）を入れ、`pay_method='card'` にする。部分一意で弾かれたら throw（画面は「もう一度押してください」）。
-  8. 書き込みの外で `createRecitalCheckout(s.stripe_mode, buildRecitalCheckoutParams({ ..., successUrl: recitalMyUrl(token) + '&paid=1', cancelUrl: recitalMyUrl(token), expiresAt: 秒 }))` → `stripe_session_id` を書く。作れなかったら行を `closed` にして throw。
-- `syncCardCheckout(householdId)`：`status='open'` の行を1つ読む（無ければ何もしない。`stripe_session_id` が空なら `closed` にして終わり）。`retrieveRecitalCheckout`（throw はそのまま）→ `complete` かつ `payment_status==='paid'`：下の「カードの入金を書く核」を `source: 'stripe_recheck'`・`stripeEventId: null` で呼ぶ／`expired` → 行を `expired`／`open` → 何もしない。
+  8. 書き込みの外で `createRecitalCheckout(s.stripe_mode, buildRecitalCheckoutParams({ ..., successUrl: recitalMyUrl(token) + '&paid=1', cancelUrl: recitalMyUrl(token), expiresAt: 秒 }))` → `stripe_session_id` を書く。書く時は `UPDATE recital_checkouts SET stripe_session_id=? WHERE id=? AND status='open'` とし、変わった行が0件（ほかのタブが先に閉じた）なら、作った決済画面をすぐ `expireRecitalCheckout` で切って throw（画面は「もう一度押してください」）。こうして、生きている決済画面はいつも1つまでにする（設計書 5-6「開いている支払いは1つまで」・2589行あたり）。作れなかったら行を `closed` にして throw。
+- `syncCardCheckout(householdId)`：`status='open'` の行を1つ読む（無ければ何もしない。`stripe_session_id` が空なら、`created_at` から60秒より前の行だけ `closed` にして終わり。60秒以内なら何もしない＝作っている途中のタブの行を閉じない）。`retrieveRecitalCheckout`（throw はそのまま）→ `complete` かつ `payment_status==='paid'`：下の「カードの入金を書く核」を `source: 'stripe_recheck'`・`stripeEventId: null` で呼ぶ／`expired` → 行を `expired`／`open` → 何もしない。
 - カードの入金を書く核（このファイルの中だけの関数。22 も使う）：1つの `withWriteTx` の中で、同じ `stripe_event_id`・`stripe_session_id`・`stripe_pi_id`（空は除く）の入金があれば `duplicate`。無ければ `insertPaymentTx(tx, { householdId, method: 'card', amount: 本物の額, paidOn: todayJst(), source, stripeEventId, stripeSessionId, stripePiId }, 'system')`、その checkout 行を `status='paid'`・`stripe_pi_id` を入れる。一意の違反で落ちたら `duplicate` として扱う。書き込みの外で `afterMoneyChanged(householdId, 'payment')` → `sendPaidMail(householdId, paymentId, 'card')`（メールの失敗はログだけ）。
 - `expireOpenCheckout(householdId, reason)`：開いている行を `closed` にし、`stripe_session_id` があれば `expireRecitalCheckout(mode, id)`。Stripe で切れなくても `closed` のまま（間に合わず払われた分は、22 が本物の額で受ける）。`reason` はログにだけ出す（列は無い）。
 - `recitalMoneyDb.ts` の `afterMoneyChanged(householdId, cause)` に足す：開いている行の `amount` と、今の `payableAmount(m, told)` がちがう（0 になった時も）なら `expireOpenCheckout(householdId, 'amount_changed')`。新しい画面は、次に家庭が「払う」を押した時に作る（計画で決めた。見直しの人が確かめる）。`recitalPayDb` からは**関数の中で `await import('./recitalPayDb')`**（2つのファイルが互いを読むため）。ここの失敗は `console.error` だけで、呼んだ操作は止めない。
@@ -5191,7 +5256,7 @@ Run: `npx vitest run src/lib/__tests__/recitalMoneyDb.test.ts` → PASS
 
 - `src/app/bw6/my/actions.ts` に `payByCardAction(token: string, opts: { confirmNotBank?: boolean; confirmTold?: boolean }): Promise<{ url: string } | { blocked: ... } | { error: string }>`（`startCardPayment` を呼び、throw は `{ error }` にする）。
 - `src/app/bw6/my/page.tsx`：開いている行がある世帯は、描く前に `syncCardCheckout`。throw したら `checking=true`（「ご入金を確認しています」を出し、「払う」を出さない）。そのあと世帯を読み直す。
-- `PaySection.tsx`（`'use client'`）の出し分けは 04 4-2「マイページ」の「その時だけ重ねて出すもの」の文をそのまま：`payButtonState` の `before`＝「お支払いは ◯月◯日から」／`preparing`＝「お支払いは、準備中です」／`refund_hold`＝「お預かりしている分があります。スクールからご連絡します」／`show`＝「払う」→ カードか銀行振込（現金は出さない）。`&paid=1` で戻った時は「お支払いを受け付けました。完了のメールが届きます。この画面は、閉じて大丈夫です。もう一度払う必要は、ありません。」だけで「払う」を出さない。ボタンの下に「うまく進まないときは、ブラウザで開いてください」。
+- `PaySection.tsx`（`'use client'`）は `payState === 'show'` の時だけ、14 の `MoneyBox` の `children` に入れる（そのとき `payText` は空にする。14 の Step 11 の約束）。`before`・`preparing`・`refund_hold`・`hidden` の文は 14 の `payAreaText` のまま使い、ここで書き直さない（同じ文と日付の形を2か所に持たない）。`show` の時の中身：「払う」→ カードか銀行振込（現金は出さない）。`&paid=1` で戻った時は「お支払いを受け付けました。完了のメールが届きます。この画面は、閉じて大丈夫です。もう一度払う必要は、ありません。」だけで「払う」を出さない。ボタンの下に「うまく進まないときは、ブラウザで開いてください」。
 - `blocked` の出し方（決まりの紙 2-20 の表）：`ask_bank`＝「まだ振り込んでいませんか」→［まだ振り込んでいません］で `confirmNotBank:true`／［もう振り込みました］は 23 の3つの欄を開く。`told_open`＝残りが印の額より多くなければ「確認中です。カードで払うと二重になります」（「もどる」を大きく、「それでもカードで払う」を小さく）、多ければ「お振込みの ◯円は、確認中です。のこりの ◯円だけを、カードで払います」。
 - 銀行振込の所は、この段では「銀行振込は、準備中です」で押せない形にしておく（中身は 23）。
 - 外へ出るリンクは `rel="noreferrer"`。
@@ -5269,7 +5334,7 @@ Expected: PASS
 
 - [ ] **Step 5: 記録の試験を書く（`recitalPayDb.test.ts` に足す）**
 
-21 の `seedPayEvent('t-pay', 'test')` に加え、`seedPayEvent('t-pay-live', 'live')` を作る。`ev(over)` は `RecitalWebhookEvent` を組む関数。`stripeEvent(over)` は Stripe の `checkout.session.completed` の形の生の知らせを組む関数（`id`・`amount_total`（初めは 26500）・`householdId`（初めは `hid`。metadata に入れる）を上書きできる）。`hid` は `beforeEach` で毎回新しく作る世帯（合計 26,500・`W01` に出る・開いている checkout 行1つ〔`stripe_session_id`=`cs_test_<hid>`・`amount` 26500〕）。`ev()` の初めの値は `{ eventKey: 't-pay', householdId: hid, sessionId: 'cs_test_' + hid, piId: 'pi_' + hid, amountTotal: 26500, paymentStatus: 'paid', type: 'checkout.session.completed', livemode: false }`。`payments(h)` は世帯の入金の行の配列。`liveHid` は `t-pay-live` の世帯（`beforeAll` で1つ作る）。
+`describe('Task 22 ...')` を分けて書く（21 の世帯は使わない）。21 の `seedPayEvent('t-pay', 'test')` に加え、`seedPayEvent('t-pay-live', 'live')` を作る。`ev(over)` は `RecitalWebhookEvent` を組む関数。`stripeEvent(over)` は Stripe の `checkout.session.completed` の形の生の知らせを組む関数（`id`・`amount_total`（初めは 26500）・`householdId`（初めは `hid`。metadata に入れる）を上書きできる。決済画面の番号 `data.object.id` の初めの値は `'cs_test_' + householdId`、支払いの番号 `data.object.payment_intent` は `'pi_' + householdId`、metadata の `recital_checkout_id` はその世帯の開いている checkout 行の id。`ev()` と同じ決め方にして、世帯ごとに番号が重ならないようにする）。`hid` は `beforeEach` で毎回新しく作る世帯（合計 26,500・`W01` に出る・開いている checkout 行1つ〔`stripe_session_id`=`cs_test_<hid>`・`amount` 26500〕）。`ev()` の初めの値は `{ eventKey: 't-pay', householdId: hid, sessionId: 'cs_test_' + hid, piId: 'pi_' + hid, amountTotal: 26500, paymentStatus: 'paid', type: 'checkout.session.completed', livemode: false }`。`payments(h)` は世帯の入金の行の配列。`liveHid` は `t-pay-live` の世帯（`beforeAll` で1つ作る）。
 
 ```ts
 it('同じ知らせ2回で入金1回', async () => {
@@ -5433,6 +5498,8 @@ EOF
 
 - [ ] **Step 1: 試験を書く（`recitalPayDb.test.ts` に足す）**
 
+`describe('Task 23 ...')` を分けて書く。頭の `beforeAll` で `({ hid, token } = await newHousehold())`（合計 26,500・払い方は空・ご案内0通の新しい世帯1つ）を作り、下の最初の4つの試験はこの世帯を順に使う（21・22 の世帯は使わない。ご案内の鍵 `bank_guide:<hid>:26500:1` はこの世帯の残り 26,500 が前提）。そのあとの試験は自分の世帯を作る。
+
 ```ts
 it('銀行振込を選ぶ：pay_method=bank・開いているカードの画面を切る・ご案内1通', async () => {
   await startCardPayment(token, {});
@@ -5515,7 +5582,7 @@ Run: `npx vitest run src/lib/__tests__/recitalMyPage.test.ts` → PASS（`parseY
 
 - [ ] **Step 5: `BankGuide.tsx` と、家庭・スタッフのボタンを作る**
 
-- `BankGuide.tsx`（マイページの「払う」の中。別URLは作らない）：文は決まりの紙 `decisions-v5.md` 2-24「画面の文（このまま使う）」をそのまま。差し込む物：金額＝`payableAmount(m, told)`（`toLocaleString('ja-JP')`）、期限＝`pay_due_override` か `pay_due` を「2027年2月10日（水）」の形（曜日は `weekdayJst` で出す。暗算しない）、振込先＝設定 `bank_text` を改行のまま（`white-space: pre-wrap`。**`bank_text` には銀行・支店・口座・受取人名の行だけを入れ、※の1行は画面の固定の文**＝計画で決めた）、整理番号＝`ref_code`、コピーの1行＝`${ref_code} ${contact_last_kana} ${contact_first_kana}`、年末年始の1行は今日が `bank_rest_to` 以下の時だけ（日付は `bank_rest_from`・`bank_rest_to` から。K215）。
+- `BankGuide.tsx`（マイページの「払う」の中。別URLは作らない）：文は決まりの紙 `.superpowers/sdd/2026-11-12-bw6-recital-stage1/ref/decisions-v5.md` 2-24「画面の文（このまま使う）」をそのまま。差し込む物：金額＝`payableAmount(m, told)`（`toLocaleString('ja-JP')`）、期限＝`pay_due_override` か `pay_due` を「2027年2月10日（水）」の形（曜日は `weekdayJst` で出す。暗算しない）、振込先＝設定 `bank_text` を改行のまま（`white-space: pre-wrap`。**`bank_text` には銀行・支店・口座・受取人名の行だけを入れ、※の1行は画面の固定の文**＝計画で決めた）、整理番号＝`ref_code`、コピーの1行＝`${ref_code} ${contact_last_kana} ${contact_first_kana}`、年末年始の1行は今日が `bank_rest_to` 以下の時だけ（日付は `bank_rest_from`・`bank_rest_to` から。K215）。
 - ［コピーする］はその1行だけを `navigator.clipboard.writeText`（try/catch。だめなら字を選んだ状態にする）。金額と振込先は字のまま（絵にしない）。
 - 銀行ごとの早見（`<details>` でたたむ。04 4-2 の7行と「限度額の引き上げに日がかかるときは、カードでもお支払いいただけます」）。
 - 一番下に［振り込みました］（残りがある間だけ）と［カードで払う］（21 の流れ。`pay_method='bank'` なので1回聞かれる）。
@@ -5523,7 +5590,7 @@ Run: `npx vitest run src/lib/__tests__/recitalMyPage.test.ts` → PASS（`parseY
 - 進みの出し方（2-20「家庭の画面の状態」）：「◯月◯日 ご連絡を受けました」→「確認中」→「◯月◯日に ◯円を確認しました」（いちばん新しい `method='bank'` の入金の `bank_date` と `amount`）。残りが印の額より多い時は「お振込み 26,500円（確認中）／のこり 6,000円」の形。
 - `PaySection.tsx`：銀行振込を押す → `chooseBankAction` → `BankGuide`。`pay_method='bank'` の世帯は開いた時から `BankGuide` を出す。`bank_text` が空なら「銀行振込は、準備中です」で押せない（21 で置いた所を入れかえる）。
 - `actions.ts`：`chooseBankAction(token)`・`markBankToldAction(token, x: { date: string; name: string; amount: string })`（金額は `parseYenInput` で数にする。null なら `{ error: '金額を確かめてください。' }`→`requireHouseholdByToken` → `markBankTold(id, …, 'family', 'family')`。throw は捕まえて `{ error: '入力を確かめてください。' }` で返す。エラーの画面にしない）。金額の欄は `inputMode="numeric"`。
-- `parseYenInput` の試験（`recitalMyPage.test.ts` に足す）：`it.each([['26,500', 26500], ['２６５００', 26500], ['26500円', 26500], [' 26500 ', 26500], ['0', null], ['', null], ['abc', null]])('%s → %s', (x, want) => expect(parseYenInput(x)).toBe(want))`。
+- `parseYenInput` の試験（`recitalMyPage.test.ts` に足す。**Step 1 で上の試験と一緒に書いておき**、Step 4 で通るのを見る）：`it.each([['26,500', 26500], ['２６５００', 26500], ['26500円', 26500], [' 26500 ', 26500], ['0', null], ['', null], ['abc', null]])('%s → %s', (x, want) => expect(parseYenInput(x)).toBe(want))`。
 - スタッフ：`src/app/staff/bw6/entries/[id]/page.tsx` の「お支払い」の欄（19 の `StaffPaySection`）に［振り込みましたの印を付ける］（同じ3つの欄＋`StaffNamePicker`）、`actions.ts` に `markBankToldByStaffAction(householdId, x, staffName)`（頭で `requireRecitalStaff()` → `markBankTold(householdId, x, 'staff', staffName)`）。
 - 画面の確かめ（M5 で）：`bw6-test` で、銀行振込→ご案内の文が決まりの紙のまま／コピーで1行だけ写る／未来の日が選べない／押したあと「確認中」／スタッフの画面で押すと家庭の画面も「確認中」。iPhone と LINE の中のブラウザで欄の文字が見える。
 
@@ -5653,7 +5720,7 @@ it('見てほしい入金の数は listReviewRows の数', async () => {
   // 27 の試験の束を作る関数で、12/20 の「振込 ヤマダ ハナコ」（番号なし）の入金1行を入れる
   const f = await getBankAskFacts('t-ask', new Date('2026-12-20T10:00:00Z'));
   expect(f.reviewCount).toBe(before + 1);
-  expect(f.reviewCount).toBe((await listReviewRows('t-ask')).length);
+  expect(f.reviewCount).toBe((await listReviewRows('t-ask')).filter((r) => r.group !== 'closed').length);
 });
 ```
 
@@ -5667,7 +5734,7 @@ Expected: FAIL（`getBankAskFacts` が無い）
 - `startDate`：27 の `bankStartDate(eventKey, s)` を呼ぶだけ（決まり：`recital_bank_rows` の `dir='in' AND kind='transfer' AND source IN ('chat','file') AND state <> 'void'` の `MAX(row_date)`。無ければ「`pay_open_at` と `pay_ok_at` の遅い方の日付」の前の日（`shiftDays(…, -1)`。`pay_ok_at` の形は 6 の `setPayOk` が書く形。ちがう形なら止まって知らせる）。前の束が合わなかった日は台帳が増えないので、そのまま最後に合った日になる。
 - `lastShotOn`：`recital_imports` の `kind='statement' AND check_result='ok' AND source IN ('chat','file')` で `imported_at` がいちばん新しい行の `shot_on`。
 - `okBatchToday`：同じしぼりで、`imported_at` が今日（JST）の 0:00 以後（`new Date(jstToMs(todayJst(now))).toISOString()` と、`nowUtcIso` と同じ形で文字のまま比べる）。手で打った束は数えない（K211）。
-- `reviewCount`：`(await listReviewRows(eventKey)).length`（画面と同じ数え方）。
+- `reviewCount`：`(await listReviewRows(eventKey)).filter((r) => r.group !== 'closed').length`（`listReviewRows` は片づいた `closed` の行も返すので、それを数えない。見てほしい入金の件数＝決まりの紙 2-22・設計書 1069行。16 の「見てほしいこと」4番の数え方と同じ）。
 
 - [ ] **Step 8: 通ることを確かめる**
 
@@ -5702,9 +5769,9 @@ Run: `npx vitest run src/app/api/cron/recital-morning/__tests__/route.test.ts` �
 - [ ] **Step 11: 2つの入口を作る**
 
 - 形は `src/app/api/cron/mail-health/route.ts` にそろえる（頭のコメントに「proxy の外。CRON_SECRET／CRON_SECRET_CF で認可」、`dynamic`・`runtime='nodejs'`・`maxDuration=60`、`POST` と `GET` を同じ関数、最初に `cronAuthorized`）。
-- `recital-bank-ask`：`slot` を `?slot=` から読む（`/^\d{2}:\d{2}$/` でなければ 400）。`SELECT event_key FROM recital_events WHERE is_test = 0` の発表会ごとに、`getRecitalSettings`・`getBankAskFacts(eventKey, now)` → `shouldAskTaro({ nowJst, slot, s, gate: payGate(s, now.getTime()), okBatchToday })` が true なら `notifyTaro({ ...buildAskMessage({ startDate, lastShotOn, reviewCount, url: 'https://bw5-app.vercel.app/staff/bw6/bank' }), subjectPrefix: '【BOOM】BW6' })`。`nowJst` は `todayJst(now)` と JST の時:分。返すのは `{ ok: true, asked: <数> }` だけ（名前・金額を返さない）。知らせの相手は TARO だけ（G-14 が「KEIKO にも」なら、そのとき足す）。
-- `recital-morning`：全部の発表会（`is_test` を問わず）で `flushWaitingMails(eventKey, now)`（1回20通まで。発表会ごとに try/catch）。`?retry=1` の時（08:05・08:10 の追い打ち）は flush だけで、声かけはしない。`retry` が無い時だけ、`is_test=0` の発表会で `slot: '08:00'` の `shouldAskTaro` → true なら `afterRest: true` の文で `notifyTaro`。
-- 試験の決まり：試験のDBには種の `bw6-test`（`is_test=1`）が入っているので、「`is_test=0` を全部回す」試験は自分の発表会（`t-ask` を `is_test=0` で作る）だけが数に入ることを確かめ、`asked` の期待にほかの発表会を入れない（12/13 に `bw6` の種が入ったあとは `bw6` も数に入るので、その時は `pay_ok_at` が空の `bw6` は声かけしない＝0 を足した数で見る）。返すのは `{ ok: true, sent, failed, asked }`。毎朝の見回り①・イ・②は後の計画で、このルートに足す（今は書かない）。
+- `recital-bank-ask`：`slot` を `?slot=` から読む（`/^\d{2}:\d{2}$/` でなければ 400）。`SELECT event_key, is_test FROM recital_events WHERE is_test = 0` の発表会を読み、**コードでも `Number(r.is_test) === 0` の行だけに絞ってから**（試験の `getAll` のにせ物は SQL を読まずに2件を返すため。SQL とコードの両方で外す）、その発表会ごとに、`getRecitalSettings`・`getBankAskFacts(eventKey, now)` → `shouldAskTaro({ nowJst, slot, s, gate: payGate(s, now.getTime()), okBatchToday })` が true なら `notifyTaro({ ...buildAskMessage({ startDate, lastShotOn, reviewCount, url: 'https://bw5-app.vercel.app/staff/bw6/bank' }), subjectPrefix: '【BOOM】BW6' })`。`nowJst` は `todayJst(now)` と JST の時:分。返すのは `{ ok: true, asked: <数> }` だけ（名前・金額を返さない）。知らせの相手は TARO だけ（G-14 が「KEIKO にも」なら、そのとき足す）。
+- `recital-morning`：全部の発表会（`is_test` を問わず）で `flushWaitingMails(eventKey, now)`（1回20通まで。発表会ごとに try/catch）。`?retry=1` の時（08:05・08:10 の追い打ち）は flush だけで、声かけはしない。`retry` が無い時だけ、`is_test=0` の発表会（コードでも `Number(is_test) === 0` で絞る）で `slot: '08:00'` の `shouldAskTaro` → true なら `afterRest: true` の文で `notifyTaro`。
+- 試験の決まり：2つの入口の試験（`route.test.ts`）は、`@/lib/db` の `getAll` をにせ物にして、`events([...])` で渡した行だけを返す（本物の試験DBは使わない。数の期待は渡した行だけで決まる。にせ物は SQL の `WHERE` を読まないので、`is_test=1` の行も返ってくる＝コードでも外すことをこの試験で確かめる）。`getBankAskFacts`・`getRecitalSettings`・`notifyTaro`・`flushWaitingMails` も `vi.mock` で差しかえる。本物の試験DBに `t-ask` を作って数えるのは Step 5 の `recitalBankDb.test.ts` の `getBankAskFacts` の試験だけ。返すのは `{ ok: true, sent, failed, asked }`。毎朝の見回り①・イ・②は後の計画で、このルートに足す（今は書かない）。
 
 - [ ] **Step 12: 通ることを確かめる**
 
@@ -5798,7 +5865,7 @@ EOF
 
 - [ ] **Step 1: 失敗する試験を書く**
 
-試験の束は、残高がつながるように作った架空の数字（実在の残高・入金ではない）。整理番号は検査に合う `2714`・`3657`（欠番でない）。名前の例は「ヤマダ ハナコ」だけ。
+試験の束は、残高がつながるように作った架空の数字（実在の残高・入金ではない）。整理番号は検査に合う欠番の `4823`・`4867`（`RESERVED_REFS` の中＝本物の家庭には出ない。決まりの紙 K139）。名前の例は「ヤマダ ハナコ」だけ。
 
 ```ts
 import { describe, it, expect } from 'vitest';
@@ -5811,10 +5878,10 @@ const b = (rows: BankBatchRowIn[], over: Partial<BankBatchIn> = {}): BankBatchIn
   ({ event_key: 't-batch', source: 'chat', shot_on: '2026-12-16', range_from: '2026-12-14', range_to: '2026-12-16', images: 2, account: '円普通預金', rows, ...over });
 // 2枚。1-3 と 2-1 が重ねた同じ行。いちばん下はデビット（last の印が付かない形）
 const SAMPLE = [
-  r('1-1', '12/16', 'in', 26500, 153000, 'transfer', '振込　２７１４　ヤマダ　ハナコ'),
+  r('1-1', '12/16', 'in', 26500, 153000, 'transfer', '振込　４８２３　ヤマダ　ハナコ'),
   r('1-2', '12/15', 'out', 1000, 126500, 'debit'),
-  r('1-3', '12/15', 'in', 6000, 127500, 'transfer', '振込 3657 ヤマダ タロウ'),
-  r('2-1', '12/15', 'in', 6000, 127500, 'transfer', '振込 3657 ヤマダ タロウ'),
+  r('1-3', '12/15', 'in', 6000, 127500, 'transfer', '振込 4867 ヤマダ タロウ'),
+  r('2-1', '12/15', 'in', 6000, 127500, 'transfer', '振込 4867 ヤマダ タロウ'),
   r('2-2', '12/14', 'out', 500, 121500, 'debit'),
   r('2-3', '12/14', 'out', 3000, 122000, 'debit'),
 ];
@@ -5832,7 +5899,7 @@ describe('validateBatchShape', () => {
     expect(validateBatchShape(b([r('1-1', '12/16', 'in', null, 1, 'transfer', '', { unread: 'amount' })])).ok).toBe(true);
   });
   it('manual は残高が空なら ng・日付は年月日', () => {
-    expect(validateBatchShape(b([r('m-1', '2026-12-16', 'in', 26500, null, 'transfer', '振込 2714 ヤマダ ハナコ')], { source: 'manual', images: 0 })).ok).toBe(false);
+    expect(validateBatchShape(b([r('m-1', '2026-12-16', 'in', 26500, null, 'transfer', '振込 4823 ヤマダ ハナコ')], { source: 'manual', images: 0 })).ok).toBe(false);
     expect(validateBatchShape(b([r('m-1', '12/16', 'in', 26500, 1, 'transfer', 'x')], { source: 'manual', images: 0 })).ok).toBe(false);
   });
 });
@@ -5850,14 +5917,14 @@ describe('normalizeBatch', () => {
   it('重ね撮りを1本にする（6行→5行）・年を決める・番号を読む', () => {
     const rows = normalizeBatch(b(SAMPLE), '2026-12-16');
     expect(rows.map((x) => x.pos)).toEqual(['1-1', '1-2', '1-3', '2-2', '2-3']);
-    expect(rows[0]).toMatchObject({ rowDate: '2026-12-16', refRead: '2714', refOk: 1, descRaw: '振込　２７１４　ヤマダ　ハナコ', rowKey: '2026-12-16|in|26500|153000' });
+    expect(rows[0]).toMatchObject({ rowDate: '2026-12-16', refRead: '4823', refOk: 1, descRaw: '振込　４８２３　ヤマダ　ハナコ', rowKey: '2026-12-16|in|26500|153000' });
     expect(rows[1]).toMatchObject({ descRaw: null, refRead: null, refOk: 0 }); // 出金は摘要を持たない
   });
   it('同じ鍵が1つの束に2つ：下が鍵のまま、上に #2', () => {
     const rows = normalizeBatch(b([
-      r('1-1', '12/15', 'in', 6000, 127500, 'transfer', '振込 3657 ヤマダ タロウ'),
+      r('1-1', '12/15', 'in', 6000, 127500, 'transfer', '振込 4867 ヤマダ タロウ'),
       r('1-2', '12/15', 'out', 6000, 121500, 'debit'),
-      r('1-3', '12/15', 'in', 6000, 127500, 'transfer', '振込 3657 ヤマダ タロウ'),
+      r('1-3', '12/15', 'in', 6000, 127500, 'transfer', '振込 4867 ヤマダ タロウ'),
     ], { images: 1 }), '2026-12-16');
     expect(rows[0].rowKey).toBe('2026-12-15|in|6000|127500#2');
     expect(rows[2].rowKey).toBe('2026-12-15|in|6000|127500');
@@ -5903,7 +5970,7 @@ describe('checkBatch', () => {
     expect(ok(b(SAMPLE), [L({ id: 8, source: 'manual', balance: 999, row_key: '2026-12-15|in|6000|999' })])).toEqual({ ok: true });
   });
   it('manual は検算を見ない（残高があれば ok）・file は 1 と 2 だけ（開始日は見ない）', () => {
-    const m = b([r('m-1', '2026-12-16', 'in', 26500, 999, 'transfer', '振込 2714 ヤマダ ハナコ')], { source: 'manual', images: 0 });
+    const m = b([r('m-1', '2026-12-16', 'in', 26500, 999, 'transfer', '振込 4823 ヤマダ ハナコ')], { source: 'manual', images: 0 });
     expect(checkBatch(m, normalizeBatch(m, '2026-12-16'), [], { startDate: '2026-12-14' })).toEqual({ ok: true });
     const f = b(SAMPLE.filter((x) => x.pos !== '2-1').map((x, i) => ({ ...x, pos: `f-${i + 2}`, date: `2026-${x.date.replace('/', '-')}` })), { source: 'file', images: 0, range_from: '2026-12-15' });
     expect(checkBatch(f, normalizeBatch(f, '2026-12-16'), [], { startDate: '2026-12-14' })).toEqual({ ok: true });
@@ -5913,29 +5980,36 @@ describe('checkBatch', () => {
 describe('flagRows', () => {
   const norm = (rows: BankBatchRowIn[]) => normalizeBatch(b(rows, { images: 1 }), '2026-12-16');
   it('日付だけちがう・金額だけちがう台帳の行 → twin', () => {
-    const rows = norm([r('1-1', '12/16', 'in', 6000, 127500, 'transfer', '振込 3657 ヤマダ タロウ'), r('1-2', '12/16', 'out', 1, 121500, 'debit')]);
+    const rows = norm([r('1-1', '12/16', 'in', 6000, 127500, 'transfer', '振込 4867 ヤマダ タロウ'), r('1-2', '12/16', 'out', 1, 121500, 'debit')]);
     expect(flagRows(rows, [L({ row_key: '2026-12-15|in|6000|127500' })])[0].checkFlag).toBe('twin');
     expect(flagRows(rows, [L({ row_date: '2026-12-16', amount: 5000, row_key: '2026-12-16|in|5000|127500' })])[0].checkFlag).toBe('twin');
   });
   it('いちばん下が台帳にまだ無い振込の入金 → last／もうある行なら付かない', () => {
-    const rows = norm([r('1-1', '12/16', 'out', 1, 127499, 'debit'), r('1-2', '12/15', 'in', 6000, 127500, 'transfer', '振込 3657 ヤマダ タロウ')]);
+    const rows = norm([r('1-1', '12/16', 'out', 1, 127499, 'debit'), r('1-2', '12/15', 'in', 6000, 127500, 'transfer', '振込 4867 ヤマダ タロウ')]);
     expect(flagRows(rows, [])[1].checkFlag).toBe('last');
     expect(flagRows(rows, [L({ row_key: '2026-12-15|in|6000|127500' })])[1].checkFlag).toBe(null);
   });
   it('日付・入出・金額が同じ manual の行が台帳にある → manual_twin（twin より先）', () => {
-    const rows = norm([r('1-1', '12/15', 'in', 6000, 127500, 'transfer', '振込 3657 ヤマダ タロウ'), r('1-2', '12/15', 'out', 1, 121500, 'debit')]);
+    const rows = norm([r('1-1', '12/15', 'in', 6000, 127500, 'transfer', '振込 4867 ヤマダ タロウ'), r('1-2', '12/15', 'out', 1, 121500, 'debit')]);
     expect(flagRows(rows, [L({ source: 'manual', balance: 999, row_key: '2026-12-15|in|6000|999' })])[0].checkFlag).toBe('manual_twin');
   });
 });
 
 describe('parseGmoStatementCsv', () => {
   it('Shift_JIS の CSV を、上が新しい順の行にする', () => {
-    const csv = '日付,摘要,入金金額,出金金額,残高,メモ\r\n2026/12/15,ﾃﾞﾋﾞｯﾄ,,1000,126500,\r\n2026/12/16,振込 2714 ﾔﾏﾀﾞ ﾊﾅｺ,26500,,153000,\r\n';
+    const csv = '日付,摘要,入金金額,出金金額,残高,メモ\r\n2026/12/15,ﾃﾞﾋﾞｯﾄ,,1000,126500,\r\n2026/12/16,振込 4823 ﾔﾏﾀﾞ ﾊﾅｺ,26500,,153000,\r\n';
     const rows = parseGmoStatementCsv(new Uint8Array(iconv.encode(csv, 'shift_jis')));
     expect(rows).toEqual([
-      { pos: 'f-3', date: '2026-12-16', dir: 'in', amount: 26500, balance: 153000, kind: 'transfer', desc: '振込 2714 ﾔﾏﾀﾞ ﾊﾅｺ', cut: false, unread: '' },
+      { pos: 'f-3', date: '2026-12-16', dir: 'in', amount: 26500, balance: 153000, kind: 'transfer', desc: '振込 4823 ﾔﾏﾀﾞ ﾊﾅｺ', cut: false, unread: '' },
       { pos: 'f-2', date: '2026-12-15', dir: 'out', amount: 1000, balance: 126500, kind: 'debit', desc: '', cut: false, unread: '' },
     ]);
+  });
+  it('古い順の CSV を読み、normalizeBatch（file）を通しても新しい順のまま・検算に合う（並べ直さない）', () => {
+    const csv = '日付,摘要,入金金額,出金金額,残高,メモ\r\n2026/12/15,ﾃﾞﾋﾞｯﾄ,,1000,126500,\r\n2026/12/16,振込 4823 ﾔﾏﾀﾞ ﾊﾅｺ,26500,,153000,\r\n';
+    const f = b(parseGmoStatementCsv(new Uint8Array(iconv.encode(csv, 'shift_jis'))), { source: 'file', images: 0, range_from: '2026-12-15', range_to: '2026-12-16' });
+    const n = normalizeBatch(f, '2026-12-16');
+    expect(n.map((x) => x.pos)).toEqual(['f-3', 'f-2']);
+    expect(checkBatch(f, n, [], { startDate: '2026-12-14' })).toEqual({ ok: true });
   });
 });
 
@@ -5952,9 +6026,9 @@ Expected: FAIL（`Cannot find module '../recitalBankBatch'`）
 各関数の決まり（試験で決まらない所だけ）：
 - `validateBatchShape`：`event_key` 1〜40字／`source` は `chat|manual|file`／`shot_on` は `YYYY-MM-DD`／`range_from`・`range_to` は `YYYY-MM-DD` か `YYYY/MM/DD`（`/` は `-` にそろえて返す）／`images` は 0 以上の整数／`account` は文字／`rows` は 1〜`BANK_BATCH_MAX_ROWS` 行／行の `dir`・`kind` は決まった語／`amount`・`balance` は 0 以上の整数か null（null は `unread` にその名前がある時だけ。`manual` の `balance` は null 不可）／`date` は `chat` なら `M/D`（0埋めあり・なし両方）、`file`・`manual` は `YYYY-MM-DD`／`desc` は 200字で切る／`unread` は `''` か `date,amount,balance,desc,dir` の語をカンマでつないだ物／`manual` の行は `dir='in'`・`kind='transfer'` だけ／`first_ok` は boolean か無し。
 - `inferRowYear`：`handedJstDate` の年 Y で `Y-MM-DD` を作り、`handedJstDate` より後なら Y−1。どちらも作れない日付（2/30 など）は `''`。
-- `normalizeBatch`：①`pos` の枚・行の数で並べる ②`chat` だけ、枚 k のいちばん下から数えた並びと、枚 k+1 のいちばん上から数えた並びが（日付・入出・金額・残高で）いちばん長く一致する所を、枚 k+1 の側から消す ③日付：`chat` は `inferRowYear`（`''` なら `unread` に `date` を足す）、ほかはそのまま ④入金の振込の行で `desc` があるときだけ `readRefFromDesc` で `descRaw`・`descNorm`・`refRead`・`refOk` を入れる（ほかの行は `descRaw`・`descNorm`・`refRead` が null、`refOk` 0）⑤`amount`・`balance` が null の行は `amount` を 0 にする（その束は `checkBatch` が ng にする）⑥`rowKey` を付け、同じ鍵は下から数えて2つ目以降に `#n` ⑦`checkFlag` は null。
+- `normalizeBatch`：①`chat` だけ、`pos` の枚・行の数で並べる（`file`・`manual` は渡された順のまま。`parseGmoStatementCsv` が返す「上が新しい順」の `f-3`→`f-2` を行番号の小さい順に並べ直すと古い順になり、検算1・2が必ず落ちる。決まりの紙 2-18「枚の順・行の順に1本に並べる」は画像の話）②`chat` だけ、枚 k のいちばん下から数えた並びと、枚 k+1 のいちばん上から数えた並びが（日付・入出・金額・残高で）いちばん長く一致する所を、枚 k+1 の側から消す ③日付：`chat` は `inferRowYear`（`''` なら `unread` に `date` を足す）、ほかはそのまま ④入金の振込の行で `desc` があるときだけ `readRefFromDesc` で `descRaw`・`descNorm`・`refRead`・`refOk` を入れる（ほかの行は `descRaw`・`descNorm`・`refRead` が null、`refOk` 0）⑤`amount`・`balance` が null の行は `amount` を 0 にする（その束は `checkBatch` が ng にする）⑥`rowKey` を付け、同じ鍵は下から数えて2つ目以降に `#n` ⑦`checkFlag` は null。
   ⚠️ 重ね撮りの1本化は「つなぎ目だけ」。1枚の中の同じ並びは消さない。ここが試験とちがう動きになったら、止まって知らせる。
-- `checkBatch`：見る順は ⓪読めない（`unread` に `date`・`amount`・`balance`・`dir` がある行 → その行の日付と金額）→ 1 残高（となりの2行の上の行を `near` に）→ 2 日付 → 3 枚のつなぎ目（`b.rows` の枚 k のいちばん下が、枚 k+1 のいちばん上と同じか。ちがえば枚 k のいちばん下を `near`）→ 5 開始日（`range_from > startDate` なら `near: { date: startDate, amount: 0 }`）→ 4 前の日までのつなぎ目（最後に見るので、`joinMismatch` は「束の中は合っている」時だけ出る）。`manual` は ⓪ と「残高が null でない」だけ。`file` は ⓪・1・2 だけ。`chat` は全部。
+- `checkBatch`：見る順は ⓪読めない（`unread` に `date`・`amount`・`balance`・`dir` がある行 → その行の日付と金額）→ 1 残高（となりの2行の上の行を `near` に）→ 2 日付 → 3 枚のつなぎ目（`b.rows` の枚 k のいちばん下が、枚 k+1 のいちばん上と同じか。ちがえば枚 k のいちばん下を `near`。**つなぎ目は `rows` の `pos` に出てくる枚どうしで見る**。`images` は記録用で数えるのに使わない＝`images` が 2 で行が1枚目だけなら、つなぎ目は無い）→ 5 開始日（`range_from > startDate` なら `near: { date: startDate, amount: 0 }`）→ 4 前の日までのつなぎ目（最後に見るので、`joinMismatch` は「束の中は合っている」時だけ出る）。`manual` は ⓪ と「残高が null でない」だけ。`file` は ⓪・1・2 だけ。`chat` は全部。
   - 4 のやり方：台帳の行のうち `dir='in'`・`kind='transfer'`・`source` が `chat|file`・`state<>'void'` の物が1つも無ければ見ない。あれば、束の入金の振込の行のどれかの鍵（`#n` をふくむ）が、その台帳の行のどれかの `row_key` と同じなら合格。1つも同じでなければ ng。そのとき、日付・入出・金額が同じで残高だけちがう組を `joinMismatch: [{ ledgerRowId, pos }]` に入れ、`near` は束のいちばん下の行。
 - `flagRows`：鍵が台帳（`state<>'void'`）にもうある行には付けない。入金の振込の行にだけ、`manual_twin`（台帳の `source='manual'` の行と日付・入出・金額が同じ）→ `twin`（入出・金額・残高が同じで日付だけちがう／日付・入出・残高が同じで金額だけちがう）→ `last`（束のいちばん下の行）の順で、最初に当たった1つ。
 - `parseGmoStatementCsv`：`new TextDecoder('shift_jis')` で読む。見出しの名前で列を探す（`日付`・`摘要`・`入金金額`・`出金金額`・`残高`。無ければ throw）。引用符つきの欄も読める小さい CSV の分け方を中に持つ（`scripts/bf7_ws_match_transfers.mjs` の `parseCsvLine` と同じ考え）。金額の `,`・`円`・`¥`・空白は取る。日付は `/` を `-` に、0埋め。入金が 0 より大きければ `in`、ほかは `out`。`kind`：入金で摘要が `振込` で始まる → `transfer`、摘要（NFKC 後）に `デビット` → `debit`、ほか `other`。`desc` は入金の振込の行だけ（ほかは `''`）。CSV が古い順なら逆にして返す（はじめと終わりの日付でくらべる）。
@@ -5984,7 +6058,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Test: `src/lib/__tests__/recitalBankMatch.test.ts`
 
 **Interfaces:**
-- Consumes: `isValidRef(code): boolean`（4）、`FIRST5_LIMIT = 5`・`type HouseholdView`（2）
+- Consumes: `isValidRef(code): boolean`・`REF_SEPARATORS`（4）、`FIRST5_LIMIT = 5`・`type HouseholdView`（2）
 - Produces（型は split ③ のまま）:
   - `type ReviewKind`・`type MatchHousehold`・`type MatchRow`・`type Candidate`
   - `surnameMatches(nameRaw: string, surnamesKana: string[], toldName: string | null): boolean`
@@ -5993,14 +6067,14 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: 失敗する試験を書く**
 
-金額は料金表の額（26,500／32,500／6,000）だけ。当たる場面の番号は検査に合う `2714`（世帯A）・`3657`（世帯B）。
+金額は料金表の額（26,500／32,500／6,000）だけ。当たる場面の番号は検査に合う欠番の `4823`（世帯A）・`4867`（世帯B）・`4872`（世帯X）（本物の家庭には出ない。K139）。
 
 ```ts
 import { describe, it, expect } from 'vitest';
 import { decideRow, candidatesFor, surnameMatches, type MatchHousehold, type MatchRow } from '../recitalBankMatch';
 
-const H = (over: Partial<MatchHousehold> = {}): MatchHousehold => ({ id: 1, refCode: '2714', status: 'active', mergedInto: null, view: 'tentative', remaining: 26500, totalBeforeLastDrop: null, surnamesKana: ['ヤマダ'], told: null, ...over });
-const R = (over: Partial<MatchRow> = {}): MatchRow => ({ id: 10, source: 'chat', dir: 'in', kind: 'transfer', amount: 26500, remainingOfRow: 26500, refRead: '2714', refOk: 1, nameRaw: 'ヤマダハナコ', unread: null, cut: 0, checkFlag: null, rowDate: '2026-12-16', ...over });
+const H = (over: Partial<MatchHousehold> = {}): MatchHousehold => ({ id: 1, refCode: '4823', status: 'active', mergedInto: null, view: 'tentative', remaining: 26500, totalBeforeLastDrop: null, surnamesKana: ['ヤマダ'], told: null, ...over });
+const R = (over: Partial<MatchRow> = {}): MatchRow => ({ id: 10, source: 'chat', dir: 'in', kind: 'transfer', amount: 26500, remainingOfRow: 26500, refRead: '4823', refOk: 1, nameRaw: 'ヤマダハナコ', unread: null, cut: 0, checkFlag: null, rowDate: '2026-12-16', ...over });
 const by = (...hs: MatchHousehold[]) => new Map(hs.map((h) => [h.refCode, h]));
 const CTX = { first5Done: 5, firstOk: false, sameRefOpenAmounts: [] as number[] };
 const kind = (row: MatchRow, hs: MatchHousehold[], ctx = CTX) => decideRow(row, by(...hs), ctx);
@@ -6025,7 +6099,7 @@ describe('decideRow：場面の表（05 5-6）', () => {
   it('12 番号なし → no_ref（姓と金額が合っても当てない）', () => expect(kind(R({ refRead: null, refOk: 0 }), [H()])).toEqual({ auto: false, reviewKind: 'no_ref', householdId: null }));
   it('13・32 例の 4827 は bad_ref／検査に合っても世帯が無ければ bad_ref', () => {
     expect(kind(R({ refRead: '4827', refOk: 0 }), [H()])).toMatchObject({ reviewKind: 'bad_ref' });
-    expect(kind(R({ refRead: '3657', refOk: 1 }), [H()])).toMatchObject({ reviewKind: 'bad_ref', householdId: null });
+    expect(kind(R({ refRead: '4867', refOk: 1 }), [H()])).toMatchObject({ reviewKind: 'bad_ref', householdId: null });
   });
   it('14 姓が合わない → name', () => expect(kind(R({ nameRaw: 'スズキイチロウ' }), [H()])).toMatchObject({ reviewKind: 'name' }));
   it('16 出金・デビット → 見ない', () => {
@@ -6057,8 +6131,8 @@ describe('decideRow：場面の表（05 5-6）', () => {
 });
 
 describe('candidatesFor（K203）', () => {
-  const A = H({ id: 1, refCode: '2714', surnamesKana: ['ヤマダ'], remaining: 32500 });
-  const B = H({ id: 2, refCode: '3657', surnamesKana: ['スズキ'], remaining: 26500 });
+  const A = H({ id: 1, refCode: '4823', surnamesKana: ['ヤマダ'], remaining: 32500 });
+  const B = H({ id: 2, refCode: '4867', surnamesKana: ['スズキ'], remaining: 26500 });
   it('39 番号は A・姓と金額は B → B を上に、文を出す。選んだ形にはしない（top は上に出す印）', () => {
     const c = candidatesFor(R({ nameRaw: 'スズキハナコ' }), [A, B]);
     expect(c.list.map((x) => x.householdId)).toEqual([2, 1]);
@@ -6068,21 +6142,21 @@ describe('candidatesFor（K203）', () => {
     expect(c.notice).toBe('番号とお名前が、別のご家庭を指しています。家庭に確かめてから、押してください');
   });
   it('40 番号なし・同じ姓と金額の世帯が2つ → どちらも上に出さない', () => {
-    const X = H({ id: 3, refCode: '5188', surnamesKana: ['ヤマダ'], remaining: 26500 });
+    const X = H({ id: 3, refCode: '4872', surnamesKana: ['ヤマダ'], remaining: 26500 });
     const Y = H({ id: 4, refCode: '6405', surnamesKana: ['ヤマダ'], remaining: 26500 });
     const c = candidatesFor(R({ refRead: null, refOk: 0 }), [X, Y]);
     expect(c.list.every((x) => !x.top)).toBe(true);
     expect(c.notice).toBe('同じ姓・同じ金額のご家庭が 2つあります。家庭に確かめてから、押してください');
   });
   it('40 そのうち「振り込みました」の印（日・金額・名義）が合うのが1つ → その世帯を上に', () => {
-    const X = H({ id: 3, refCode: '5188', surnamesKana: ['ヤマダ'], remaining: 26500, told: { date: '2026-12-15', name: 'ヤマダ ハナコ', amount: 26500 } });
+    const X = H({ id: 3, refCode: '4872', surnamesKana: ['ヤマダ'], remaining: 26500, told: { date: '2026-12-15', name: 'ヤマダ ハナコ', amount: 26500 } });
     const Y = H({ id: 4, refCode: '6405', surnamesKana: ['ヤマダ'], remaining: 26500 });
     const c = candidatesFor(R({ refRead: null, refOk: 0 }), [X, Y]);
     expect(c.list[0]).toMatchObject({ householdId: 3, top: true });
     expect(c.list[0].why).toContain('told');
   });
   it('9 2家庭まとめ（53,000）→ 同じ姓の2世帯に sum', () => {
-    const X = H({ id: 3, refCode: '5188', remaining: 26500 });
+    const X = H({ id: 3, refCode: '4872', remaining: 26500 });
     const Y = H({ id: 4, refCode: '6405', remaining: 26500 });
     const c = candidatesFor(R({ refRead: null, refOk: 0, amount: 53000, remainingOfRow: 53000 }), [X, Y]);
     expect(c.list.filter((x) => x.why.includes('sum')).map((x) => x.householdId).sort()).toEqual([3, 4]);
@@ -6112,8 +6186,8 @@ describe('surnameMatches', () => {
     expect(surnameMatches('ｵ-ﾉﾊﾅｺ', ['オーノ'], null)).toBe(true);
   });
   it('「振り込みました」の名義の頭の番号と区切りは、Task 4 と同じ並びで外す（全角の番号・長音の区切りも）', () => {
-    expect(surnameMatches('ヤマダハナコ', ['スズキ'], '２７１４ーヤマダ ハナコ')).toBe(true);
-    expect(surnameMatches('ヤマダハナコ', ['スズキ'], '2714/ヤマダハナコ')).toBe(true);
+    expect(surnameMatches('ヤマダハナコ', ['スズキ'], '４８２３ーヤマダ ハナコ')).toBe(true);
+    expect(surnameMatches('ヤマダハナコ', ['スズキ'], '4823/ヤマダハナコ')).toBe(true);
   });
 });
 describe('「振り込みました」の印と作品を足したあとの差額', () => {
@@ -6132,7 +6206,7 @@ Expected: FAIL（`Cannot find module '../recitalBankMatch'`）
 
 - [ ] **Step 3: `src/lib/recitalBankMatch.ts` を作る**
 
-- `surnameMatches`：そろえ方 `norm(s)` ＝ NFKC → 空白（半角・全角）を取る → ひらがなをカタカナに → 小さいカナ（ァィゥェォッャュョヮヵヶ）を大きいカナに → 長音（`ー`・`-`。半角の `ｰ` は NFKC で `ー` になる）を取る（Task 5 の `normalizeKana` と同じ考え。銀行の名義は長音が `ｰ` や `-` で出る）。`norm(nameRaw)` が、空でない `norm(姓)` のどれかで始まれば true。`toldName` は NFKC のあと、頭の数字と、Task 4 の区切りの並び（`-‐‑‒–—―−ー・.,、。/`）と空白を外してから `norm` し、`norm(nameRaw)` と同じなら true。`normalizeKana`（csvUtil）そのものは使わない（ヅ/ズを同じにしないため）。
+- `surnameMatches`：そろえ方 `norm(s)` ＝ NFKC → 空白（半角・全角）を取る → ひらがなをカタカナに → 小さいカナ（ァィゥェォッャュョヮヵヶ）を大きいカナに → 長音（`ー`・`-`。半角の `ｰ` は NFKC で `ー` になる）を取る（Task 5 の `normalizeKana` と同じ考え。銀行の名義は長音が `ｰ` や `-` で出る）。`norm(nameRaw)` が、空でない `norm(姓)` のどれかで始まれば true。`toldName` は NFKC のあと、頭の数字と、Task 4 の区切りの並び（`import { REF_SEPARATORS } from './recitalRef'`。ここに文字を写さない。摘要の形がちがって 4 を直した時に、ここもそろう）と空白を外してから `norm` し、`norm(nameRaw)` と同じなら true。`normalizeKana`（csvUtil）そのものは使わない（ヅ/ズを同じにしないため）。
 - 下の表と上の試験が食いちがったら、試験が正本（表は順番を見せるための物）。止まって知らせる。
 - `decideRow`：`amt = row.remainingOfRow`、`h = row.refRead ? byRef.get(row.refRead) : undefined`。上から見て最初に当たった物を返す（K149）。返す `householdId` は、`auto` でない時も `h` があれば `h.id`（3 と 4 は null）。
 
@@ -6216,7 +6290,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - [ ] **Step 1: 失敗する試験を書く（DB）**
 
 試験のDBは `bf7EntryDb.test.ts` 1〜25行と同じ作り（`process.env.TURSO_DATABASE_URL = 'file:./data/test_recital_bank.db'`、`initDb()`、台帳SQLを全部流す）。この試験ファイルの中だけの小さい助け（export しない）：
-- `seedEvent(eventKey)`：`recital_events` に `is_test=1` の行、設定は `saveRecitalSetting` で `pay_open_at='2026-12-15 12:00'`・`bank_rest_from='2026-12-30'`・`bank_rest_to='2027-01-03'`・`test_mail_to=''`。
+- `seedEvent(eventKey)`：`recital_events` に `is_test=1` の行、設定は `saveRecitalSetting` で `pay_open_at='2026-12-15 12:00'`・`bank_rest_from='2026-12-30'`・`bank_rest_to='2027-01-03'`・`test_mail_to='test@example.com'`（空にしない。6 の `seedRecitalTestEvent` と同じ値。空だと 10 の送る道で宛先の失敗が先に出て、夜の「待ち」の試験が `failed` になる）。ファイルの頭で `delete process.env.GMAIL_APP_PASSWORD`（家のまとまりの試験と同じ。送れない時は 10 の「鍵が無い」で `failed` になり、待ちの判定はその前に通る）。6 の `setupRecitalTestDb`・`seedRecitalTestEvent` に寄せないのは、この試験の世帯が作品を自分で作り、6 の種の作品 W01〜 と番号がぶつかるため（台帳SQLを全部流す作りは同じ）。
 - `seedHousehold(eventKey, { ref, lastKana, charges })`：世帯（`ref_code`・48けたの `edit_token`・`contact_last_kana`）・人1人（`last_kana`）・作品1つと `in` の出演・`active` の請求の行。表の NOT NULL の列は 1 の `recitalSchema.ts` を見て埋める。
 - 束は 25 の試験と同じ `r()`・`b()` の形。束のいちばん下は、台帳にある行かデビットにする（`last` の印を付けないため）。
 - 試験の決まり：この試験ファイルは自分の `t-bank-*` の発表会だけを見る（種の `bw6-test` の行を数に入れない）。
@@ -6224,19 +6298,19 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```ts
 describe('ingestBankBatch', () => {
   const NOON = new Date('2026-12-16T12:00:00+09:00');
-  // ev ごとに seedEvent。A＝2714 ヤマダ 26,500
+  // ev ごとに seedEvent。A＝4823 ヤマダ 26,500
   it('合う束を commit：台帳に全部入り、5件がたまっていれば、ぴったりの行が自動で当たる', async () => {
-    const ev = 't-bank-1'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
+    const ev = 't-bank-1'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
     const res = await ingestBankBatch({ ...b(SAMPLE, { event_key: ev }), first_ok: true }, 'commit', 'test', NOON);
     expect(res).toMatchObject({ mode: 'commit', check: { ok: true }, read_rows: 5, inserted: 5, existing: 0, rejected: 0, auto_matched: 1 });
     expect((await readHouseholdMoney(A)).m.remaining).toBe(0);
-    const row = await getOne(`SELECT state, match_by, row_date FROM recital_bank_rows WHERE event_key=? AND ref_read='2714'`, [ev]);
+    const row = await getOne(`SELECT state, match_by, row_date FROM recital_bank_rows WHERE event_key=? AND ref_read='4823'`, [ev]);
     expect(row).toMatchObject({ state: 'matched', match_by: 'auto', row_date: '2026-12-16' });
     const mail = await getOne(`SELECT dedupe_key, status FROM recital_mail_log WHERE household_id=? AND dedupe_key LIKE 'bank_paid:%'`, [A]);
     expect(['sent', 'failed']).toContain(mail?.status); // 昼は待ちにしない（試しの宛先が空なら failed）
   });
   it('同じ束を2回渡しても、行も入金も増えない（束の記録は2行）', async () => {
-    const ev = 't-bank-2'; await seedEvent(ev); await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
+    const ev = 't-bank-2'; await seedEvent(ev); await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
     const bb = { ...b(SAMPLE, { event_key: ev }), first_ok: true };
     await ingestBankBatch(bb, 'commit', 'test', NOON);
     const again = await ingestBankBatch(bb, 'commit', 'test', NOON);
@@ -6265,10 +6339,10 @@ describe('ingestBankBatch', () => {
     expect((await getOne(`SELECT COUNT(*) n FROM recital_bank_rows WHERE event_key=?`, [ev]))?.n).toBe(0);
   });
   it('はじめの5件：first_ok なしの commit では当てず first5 で待つ → はいの束で、待っていた行も当たる', async () => {
-    const ev = 't-bank-5'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
+    const ev = 't-bank-5'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
     const dry = await ingestBankBatch(b(SAMPLE, { event_key: ev }), 'dry', 'test', NOON);
     expect(dry.needs_first_ok).toBe(true);
-    expect(dry.first5_rows).toEqual([{ pos: '1-1', ref: '2714', amount: 26500, conditions: [true, true, true, true, true] }, expect.objectContaining({ pos: '1-3', ref: '3657' })]);
+    expect(dry.first5_rows).toEqual([{ pos: '1-1', ref: '4823', amount: 26500, conditions: [true, true, true, true, true] }, expect.objectContaining({ pos: '1-3', ref: '4867' })]);
     const c1 = await ingestBankBatch(b(SAMPLE, { event_key: ev }), 'commit', 'test', NOON);
     expect(c1).toMatchObject({ auto_matched: 0, review: { first5: 1 } });
     expect((await readHouseholdMoney(A)).m.remaining).toBe(26500);
@@ -6286,13 +6360,13 @@ describe('ingestBankBatch', () => {
     expect(await bankStartDate(ev, await getRecitalSettings(ev))).toBe('2026-12-18');
   });
   it('はいの束で、前の束から first5 で待っていて今回の束に写っていない行も当たる（2-23）', async () => {
-    const ev = 't-bank-5b'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
-    await ingestBankBatch(b(SAMPLE, { event_key: ev }), 'commit', 'test', NOON);                       // 2714 の 12/16 の行は first5 で待つ
-    const day2 = [r('1-1', '12/18', 'in', 5000, 158000, 'transfer', '振込 ﾀﾅｶ ｲﾁﾛｳ'), r('1-2', '12/16', 'in', 26500, 153000, 'transfer', '振込　２７１４　ヤマダ　ハナコ')];
+    const ev = 't-bank-5b'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    await ingestBankBatch(b(SAMPLE, { event_key: ev }), 'commit', 'test', NOON);                       // 4823 の 12/16 の行は first5 で待つ
+    const day2 = [r('1-1', '12/18', 'in', 5000, 158000, 'transfer', '振込 ﾀﾅｶ ｲﾁﾛｳ'), r('1-2', '12/16', 'in', 26500, 153000, 'transfer', '振込　４８２３　ヤマダ　ハナコ')];
     await ingestBankBatch(b(day2, { event_key: ev }), 'commit', 'test', new Date('2026-12-18T12:00:00+09:00'));   // 開始日は 12/18 になる
-    const day3 = [r('1-1', '12/19', 'out', 1000, 157000, 'debit'), r('1-2', '12/18', 'in', 5000, 158000, 'transfer', '振込 ﾀﾅｶ ｲﾁﾛｳ')];  // 2714 の行は写っていない
+    const day3 = [r('1-1', '12/19', 'out', 1000, 157000, 'debit'), r('1-2', '12/18', 'in', 5000, 158000, 'transfer', '振込 ﾀﾅｶ ｲﾁﾛｳ')];  // 4823 の行は写っていない
     const dry = await ingestBankBatch(b(day3, { event_key: ev }), 'dry', 'test', new Date('2026-12-19T12:00:00+09:00'));
-    expect(dry.first5_rows?.map((x) => x.ref)).toContain('2714');                                         // 台帳の first5 の行は全部見せる
+    expect(dry.first5_rows?.map((x) => x.ref)).toContain('4823');                                         // 台帳の first5 の行は全部見せる
     await ingestBankBatch({ ...b(day3, { event_key: ev }), first_ok: true }, 'commit', 'test', new Date('2026-12-19T12:00:00+09:00'));
     expect((await readHouseholdMoney(A)).m.remaining).toBe(0);
   });
@@ -6316,11 +6390,11 @@ describe('ingestBankBatch', () => {
     expect((await getAll(`SELECT row_date FROM recital_bank_rows WHERE event_key=? ORDER BY row_date`, [ev])).map((x) => x.row_date)).toEqual(['2026-12-28', '2026-12-29']);
   });
   it('当てる順は古い順：同じ番号 26,500 が同じ日に2件 → 下（古い）の 1-2 が自動、上の 1-1 は paid（場面3）', async () => {
-    const ev = 't-bank-8'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
+    const ev = 't-bank-8'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
     await insertLedgerRow(ev, { row_date: '2026-12-15', dir: 'out', kind: 'debit', amount: 1000, balance: 127000, source: 'chat' }); // 1-3 と同じ行（row_key は buildRowKey で作る）
     const rows = [
-      r('1-1', '12/16', 'in', 26500, 180000, 'transfer', '振込 2714 ヤマダ ハナコ'),
-      r('1-2', '12/16', 'in', 26500, 153500, 'transfer', '振込 2714 ヤマダ ハナコ'),
+      r('1-1', '12/16', 'in', 26500, 180000, 'transfer', '振込 4823 ヤマダ ハナコ'),
+      r('1-2', '12/16', 'in', 26500, 153500, 'transfer', '振込 4823 ヤマダ ハナコ'),
       r('1-3', '12/15', 'out', 1000, 127000, 'debit'),
     ];
     await ingestBankBatch({ ...b(rows, { event_key: ev }), first_ok: true }, 'commit', 'test', NOON);
@@ -6332,20 +6406,20 @@ describe('ingestBankBatch', () => {
     expect((await getOne(`SELECT COUNT(*) n FROM recital_payments WHERE household_id=?`, [A]))?.n).toBe(1);
   });
   it('手で打った行と日付・金額が同じ行 → 両方に manual_twin、新しい行は当てない（場面35）', async () => {
-    const ev = 't-bank-9'; await seedEvent(ev); await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
-    await insertLedgerRow(ev, { row_date: '2026-12-16', source: 'manual', dir: 'in', kind: 'transfer', amount: 26500, balance: null, desc_raw: '振込 2714 ヤマダ ハナコ' });
+    const ev = 't-bank-9'; await seedEvent(ev); await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    await insertLedgerRow(ev, { row_date: '2026-12-16', source: 'manual', dir: 'in', kind: 'transfer', amount: 26500, balance: null, desc_raw: '振込 4823 ヤマダ ハナコ' });
     const res = await ingestBankBatch({ ...b(SAMPLE, { event_key: ev }), first_ok: true }, 'commit', 'test', NOON);
     expect(res.auto_matched).toBe(0); expect(res.flagged).toBeGreaterThanOrEqual(1);
     expect((await getAll(`SELECT check_flag FROM recital_bank_rows WHERE event_key=? AND row_date='2026-12-16' AND dir='in'`, [ev])).map((x) => x.check_flag)).toEqual(['manual_twin', 'manual_twin']);
   });
   it('いちばん下が新しい振込の入金 → last、当てない、flagged に数える（場面34）', async () => {
-    const ev = 't-bank-10'; await seedEvent(ev); await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
-    const res = await ingestBankBatch({ ...b([r('1-1', '12/16', 'out', 1000, 152500, 'debit'), r('1-2', '12/16', 'in', 26500, 153500, 'transfer', '振込 2714 ヤマダ ハナコ')], { event_key: ev }), first_ok: true }, 'commit', 'test', NOON);
+    const ev = 't-bank-10'; await seedEvent(ev); await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const res = await ingestBankBatch({ ...b([r('1-1', '12/16', 'out', 1000, 152500, 'debit'), r('1-2', '12/16', 'in', 26500, 153500, 'transfer', '振込 4823 ヤマダ ハナコ')], { event_key: ev }), first_ok: true }, 'commit', 'test', NOON);
     expect(res).toMatchObject({ auto_matched: 0, flagged: 1 });
     expect((await getOne(`SELECT check_flag FROM recital_bank_rows WHERE event_key=? AND dir='in'`, [ev]))?.check_flag).toBe('last');
   });
   it('夜 21:30 に当たった → メールの記録は waiting', async () => {
-    const ev = 't-bank-11'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
+    const ev = 't-bank-11'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
     await ingestBankBatch({ ...b(SAMPLE, { event_key: ev }), first_ok: true }, 'commit', 'test', new Date('2026-12-16T21:30:00+09:00'));
     expect((await getOne(`SELECT status FROM recital_mail_log WHERE household_id=? AND dedupe_key LIKE 'bank_paid:%'`, [A]))?.status).toBe('waiting');
   });
@@ -6367,11 +6441,11 @@ describe('ingestBankBatch', () => {
 });
 ```
 
-（`insertLedgerRow(ev, over)` は試験の中の小さな関数：台帳に1行を SQL で入れる。初めの値は `dir='in'`・`kind='transfer'`・`amount=26500`・`balance=150000`・`source='chat'`・`state='new'`、`row_key` は 25 の `buildRowKey` で作る。`twelveRefs()` は 4 の `pickRef` で検査に合う番号を12個作る。）
+（`insertLedgerRow(ev, over)` は試験の中の小さな関数：台帳に1行を SQL で入れる。初めの値は `row_date='2026-12-16'`（NOT NULL）・`dir='in'`・`kind='transfer'`・`amount=26500`・`balance=150000`・`source='chat'`・`state='new'`・`check_flag=null`、`row_key` は 25 の `buildRowKey` で作る（同じ発表会に同じ日・同じ額の行を2つ入れる時は `balance` を変える。同じ鍵は `ux_recital_bank_rows_key` に当たる）。`twelveRefs()` は 4 の `pickRef` で検査に合う番号を12個作る。）
 
 - [ ] **Step 2: 入口の試験を書く**
 
-`route.test.ts`（`withdrawal-export/__tests__/route.test.ts` と同じ型。`@/lib/eventAuth` と `@/lib/recitalBankDb` を `vi.mock`）：
+`route.test.ts`（`withdrawal-export/__tests__/route.test.ts` と同じ型。`@/lib/eventAuth` と `@/lib/recitalBankDb` を `vi.mock`）。**その見本の mock は `isAuthorized`・`unauthorized` だけで `withAuth` が無い**（そのまま写すと `withAuth is not a function`）。この試験の `@/lib/eventAuth` の mock には `withAuth: (h) => async (req, ctx) => ((await isAuthorized(req)) ? h(req, ctx) : unauthorized())` も入れる（`unauthorized` は 401 の `NextResponse` を返すにせ物）：
 
 ```ts
 it('スタッフでなければ 401', async () => { isAuthorized.mockResolvedValueOnce(false); expect((await POST(req({}))).status).toBe(401); });
@@ -6417,7 +6491,7 @@ Expected: FAIL（`Cannot find module '../route'`）
    - 1行ごとに `withWriteTx`：行を読み直す（`state` が `new` でなければとばす）→ のこり（行の額 − その行の入金の合計）→ `first5Done` を数える → 番号の世帯の材料（残りは `readHouseholdMoneyTx` で読み直す）→ `sameRefOpenAmounts`（同じ `ref_read` の、入金の振込で `state` が `new`/`hold` の、ほかの行ののこり）→ `decideRow(row, byRef, { first5Done, firstOk: b.first_ok === true, sameRefOpenAmounts })`。
      - 自動なら `insertPaymentTx(tx, { householdId, method:'bank', amount: のこり, paidOn: row_date, source:'bank_auto', confirmedBy: b.first_ok ? 'TARO' : null, bankRowId, bankDate: row_date, bankDesc: desc_raw, payerNameRaw: readRefFromDesc(desc_raw).nameRaw }, 'system')`、行を `state='matched'`・`match_by='auto'`・`review_kind=NULL`。
      - 自動でなければ `review_kind` を書く（印だけの行は NULL）。
-   - 書き込みの外で、当たった行ごとに `sendPaidMail(householdId, paymentId, 'bank', { now, forceWait: その場で送った数 >= 10 })` → `afterMoneyChanged(householdId, 'payment')`。その場で送るのは先頭の10通まで、残りは「待ち」で記録して朝8時（と 8:05・8:10 の追い打ち）か 29 の「待ちのメールを、今出す」に任せる（Gmail の送り口は1通ごとにつなぎ直して1〜3秒かかる。関数は60秒まで。年末の休み明けに当たる行が20〜30件になる）。メールが失敗しても、続ける（入金は記録ずみ）。
+   - 書き込みの外で、当たった行ごとに `sendPaidMail(householdId, paymentId, 'bank', { now, forceWait: その場で送った数 >= 10 })`（「その場で送った数」＝この束でここまでに `sendPaidMail` を呼び、返りの `status` が `sent` か `failed` だった数。`waiting`・`duplicate`・`none` は数えない） → `afterMoneyChanged(householdId, 'payment')`。その場で送るのは先頭の10通まで、残りは「待ち」で記録して朝8時（と 8:05・8:10 の追い打ち）か 29 の「待ちのメールを、今出す」に任せる（Gmail の送り口は1通ごとにつなぎ直して1〜3秒かかる。関数は60秒まで。年末の休み明けに当たる行が20〜30件になる）。メールが失敗しても、続ける（入金は記録ずみ）。
    - 返す：数と `review`（種類ごと）と `flagged` と `needs_first_ok`（`first5` で待たせた行があれば true）。
 8. **返す物に、名義・摘要・世帯の名前・残高を入れない**（K146）。整理番号・金額・日付・`pos` は返してよい。
 9. 止めた催促をその場で出す（K211）は、ここでは作らない（後の計画）。
@@ -6454,7 +6528,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Files:**
 - Modify: `src/lib/recitalBankDb.ts`（27 で作った物に足す）
 - Modify: `src/app/staff/bw6/entries/[id]/page.tsx`・`src/app/staff/bw6/entries/[id]/actions.ts`（19 で作った物。入金の行に「この入金を取り消す」を足すだけ）
-- Test: `src/lib/__tests__/recitalBankDb.test.ts`（27 の試験に `describe` を足す。`event_key` は `t-bank-b<番号>` で分ける）
+- Create: `src/app/staff/bw6/entries/[id]/CancelPaymentButton.tsx`（`'use client'`。理由のラジオ2つ・`StaffNamePicker`・2段階ボタン。`StaffNamePicker` は client の部品なので server の page.tsx に直に置けない）
+- Modify: `src/lib/recitalDb.ts`（16 の `listAttention` の4番 (a) を `listReviewRows` に置きかえる）
+- Test: `src/lib/__tests__/recitalBankDb.test.ts`（27 の試験に `describe` を足す。`event_key` は `t-bank-b<番号>` で分け、**試験ごとに自分の発表会・世帯・行を作る**。ほかの試験の世帯・行・入金を使わない＝試験の順で残りが変わらない）
 
 **Interfaces:**
 - Consumes: 26 の `decideRow`・`candidatesFor`・`surnameMatches`、27 の当てる材料の読み方、9 の `insertPaymentTx`・`readHouseholdMoneyTx`・`afterMoneyChanged`、10 の `sendPaidMail`・`cancelWaitingMailsTx(tx, paymentId)`、6 の `logChangeTx`・`loadHouseholdDetail`、16 の `requireRecitalStaff`・`StaffNamePicker`
@@ -6482,39 +6558,65 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `mergeManualRow(manualRowId, newRowId, staffName): Promise<void>`
   - `cancelBankPayment(paymentId, reason: 'wrong_household' | 'misread', staffName): Promise<{ ok: boolean; code?: 'refund_done' | 'negative' }>`
   - 世帯の画面の Server Action `cancelBankPaymentAction(formData: FormData)`（足した名前）
-  - 失敗は `throw new Error(<語>)`。語は `not_found`・`bad_state`・`bad_alloc`・`confirm_flag`・`merged`・`has_payment`・`key_taken`・`reason_required`・`already_cancelled`、と 9 から上がってくる `recital_money:row_over`・`recital_money:live_exists`・`recital_money:negative`（画面が日本語の文に直す。`row_over`・`live_exists` は「ほかの人が、いま同じ入金を当てました。画面を開き直してください」）。`assignBankRow` は、書き込みの中で行の `state` とのこりを読み直してから当てる（2人が同時に押した時、あとの方はここか 9 の守りで止まる）
+  - 失敗は `throw new Error(<語>)`。語は `not_found`・`bad_state`・`bad_alloc`・`confirm_flag`・`merged`・`has_payment`・`key_taken`・`reason_required`・`already_cancelled`、と 9 から上がってくる `recital_money:row_over`・`recital_money:live_exists`・`recital_money:negative`、それに `busy`（画面が日本語の文に直す。`row_over`・`live_exists`・`busy` は「ほかの人が、いま同じ入金を当てました。画面を開き直してください」）。`assignBankRow`・`cancelBankPayment` は、書き込みで `SQLITE_BUSY`・`database is locked` の例外が出たら `throw new Error('busy')` に直す（7 の `submitEntry` と同じ扱い。libsql は同じプロセスから2本同時に `transaction('write')` を開くと2本目がすぐこの例外で落ちる。待って入れ直す輪は作らない。2人同時に当てても入金は1行のまま＝決まりの紙 K200「当てられるのは、のこりの額まで」・Review Focus 1）。`assignBankRow` は、書き込みの中で行の `state` とのこりを読み直してから当てる（2人が同時に押した時、あとの方はここか 9 の守りで止まる）
 
 - [ ] **Step 1: 失敗する試験を書く**
 
 ```ts
 describe('見てほしい入金のボタン', () => {
-  // 世帯：A=2714 ヤマダ、B=3657 スズキ、C=5188 タナカ。はじめの5件は first_ok の束で済ませてから始める
+  // 試験ごとに自分の発表会 t-bank-b<番号> と世帯・行を作る（前の試験の入金で残りがずれないように。ほかの試験の世帯・行を使わない）。
+  // 世帯の番号は検査に合う欠番（4823・4867・4872・4727・9827・1234・9054。本物の家庭には出ない）。
+  // assignBankRow ははじめの5件に関係しない（insertLedgerRow の行は review_kind が空なので first5 にならない）。
+  const fresh = async (no: string, hh: { ref: string; kana: string; charges: number[]; cast?: 'in' | 'out' }[]) => {
+    const ev = `t-bank-b${no}`; await seedEvent(ev);
+    const ids: number[] = [];
+    for (const h of hh) ids.push(await seedHousehold(ev, { ref: h.ref, lastKana: h.kana, charges: h.charges, cast: h.cast }));
+    return { ev, ids };
+  };
   it('5 金額が少ない：一部として当てる。あと◯円を送るを選ぶと remaining のメール', async () => {
-    // A は 32,500。26,500 の行（short）
+    // A＝合計 32,500・払った 0。26,500 の行（short）→ 残り 6,000
+    const { ev, ids: [A] } = await fresh('5s', [{ ref: '4823', kana: 'ヤマダ', charges: [32500] }]);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
     await assignBankRow(row, [{ householdId: A, amount: 26500 }], { sendRemaining: true, confirmFlag: false }, 'KEIKO');
     expect((await readHouseholdMoney(A)).m.remaining).toBe(6000);
     expect(await mailKinds(A)).toContain('remaining');
   });
   it('5 送らないを選ぶと remaining のメールは出ない', async () => {
-    // A2 は 32,500。26,500 の行（short）
-    await assignBankRow(row2, [{ householdId: A2, amount: 26500 }], { sendRemaining: false, confirmFlag: false }, 'KEIKO');
-    expect(await mailKinds(A2)).not.toContain('remaining');
+    // A＝合計 32,500。26,500 の行（short）
+    const { ev, ids: [A] } = await fresh('5n', [{ ref: '4823', kana: 'ヤマダ', charges: [32500] }]);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await assignBankRow(row, [{ householdId: A, amount: 26500 }], { sendRemaining: false, confirmFlag: false }, 'KEIKO');
+    expect(await mailKinds(A)).not.toContain('remaining');
   });
   it('7 金額が多い：全額が入金、こえた 6,000 はしくみの返す分（source_payment_id 付き）', async () => {
-    const { paymentIds } = await assignBankRow(row32500, [{ householdId: A, amount: 32500 }], { sendRemaining: false, confirmFlag: false }, 'KEIKO');
+    // A＝合計 26,500。32,500 の行（over）→ 返す分 6,000
+    const { ev, ids: [A] } = await fresh('7', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }]);
+    const row = await insertLedgerRow(ev, { amount: 32500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const { paymentIds } = await assignBankRow(row, [{ householdId: A, amount: 32500 }], o, 'KEIKO');
     expect(await getOne(`SELECT amount, status, reason_no, source_payment_id FROM recital_refunds WHERE household_id=?`, [A]))
       .toMatchObject({ amount: 6000, status: 'todo', reason_no: 1, source_payment_id: paymentIds[0] });
   });
   it('4 足すとぴったり：1回押すと両方当たり、メールは1通（新しい方の入金の鍵）', async () => {
-    const { paymentIds } = await assignBankRow(row26500, [{ householdId: A, amount: 26500 }], { sendRemaining: false, confirmFlag: false }, 'KEIKO');
+    // A＝合計 32,500。同じ番号の 26,500 と 6,000 の行（足すと 32,500＝sum）
+    const { ev, ids: [A] } = await fresh('4', [{ ref: '4823', kana: 'ヤマダ', charges: [32500] }]);
+    const row26500 = await insertLedgerRow(ev, { amount: 26500, balance: 150000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await insertLedgerRow(ev, { amount: 6000, balance: 156000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const { paymentIds } = await assignBankRow(row26500, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
     expect(paymentIds).toHaveLength(2);
     expect(await bankPaidMailKeys(A)).toEqual([`bank_paid:${Math.max(...paymentIds)}`]);
   });
   it('9 2つの世帯に分ける：合計が行の額でなければ通さない／合えば入金2行', async () => {
+    // A・B＝合計 26,500 ずつ。53,000 の行
+    const { ev, ids: [A, B] } = await fresh('9', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }, { ref: '4867', kana: 'スズキ', charges: [26500] }]);
+    const row53000 = await insertLedgerRow(ev, { amount: 53000, desc_raw: '振込 4823 ヤマダ ハナコ' });
     await expect(assignBankRow(row53000, [{ householdId: A, amount: 26500 }, { householdId: B, amount: 20000 }], o, 'KEIKO')).rejects.toThrow('bad_alloc');
     expect((await assignBankRow(row53000, [{ householdId: A, amount: 26500 }, { householdId: B, amount: 26500 }], o, 'KEIKO')).paymentIds).toHaveLength(2);
   });
   it('36 分けた片方を取り消す：行は matched のまま、のこり 26,500 の行として出る。全額では当てられない', async () => {
+    // A・B・C＝合計 26,500 ずつ。53,000 の行を A と B に分けたあと、B の分を取り消して C へ
+    const { ev, ids: [A, B, C] } = await fresh('36', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }, { ref: '4867', kana: 'スズキ', charges: [26500] }, { ref: '4872', kana: 'タナカ', charges: [26500] }]);
+    const row53000 = await insertLedgerRow(ev, { amount: 53000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const { paymentIds: [, payB] } = await assignBankRow(row53000, [{ householdId: A, amount: 26500 }, { householdId: B, amount: 26500 }], o, 'KEIKO');
     await cancelBankPayment(payB, 'wrong_household', 'KEIKO');
     const v = (await listReviewRows(ev)).find((x) => x.rowId === row53000);
     expect(v).toMatchObject({ state: 'matched', isLeftover: true, leftover: 26500 });
@@ -6522,19 +6624,28 @@ describe('見てほしい入金のボタン', () => {
     await assignBankRow(row53000, [{ householdId: C, amount: 26500 }], o, 'KEIKO');
   });
   it('29 取り消し：マイナスの行・台帳の行は new・残りがもどる・自動のメールは出ない／そのあと別の世帯に当て直せる', async () => {
+    // A・C＝合計 26,500。26,500 の行を A に当ててから取り消し、C に当て直す
+    const { ev, ids: [A, C] } = await fresh('29', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }, { ref: '4872', kana: 'タナカ', charges: [26500] }]);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const { paymentIds: [payA] } = await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
     const before = await mailCount(A);
     expect(await cancelBankPayment(payA, 'wrong_household', 'KEIKO')).toEqual({ ok: true });
     expect(await getOne(`SELECT amount FROM recital_payments WHERE household_id=? ORDER BY id DESC LIMIT 1`, [A])).toMatchObject({ amount: -26500 });
     expect(await rowState(row)).toBe('new');
+    expect((await readHouseholdMoney(A)).m.remaining).toBe(26500);
     expect(await mailCount(A)).toBe(before);
     await assignBankRow(row, [{ householdId: C, amount: 26500 }], o, 'KEIKO');
+    expect((await readHouseholdMoney(C)).m.remaining).toBe(0);
   });
   it('37 取り消した入金に返す分（todo）→ cancelled／もう返した（done）→ refund_done で何も変えない', async () => {
-    // A は 26,500。32,500 の行を当てる → 返す分 6,000（todo・source_payment_id＝その入金）
+    // A・D＝合計 26,500。32,500 の行をそれぞれに当てる → 返す分 6,000（todo・source_payment_id＝その入金）
+    const { ev, ids: [A, D] } = await fresh('37', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }, { ref: '4727', kana: 'サトウ', charges: [26500] }]);
+    const row32500 = await insertLedgerRow(ev, { amount: 32500, balance: 150000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const row32500b = await insertLedgerRow(ev, { amount: 32500, balance: 182500, desc_raw: '振込 4727 サトウ ジロウ' });
     const { paymentIds: [p1] } = await assignBankRow(row32500, [{ householdId: A, amount: 32500 }], o, 'KEIKO');
     await cancelBankPayment(p1, 'wrong_household', 'KEIKO');
     expect(await getOne(`SELECT amount, status FROM recital_refunds WHERE source_payment_id=?`, [p1])).toEqual({ amount: 6000, status: 'cancelled' });
-    // 別の世帯 D（26,500）に 32,500 の行を当て、返す分を done にしてから取り消す
+    // D に 32,500 の行を当て、返す分を done にしてから取り消す
     const { paymentIds: [p2] } = await assignBankRow(row32500b, [{ householdId: D, amount: 32500 }], o, 'KEIKO');
     await execute(`UPDATE recital_refunds SET status='done' WHERE source_payment_id=?`, [p2]);
     const n = (await getOne(`SELECT COUNT(*) n FROM recital_payments WHERE household_id=?`, [D]))?.n;
@@ -6542,21 +6653,30 @@ describe('見てほしい入金のボタン', () => {
     expect((await getOne(`SELECT COUNT(*) n FROM recital_payments WHERE household_id=?`, [D]))?.n).toBe(n);
   });
   it('払った額が 0 未満になる取り消し → negative', async () => {
-    // E に 26,500 の行を当てたあと、手で −26,500 の調整（打ちまちがいの打ち消し）が入っている
+    // E＝合計 26,500。26,500 の行を当てたあと、手で −26,500 の調整（打ちまちがいの打ち消し）が入っている
+    const { ev, ids: [E] } = await fresh('neg', [{ ref: '9827', kana: 'ヤマダ', charges: [26500] }]);
+    const rowE = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 9827 ヤマダ ハナコ' });
     const { paymentIds: [p] } = await assignBankRow(rowE, [{ householdId: E, amount: 26500 }], o, 'KEIKO');
     await recordManualPayment(E, { method: 'adjust', amount: -26500, paidOn: '2026-12-16', memo: '打ちまちがい' }, 'KEIKO');
     expect(await cancelBankPayment(p, 'wrong_household', 'KEIKO')).toEqual({ ok: false, code: 'negative' });
     expect(await rowState(rowE)).toBe('matched');
   });
   it('misread で取り消して、同じ世帯に同じ額で当て直す → メールの記録がふえない', async () => {
+    // A＝合計 26,500。26,500 の行を当てる（完了のメール1通）→ misread で取り消し → 同じ額で当て直す
+    const { ev, ids: [A] } = await fresh('mis', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }]);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const { paymentIds: [payA] } = await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
     const n = await mailCount(A);
     await cancelBankPayment(payA, 'misread', 'KEIKO');
     await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
     expect(await mailCount(A)).toBe(n);
   });
   it('取り消すと「振り込みました」の印がもどる（at・date・amount・by が同じ。名義は空）', async () => {
+    // F＝合計 26,500・印 26,500（家庭が押した）。26,500 の行
+    const { ev, ids: [F] } = await fresh('told', [{ ref: '1234', kana: 'ヤマダ', charges: [26500] }]);
+    const rowF = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 1234 ヤマダ ハナコ' });
     const at0 = '2026-12-15T01:00:00.000Z';
-    await execute(`UPDATE recital_households SET bank_told_at=?, bank_told_date='2026-12-15', bank_told_name='2714 ヤマダ ハナコ', bank_told_amount=26500, bank_told_by='family' WHERE id=?`, [at0, F]);
+    await execute(`UPDATE recital_households SET bank_told_at=?, bank_told_date='2026-12-15', bank_told_name='1234 ヤマダ ハナコ', bank_told_amount=26500, bank_told_by='family' WHERE id=?`, [at0, F]);
     const { paymentIds: [p] } = await assignBankRow(rowF, [{ householdId: F, amount: 26500 }], o, 'KEIKO');
     expect((await getOne(`SELECT bank_told_at FROM recital_households WHERE id=?`, [F]))?.bank_told_at).toBeNull();
     await cancelBankPayment(p, 'wrong_household', 'KEIKO');
@@ -6564,6 +6684,9 @@ describe('見てほしい入金のボタン', () => {
       .toEqual({ bank_told_at: at0, bank_told_date: '2026-12-15', bank_told_amount: 26500, bank_told_by: 'family', bank_told_name: null });
   });
   it('夜に当てて待ちになったメールは、取り消すと cancelled', async () => {
+    // G＝合計 26,500。22:00 に 26,500 の行を当てる → 完了のメールは待ち
+    const { ev, ids: [G] } = await fresh('night', [{ ref: '9054', kana: 'ヤマダ', charges: [26500] }]);
+    const rowG = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 9054 ヤマダ ハナコ' });
     vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-12-16T22:00:00+09:00'));
     const { paymentIds: [p] } = await assignBankRow(rowG, [{ householdId: G, amount: 26500 }], o, 'KEIKO');
     expect((await getOne(`SELECT status FROM recital_mail_log WHERE dedupe_key=?`, [`bank_paid:${p}`]))?.status).toBe('waiting');
@@ -6571,28 +6694,43 @@ describe('見てほしい入金のボタン', () => {
     expect((await getOne(`SELECT status FROM recital_mail_log WHERE dedupe_key=?`, [`bank_paid:${p}`]))?.status).toBe('cancelled');
     vi.useRealTimers();
   });
-  it('印のある行は confirmFlag なしでは当てない', async () => { await expect(assignBankRow(lastRow, [{ householdId: A, amount: 26500 }], { sendRemaining: false, confirmFlag: false }, 'KEIKO')).rejects.toThrow('confirm_flag'); });
+  it('印のある行は confirmFlag なしでは当てない', async () => {
+    // A＝合計 26,500。印 last の付いた 26,500 の行
+    const { ev, ids: [A] } = await fresh('flag', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }]);
+    const lastRow = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ', check_flag: 'last' });
+    await expect(assignBankRow(lastRow, [{ householdId: A, amount: 26500 }], { sendRemaining: false, confirmFlag: false }, 'KEIKO')).rejects.toThrow('confirm_flag');
+  });
   it('first5 の行を番号の世帯に当てる → source は bank_auto（はじめの5件に数える）', async () => {
-    const ev = 't-bank-b5'; await seedEvent(ev); const H5 = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
+    const ev = 't-bank-b5'; await seedEvent(ev); const H5 = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
     await ingestBankBatch(b(SAMPLE, { event_key: ev }), 'commit', 'test', new Date('2026-12-16T12:00:00+09:00'));   // first_ok なし → first5
     const row = (await getOne(`SELECT id FROM recital_bank_rows WHERE event_key=? AND review_kind='first5'`, [ev]))!.id;
     await assignBankRow(Number(row), [{ householdId: H5, amount: 26500 }], o, 'KEIKO');
     expect(await getOne(`SELECT source, confirmed_by FROM recital_payments WHERE household_id=?`, [H5])).toEqual({ source: 'bank_auto', confirmed_by: 'KEIKO' });
   });
   it('発表会ではない：名義が消える／もとにもどす：理由が要る、名義は空のまま', async () => {
+    // 世帯なし。名義つきの 26,500 の行1つ
+    const { ev } = await fresh('nr', []);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
     await setBankRowState([row], 'not_recital', null, 'KEIKO');
     expect(await getOne(`SELECT desc_raw, desc_norm, state FROM recital_bank_rows WHERE id=?`, [row])).toMatchObject({ desc_raw: null, desc_norm: null, state: 'not_recital' });
     await expect(restoreBankRow(row, '', 'KEIKO')).rejects.toThrow('reason_required');
     await restoreBankRow(row, '押しまちがい', 'KEIKO');
     expect(await getOne(`SELECT desc_raw, state FROM recital_bank_rows WHERE id=?`, [row])).toMatchObject({ desc_raw: null, state: 'new' });
   });
-  it('当てた入金がある行は 読みまちがい・発表会ではない にできない', async () => { await expect(setBankRowState([matchedRow], 'void', null, 'KEIKO')).rejects.toThrow('has_payment'); });
+  it('当てた入金がある行は 読みまちがい・発表会ではない にできない', async () => {
+    // A＝合計 26,500。26,500 の行を当ててから void／not_recital にしようとする
+    const { ev, ids: [A] } = await fresh('hp', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }]);
+    const matchedRow = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await assignBankRow(matchedRow, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    await expect(setBankRowState([matchedRow], 'void', null, 'KEIKO')).rejects.toThrow('has_payment');
+    await expect(setBankRowState([matchedRow], 'not_recital', null, 'KEIKO')).rejects.toThrow('has_payment');
+  });
   it('35 同じ入金にする：manual の行は void、当てた入金は新しい行へ付けかわる、メールは出ない', async () => {
-    const ev = 't-bank-b35'; await seedEvent(ev); const H = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
-    const man = await insertLedgerRow(ev, { source: 'manual', amount: 26500, row_date: '2026-12-16', balance: null, desc_raw: '振込 2714 ヤマダ ハナコ' });
+    const ev = 't-bank-b35'; await seedEvent(ev); const H = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const man = await insertLedgerRow(ev, { source: 'manual', amount: 26500, row_date: '2026-12-16', balance: null, desc_raw: '振込 4823 ヤマダ ハナコ' });
     const { paymentIds: [p] } = await assignBankRow(man, [{ householdId: H, amount: 26500 }], o, 'KEIKO');
     const n = await mailCount(H);
-    const neu = await insertLedgerRow(ev, { source: 'chat', amount: 26500, row_date: '2026-12-16', desc_raw: '振込 2714 ヤマダ ハナコ', check_flag: 'manual_twin' });
+    const neu = await insertLedgerRow(ev, { source: 'chat', amount: 26500, row_date: '2026-12-16', desc_raw: '振込 4823 ヤマダ ハナコ', check_flag: 'manual_twin' });
     await mergeManualRow(man, neu, 'KEIKO');
     expect(await rowState(man)).toBe('void');
     expect(await getOne(`SELECT state, check_flag FROM recital_bank_rows WHERE id=?`, [neu])).toEqual({ state: 'matched', check_flag: null });
@@ -6600,12 +6738,22 @@ describe('見てほしい入金のボタン', () => {
     expect(await mailCount(H)).toBe(n);
   });
   it('listReviewRows：残高を返さない・保留の行も出る・候補0は no_candidate・外した行は closed', async () => {
+    // A＝合計 26,500。行：番号つき 26,500（review）／保留にした 5,000（候補0）／発表会ではないにした 7,000（closed）
+    const { ev } = await fresh('list', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }]);
+    const r1 = await insertLedgerRow(ev, { amount: 26500, balance: 150000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const r2 = await insertLedgerRow(ev, { amount: 5000, balance: 155000, desc_raw: '振込 ﾀﾅｶ ｲﾁﾛｳ' });
+    const r3 = await insertLedgerRow(ev, { amount: 7000, balance: 162000, desc_raw: '振込 ｻﾄｳ ｼﾞﾛｳ' });
+    await setBankRowState([r2], 'hold', '確かめ中', 'KEIKO');
+    await setBankRowState([r3], 'not_recital', null, 'KEIKO');
     const rows = await listReviewRows(ev);
     expect(rows.every((x) => !('balance' in x))).toBe(true);
+    expect(rows.find((x) => x.rowId === r1)?.group).toBe('review');
+    expect(rows.find((x) => x.rowId === r2)).toMatchObject({ group: 'no_candidate', state: 'hold' });
+    expect(rows.find((x) => x.rowId === r3)?.group).toBe('closed');
   });
   it('listReviewRows は開くたびに種類を計算し直して書く（世帯が作品を足して残りが 32,500 になると、26,500 の行は over から short に変わる）', async () => {
-    const ev = 't-bank-b20'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [20000] });
-    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 2714 ヤマダ ハナコ' });
+    const ev = 't-bank-b20'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [20000] });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
     await listReviewRows(ev);
     expect((await getOne(`SELECT review_kind k FROM recital_bank_rows WHERE id=?`, [row]))?.k).toBe('over');
     await addCharge(A, 12500);                      // 合計 32,500 にする（試験の中の小さな関数。base の行を1つ足す）
@@ -6614,8 +6762,8 @@ describe('見てほしい入金のボタン', () => {
   });
   // ── 場面の表（5-6）で、ほかの試験に無かった物
   it('6 振込手数料ぶん少ない：short を「送らない」で当て → 差を手で調整 → 残り0 → メールはこの1通だけ（complete）', async () => {
-    const ev = 't-bank-b6'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
-    const row = await insertLedgerRow(ev, { amount: 26060, desc_raw: '振込 2714 ヤマダ ハナコ' });
+    const ev = 't-bank-b6'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const row = await insertLedgerRow(ev, { amount: 26060, desc_raw: '振込 4823 ヤマダ ハナコ' });
     await assignBankRow(row, [{ householdId: A, amount: 26060 }], { sendRemaining: false, confirmFlag: false }, 'KEIKO');
     expect(await mailKinds(A)).toEqual([]);
     const { paymentId } = await recordManualPayment(A, { method: 'adjust', amount: 440, paidOn: '2026-12-16', memo: '振込手数料ぶん' }, 'KEIKO');
@@ -6624,18 +6772,18 @@ describe('見てほしい入金のボタン', () => {
     expect(await mailKinds(A)).toEqual(['complete']);
   });
   it('8 払い済みの世帯に 26,500 → 当てると全額が返す分1番・確認のメールは出ない', async () => {
-    const ev = 't-bank-b8'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
+    const ev = 't-bank-b8'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
     await recordManualPayment(A, { method: 'cash', amount: 26500, paidOn: '2026-12-15', memo: '' }, 'KEIKO');
     const before = await mailCount(A);
-    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 2714 ヤマダ ハナコ' });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
     await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
     expect(await getOne(`SELECT amount, reason_no FROM recital_refunds WHERE household_id=? AND status='todo'`, [A])).toMatchObject({ amount: 26500, reason_no: 1 });
     expect(await bankPaidMailKeys(A)).toEqual([]);
     expect(await mailCount(A)).toBe(before);
   });
   it('10・44 出演なしの世帯に当てても、返す分は自動で作らず、メールも0通', async () => {
-    const ev = 't-bank-b10'; await seedEvent(ev); const N = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [], cast: 'out' });
-    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 2714 ヤマダ ハナコ' });
+    const ev = 't-bank-b10'; await seedEvent(ev); const N = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [], cast: 'out' });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
     await assignBankRow(row, [{ householdId: N, amount: 26500 }], o, 'KEIKO');
     expect((await getOne(`SELECT COUNT(*) n FROM recital_refunds WHERE household_id=?`, [N]))?.n).toBe(0);
     expect(await mailCount(N)).toBe(0);
@@ -6643,35 +6791,35 @@ describe('見てほしい入金のボタン', () => {
   it('11 まとめた世帯の番号で来た入金 → まとめ先を選んで当てて残り0', async () => {
     const ev = 't-bank-b11'; await seedEvent(ev);
     const into = await seedHousehold(ev, { ref: '1007', lastKana: 'ヤマダ', charges: [26500] });
-    const from = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [] });
+    const from = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [] });
     await execute(`UPDATE recital_households SET status='merged', merged_into=? WHERE id=?`, [into, from]);
-    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 2714 ヤマダ ハナコ' });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
     await expect(assignBankRow(row, [{ householdId: from, amount: 26500 }], o, 'KEIKO')).rejects.toThrow('merged');
     await assignBankRow(row, [{ householdId: into, amount: 26500 }], o, 'KEIKO');
     expect((await readHouseholdMoney(into)).m.remaining).toBe(0);
   });
   it('28「振り込みました」26,500 のあと作品を足して合計 32,500 → 26,500 の行は short、当てたあと残り 6,000', async () => {
-    const ev = 't-bank-b28'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [32500] });
+    const ev = 't-bank-b28'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [32500] });
     await execute(`UPDATE recital_households SET bank_told_at=?, bank_told_date='2026-12-15', bank_told_amount=26500, bank_told_by='family' WHERE id=?`, [new Date().toISOString(), A]);
-    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 2714 ヤマダ ハナコ' });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
     expect((await listReviewRows(ev)).find((x) => x.rowId === row)?.reviewKind).toBe('short');
     await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
     expect((await readHouseholdMoney(A)).m.remaining).toBe(6000);
   });
   // ── 2人が同時に押す（Review Focus）
-  it('同じ行を A と B に全額ずつ同時に当てる → 1つだけ通り、もう片方は row_over か bad_state で、入金は1行', async () => {
+  it('同じ行を A と B に全額ずつ同時に当てる → 1つだけ通り、もう片方は row_over か bad_state か busy で、入金は1行', async () => {
     const ev = 't-bank-bc1'; await seedEvent(ev);
-    const A = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] }); const B = await seedHousehold(ev, { ref: '3657', lastKana: 'スズキ', charges: [26500] });
+    const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] }); const B = await seedHousehold(ev, { ref: '4867', lastKana: 'スズキ', charges: [26500] });
     const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 ヤマダ ハナコ' });
     const rs = await Promise.allSettled([assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'TARO'), assignBankRow(row, [{ householdId: B, amount: 26500 }], o, 'KEIKO')]);
     expect(rs.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
     const err = rs.find((x) => x.status === 'rejected') as PromiseRejectedResult;
-    expect(['row_over', 'bad_state', 'recital_money:row_over']).toContain(String(err.reason.message));
+    expect(['row_over', 'bad_state', 'recital_money:row_over', 'busy']).toContain(String(err.reason.message));   // libsql は同じプロセスから2本同時に書くと2本目が SQLITE_BUSY ですぐ落ちる＝busy に直して返す
     expect((await getOne(`SELECT COUNT(*) n FROM recital_payments WHERE bank_transaction_id=?`, [row]))?.n).toBe(1);
   });
-  it('同じ行を同じ世帯に2回 → 2回目は live_exists か bad_state、メールは1通', async () => {
-    const ev = 't-bank-bc2'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '2714', lastKana: 'ヤマダ', charges: [26500] });
-    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 2714 ヤマダ ハナコ' });
+  it('同じ行を同じ世帯に2回 → 2回目は live_exists か bad_state か busy、メールは1通', async () => {
+    const ev = 't-bank-bc2'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
     const rs = await Promise.allSettled([assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'TARO'), assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO')]);
     expect(rs.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
     expect(await bankPaidMailKeys(A)).toHaveLength(1);
@@ -6679,7 +6827,7 @@ describe('見てほしい入金のボタン', () => {
 });
 ```
 
-`mailKinds(hid)`（その世帯の `recital_mail_log.mail_kind` の一覧）・`bankPaidMailKeys(hid)`・`mailCount(hid)`・`rowState(rowId)`・`o`（`{ sendRemaining:false, confirmFlag:false }`）・`addCharge(hid, n)` は、この試験ファイルの中だけの小さい助け（export しない）。`insertLedgerRow` は 27 の試験と同じ物（`desc_raw` を渡せば `ref_read`・`ref_ok` も 4 の `readRefFromDesc` で入れる）。`seedHousehold` の `cast: 'out'` は出演なしの世帯（27 の助けに足す）。`row`・`row2`・`row32500`・`row32500b`・`row26500`・`row53000`・`rowE`・`rowF`・`rowG`・`lastRow`・`matchedRow` と世帯 `A`・`A2`・`B`・`C`・`D`・`E`・`F`・`G` は、`describe` の頭の `beforeAll` で `t-bank-b1` に作る（番号はそれぞれ検査に合う物。金額は試験の名前のとおり）。
+`mailKinds(hid)`（その世帯の `recital_mail_log.mail_kind` の一覧）・`bankPaidMailKeys(hid)`・`mailCount(hid)`・`rowState(rowId)`・`o`（`{ sendRemaining:false, confirmFlag:false }`）・`addCharge(hid, n)` は、この試験ファイルの中だけの小さい助け（export しない）。`insertLedgerRow` は 27 の試験と同じ物（`desc_raw` を渡せば `ref_read`・`ref_ok` も 4 の `readRefFromDesc` で入れる）。`seedHousehold` の `cast: 'out'` は出演なしの世帯（27 の助けに足す）。行と世帯は、どの試験も自分の中で `fresh(<番号>, [...])` と `insertLedgerRow` で作る（`describe` の頭で共有の世帯・行を作らない。前提の額は各試験の頭のコメント）。`insertLedgerRow` に `check_flag` を渡せばその印で入れる。
 
 - [ ] **Step 2: 落ちることを確かめる**
 
@@ -6702,7 +6850,7 @@ Expected: FAIL（`assignBankRow is not a function` ほか）
 2. `alloc` は1つか2つ。どれも `amount>0`。合計がのこりと同じでなければ `bad_alloc`。2つに分けるのは、のこりが行の額と同じ時だけ（のこりの行は1世帯だけ。`bad_alloc`）。
 3. `check_flag` があって `confirmFlag` が false なら `confirm_flag`。世帯が `merged` なら `merged`。
 4. その行の今の種類を 26 の `decideRow` で出し直す。`sum` で、選んだ世帯が番号の世帯なら、同じ `ref_read` の決まっていない行のうち、足して残りになる組も、同じ書き込みで当てる（古い順）。
-5. 世帯ごとに `insertPaymentTx(tx, { householdId, method:'bank', amount, paidOn: row_date, source, confirmedBy: staffName, bankRowId, bankDate: row_date, bankDesc: desc_raw, payerNameRaw }, staffName)`。`source` は、行の今の種類が `first5`（または 3 の `auto:true`）で、1世帯に全額を、番号の世帯へ当てる時だけ `'bank_auto'`（はじめの5件に数える。④C-12）、ほかは `'bank_staff'`。
+5. 世帯ごとに `insertPaymentTx(tx, { householdId, method:'bank', amount, paidOn: row_date, source, confirmedBy: staffName, bankRowId, bankDate: row_date, bankDesc: desc_raw, payerNameRaw }, staffName)`。返す `paymentIds` は `alloc` の順、そのあとに 4 の `sum` の組の分（古い順）。`source` は、行の今の種類が `first5`（または 3 の `auto:true`）で、1世帯に全額を、番号の世帯へ当てる時だけ `'bank_auto'`（はじめの5件に数える。④C-12）、ほかは `'bank_staff'`。
 6. 行：`state='matched'`、`match_by`（`source` が `bank_auto` なら `'auto'`、ほか `'staff'`）、`review_kind=NULL`、`decided_by`・`decided_at`。`logChangeTx`（`action='bank_row_decided'`、`after: { rowId, householdId, amount }`。名義を入れない）。
 7. メールを出さない世帯を決める：その世帯の、いちばん新しい `action='payment_cancelled'` の変えた記録が `reason='misread'` で、同じ額で、そのあとに振込のプラスの入金がまだ無い時（K202）。
 書き込みの外で：メールを出す世帯ごとに `sendPaidMail(householdId, その世帯で新しい方の paymentId, 'bank', { sendRemaining: opts.sendRemaining })`、全部の世帯に `afterMoneyChanged(householdId, 'payment')`。
@@ -6728,7 +6876,12 @@ Expected: FAIL（`assignBankRow is not a function` ほか）
 
 - [ ] **Step 7: 世帯の画面に「この入金を取り消す」を足す**
 
-`src/app/staff/bw6/entries/[id]/page.tsx` の入金の行のうち、`method='bank'`・`amount>0` で、まだ取り消していない行の横にだけ出す。押すと：理由のラジオ2つ（「ちがう世帯に当てた」／「読みまちがいを直すため（同じ世帯に当て直す）」。選ばないと押せない）＋`StaffNamePicker`＋確かめの文。`actions.ts` の `cancelBankPaymentAction(formData)`：頭で `requireRecitalStaff()` → `cancelBankPayment(...)`。`refund_done` の時は「この入金から、もう ◯円を返しています。先に、TARO に知らせてください」（◯円は `loadHouseholdDetail` の返す分で `source_payment_id` がこの入金・`done` の合計）。`negative` の時は「払った額が 0 円より少なくなるため、取り消せません。作る人に知らせてください」。
+19 の `PaymentRows`（世帯の画面の入金の行の部品）の中の、`method='bank'`・`amount>0` で、まだ取り消していない行の横にだけ `CancelPaymentButton` を出す。押すと：理由のラジオ2つ（「ちがう世帯に当てた」／「読みまちがいを直すため（同じ世帯に当て直す）」。選ばないと押せない）＋`StaffNamePicker`＋確かめの文。`actions.ts` の `cancelBankPaymentAction(formData)`：頭で `requireRecitalStaff()` → `cancelBankPayment(...)`。`refund_done` の時は「この入金から、もう ◯円を返しています。先に、TARO に知らせてください」（◯円は `loadHouseholdDetail` の返す分で `source_payment_id` がこの入金・`done` の合計）。`negative` の時は「払った額が 0 円より少なくなるため、取り消せません。作る人に知らせてください」。
+
+- [ ] **Step 7b: 最初の画面の「見てほしいこと」4番 (a) を置きかえる**
+
+16 の `listAttention` の4番 (a)（仮の SQL）を、`(await listReviewRows(eventKey)).filter((r) => r.group !== 'closed')` の行ごとに1件を出す形に置きかえる（`recitalDb.ts` から `recitalBankDb.ts` は**関数の中で `await import('./recitalBankDb')`**）。条件を2か所に持たない。24 の `reviewCount` も同じ数え方。
+Run: `npx vitest run src/lib/__tests__/recitalStaffHome.test.ts` → PASS
 
 - [ ] **Step 8: 通ることを確かめる**
 
@@ -6742,7 +6895,7 @@ Expected: PASS
 - [ ] **Step 10: コミット**
 
 ```bash
-git add src/lib/recitalBankDb.ts src/lib/__tests__/recitalBankDb.test.ts "src/app/staff/bw6/entries/[id]/page.tsx" "src/app/staff/bw6/entries/[id]/actions.ts"
+git add src/lib/recitalBankDb.ts src/lib/__tests__/recitalBankDb.test.ts src/lib/recitalDb.ts "src/app/staff/bw6/entries/[id]/page.tsx" "src/app/staff/bw6/entries/[id]/actions.ts" "src/app/staff/bw6/entries/[id]/CancelPaymentButton.tsx"
 git commit -m "feat(bw6): 見てほしい入金のボタンと、入金の取り消し
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -6754,8 +6907,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 **Files:**
 - Modify: `src/lib/recitalBankDb.ts`（`listToldWaiting`・`listImports` を足す）
-- Create: `src/app/staff/bw6/bank/page.tsx`・`src/app/staff/bw6/bank/actions.ts`
-- Create: `src/app/staff/bw6/bank/import/page.tsx`・`src/app/staff/bw6/bank/import/actions.ts`
+- Create: `src/app/staff/bw6/bank/page.tsx`・`src/app/staff/bw6/bank/actions.ts`・`src/app/staff/bw6/bank/ReviewCards.tsx`（`'use client'`。カード・ラジオ・2段階ボタン・`StaffNamePicker`・探す欄）
+- Create: `src/app/staff/bw6/bank/import/page.tsx`・`src/app/staff/bw6/bank/import/actions.ts`・`src/app/staff/bw6/bank/import/ImportForms.tsx`（`'use client'`。手で打つ欄・ファイル・待ちのメールのボタンと `StaffNamePicker`）
+- Modify: `src/app/staff/bw6/page.tsx`（16 の最初の画面に「見てほしい入金」「入金の取り込み」のボタン2つを足す。16 の Step に「29 が足す」とある所）
+- Modify: `src/lib/recitalDb.ts`（16 の `listAttention` の4番 (b) を `listToldWaiting` に置きかえる）
 - Test: `src/lib/__tests__/recitalBankDb.test.ts`（`describe` を足す）
 
 **Interfaces:**
@@ -6769,6 +6924,14 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ```ts
 describe('listToldWaiting（「振り込みました」のまま3日）', () => {
+  // 自分の発表会を2つ作る（27・28 の世帯は使わない）。休みの設定は 27 の seedEvent のまま（bank_rest_from 12/30・bank_rest_to 1/3）
+  const ev = 't-bank-told1', ev2 = 't-bank-told2'; let A = 0;
+  beforeAll(async () => {
+    await seedEvent(ev); A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    await execute(`UPDATE recital_households SET bank_told_at='2027-02-05T03:00:00.000Z', bank_told_date='2027-02-05', bank_told_amount=26500, bank_told_by='family' WHERE id=?`, [A]);
+    await seedEvent(ev2); const B = await seedHousehold(ev2, { ref: '4867', lastKana: 'スズキ', charges: [26500] });
+    await execute(`UPDATE recital_households SET bank_told_at='2026-12-29T03:00:00.000Z', bank_told_date='2026-12-29', bank_told_amount=26500, bank_told_by='family' WHERE id=?`, [B]);
+  });
   it('2/5 に押した → 2/7 の朝は出ない、2/8 の朝に出る', async () => {
     // bank_told_at = 2027-02-05T03:00:00Z（JST 2/5 昼）、残り 26,500
     expect(await listToldWaiting(ev, new Date('2027-02-07T08:00:00+09:00'))).toHaveLength(0);
@@ -6780,7 +6943,7 @@ describe('listToldWaiting（「振り込みました」のまま3日）', () => 
   });
   it('残りが 0 の世帯・印が閉じた世帯は出ない', async () => {
     // ev の世帯 A に 26,500 の行を当てる（9 が印を閉じ、残りも 0）
-    await assignBankRow(await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 2714 ヤマダ ハナコ' }), [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    await assignBankRow(await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' }), [{ householdId: A, amount: 26500 }], o, 'KEIKO');
     expect(await listToldWaiting(ev, new Date('2027-02-08T08:00:00+09:00'))).toHaveLength(0);
   });
 });
@@ -6804,6 +6967,7 @@ Expected: FAIL（`listToldWaiting is not a function`）
 
 - `listToldWaiting`：`bank_told_amount` が入っていて、残りが 0 より大きい世帯（`status='active'`）のうち、`bankToldWaitDue(bank_told_at, now.getTime(), s.bank_rest_from, s.bank_rest_to)` が true の物（16 の関数。最初の画面の見てほしいことの4番と同じ数え方）。並びは `bank_told_at` の古い順。
 - `listImports`：`event_key` の `recital_imports` を `imported_at` の新しい順に全部。
+- 16 の `listAttention` の4番 (b)（仮の SQL）を、`listToldWaiting(eventKey, now)` の世帯ごとに1件を出す形に置きかえる（`recitalDb.ts` から `recitalBankDb.ts` は**関数の中で `await import('./recitalBankDb')`**。2つのファイルが互いを読むため）。条件を2か所に持たない。16 の4番の試験（`recitalStaffDb` の試験）を回して通るのを見る：`npx vitest run src/lib/__tests__/recitalStaffHome.test.ts`（4番の試験が入っているファイル）。
 
 - [ ] **Step 4: `/staff/bw6/bank` を作る**
 
@@ -6821,7 +6985,7 @@ Expected: FAIL（`listToldWaiting is not a function`）
 - 「はい」の束に写っていない `first5` の行も、「はい」で当たる（27 の決まり）。それでも残った `first5` の行は、見てほしい入金で人が当てる（`bank_auto` で数える）と、この画面の下に1行書く。
 - 上に「いちばん新しい合った束」：`listImports` のうち `check_result='ok'` で `source` が `chat|file` の、いちばん新しい `imported_at`（JST で出す。手で打った束は数えない）。
 - 束の一覧（新しい順）：入れた日時／どこから（チャット／手で打った／ファイル）／期間（`range_from`〜`range_to`）／読んだ・新しく入った・もうあった・はじいた数／検算（合った／合わない＋「◯月◯日のあたり」。**金額は出さない**）／だれが渡したか。
-- 手で打つ欄：日付（年月日）・金額・残高・名義の4つ。4つとも入れないと押せない。`StaffNamePicker`。`manualEntryAction`：`{ event_key, source:'manual', shot_on: todayJst(), range_from: 日付, range_to: 日付, images: 0, account:'円普通預金', rows:[{ pos:'m-1', date, dir:'in', amount, balance, kind:'transfer', desc: 名義, cut:false, unread:'' }] }` を `validateBatchShape` → `ingestBankBatch(batch, 'commit', 名前)`。結果の数を出す（「手で打った行は、自動では当たりません。見てほしい入金で当ててください」）。
+- 手で打つ欄：日付（年月日）・金額・残高・摘要の4つ（摘要の欄の下に小さく「通帳やアプリの『振込』のあとの文字を、そのまま（例：4827 ヤマダ ハナコ）」）。`desc` は `'振込 ' + 入れた摘要`（4 の `readRefFromDesc` は頭が「振込」の時だけ番号を読むため）。4つとも入れないと押せない。`StaffNamePicker`。`manualEntryAction`：`{ event_key, source:'manual', shot_on: todayJst(), range_from: 日付, range_to: 日付, images: 0, account:'円普通預金', rows:[{ pos:'m-1', date, dir:'in', amount, balance, kind:'transfer', desc: '振込 ' + 摘要, cut:false, unread:'' }] }` を `validateBatchShape` → `ingestBankBatch(batch, 'commit', 名前)`。結果の数を出す（「手で打った行は、自動では当たりません。見てほしい入金で当ててください」）。
 - 明細のファイル：`<input type="file" accept=".csv">`＋`StaffNamePicker`。`fileImportAction`：`File` → `Uint8Array` → `parseGmoStatementCsv` → `{ source:'file', shot_on: todayJst(), range_from: いちばん古い行の日付, range_to: いちばん新しい行の日付, images: 0, account:'円普通預金', rows }` → `validateBatchShape`（行が `BANK_BATCH_MAX_ROWS` をこえたら「月ごとに分けて入れてください」）→ `ingestBankBatch(batch, 'commit', 名前)`。合わなければ「◯月◯日のあたりが合いません」。
 - 「待ちのメールを、今出す」：`StaffNamePicker`。JST の今が `MAIL_SEND_FROM`〜`MAIL_SEND_UNTIL` の外ならボタンを押せない形にし、`flushWaitingAction` でもサーバでもう一度確かめてから `flushWaitingMails(eventKey)`。結果「◯通出しました（失敗 ◯通）」。
 - この画面にも、残高と出金の行は出さない。入力欄は文字色と下地色を両方。総点検のくらべる所と「総点検を済みにする」は後の計画。
@@ -6835,7 +6999,7 @@ Expected: PASS
 - [ ] **Step 7: コミット**
 
 ```bash
-git add src/lib/recitalBankDb.ts src/lib/__tests__/recitalBankDb.test.ts src/app/staff/bw6/bank/page.tsx src/app/staff/bw6/bank/actions.ts src/app/staff/bw6/bank/import/page.tsx src/app/staff/bw6/bank/import/actions.ts
+git add src/lib/recitalBankDb.ts src/lib/__tests__/recitalBankDb.test.ts src/lib/recitalDb.ts src/app/staff/bw6/page.tsx src/app/staff/bw6/bank/page.tsx src/app/staff/bw6/bank/actions.ts src/app/staff/bw6/bank/ReviewCards.tsx src/app/staff/bw6/bank/import/page.tsx src/app/staff/bw6/bank/import/actions.ts src/app/staff/bw6/bank/import/ImportForms.tsx
 git commit -m "feat(bw6): 見てほしい入金と入金の取り込みの画面
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -6883,7 +7047,7 @@ Expected: PASS（25 ができていれば通る。通らなければ見本か 25
   新しく入る行 3 ／ もうある行 4 ／ 自動で当たる 1 ／ 印で止めた 0
   見てほしい入金：番号が無い 1、はじめの5件 1
   はいが要る束：はい
-    1-1 番号 2714 26,500円 条件 ①○②○③○④○⑤○
+    1-1 番号 4823 26,500円 条件 ①○②○③○④○⑤○
   つなぎ目が合わない台帳の行：12月15日 6,000円
   ```
 - 終わりの数：合った → 0、合わない → 2、ほかのエラー → 1。
@@ -6949,10 +7113,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | `loadMatchHouseholds(eventKey): Promise<MatchHousehold[]>` | `src/lib/recitalBankDb.ts` | 全世帯の当てる材料をまとめて読む（27・28 が使う） |
 | `ReviewRowView` の中身 | `src/lib/recitalBankDb.ts` | split ③ に名前だけあった型の列（28 の Interfaces の型） |
 | `cancelBankPaymentAction(formData)` | `src/app/staff/bw6/entries/[id]/actions.ts` | 「この入金を取り消す」の Server Action |
+| `CancelPaymentButton`・`ReviewCards`・`ImportForms` | `src/app/staff/bw6/entries/[id]/`・`src/app/staff/bw6/bank/`・`src/app/staff/bw6/bank/import/` | client の部品（28・29） |
 | `assignAction`・`splitAction`・`setStateAction`・`restoreAction`・`mergeManualAction` | `src/app/staff/bw6/bank/actions.ts` | 見てほしい入金のボタンの Server Action |
 | `manualEntryAction`・`fileImportAction`・`flushWaitingAction` | `src/app/staff/bw6/bank/import/actions.ts` | 入金の取り込みの画面の Server Action |
 | `RECITAL_BASE_URL` | 環境変数（スクリプトだけ） | `--prod` の送り先。無ければ `https://bw5-app.vercel.app` |
-| 投げる語 `no_event`・`not_found`・`bad_state`・`bad_alloc`・`confirm_flag`・`merged`・`has_payment`・`key_taken`・`reason_required`・`already_cancelled` | `recitalBankDb.ts` の `Error.message` | 画面と入口が日本語の文・HTTP の数に直す |
+| 投げる語 `no_event`・`not_found`・`bad_state`・`bad_alloc`・`confirm_flag`・`merged`・`has_payment`・`key_taken`・`reason_required`・`already_cancelled`・`busy`（`SQLITE_BUSY` を直した物） | `recitalBankDb.ts` の `Error.message` | 画面と入口が日本語の文・HTTP の数に直す |
 
 ---
 
