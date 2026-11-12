@@ -5,6 +5,7 @@ import {
   buildRecitalCheckoutParams,
   createRecitalCheckout,
   expireRecitalCheckout,
+  parseRecitalWebhookEvent,
   retrieveRecitalCheckout,
   stripeKeyFor,
   stripeModeForSession,
@@ -131,5 +132,36 @@ describe('Stripe に聞く・切る・作る', () => {
     // Stripe の message（メールが入ることがある）はログに出さない
     expect(JSON.stringify(err.mock.calls)).not.toContain('"x"');
     expect(err.mock.calls[0]).toContain('parameter_invalid');
+  });
+});
+
+// ---------- Task 22：Stripe の知らせを読む ----------
+
+describe('parseRecitalWebhookEvent', () => {
+  const session = (meta: Record<string, string>, over = {}) => ({ id: 'evt_1', type: 'checkout.session.completed', livemode: false,
+    data: { object: { id: 'cs_test_1', payment_intent: 'pi_1', amount_total: 26500, payment_status: 'paid', metadata: meta, ...over } } });
+  const meta = { recital_event_key: 't-pay', recital_household_id: '12', recital_checkout_id: '34' };
+
+  it('発表会の印がある完了の知らせを読む', () => {
+    expect(parseRecitalWebhookEvent(session(meta))).toEqual({ eventId: 'evt_1', type: 'checkout.session.completed', livemode: false, eventKey: 't-pay', householdId: 12, checkoutId: 34, sessionId: 'cs_test_1', piId: 'pi_1', amountTotal: 26500, paymentStatus: 'paid' });
+  });
+  it('発表会でない知らせは null（MOCCHIN の印・印なし）', () => {
+    expect(parseRecitalWebhookEvent(session({ mocchin_entry_id: '5', mocchin_step: '0' }))).toBeNull();
+    expect(parseRecitalWebhookEvent(session({}))).toBeNull();
+    expect(parseRecitalWebhookEvent({ id: 'evt_x' })).toBeNull();
+  });
+  it('世帯の番号が数でなければ null', () => {
+    expect(parseRecitalWebhookEvent(session({ ...meta, recital_household_id: '12a' }))).toBeNull();
+  });
+  it('payment_intent の知らせ（印は payment_intent_data から）も発表会の分として読む', () => {
+    const ev = { id: 'evt_2', type: 'payment_intent.succeeded', livemode: true, data: { object: { id: 'pi_1', object: 'payment_intent', metadata: meta } } };
+    expect(parseRecitalWebhookEvent(ev)).toMatchObject({ type: 'payment_intent.succeeded', livemode: true, sessionId: null, piId: 'pi_1', householdId: 12 });
+  });
+  // ---- ここから下は計画の試験のあとに足した分 ----
+  it('charge.* は piId に object.payment_intent・checkout の番号が数でなければ null・payment_intent が展開されていても番号だけ', () => {
+    const ch = { id: 'evt_3', type: 'charge.refunded', livemode: false, data: { object: { id: 'ch_1', object: 'charge', payment_intent: 'pi_9', metadata: { ...meta, recital_checkout_id: 'x' } } } };
+    expect(parseRecitalWebhookEvent(ch)).toMatchObject({ type: 'charge.refunded', sessionId: null, piId: 'pi_9', checkoutId: null, amountTotal: null });
+    expect(parseRecitalWebhookEvent(session(meta, { payment_intent: { id: 'pi_x' } }))).toMatchObject({ piId: 'pi_x' });
+    expect(parseRecitalWebhookEvent(session({ ...meta, recital_event_key: '' }))).toBeNull();
   });
 });

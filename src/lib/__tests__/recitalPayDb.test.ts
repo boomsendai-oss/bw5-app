@@ -2,23 +2,37 @@
 // このファイルは 21・22・23 が足していく。タスクごとに describe を分け、各 describe の頭（beforeAll）で自分の世帯を作る。
 // ほかのタスクの describe の世帯を使わない。自分の event_key（t-pay*）の行だけを見る。
 // 本物の Stripe は呼ばない（fetch は vi.stubGlobal で差しかえる）。メールは 10 の送る所を mock する。
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 import { setupRecitalTestDb } from './recitalTestSeed';
 
-vi.mock('@/lib/recitalMail', () => ({ sendRecitalMail: vi.fn(async () => ({ status: 'sent', logId: 1 })), sendPaidMail: vi.fn(async () => ({ status: 'none' })) }));
-vi.mock('@/lib/recitalMail.ts', () => ({ sendRecitalMail: vi.fn(async () => ({ status: 'sent', logId: 1 })), sendPaidMail: vi.fn(async () => ({ status: 'none' })) }));
+// 22 は本物の sendPaidMail（メールの鍵が無い試験環境＝送れずに記録だけ残る）を通すので、切りかえの印を持つ
+const mailMode = vi.hoisted(() => ({ real: false }));
+// 2つの書き方は同じファイルを指し、あとの vi.mock が勝つので、両方を同じ中身にする
+const mailMock = async (importActual: <T>() => Promise<T>) => {
+  const actual = await importActual<typeof import('../recitalMail')>();
+  return {
+    sendRecitalMail: vi.fn(async () => ({ status: 'sent', logId: 1 })),
+    sendPaidMail: vi.fn(async (...a: Parameters<typeof actual.sendPaidMail>) => (mailMode.real ? actual.sendPaidMail(...a) : { status: 'none' })),
+  };
+};
+vi.mock('@/lib/recitalMail', (importActual) => mailMock(importActual));
+vi.mock('@/lib/recitalMail.ts', (importActual) => mailMock(importActual));
+// 22 の「記録に失敗した」知らせ（本物の Pushover・LINE・メールは呼ばない）
+vi.mock('@/lib/notify', () => ({ notifyTaro: vi.fn(async () => {}) }));
 
 process.env.STRIPE_TEST_SECRET_KEY = 'sk_test_dummy';
 
 await setupRecitalTestDb('pay');
 const core = await import('../db');
-const { execute, withWriteTx } = core;
+const { execute, getOne, withWriteTx } = core;
 const { nowUtcIso } = await import('../dateJst');
 const entry = await import('../recitalEntryDb');
 const money = await import('../recitalMoneyDb');
 const { insertPaymentTx, recordManualPayment, afterMoneyChanged } = money;
 const pay = await import('../recitalPayDb');
-const { startCardPayment, syncCardCheckout } = pay;
+const { startCardPayment, syncCardCheckout, applyRecitalWebhookEvent, handleRecitalWebhook } = pay;
+const { notifyTaro } = await import('../notify');
+const { isMailConfigured } = await import('../email');
 
 // 手元のファイル DB（libsql の file:）は、書き込みが同時に来ると接続が使えないまま残る（recitalEntryDb.test.ts の説明のとおり）。
 // 本物の同時の試験は Turso の試しの DB に向けて回す（RECITAL_TEST_DB_URL）。
@@ -164,6 +178,7 @@ async function checkout(sessionId: string) {
 
 await seedPayEvent('t-pay', 'test');
 await seedPayEvent('t-pay-closed', 'test', { payOk: false });
+await seedPayEvent('t-pay-live', 'live');
 
 // =====================================================================
 describe('Task 21 開いている支払い（作る・聞く・切る）', () => {
@@ -404,5 +419,179 @@ describe('Task 21 開いている支払い（作る・聞く・切る）', () =>
       vi.unstubAllEnvs();
       process.env.STRIPE_TEST_SECRET_KEY = 'sk_test_dummy';
     }
+  });
+});
+
+// =====================================================================
+describe('Task 22 カードの知らせの記録', () => {
+  type Ev = import('../recitalStripe').RecitalWebhookEvent;
+  let hid = 0;
+  let liveHid = 0;
+  let evSeq = 0;
+  const openCheckoutOf: Record<number, number> = {};
+
+  beforeAll(async () => {
+    // 送る口に鍵が有ると、本物のメールを送りに行ってしまう（この試験は「送れない」前提）
+    expect(isMailConfigured()).toBe(false);
+    mailMode.real = true;
+    ({ hid: liveHid } = await newHousehold('t-pay-live'));
+  });
+  afterAll(() => {
+    mailMode.real = false;
+  });
+  beforeEach(async () => {
+    ({ hid } = await newHousehold());
+    openCheckoutOf[hid] = await seedOpenCheckout(hid, { sessionId: 'cs_test_' + hid, amount: 26500 });
+    vi.mocked(notifyTaro).mockClear();
+  });
+
+  /** RecitalWebhookEvent を組む（番号は世帯ごとに cs_test_<世帯>・pi_<世帯>） */
+  function ev(over: Partial<Ev> = {}): Ev {
+    const householdId = over.householdId ?? hid;
+    return {
+      eventId: `evt_auto_${++evSeq}`, eventKey: 't-pay', householdId, checkoutId: openCheckoutOf[householdId] ?? null,
+      sessionId: 'cs_test_' + householdId, piId: 'pi_' + householdId, amountTotal: 26500, paymentStatus: 'paid',
+      type: 'checkout.session.completed', livemode: false, ...over,
+    };
+  }
+  /** Stripe の checkout.session.completed の形の生の知らせ */
+  function stripeEvent(over: { id?: string; amount_total?: number | null; householdId?: number } = {}) {
+    const householdId = over.householdId ?? hid;
+    const meta: Record<string, string> = { recital_event_key: 't-pay', recital_household_id: String(householdId) };
+    if (openCheckoutOf[householdId] != null) meta.recital_checkout_id = String(openCheckoutOf[householdId]);
+    return {
+      id: over.id ?? `evt_auto_${++evSeq}`, object: 'event', type: 'checkout.session.completed', livemode: false,
+      data: { object: {
+        id: 'cs_test_' + householdId, object: 'checkout.session', payment_intent: 'pi_' + householdId,
+        amount_total: 'amount_total' in over ? over.amount_total : 26500, payment_status: 'paid', status: 'complete', metadata: meta,
+      } },
+    };
+  }
+  async function payments(h: number) {
+    const rows = await core.getAll('SELECT id, method, amount, source, stripe_event_id, stripe_session_id FROM recital_payments WHERE household_id = ? ORDER BY id', [h]);
+    return rows.map((r) => ({ id: Number(r.id), method: String(r.method), amount: Number(r.amount), source: String(r.source), stripe_event_id: r.stripe_event_id, stripe_session_id: r.stripe_session_id }));
+  }
+  async function refundsTodo(h: number) {
+    const rows = await core.getAll("SELECT amount, reason_no FROM recital_refunds WHERE household_id = ? AND status = 'todo' ORDER BY id", [h]);
+    return rows.map((r) => ({ amount: Number(r.amount), reason_no: Number(r.reason_no) }));
+  }
+  async function mailKinds(h: number) {
+    return (await core.getAll('SELECT mail_kind FROM recital_mail_log WHERE household_id = ? ORDER BY id', [h])).map((r) => String(r.mail_kind));
+  }
+
+  it('同じ知らせ2回で入金1回', async () => {
+    expect((await applyRecitalWebhookEvent(ev({ eventId: 'evt_a' }))).status).toBe('paid');
+    expect((await applyRecitalWebhookEvent(ev({ eventId: 'evt_a' }))).status).toBe('duplicate');
+    expect(await payments(hid)).toHaveLength(1);
+  });
+  it('同じ画面の別の知らせ（マイページで先に記録ずみ）も duplicate', async () => {
+    stripeState('cs_test_' + hid, { status: 'complete', payment_status: 'paid', amount_total: 26500, payment_intent: 'pi_' + hid });
+    await syncCardCheckout(hid);
+    expect(await payments(hid)).toHaveLength(1);
+    expect((await applyRecitalWebhookEvent(ev({ eventId: 'evt_b' }))).status).toBe('duplicate');   // 同じ sessionId
+    expect(await payments(hid)).toHaveLength(1);
+  });
+  it('試しの鍵の知らせは本番の鍵の発表会に当たらない（mode_mismatch・何も書かない）', async () => {
+    expect((await applyRecitalWebhookEvent(ev({ eventKey: 't-pay-live', householdId: liveHid, livemode: false }))).status).toBe('mode_mismatch');
+    expect(await payments(liveHid)).toHaveLength(0);
+    expect((await applyRecitalWebhookEvent(ev({ livemode: true }))).status).toBe('mode_mismatch'); // 逆も
+    expect(await payments(hid)).toHaveLength(0);
+  });
+  it('払い済みでない完了・charge.* は acked で何も書かない', async () => {
+    expect((await applyRecitalWebhookEvent(ev({ paymentStatus: 'unpaid' }))).status).toBe('acked');
+    expect((await applyRecitalWebhookEvent(ev({ type: 'charge.refunded', sessionId: null }))).status).toBe('acked');
+    expect(await payments(hid)).toHaveLength(0);
+  });
+  it('期限切れの知らせは行を expired', async () => {
+    expect((await applyRecitalWebhookEvent(ev({ eventId: 'evt_exp', type: 'checkout.session.expired', paymentStatus: 'unpaid', amountTotal: null }))).status).toBe('expired');
+    expect((await core.getOne('SELECT status s FROM recital_checkouts WHERE stripe_session_id=?', ['cs_test_' + hid])).s).toBe('expired');
+    expect(await payments(hid)).toHaveLength(0);
+  });
+  it('印の発表会と世帯の発表会がちがえば not_found', async () => {
+    expect((await applyRecitalWebhookEvent(ev({ eventId: 'evt_o', eventKey: 't-other' }))).status).toBe('not_found');
+    expect(await payments(hid)).toHaveLength(0);
+  });
+  it('本物の額で記録・こえた分は返す分の1番（古い画面で 30,000 払えた）', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await applyRecitalWebhookEvent(ev({ eventId: 'evt_c', amountTotal: 30000 }));
+    } finally {
+      err.mockRestore();
+    }
+    expect((await payments(hid))[0].amount).toBe(30000);
+    expect(await refundsTodo(hid)).toEqual([{ amount: 3500, reason_no: 1 }]);
+  });
+  it('振込で払い終わった世帯にカードの完了の知らせ → 入金 26,500 を記録・返す分1番 26,500（source_payment_id はカードの入金）・完了メールは出ない', async () => {
+    const { hid: h7 } = await newHousehold();
+    await withWriteTx((tx) => insertPaymentTx(tx, { householdId: h7, method: 'bank', amount: 26500, paidOn: '2026-12-20', source: 'bank_staff' }, '試し'));
+    const r = await handleRecitalWebhook(stripeEvent({ id: 'evt_f', householdId: h7 }));
+    expect(r).toMatchObject({ handled: true, httpStatus: 200 });
+    const card = (await payments(h7)).find((p) => p.method === 'card');
+    expect(card?.amount).toBe(26500);
+    const ref = await getOne('SELECT amount, reason_no, source_payment_id FROM recital_refunds WHERE household_id=? AND status=?', [h7, 'todo']);
+    expect([Number(ref.amount), Number(ref.reason_no), Number(ref.source_payment_id)]).toEqual([26500, 1, card!.id]);
+    expect(await mailKinds(h7)).not.toContain('complete');
+  });
+  it('handleRecitalWebhook：発表会でない知らせは handled:false', async () => {
+    expect(await handleRecitalWebhook({ id: 'evt_m', type: 'checkout.session.completed', data: { object: { metadata: { mocchin_entry_id: '1', mocchin_step: '0' } } } })).toEqual({ handled: false });
+  });
+  it('handleRecitalWebhook：記録したらメールを呼び、メールが失敗しても 200', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let r;
+    try {
+      r = await handleRecitalWebhook(stripeEvent({ id: 'evt_d22' }));  // メールの鍵が無い試験環境＝送れない（計画の evt_d は 21 の種の入金と同じ番号なので変えた）
+    } finally {
+      err.mockRestore();
+    }
+    expect(r).toEqual({ handled: true, httpStatus: 200, result: 'recital_paid' });
+    expect(await mailKinds(hid)).toContain('complete');
+  });
+  it('handleRecitalWebhook：適用に失敗したら 500（金額の無い完了の知らせ）', async () => {
+    expect(await handleRecitalWebhook(stripeEvent({ id: 'evt_e', amount_total: null }))).toMatchObject({ handled: true, httpStatus: 500 });
+    expect(await payments(hid)).toHaveLength(0);
+  });
+  // ---- ここから下は、計画の試験のあとに足した分 ----
+  it('払っている間にこちらで行を閉じても（expireOpenCheckout）、Stripe の完了の知らせで入金を記録し、行は paid', async () => {
+    await pay.expireOpenCheckout(hid, '試し');
+    expect((await checkout('cs_test_' + hid)).status).toBe('closed');
+    const r = await handleRecitalWebhook(stripeEvent({ id: 'evt_late' }));
+    expect(r).toEqual({ handled: true, httpStatus: 200, result: 'recital_paid' });
+    expect(await payments(hid)).toEqual([expect.objectContaining({ method: 'card', amount: 26500, source: 'stripe_webhook', stripe_event_id: 'evt_late', stripe_session_id: 'cs_test_' + hid })]);
+    const c = await checkout('cs_test_' + hid);
+    expect([String(c.status), String(c.stripe_pi_id)]).toEqual(['paid', 'pi_' + hid]);
+    expect(await openRows(hid)).toEqual([]);
+  });
+  it('印の checkout の番号が無くても、決済の画面の番号で行を見つけて paid にする', async () => {
+    expect((await applyRecitalWebhookEvent(ev({ eventId: 'evt_nocid', checkoutId: null }))).status).toBe('paid');
+    expect((await checkout('cs_test_' + hid)).status).toBe('paid');
+  });
+  it('まとめられた世帯の知らせは、まとめ先の世帯に記録する（お金は落とさない）', async () => {
+    const { hid: target } = await newHousehold();
+    await execute("UPDATE recital_households SET status = 'merged', merged_into = ? WHERE id = ?", [target, hid]);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let r;
+    try {
+      r = await applyRecitalWebhookEvent(ev({ eventId: 'evt_merged' }));
+    } finally {
+      err.mockRestore();
+    }
+    expect(r).toMatchObject({ status: 'paid', householdId: target });
+    expect(await payments(target)).toHaveLength(1);
+    expect(await payments(hid)).toHaveLength(0);
+    expect((await checkout('cs_test_' + hid)).status).toBe('paid');
+  });
+  it('payment_intent.* は acked で何も書かない', async () => {
+    expect((await applyRecitalWebhookEvent(ev({ type: 'payment_intent.succeeded', sessionId: null }))).status).toBe('acked');
+    expect(await payments(hid)).toHaveLength(0);
+  });
+  it('適用の失敗は TARO に知らせる（題・本文に名前と金額を書かない）。知らせが失敗しても 500 を返す', async () => {
+    vi.mocked(notifyTaro).mockRejectedValueOnce(new Error('all failed'));
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(await handleRecitalWebhook(stripeEvent({ id: 'evt_g', amount_total: null }))).toEqual({ handled: true, httpStatus: 500, result: 'recital_apply_failed' });
+    } finally {
+      err.mockRestore();
+    }
+    expect(vi.mocked(notifyTaro)).toHaveBeenCalledWith({ subject: 'カードの入金の記録に失敗しました', body: 'Stripe が送り直します。知らせの番号 evt_g', subjectPrefix: '【BOOM】BW6' });
   });
 });

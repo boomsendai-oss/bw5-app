@@ -2,22 +2,25 @@
 // 決まりの正本は設計書 05 5-6（開いている支払いは世帯に1つまで・30分で切れる・開いた時と「払う」の時に Stripe に聞く）、
 // 04 4-2 の「払う」の表、決まり K55・K172・K194・K204・K207・K224、裁定 R-43・R-98。
 // 金額はいつもサーバで、その時の今の残り（印があれば 残り−印の金額）から出す。家庭から金額を受けない。
-// 22（Stripe の知らせ）・23（銀行振込）がこのファイルに足す。ログに金額・名前・メールは出さない。
+// 22（Stripe の知らせ）・23（銀行振込）がこのファイルに足す。ログに名前・メールは出さない。金額は 22 の「額がちがう」の1行だけ（計画どおり）。
 import { execute, getOne, withWriteTx } from '@/lib/db';
 import { nowUtcIso, todayJst } from '@/lib/dateJst';
 import { payableAmount, payButtonState, payGate, recitalMyUrl } from '@/lib/recital';
 import { getRecitalSettings } from '@/lib/recitalDb';
 import { requireHouseholdByToken } from '@/lib/recitalGuard';
 import { sendPaidMail } from '@/lib/recitalMail';
+import { notifyTaro } from '@/lib/notify';
 import { afterMoneyChanged, insertPaymentTx, readHouseholdMoney, readHouseholdMoneyTx } from '@/lib/recitalMoneyDb';
 import {
   buildRecitalCheckoutParams,
   createRecitalCheckout,
   expireRecitalCheckout,
+  parseRecitalWebhookEvent,
   retrieveRecitalCheckout,
   stripeModeForSession,
   type RecitalCheckoutState,
   type RecitalStripeMode,
+  type RecitalWebhookEvent,
 } from '@/lib/recitalStripe';
 
 /** 決済の画面が切れるまで（分）。設計書 5-6・K55 */
@@ -276,4 +279,120 @@ export async function startCardPayment(
     throw busy();
   }
   return { url: session.url };
+}
+
+// ---------- Stripe の知らせ（Task 22） ----------
+
+export type RecitalWebhookApplyResult = {
+  status: 'paid' | 'duplicate' | 'expired' | 'acked' | 'mode_mismatch' | 'not_found'; householdId?: number; paymentId?: number;
+};
+
+/** まとめた世帯なら、まとめ先（同じ発表会の世帯）をたどる。たどれなければ、たどれた所まで */
+async function resolveMergedTarget(householdId: number, eventKey: string): Promise<number> {
+  let cur = householdId;
+  const seen = new Set<number>([cur]);
+  for (let i = 0; i < 10; i++) {
+    const h = await getOne('SELECT status, merged_into FROM recital_households WHERE id = ?', [cur]);
+    if (!h || String(h.status) !== 'merged' || h.merged_into == null) break;
+    const next = Number(h.merged_into);
+    if (!Number.isInteger(next) || seen.has(next)) break;
+    const t = await getOne('SELECT event_key FROM recital_households WHERE id = ?', [next]);
+    if (!t || String(t.event_key) !== eventKey) break;
+    seen.add(next);
+    cur = next;
+  }
+  return cur;
+}
+
+/** 知らせの決済の画面の行。番号（stripe_session_id）で、こちらの状態（open・closed・expired）に関わらず引く。無ければ印の checkout の番号 */
+async function findCheckoutRow(ev: RecitalWebhookEvent): Promise<{ id: number; amount: number } | null> {
+  let r = ev.sessionId == null
+    ? null
+    : await getOne('SELECT id, amount FROM recital_checkouts WHERE stripe_session_id = ? AND household_id = ?', [ev.sessionId, ev.householdId]);
+  if (!r && ev.checkoutId != null) {
+    r = await getOne(
+      'SELECT id, amount FROM recital_checkouts WHERE id = ? AND household_id = ? AND (stripe_session_id IS NULL OR stripe_session_id = ?)',
+      [ev.checkoutId, ev.householdId, ev.sessionId ?? ''],
+    );
+  }
+  return r ? { id: Number(r.id), amount: Number(r.amount) } : null;
+}
+
+/**
+ * 発表会の Stripe の知らせを1つ当てる。順：世帯 → 試し・本番 → 払い終わった完了（本物の額で記録）→ 切れた → ほか（受けるだけ）。
+ * 払い終わった完了は、こちらで行を閉じたあとでも記録する（払っている間に閉じた時も、お金は本物なので落とさない）。
+ * 金額の無い完了は throw（Stripe に送り直させる）。
+ */
+export async function applyRecitalWebhookEvent(ev: RecitalWebhookEvent): Promise<RecitalWebhookApplyResult> {
+  // 1. 世帯（まとめた世帯なら、まとめ先に記録する）
+  const h = await getOne('SELECT id, event_key, status FROM recital_households WHERE id = ?', [ev.householdId]);
+  if (!h || String(h.event_key) !== ev.eventKey) {
+    console.error(`[recital] カードの知らせの世帯が見つかりません household=${ev.householdId} event=${ev.eventId}`);
+    return { status: 'not_found' };
+  }
+  let householdId = ev.householdId;
+  if (String(h.status) === 'merged') {
+    householdId = await resolveMergedTarget(ev.householdId, ev.eventKey);
+    console.error(`[recital] まとめた世帯へのカードの知らせを、まとめ先に当てます household=${ev.householdId} target=${householdId} event=${ev.eventId}`);
+  }
+
+  // 2. 試し・本番（K130 の守りはここ1か所）
+  const mode = (await getRecitalSettings(ev.eventKey)).stripe_mode;
+  if ((mode === 'live' && !ev.livemode) || (mode !== 'live' && ev.livemode)) {
+    console.error(`[recital] カードの知らせの試し・本番が設定とちがいます household=${ev.householdId} event=${ev.eventId} livemode=${ev.livemode}`);
+    return { status: 'mode_mismatch', householdId };
+  }
+
+  // 3. 払い終わった完了：本物の額で1回だけ記録
+  if (ev.type === 'checkout.session.completed' && ev.paymentStatus === 'paid') {
+    const amount = ev.amountTotal;
+    if (typeof amount !== 'number' || !Number.isInteger(amount) || amount <= 0) throw new Error('recital_pay:no_amount');
+    const row = await findCheckoutRow(ev);
+    const r = await recordCardPayment({
+      householdId, checkoutId: row?.id ?? null, amount, source: 'stripe_webhook',
+      stripeEventId: ev.eventId, stripeSessionId: ev.sessionId, stripePiId: ev.piId,
+    });
+    if (r.status === 'duplicate') return { status: 'duplicate', householdId };
+    if (row && row.amount !== amount) {
+      console.error(`[recital] カードの入金の額が決済の画面の額とちがいます household=${householdId} checkout=${row.id} checkout_amount=${row.amount} stripe_amount=${amount}`);
+    }
+    return { status: 'paid', householdId, paymentId: r.paymentId };
+  }
+
+  // 4. 切れた
+  if (ev.type === 'checkout.session.expired') {
+    if (ev.sessionId != null) {
+      await execute(
+        "UPDATE recital_checkouts SET status = 'expired' WHERE stripe_session_id = ? AND household_id = ? AND status = 'open'",
+        [ev.sessionId, ev.householdId],
+      );
+    }
+    return { status: 'expired', householdId };
+  }
+
+  // 5. ほか（払い済みでない完了・payment_intent.*・charge.*）は受けるだけ。charge.* の自動の記録（異議）は後の計画
+  return { status: 'acked', householdId };
+}
+
+/**
+ * 2つの受け口（本番の鍵・試しの鍵）が呼ぶ。発表会の知らせでなければ { handled: false }（今の流れへ）。throw しない。
+ * 当てるのに失敗したら TARO に知らせて 500（Stripe が送り直す）。記録とメールは「書く核」の中（メールの失敗は 200 のまま）。
+ */
+export async function handleRecitalWebhook(
+  event: unknown,
+): Promise<{ handled: false } | { handled: true; httpStatus: 200 | 500; result: string }> {
+  const ev = parseRecitalWebhookEvent(event);
+  if (!ev) return { handled: false };
+  try {
+    const r = await applyRecitalWebhookEvent(ev);
+    return { handled: true, httpStatus: 200, result: `recital_${r.status}` };
+  } catch (e) {
+    console.error(`[recital] カードの知らせを記録できませんでした event=${ev.eventId}`, e instanceof Error ? e.message : String(e));
+    try {
+      await notifyTaro({ subject: 'カードの入金の記録に失敗しました', body: 'Stripe が送り直します。知らせの番号 ' + ev.eventId, subjectPrefix: '【BOOM】BW6' });
+    } catch {
+      console.error(`[recital] カードの知らせの失敗を TARO に知らせられませんでした event=${ev.eventId}`);
+    }
+    return { handled: true, httpStatus: 500, result: 'recital_apply_failed' };
+  }
 }

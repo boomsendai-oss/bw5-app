@@ -3,6 +3,7 @@
 // 試しと本番は設定 stripe_mode で選ぶ（初めの値 test）。test は STRIPE_TEST_SECRET_KEY だけを使い、本番の鍵へ落ちない。
 // Stripe の中に世帯ごとの顧客は作らない（メールだけ渡す。K55・K172）。Stripe のエラーはログだけ（家庭には出さない）。
 // ログに金額・メール・名前は出さない。
+// U38（Task 22・Stripe の文書 docs.stripe.com/metadata で確かめた）：印は PaymentIntent → Charge にだけ写る（作った時の1回）。Refund・Dispute には写らないので、返金・異議（refund.*・charge.dispute.*）の知らせには印が乗らない（charge.refunded は Charge なので乗る）。
 
 const STRIPE_API = 'https://api.stripe.com/v1/checkout/sessions';
 const NOT_READY = 'カード決済は、準備中です';
@@ -127,3 +128,58 @@ export async function expireRecitalCheckout(mode: RecitalStripeMode, sessionId: 
     return false;
   }
 }
+
+// ---------- Stripe の知らせを読む（Task 22） ----------
+
+export type RecitalWebhookEvent = {
+  eventId: string; type: string; livemode: boolean; eventKey: string; householdId: number; checkoutId: number | null;
+  sessionId: string | null; piId: string | null; amountTotal: number | null; paymentStatus: string | null;
+};
+
+/* eslint-disable @typescript-eslint/no-explicit-any -- Stripe の知らせは動的構造 */
+function idOf(v: any): string | null {
+  if (typeof v === 'string' && v !== '') return v;
+  if (v && typeof v.id === 'string' && v.id !== '') return v.id;
+  return null;
+}
+
+/**
+ * 発表会の知らせだけを読む。見分けるのは印（metadata.recital_event_key と recital_household_id）だけで、種類では見分けない（K129）。
+ * 印が無い・形がちがう知らせは null（今の流れ＝ほかの催しへ）。
+ */
+export function parseRecitalWebhookEvent(event: unknown): RecitalWebhookEvent | null {
+  const e = event as any;
+  if (!e || typeof e.id !== 'string' || e.id === '' || typeof e.type !== 'string') return null;
+  const obj = e.data?.object;
+  if (!obj || typeof obj !== 'object') return null;
+  const meta = obj.metadata ?? {};
+  const eventKey = meta.recital_event_key;
+  const rawHid = meta.recital_household_id;
+  if (typeof eventKey !== 'string' || eventKey.trim() === '') return null;
+  if (rawHid == null || !/^\d+$/.test(String(rawHid))) return null;
+  const rawCheckout = meta.recital_checkout_id;
+  const objId = typeof obj.id === 'string' ? obj.id : '';
+  let sessionId: string | null = null;
+  let piId: string | null;
+  if (objId.startsWith('cs_')) {
+    sessionId = objId;
+    piId = idOf(obj.payment_intent);
+  } else if (objId.startsWith('pi_')) {
+    piId = objId;
+  } else {
+    piId = idOf(obj.payment_intent);
+  }
+  return {
+    eventId: e.id,
+    type: e.type,
+    livemode: e.livemode === true,
+    eventKey,
+    householdId: Number(rawHid),
+    checkoutId: rawCheckout != null && /^\d+$/.test(String(rawCheckout)) ? Number(rawCheckout) : null,
+    sessionId,
+    piId,
+    amountTotal: typeof obj.amount_total === 'number' ? obj.amount_total : null,
+    paymentStatus: typeof obj.payment_status === 'string' ? obj.payment_status : null,
+  };
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */

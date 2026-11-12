@@ -24,6 +24,7 @@ import { buildMocchinCardPaidEmail } from '@/lib/mocchinEntry';
 import { applyMocchinWebhookEvent } from '@/lib/mocchinEntryDb';
 import { markMocchinPlanInvited } from '@/lib/mocchinPlanInvite';
 import { parseMocchinWebhookEvent } from '@/lib/mocchinStripe';
+import { handleRecitalWebhook } from '@/lib/recitalPayDb';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,6 +47,9 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'invalid payload' }, { status: 400 });
   }
+  // BW6 発表会(metadata.recital_event_key＋recital_household_id)。印だけで見分け、ほかの催しより先に振り分ける。
+  const recital = await handleRecitalWebhook(event);
+  if (recital.handled) return NextResponse.json(recital.httpStatus === 200 ? { received: true, result: recital.result } : { error: 'apply failed' }, { status: recital.httpStatus });
   // BW6 MOCCHINナンバー(metadata.mocchin_entry_id)も同じ相乗り方式。
   const mocchinEv = parseMocchinWebhookEvent(event);
   if (mocchinEv) {
