@@ -308,39 +308,87 @@ export async function saveWork(eventKey: string, w: WorkInput, staffName: string
   });
 }
 
+/** 作品ごとのクラスと担当（つなぎの2表）。担当は sort_order, id の順。行が1つも無い作品は入れない */
+export async function listWorkLinks(eventKey: string): Promise<Map<number, { classes: WorkInput['classes']; instructors: WorkInput['instructors'] }>> {
+  const out = new Map<number, { classes: WorkInput['classes']; instructors: WorkInput['instructors'] }>();
+  const at = (wid: number) => {
+    let e = out.get(wid);
+    if (!e) { e = { classes: [], instructors: [] }; out.set(wid, e); }
+    return e;
+  };
+  for (const r of await getAll('SELECT work_id, lesson_master_id, label FROM recital_work_classes WHERE event_key = ? ORDER BY id', [eventKey])) {
+    at(Number(r.work_id)).classes.push({ lesson_master_id: r.lesson_master_id == null ? null : Number(r.lesson_master_id), label: r.label == null ? '' : String(r.label) });
+  }
+  for (const r of await getAll(
+    'SELECT work_id, instructor_id, display_name, role, sort_order FROM recital_work_instructors WHERE event_key = ? ORDER BY sort_order, id',
+    [eventKey],
+  )) {
+    const role = String(r.role);
+    at(Number(r.work_id)).instructors.push({
+      instructor_id: r.instructor_id == null ? null : Number(r.instructor_id),
+      display_name: String(r.display_name),
+      role: role === 'perform' || role === 'assist' ? role : 'choreo',
+      sort_order: Number(r.sort_order),
+    });
+  }
+  return out;
+}
+
+/** 作品の画面の選び肢：active のクラス（label＝class_name、target があれば「class_name（target）」）と active のイントラ。名前の順 */
+export async function listWorkPickOptions(): Promise<{ classes: { id: number; label: string }[]; instructors: { id: number; name: string }[] }> {
+  const classes = await getAll('SELECT id, class_name, target FROM lesson_master WHERE active = 1 ORDER BY class_name, target, id', []);
+  const instructors = await getAll('SELECT id, name FROM instructors WHERE active = 1 ORDER BY name, id', []);
+  return {
+    classes: classes.map((r) => {
+      const target = r.target == null ? '' : String(r.target).trim();
+      return { id: Number(r.id), label: target ? `${String(r.class_name)}（${target}）` : String(r.class_name) };
+    }),
+    instructors: instructors.map((r) => ({ id: Number(r.id), name: String(r.name) })),
+  };
+}
+
 /**
  * 作品ごとの数。in・maybe は「人 active・世帯 active」の出演。paid／unpaid は in のうち世帯の残りが 0／>0。
  * snsNg は in の人に sns_ok=0 がいるか。出演の無い作品も 0 で入れる。
+ * 1回の SQL で読む（世帯ごとに引かない）。残りの式は readMoneyViewTx（moneySummary）と同じ：
+ * total＝max(0, 生きている請求の和)、paid＝入金の全部の和 − 返す分 todo の和、remaining＝max(0, total − paid)。
  */
 export async function listWorkCounts(eventKey: string): Promise<Map<number, { in: number; maybe: number; paid: number; unpaid: number; snsNg: boolean }>> {
-  const out = new Map<number, { in: number; maybe: number; paid: number; unpaid: number; snsNg: boolean }>();
-  for (const w of await getAll('SELECT id FROM recital_works WHERE event_key = ?', [eventKey])) {
-    out.set(Number(w.id), { in: 0, maybe: 0, paid: 0, unpaid: 0, snsNg: false });
-  }
-  const casts = await getAll(
-    `SELECT c.work_id, c.status, p.sns_ok, h.id AS household_id
-     FROM recital_casts c
-     JOIN recital_people p ON p.id = c.person_id
-     JOIN recital_households h ON h.id = p.household_id
-     WHERE c.event_key = ? AND c.status IN ('in', 'maybe') AND p.status = 'active' AND h.status = 'active'`,
-    [eventKey],
+  const rows = await getAll(
+    `WITH x AS (
+       SELECT c.work_id, c.status, p.sns_ok, p.household_id
+       FROM recital_casts c
+       JOIN recital_people p ON p.id = c.person_id
+       JOIN recital_households h ON h.id = p.household_id
+       WHERE c.event_key = ? AND c.status IN ('in', 'maybe') AND p.status = 'active' AND h.status = 'active'
+     ),
+     m AS (
+       SELECT hid AS household_id, MAX(0, MAX(0, ch) - (pa - rf)) AS remaining FROM (
+         SELECT hh.household_id AS hid,
+           COALESCE((SELECT SUM(amount) FROM recital_charges WHERE household_id = hh.household_id AND status = 'active'), 0) AS ch,
+           COALESCE((SELECT SUM(amount) FROM recital_payments WHERE household_id = hh.household_id), 0) AS pa,
+           COALESCE((SELECT SUM(amount) FROM recital_refunds WHERE household_id = hh.household_id AND status = 'todo'), 0) AS rf
+         FROM (SELECT DISTINCT household_id FROM x WHERE status = 'in') hh
+       )
+     )
+     SELECT w.id AS work_id,
+       COALESCE(SUM(x.status = 'in'), 0) AS n_in,
+       COALESCE(SUM(x.status = 'maybe'), 0) AS n_maybe,
+       COALESCE(SUM(x.status = 'in' AND m.remaining <= 0), 0) AS n_paid,
+       COALESCE(SUM(x.status = 'in' AND m.remaining > 0), 0) AS n_unpaid,
+       COALESCE(MAX(x.status = 'in' AND x.sns_ok = 0), 0) AS sns_ng
+     FROM recital_works w
+     LEFT JOIN x ON x.work_id = w.id
+     LEFT JOIN m ON m.household_id = x.household_id
+     WHERE w.event_key = ?
+     GROUP BY w.id`,
+    [eventKey, eventKey],
   );
-  const remaining = new Map<number, number>();
-  for (const c of casts) {
-    const hid = Number(c.household_id);
-    if (c.status === 'in' && !remaining.has(hid)) remaining.set(hid, (await readMoneyViewTx(null, hid)).m.remaining);
-  }
-  for (const c of casts) {
-    const wid = Number(c.work_id);
-    const e = out.get(wid) ?? { in: 0, maybe: 0, paid: 0, unpaid: 0, snsNg: false };
-    if (c.status === 'maybe') e.maybe++;
-    else {
-      e.in++;
-      if ((remaining.get(Number(c.household_id)) ?? 0) > 0) e.unpaid++;
-      else e.paid++;
-      if (Number(c.sns_ok) === 0) e.snsNg = true;
-    }
-    out.set(wid, e);
+  const out = new Map<number, { in: number; maybe: number; paid: number; unpaid: number; snsNg: boolean }>();
+  for (const r of rows) {
+    out.set(Number(r.work_id), {
+      in: Number(r.n_in), maybe: Number(r.n_maybe), paid: Number(r.n_paid), unpaid: Number(r.n_unpaid), snsNg: Number(r.sns_ng) === 1,
+    });
   }
   return out;
 }

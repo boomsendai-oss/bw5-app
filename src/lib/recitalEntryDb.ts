@@ -17,6 +17,7 @@ import {
   normalizeEmail,
   normalizePhone,
   parseRecitalSettings,
+  RECITAL_STAFF_NAMES,
   type CastStatus,
   type FeeClass,
   type HouseholdView,
@@ -28,7 +29,7 @@ import { matchFeePreset, matchMember } from '@/lib/recitalMatch';
 import { pickRef } from '@/lib/recitalRef';
 import { requireHouseholdByToken } from '@/lib/recitalGuard';
 import { sendRecitalMail } from '@/lib/recitalMail';
-import { afterMoneyChanged } from '@/lib/recitalMoneyDb';
+import { afterMoneyChanged, readHouseholdMoneyTx } from '@/lib/recitalMoneyDb';
 
 // ---------- 型（split.md ③） ----------
 
@@ -877,4 +878,56 @@ export async function updateInstaHandle(token: string, personId: number, handle:
     await logChangeTx(tx, { eventKey, householdId, personId: pid, action: 'insta_edit', actor: 'family' });
   });
   return { ok: true };
+}
+
+// =====================================================================
+// Task 17：作品の取りやめ（04 4-4「取りやめは、消さずに状態を変える」）
+// =====================================================================
+
+export type DropWorkResult =
+  | { ok: true; households: number }
+  | { ok: false; code: 'not_found' | 'count_changed' | 'paid_household'; count: number; households?: number };
+
+/**
+ * 作品を取りやめる（status を dropped にする）。段階1は、その作品に in で出る世帯に払った世帯（paid > 0）が
+ * 1つでもあれば取りやめない（返す分4番が要り、それは後の計画）。confirmCount は画面に出した「申込の人数」
+ * （in＋maybe・人 active・世帯 active）。今の数とちがえば count_changed（古い画面から押した）。
+ * 取りやめたら、その作品に in／maybe で出る世帯の請求を作り直し、書き込みのあとで afterMoneyChanged を呼ぶ。
+ * 家庭へのメールは出さない（作品がなくなる時の一言 7-9 は後の計画）。
+ */
+export async function dropWork(workId: number, confirmCount: number, staffName: string): Promise<DropWorkResult> {
+  if (typeof staffName !== 'string' || !RECITAL_STAFF_NAMES.includes(staffName)) throw new Error('recital_works:staff_name');
+  const out = await withWriteTx(async (tx): Promise<DropWorkResult & { householdIds?: number[] }> => {
+    const [w] = await rowsOf(tx, 'SELECT id FROM recital_works WHERE id = ?', [workId]);
+    if (!w) return { ok: false, code: 'not_found', count: 0 };
+    const casts = await rowsOf(
+      tx,
+      `SELECT c.status, p.household_id FROM recital_casts c
+       JOIN recital_people p ON p.id = c.person_id
+       JOIN recital_households h ON h.id = p.household_id
+       WHERE c.work_id = ? AND c.status IN ('in', 'maybe') AND p.status = 'active' AND h.status = 'active'`,
+      [workId],
+    );
+    const count = casts.length;
+    if (count !== confirmCount) return { ok: false, code: 'count_changed', count };
+    const inHouseholds = [...new Set(casts.filter((c) => c.status === 'in').map((c) => Number(c.household_id)))];
+    let paidHouseholds = 0;
+    for (const hid of inHouseholds) {
+      if ((await readHouseholdMoneyTx(tx, hid)).m.paid > 0) paidHouseholds++;
+    }
+    if (paidHouseholds > 0) return { ok: false, code: 'paid_household', count, households: paidHouseholds };
+    await tx.execute({ sql: "UPDATE recital_works SET status = 'dropped' WHERE id = ?", args: [workId] });
+    const householdIds = [...new Set(casts.map((c) => Number(c.household_id)))];
+    for (const hid of householdIds) await recomputeChargesTx(tx, hid, staffName);
+    return { ok: true, households: householdIds.length, householdIds };
+  });
+  if (!out.ok) return out;
+  for (const hid of out.householdIds ?? []) {
+    try {
+      await afterMoneyChanged(hid, 'total');
+    } catch (e) {
+      console.error(`[recital] afterMoneyChanged に失敗しました household=${hid}`, errText(e));
+    }
+  }
+  return { ok: true, households: out.households };
 }
