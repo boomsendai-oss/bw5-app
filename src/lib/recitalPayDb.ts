@@ -287,13 +287,18 @@ export type RecitalWebhookApplyResult = {
   status: 'paid' | 'duplicate' | 'expired' | 'acked' | 'mode_mismatch' | 'not_found'; householdId?: number; paymentId?: number;
 };
 
-/** まとめた世帯なら、まとめ先（同じ発表会の世帯）をたどる。たどれなければ、たどれた所まで */
-async function resolveMergedTarget(householdId: number, eventKey: string): Promise<number> {
+/**
+ * まとめた世帯なら、まとめ先（同じ発表会の世帯）をたどる。たどれなければ、たどれた所まで。
+ * reachedActive は、たどった先が active の世帯の時だけ true（別の発表会・輪・10段をこえた・まとめ先が無い時は false）
+ */
+async function resolveMergedTarget(householdId: number, eventKey: string): Promise<{ id: number; reachedActive: boolean }> {
   let cur = householdId;
   const seen = new Set<number>([cur]);
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i <= 10; i++) {
     const h = await getOne('SELECT status, merged_into FROM recital_households WHERE id = ?', [cur]);
-    if (!h || String(h.status) !== 'merged' || h.merged_into == null) break;
+    if (!h) return { id: cur, reachedActive: false };
+    if (String(h.status) !== 'merged') return { id: cur, reachedActive: String(h.status) === 'active' };
+    if (h.merged_into == null || i === 10) break;
     const next = Number(h.merged_into);
     if (!Number.isInteger(next) || seen.has(next)) break;
     const t = await getOne('SELECT event_key FROM recital_households WHERE id = ?', [next]);
@@ -301,8 +306,19 @@ async function resolveMergedTarget(householdId: number, eventKey: string): Promi
     seen.add(next);
     cur = next;
   }
-  return cur;
+  return { id: cur, reachedActive: false };
 }
+
+/** TARO に知らせる（題・本文に名前と金額を書かない）。知らせの失敗はログだけ */
+async function tellTaro(subject: string, body: string, eventId: string): Promise<void> {
+  try {
+    await notifyTaro({ subject, body, subjectPrefix: '【BOOM】BW6' });
+  } catch {
+    console.error(`[recital] カードの知らせについて TARO に知らせられませんでした event=${eventId}`);
+  }
+}
+
+const idsLine = (ev: RecitalWebhookEvent) => `知らせの番号 ${ev.eventId}・世帯の番号 ${ev.householdId}`;
 
 /** 知らせの決済の画面の行。番号（stripe_session_id）で、こちらの状態（open・closed・expired）に関わらず引く。無ければ印の checkout の番号 */
 async function findCheckoutRow(ev: RecitalWebhookEvent): Promise<{ id: number; amount: number } | null> {
@@ -324,27 +340,35 @@ async function findCheckoutRow(ev: RecitalWebhookEvent): Promise<{ id: number; a
  * 金額の無い完了は throw（Stripe に送り直させる）。
  */
 export async function applyRecitalWebhookEvent(ev: RecitalWebhookEvent): Promise<RecitalWebhookApplyResult> {
+  // 払い終わった完了の知らせを記録できない時は、200 で受けたうえで TARO に知らせる（お金を黙って落とさない）
+  const paidCompleted = ev.type === 'checkout.session.completed' && ev.paymentStatus === 'paid';
+
   // 1. 世帯（まとめた世帯なら、まとめ先に記録する）
   const h = await getOne('SELECT id, event_key, status FROM recital_households WHERE id = ?', [ev.householdId]);
   if (!h || String(h.event_key) !== ev.eventKey) {
     console.error(`[recital] カードの知らせの世帯が見つかりません household=${ev.householdId} event=${ev.eventId}`);
+    if (paidCompleted) await tellTaro('カードの入金を記録できませんでした（世帯が見つからない）', idsLine(ev), ev.eventId);
     return { status: 'not_found' };
   }
   let householdId = ev.householdId;
+  let mergeBroken = false;
   if (String(h.status) === 'merged') {
-    householdId = await resolveMergedTarget(ev.householdId, ev.eventKey);
-    console.error(`[recital] まとめた世帯へのカードの知らせを、まとめ先に当てます household=${ev.householdId} target=${householdId} event=${ev.eventId}`);
+    const t = await resolveMergedTarget(ev.householdId, ev.eventKey);
+    householdId = t.id;
+    mergeBroken = !t.reachedActive;
+    console.error(`[recital] まとめた世帯へのカードの知らせを、まとめ先に当てます household=${ev.householdId} target=${householdId} event=${ev.eventId}${mergeBroken ? ' (まとめ先をたどれない)' : ''}`);
   }
 
   // 2. 試し・本番（K130 の守りはここ1か所）
   const mode = (await getRecitalSettings(ev.eventKey)).stripe_mode;
   if ((mode === 'live' && !ev.livemode) || (mode !== 'live' && ev.livemode)) {
     console.error(`[recital] カードの知らせの試し・本番が設定とちがいます household=${ev.householdId} event=${ev.eventId} livemode=${ev.livemode}`);
+    if (paidCompleted) await tellTaro('カードの入金を記録できませんでした（設定とちがう）', idsLine(ev), ev.eventId);
     return { status: 'mode_mismatch', householdId };
   }
 
   // 3. 払い終わった完了：本物の額で1回だけ記録
-  if (ev.type === 'checkout.session.completed' && ev.paymentStatus === 'paid') {
+  if (paidCompleted) {
     const amount = ev.amountTotal;
     if (typeof amount !== 'number' || !Number.isInteger(amount) || amount <= 0) throw new Error('recital_pay:no_amount');
     const row = await findCheckoutRow(ev);
@@ -353,6 +377,10 @@ export async function applyRecitalWebhookEvent(ev: RecitalWebhookEvent): Promise
       stripeEventId: ev.eventId, stripeSessionId: ev.sessionId, stripePiId: ev.piId,
     });
     if (r.status === 'duplicate') return { status: 'duplicate', householdId };
+    // まとめ先を active の世帯までたどれない時は、たどれた所に記録したうえで知らせる（見る人が世帯を直す。送り直しで2回知らせないよう記録のあと）
+    if (mergeBroken) {
+      await tellTaro('まとめた世帯のまとめ先をたどれませんでした（カードの入金はたどれた所の世帯に記録）', `${idsLine(ev)}・記録した世帯の番号 ${householdId}`, ev.eventId);
+    }
     if (row && row.amount !== amount) {
       console.error(`[recital] カードの入金の額が決済の画面の額とちがいます household=${householdId} checkout=${row.id} checkout_amount=${row.amount} stripe_amount=${amount}`);
     }
@@ -388,11 +416,7 @@ export async function handleRecitalWebhook(
     return { handled: true, httpStatus: 200, result: `recital_${r.status}` };
   } catch (e) {
     console.error(`[recital] カードの知らせを記録できませんでした event=${ev.eventId}`, e instanceof Error ? e.message : String(e));
-    try {
-      await notifyTaro({ subject: 'カードの入金の記録に失敗しました', body: 'Stripe が送り直します。知らせの番号 ' + ev.eventId, subjectPrefix: '【BOOM】BW6' });
-    } catch {
-      console.error(`[recital] カードの知らせの失敗を TARO に知らせられませんでした event=${ev.eventId}`);
-    }
+    await tellTaro('カードの入金の記録に失敗しました', 'Stripe が送り直します。知らせの番号 ' + ev.eventId, ev.eventId);
     return { handled: true, httpStatus: 500, result: 'recital_apply_failed' };
   }
 }

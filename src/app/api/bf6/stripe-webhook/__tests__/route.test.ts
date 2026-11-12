@@ -1,12 +1,18 @@
 // BW6 発表会（段階1）Task 22：本番の鍵の受け口（/api/bf6/stripe-webhook）に足した発表会の分岐の試験。
 // 発表会の記録（handleRecitalWebhook）と MOCCHIN の記録は差しかえる。ほかの部品は本物のまま読む。本物の Stripe は呼ばない。
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { createHmac } from 'node:crypto';
+import { rmSync } from 'node:fs';
 import { NextRequest } from 'next/server';
 
-// 万一 DB に触れても本番に向かないように（差しかえているので触れないはず）
-process.env.TURSO_DATABASE_URL = 'file:./data/test_recital_webhook_route.db';
+// 万一 DB に触れても本番に向かないように（差しかえているので触れないはず）。できてしまったファイルは終わりに消す
+// （data/ は本体の repo の無視される data/ への symlink。追跡はされないが残さない）
+const TEST_DB_FILE = './data/test_recital_webhook_route.db';
+process.env.TURSO_DATABASE_URL = `file:${TEST_DB_FILE}`;
 delete process.env.TURSO_AUTH_TOKEN;
+afterAll(() => {
+  for (const sfx of ['', '-shm', '-wal', '-journal']) rmSync(TEST_DB_FILE + sfx, { force: true });
+});
 
 vi.mock('@/lib/recitalPayDb', () => ({ handleRecitalWebhook: vi.fn() }));
 vi.mock('@/lib/mocchinEntryDb');

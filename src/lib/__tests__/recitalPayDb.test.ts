@@ -579,6 +579,7 @@ describe('Task 22 カードの知らせの記録', () => {
     expect(await payments(target)).toHaveLength(1);
     expect(await payments(hid)).toHaveLength(0);
     expect((await checkout('cs_test_' + hid)).status).toBe('paid');
+    expect(vi.mocked(notifyTaro)).not.toHaveBeenCalled();      // active のまとめ先までたどれたので知らせない
   });
   it('payment_intent.* は acked で何も書かない', async () => {
     expect((await applyRecitalWebhookEvent(ev({ type: 'payment_intent.succeeded', sessionId: null }))).status).toBe('acked');
@@ -593,5 +594,72 @@ describe('Task 22 カードの知らせの記録', () => {
       err.mockRestore();
     }
     expect(vi.mocked(notifyTaro)).toHaveBeenCalledWith({ subject: 'カードの入金の記録に失敗しました', body: 'Stripe が送り直します。知らせの番号 evt_g', subjectPrefix: '【BOOM】BW6' });
+  });
+  // ---- 見直し1回目で足した分：記録できない払い終わった完了は TARO に知らせる ----
+  const notifyCalls = () => JSON.stringify(vi.mocked(notifyTaro).mock.calls);
+  async function quiet<T>(f: () => Promise<T>): Promise<T> {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      return await f();
+    } finally {
+      err.mockRestore();
+    }
+  }
+  it('本番の払い終わった完了が試しの設定の発表会に来たら（mode_mismatch）200 のまま TARO に知らせる（名前・金額なし）', async () => {
+    const r = await quiet(() => handleRecitalWebhook({ ...stripeEvent({ id: 'evt_mm_live' }), livemode: true }));
+    expect(r).toEqual({ handled: true, httpStatus: 200, result: 'recital_mode_mismatch' });
+    expect(vi.mocked(notifyTaro)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(notifyTaro)).toHaveBeenCalledWith({
+      subject: 'カードの入金を記録できませんでした（設定とちがう）', body: `知らせの番号 evt_mm_live・世帯の番号 ${hid}`, subjectPrefix: '【BOOM】BW6',
+    });
+    expect(notifyCalls()).not.toMatch(/26500|26,500|テスト|ハハ|イチ|example/);
+    expect(await payments(hid)).toHaveLength(0);
+  });
+  it('世帯が見つからない払い終わった完了も 200 のまま TARO に知らせる', async () => {
+    const r = await quiet(() => applyRecitalWebhookEvent(ev({ eventId: 'evt_nf', householdId: 999999 })));
+    expect(r.status).toBe('not_found');
+    expect(vi.mocked(notifyTaro)).toHaveBeenCalledWith({
+      subject: 'カードの入金を記録できませんでした（世帯が見つからない）', body: '知らせの番号 evt_nf・世帯の番号 999999', subjectPrefix: '【BOOM】BW6',
+    });
+    vi.mocked(notifyTaro).mockClear();
+    await quiet(() => applyRecitalWebhookEvent(ev({ eventId: 'evt_nf2', eventKey: 't-other' })));   // 印の発表会がちがう
+    expect(vi.mocked(notifyTaro)).toHaveBeenCalledTimes(1);
+  });
+  it('知らせが失敗しても 200 のまま（mode_mismatch）', async () => {
+    vi.mocked(notifyTaro).mockRejectedValueOnce(new Error('all failed'));
+    expect((await quiet(() => applyRecitalWebhookEvent(ev({ eventId: 'evt_mm_fail', livemode: true })))).status).toBe('mode_mismatch');
+  });
+  it('払い済みでない・切れた知らせは、記録できなくても知らせない', async () => {
+    await quiet(() => applyRecitalWebhookEvent(ev({ eventId: 'evt_q1', livemode: true, paymentStatus: 'unpaid' })));
+    await quiet(() => applyRecitalWebhookEvent(ev({ eventId: 'evt_q2', livemode: true, type: 'checkout.session.expired', paymentStatus: 'unpaid', amountTotal: null })));
+    await quiet(() => applyRecitalWebhookEvent(ev({ eventId: 'evt_q3', householdId: 999999, type: 'checkout.session.expired', paymentStatus: 'unpaid', amountTotal: null })));
+    await quiet(() => applyRecitalWebhookEvent(ev({ eventId: 'evt_q4', householdId: 999999, type: 'charge.refunded', sessionId: null })));
+    expect(vi.mocked(notifyTaro)).not.toHaveBeenCalled();
+  });
+  it('まとめ先が別の発表会ならたどらず、たどれた所（元の世帯）に記録して TARO に知らせる', async () => {
+    await execute("UPDATE recital_households SET status = 'merged', merged_into = ? WHERE id = ?", [liveHid, hid]);
+    const r = await quiet(() => applyRecitalWebhookEvent(ev({ eventId: 'evt_mb1' })));
+    expect(r).toMatchObject({ status: 'paid', householdId: hid });
+    expect(await payments(hid)).toHaveLength(1);
+    expect(await payments(liveHid)).toHaveLength(0);
+    expect(vi.mocked(notifyTaro)).toHaveBeenCalledWith({
+      subject: 'まとめた世帯のまとめ先をたどれませんでした（カードの入金はたどれた所の世帯に記録）',
+      body: `知らせの番号 evt_mb1・世帯の番号 ${hid}・記録した世帯の番号 ${hid}`, subjectPrefix: '【BOOM】BW6',
+    });
+    expect(notifyCalls()).not.toMatch(/26500|26,500|テスト|ハハ|イチ|example/);
+    // 同じ知らせの送り直し（duplicate）では2回知らせない
+    vi.mocked(notifyTaro).mockClear();
+    expect((await quiet(() => applyRecitalWebhookEvent(ev({ eventId: 'evt_mb1' })))).status).toBe('duplicate');
+    expect(vi.mocked(notifyTaro)).not.toHaveBeenCalled();
+  });
+  it('まとめ先が輪になっていても止まり、TARO に知らせる', async () => {
+    const { hid: h2 } = await newHousehold();
+    await execute("UPDATE recital_households SET status = 'merged', merged_into = ? WHERE id = ?", [h2, hid]);
+    await execute("UPDATE recital_households SET status = 'merged', merged_into = ? WHERE id = ?", [hid, h2]);
+    const r = await quiet(() => applyRecitalWebhookEvent(ev({ eventId: 'evt_mb2' })));
+    expect(r.status).toBe('paid');
+    expect((await payments(hid)).length + (await payments(h2)).length).toBe(1);
+    expect(vi.mocked(notifyTaro)).toHaveBeenCalledTimes(1);
+    expect(notifyCalls()).toContain('まとめ先をたどれませんでした');
   });
 });
