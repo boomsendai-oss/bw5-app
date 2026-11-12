@@ -1,27 +1,33 @@
-// BW6 発表会（段階1）の申込の「送る」と「送る前の確かめ」。
+// BW6 発表会（段階1）の申込の「送る」と「送る前の確かめ」（Task 7）、代わりに直す・マイページの変更・請求の作り直し（Task 8）。
 // 1回の書き込み（withWriteTx）で 世帯・人・出演・請求・変えた記録 を入れる。照合とメールは書き込みのあと。
+// 請求の行はスタッフが打たない。直したあとは必ず料金の規則から作り直す（recomputeChargesTx・K223・K226〜K228）。
 // DB は src/lib/db.ts 経由だけ。名前と型の正本は .superpowers/sdd/2026-11-12-bw6-recital-stage1/ref/split.md ③。
 // 決まりの正本は設計書 03 3-4・05 5-2・04 4-2「送る」。記録の日時は UTC ISO（nowUtcIso）。
 import { randomBytes } from 'node:crypto';
+import type { Transaction } from '@libsql/client';
 import { batch, getAll, getOne, withWriteTx } from '@/lib/db';
 import { normalizeKana } from '@/lib/csvUtil';
 import { isIsoDate, nowUtcIso, todayJst, weekdayJst } from '@/lib/dateJst';
 import {
   ageOn,
+  canFamilyEdit,
   entryPhase,
   householdView,
   isCountedCast,
   normalizeEmail,
   normalizePhone,
+  parseRecitalSettings,
+  type CastStatus,
   type FeeClass,
   type HouseholdView,
   type RecitalSettings,
 } from '@/lib/recital';
 import { getRecitalEvent, getRecitalSettings, listFeeRules, listWorks, loadMembersLite, logChangeTx, readMoneyViewTx, type WorkRow } from '@/lib/recitalDb';
-import { expectedCharges, type FeePerson, type FeeRule } from '@/lib/recitalFee';
+import { diffCharges, expectedCharges, type ChargeLine, type FeePerson, type FeeRule } from '@/lib/recitalFee';
 import { matchFeePreset, matchMember } from '@/lib/recitalMatch';
 import { pickRef } from '@/lib/recitalRef';
 import { sendRecitalMail } from '@/lib/recitalMail';
+import { afterMoneyChanged } from '@/lib/recitalMoneyDb';
 
 // ---------- 型（split.md ③） ----------
 
@@ -194,19 +200,30 @@ export async function buildEntryFeePeople(
     return hit && 'feeClass' in hit ? hit.feeClass : null;
   });
   const feePeople: FeePerson[] = people.map((p, i) => {
-    let counted = 0;
-    const extraWorks: FeePerson['extraWorks'] = [];
+    const cs: FeeCast[] = [];
     for (const c of p.works) {
       const w = works.get(c.workId);
-      if (!w) continue;
-      if (isCountedCast({ fee_type: w.fee_type, status: w.status }, { status: c.status })) counted++;
-      if (w.fee_type === 'extra' && w.status !== 'dropped' && c.status === 'in') {
-        extraWorks.push({ workCode: w.work_code, label: w.title, fee: Number(w.extra_fee ?? 0) });
-      }
+      if (w) cs.push({ status: c.status, fee_type: w.fee_type, work_status: w.status, work_code: w.work_code, title: w.title, extra_fee: w.extra_fee });
     }
-    return { personId: i + 1, seq: i + 1, feeClass: presetClasses[i], counted, extraWorks };
+    return { personId: i + 1, seq: i + 1, feeClass: presetClasses[i], ...feeCounts(cs) };
   });
   return { rules, feePeople, presetClasses };
+}
+
+/** 料金に使う出演1つ（出演の状態＋作品の料金の種類・状態） */
+type FeeCast = { status: string; fee_type: string; work_status: string; work_code: string; title: string; extra_fee: number | null };
+
+/** 1人の「お金に数える出演の数」と「別料金の作品」（申込と作り直しの両方がここを通る） */
+function feeCounts(casts: FeeCast[]): { counted: number; extraWorks: FeePerson['extraWorks'] } {
+  let counted = 0;
+  const extraWorks: FeePerson['extraWorks'] = [];
+  for (const c of casts) {
+    if (isCountedCast({ fee_type: c.fee_type, status: c.work_status }, { status: c.status as CastStatus })) counted++;
+    if (c.fee_type === 'extra' && c.work_status !== 'dropped' && c.status === 'in') {
+      extraWorks.push({ workCode: c.work_code, label: c.title, fee: Number(c.extra_fee ?? 0) });
+    }
+  }
+  return { counted, extraWorks };
 }
 
 // ---------- 送る ----------
@@ -407,4 +424,412 @@ export async function submitEntry(s: EntrySubmission, now: Date = new Date()): P
   }
 
   return { ok: true, householdId: out.householdId, token: out.token, refCode: out.refCode, view: out.view, total: out.total, replay: false };
+}
+
+// =====================================================================
+// Task 8：代わりに直す・マイページの変更・請求の作り直し（05 5-3・5-5、決まり20・穴10、K222、R-60）
+// =====================================================================
+
+// ---------- 型（split.md ③。dryRun は計画で足した名前） ----------
+
+export type HouseholdEdit =
+  | { type: 'cast_set'; personId: number; workId: number; status: 'in' | 'maybe' | 'out' }
+  | { type: 'person'; personId: number; fields: Partial<{ last_name: string; first_name: string; last_kana: string; first_kana: string; birthday: string; display_name: string; tshirt_size: string | null; insta_handle: string | null; name_ok: number; photo_ok: number; sns_ok: number; staff_note: string }> }
+  | { type: 'contact'; fields: Partial<{ contact_last_name: string; contact_first_name: string; contact_last_kana: string; contact_first_kana: string; phone: string; staff_note: string; pay_due_override: string | null }> };
+export type EditCtx = { actor: string; by: 'family' | 'staff'; reason?: string | null; receivedAt?: string | null; now?: Date; dryRun?: boolean };
+type EditFailCode = 'closed' | 'max_works' | 'paid_no_maybe' | 'last_work' | 'invalid';
+export type EditResult =
+  | { ok: true; totalBefore: number; totalAfter: number }
+  | { ok: true; totalBefore: number; totalAfter: number; remainingBefore: number; remainingAfter: number }
+  | { ok: false; code: EditFailCode; message: string };
+
+// ---------- 失敗の文 ----------
+
+function editFailMessage(code: EditFailCode, maxWorks: number): string {
+  switch (code) {
+    case 'closed': return 'お申し込みと変更の受付は、1月31日（日）で終わりました。中身を変えたいときは、公式LINEでお知らせください。';
+    case 'max_works': return `1人${maxWorks}作品までです。`;
+    case 'paid_no_maybe': return 'お支払いのあとは、『まだ迷っている』に戻せません。';
+    case 'last_work': return '出演を全部やめるときは、公式LINEでお知らせください。';
+    case 'invalid': return MESSAGES.invalid;
+  }
+}
+
+/** 書き込みの中で見つけた失敗。投げて巻き戻し、外で失敗の返り値にする */
+class EditFail extends Error {
+  constructor(readonly code: EditFailCode) { super(`recital_entry:${code}`); }
+}
+/** dryRun の印。計算が終わったら投げて巻き戻し、外で返り値にする */
+class DryRunDone extends Error {
+  constructor(readonly result: EditResult) { super('recital_entry:dry_run'); }
+}
+
+// これだけを直したときは変更の控えのメールを送らない
+const QUIET_FIELDS: ReadonlySet<string> = new Set(['staff_note', 'name_ok', 'photo_ok', 'sns_ok', 'pay_due_override']);
+const PERSON_FIELDS: readonly string[] = ['last_name', 'first_name', 'last_kana', 'first_kana', 'birthday', 'display_name', 'tshirt_size', 'insta_handle', 'name_ok', 'photo_ok', 'sns_ok', 'staff_note'];
+const CONTACT_FIELDS: readonly string[] = ['contact_last_name', 'contact_first_name', 'contact_last_kana', 'contact_first_kana', 'phone', 'staff_note', 'pay_due_override'];
+const FLAG_FIELDS: readonly string[] = ['name_ok', 'photo_ok', 'sns_ok'];
+const FEE_CLASSES: readonly string[] = ['free', 'no_coop', 'tshirt_only'];
+
+/* eslint-disable @typescript-eslint/no-explicit-any -- DB の行は動的キー */
+const rowsOf = async (tx: Transaction, sql: string, args: any[]): Promise<any[]> => (await tx.execute({ sql, args })).rows as any[];
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+/** 欄1つを確かめて入れる形にする。だめなら EditFail('invalid') */
+function cleanField(key: string, v: unknown, settings: RecitalSettings, today: string): string | number | null {
+  const bad = () => { throw new EditFail('invalid'); };
+  switch (key) {
+    case 'last_name': case 'first_name': case 'display_name': case 'contact_last_name': case 'contact_first_name':
+      if (typeof v !== 'string' || v.trim() === '') bad();
+      return (v as string).trim();
+    case 'last_kana': case 'first_kana': case 'contact_last_kana': case 'contact_first_kana':
+      if (typeof v !== 'string' || !KANA_RE.test(v.trim())) bad();
+      return (v as string).trim();
+    case 'birthday':
+      if (!isIsoDate(v) || v > today) bad();
+      return v as string;
+    case 'tshirt_size':
+      if (v === null) return null;
+      if (typeof v !== 'string' || !settings.tshirt_sizes.includes(v)) bad();
+      return v as string;
+    case 'insta_handle':
+      if (v === null) return null;
+      if (typeof v !== 'string') bad();
+      return (v as string).trim() === '' ? null : (v as string).trim();
+    case 'name_ok': case 'photo_ok': case 'sns_ok':
+      if (v !== 0 && v !== 1) bad();
+      return v as number;
+    case 'staff_note':
+      if (typeof v !== 'string') bad();
+      return (v as string).trim() === '' ? null : (v as string).trim();
+    case 'phone': {
+      if (typeof v !== 'string') bad();
+      const p = normalizePhone(v as string);
+      if (p.length < 10 || p.length > 11) bad();
+      return p;
+    }
+    case 'pay_due_override':
+      if (v === null) return null;
+      if (!isIsoDate(v)) bad();
+      return v as string;
+  }
+  return bad();
+}
+
+const sameValue = (a: unknown, b: unknown) => (a == null ? null : String(a)) === (b == null ? null : String(b));
+
+/**
+ * 家庭のマイページの変更と、スタッフの代わりに直す。全部を1回の withWriteTx で書き、最後に請求の行を作り直す。
+ * 書き込みのあと：合計が変わったら afterMoneyChanged(id, 'total')、変更の控えのメール1通（静かな欄だけのときは送らない）。
+ * dryRun は同じ確かめと作り直しを通して巻き戻し、合計と残りだけを返す（メールも afterMoneyChanged も呼ばない）。
+ */
+export async function applyHouseholdEdits(householdId: number, edits: HouseholdEdit[], ctx: EditCtx): Promise<EditResult> {
+  const now = ctx.now ?? new Date();
+  const h0 = await getOne('SELECT event_key FROM recital_households WHERE id = ?', [householdId]);
+  const settings = h0 ? await getRecitalSettings(String(h0.event_key)) : null;
+  const fail = (code: EditFailCode): EditResult => ({ ok: false, code, message: editFailMessage(code, settings?.max_works_per_person ?? 5) });
+
+  if (!h0 || !settings) return fail('invalid');
+  if (!Array.isArray(edits) || edits.length === 0) return fail('invalid');
+  if (ctx.by !== 'family' && ctx.by !== 'staff') return fail('invalid');
+  if (typeof ctx.actor !== 'string' || ctx.actor.trim() === '') return fail('invalid');
+  if (ctx.by === 'staff' && (ctx.reason ?? '').trim() === '') return fail('invalid');
+  if (ctx.by === 'family' && edits.some((e) => e?.type !== 'cast_set')) return fail('invalid');
+
+  const eventKey = String(h0.event_key);
+  const at = nowUtcIso(now);
+  const today = todayJst(now);
+  const reason = ctx.by === 'staff' ? (ctx.reason ?? '').trim() : null;
+  let out: { totalBefore: number; totalAfter: number; changed: Set<string> };
+  try {
+    out = await withWriteTx(async (tx) => {
+      const [h] = await rowsOf(tx, 'SELECT status, extend_until FROM recital_households WHERE id = ?', [householdId]);
+      if (!h || h.status !== 'active') throw new EditFail('invalid');
+      const familyOpen = canFamilyEdit(settings, now.getTime(), h.extend_until == null ? null : String(h.extend_until));
+      if (ctx.by === 'family' && !familyOpen) throw new EditFail('closed');
+      // 家庭が直せない時（締切のあと）のスタッフの直しは、決まりの外の扱い（03 3-4 changes.is_exception）
+      const isException = ctx.by === 'staff' && !familyOpen;
+      const paid = (await readMoneyViewTx(tx, householdId)).m.paid;
+
+      const people = new Map((await rowsOf(tx, "SELECT * FROM recital_people WHERE household_id = ? AND status = 'active'", [householdId])).map((r) => [Number(r.id), r]));
+      const works = new Map((await rowsOf(tx, 'SELECT id, entry_mode, status FROM recital_works WHERE event_key = ?', [eventKey])).map((r) => [Number(r.id), r]));
+      const castRows = await rowsOf(
+        tx,
+        "SELECT c.id, c.person_id, c.work_id, c.status FROM recital_casts c JOIN recital_people p ON p.id = c.person_id WHERE p.household_id = ? AND p.status = 'active' ORDER BY c.id",
+        [householdId],
+      );
+      const casts = new Map<string, { id: number; personId: number; workId: number; status: string }>();
+      for (const c of castRows) {
+        const k = `${Number(c.person_id)}:${Number(c.work_id)}`;
+        if (!casts.has(k)) casts.set(k, { id: Number(c.id), personId: Number(c.person_id), workId: Number(c.work_id), status: String(c.status) });
+      }
+      /** その人の、取りやめでない作品の出演で status が sts のどれかの数（except の作品は除く） */
+      const countOf = (personId: number, sts: string[], exceptWorkId: number) => {
+        let n = 0;
+        for (const c of casts.values()) {
+          if (c.personId !== personId || c.workId === exceptWorkId || !sts.includes(c.status)) continue;
+          if (works.get(c.workId)?.status !== 'dropped') n++;
+        }
+        return n;
+      };
+      const log = (x: { action: string; personId?: number | null; workId?: number | null; before?: unknown; after?: unknown }) =>
+        logChangeTx(tx, { eventKey, householdId, ...x, actor: ctx.actor, reason, receivedAt: ctx.receivedAt ?? null, isException });
+
+      const changed = new Set<string>();
+      for (const e of edits) {
+        if (e?.type === 'cast_set') {
+          const personId = Number(e.personId);
+          const workId = Number(e.workId);
+          const next = e.status;
+          if (!people.has(personId)) throw new EditFail('invalid');
+          const w = works.get(workId);
+          if (!w || w.status === 'dropped') throw new EditFail('invalid');
+          if (next !== 'in' && next !== 'maybe' && next !== 'out') throw new EditFail('invalid');
+          const k = `${personId}:${workId}`;
+          const cur = casts.get(k) ?? null;
+          const before = cur?.status ?? null;
+          if (before === next || (before === null && next === 'out')) continue;
+          const isAdd = before === null || before === 'out' || before === 'passed';
+          if (ctx.by === 'family' && isAdd) {
+            if (!(w.entry_mode === 'form' && w.status === 'open')) throw new EditFail('invalid');
+            if (countOf(personId, ['in', 'maybe'], workId) + 1 > settings.max_works_per_person) throw new EditFail('max_works');
+          }
+          if (paid > 0 && before === 'in' && next === 'maybe') throw new EditFail('paid_no_maybe');
+          if (ctx.by === 'family' && paid > 0 && before === 'in' && next === 'out' && countOf(personId, ['in'], workId) === 0) throw new EditFail('last_work');
+          const action = isAdd ? 'cast_add' : next === 'out' ? 'cast_out' : 'cast_decide';
+
+          if (!cur) {
+            const r = await tx.execute({
+              sql: `INSERT INTO recital_casts (event_key, person_id, work_id, status, source, applied_at, decided_at, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              args: [eventKey, personId, workId, next, ctx.by === 'family' ? 'mypage' : 'staff', at, next === 'in' ? at : null, at],
+            });
+            casts.set(k, { id: Number(r.lastInsertRowid), personId, workId, status: next });
+          } else {
+            const extra = next === 'out' ? ', withdrawn_at = ?' : next === 'in' ? ', decided_at = ?' : '';
+            await tx.execute({
+              sql: `UPDATE recital_casts SET status = ?${extra} WHERE id = ?`,
+              args: extra ? [next, at, cur.id] : [next, cur.id],
+            });
+            cur.status = next;
+          }
+          await log({ action, personId, workId, ...(before === null ? {} : { before: { status: before } }), after: { status: next } });
+          changed.add('cast');
+        } else if (e?.type === 'person') {
+          const personId = Number(e.personId);
+          const p = people.get(personId);
+          if (!p) throw new EditFail('invalid');
+          const fields = e.fields ?? {};
+          const keys = Object.keys(fields);
+          if (keys.length === 0 || keys.some((x) => !PERSON_FIELDS.includes(x))) throw new EditFail('invalid');
+          const groups: Record<string, { before: Record<string, unknown>; after: Record<string, unknown> }> = {};
+          const sets: string[] = [];
+          const args: unknown[] = [];
+          for (const key of keys) {
+            const v = cleanField(key, (fields as Record<string, unknown>)[key], settings, today);
+            if (sameValue(p[key], v)) continue;
+            const action = FLAG_FIELDS.includes(key) ? 'flags_edit' : key === 'insta_handle' ? 'insta_edit' : 'person_edit';
+            const g = (groups[action] ??= { before: {}, after: {} });
+            g.before[key] = p[key] ?? null;
+            g.after[key] = v;
+            sets.push(`${key} = ?`);
+            args.push(v);
+            p[key] = v;
+            changed.add(key);
+          }
+          if (sets.length > 0) {
+            await tx.execute({ sql: `UPDATE recital_people SET ${sets.join(', ')} WHERE id = ?`, args: [...args, personId] as (string | number | null)[] });
+            for (const [action, g] of Object.entries(groups)) await log({ action, personId, before: g.before, after: g.after });
+          }
+        } else if (e?.type === 'contact') {
+          const fields = e.fields ?? {};
+          const keys = Object.keys(fields);
+          if (keys.length === 0 || keys.some((x) => !CONTACT_FIELDS.includes(x))) throw new EditFail('invalid');
+          const [cur] = await rowsOf(tx, `SELECT ${CONTACT_FIELDS.join(', ')} FROM recital_households WHERE id = ?`, [householdId]);
+          const before: Record<string, unknown> = {};
+          const after: Record<string, unknown> = {};
+          const sets: string[] = [];
+          const args: (string | number | null)[] = [];
+          for (const key of keys) {
+            const v = cleanField(key, (fields as Record<string, unknown>)[key], settings, today);
+            if (sameValue(cur[key], v)) continue;
+            before[key] = cur[key] ?? null;
+            after[key] = v;
+            sets.push(`${key} = ?`);
+            args.push(v);
+            changed.add(key);
+          }
+          if (sets.length > 0) {
+            await tx.execute({ sql: `UPDATE recital_households SET ${sets.join(', ')} WHERE id = ?`, args: [...args, householdId] });
+            await log({ action: 'contact_edit', before, after });
+          }
+        } else {
+          throw new EditFail('invalid');
+        }
+      }
+
+      const r = await recomputeChargesTx(tx, householdId, ctx.actor);
+      if (ctx.dryRun) {
+        throw new DryRunDone({
+          ok: true, totalBefore: r.totalBefore, totalAfter: r.totalAfter,
+          remainingBefore: Math.max(0, r.totalBefore - paid), remainingAfter: Math.max(0, r.totalAfter - paid),
+        });
+      }
+      return { totalBefore: r.totalBefore, totalAfter: r.totalAfter, changed };
+    });
+  } catch (e) {
+    if (e instanceof EditFail) return fail(e.code);
+    if (e instanceof DryRunDone) return e.result;
+    throw e;
+  }
+
+  // 書き込みのあと（失敗しても直しは成り立っている）
+  if (out.totalAfter !== out.totalBefore) {
+    try {
+      await afterMoneyChanged(householdId, 'total');
+    } catch (e) {
+      console.error(`[recital] afterMoneyChanged に失敗しました household=${householdId}`, errText(e));
+    }
+  }
+  if ([...out.changed].some((f) => !QUIET_FIELDS.has(f))) {
+    try {
+      await sendRecitalMail({ kind: 'change', householdId });
+    } catch (e) {
+      console.error(`[recital] 変更の控えのメールを送れませんでした household=${householdId}`, errText(e));
+    }
+  }
+  return { ok: true, totalBefore: out.totalBefore, totalAfter: out.totalAfter };
+}
+
+/**
+ * 請求の行の作り直し（05 5-3）。料金の規則・人（active）・出演＋作品・生きている請求の行を読み、
+ * 行ごとに足す／void だけをする（全部を取り消して入れ直さない。adjust の行にはさわらない）。
+ * 合計が変わったら、この中で total_changed を記録する。afterMoneyChanged は呼ぶ側が書き込みのあとに呼ぶ。
+ */
+export async function recomputeChargesTx(
+  tx: Transaction,
+  householdId: number,
+  actor: string,
+): Promise<{ totalBefore: number; totalAfter: number; firstPersonId: number | null }> {
+  const [h] = await rowsOf(tx, 'SELECT event_key FROM recital_households WHERE id = ?', [householdId]);
+  if (!h) throw new Error('recital_entry:no_household');
+  const eventKey = String(h.event_key);
+  const settings = parseRecitalSettings(
+    (await rowsOf(tx, 'SELECT key, value FROM recital_settings WHERE event_key = ?', [eventKey])).map((r) => ({ key: String(r.key), value: String(r.value ?? '') })),
+  );
+  const rules: FeeRule[] = (await rowsOf(
+    tx,
+    `SELECT payer_role, item_code, nth_from, nth_to, unit_amount, qty, label, is_tentative, sort_order
+     FROM recital_fee_rules WHERE event_key = ? ORDER BY sort_order, id`,
+    [eventKey],
+  )).map((r) => ({
+    payer_role: String(r.payer_role) as FeeRule['payer_role'],
+    item_code: String(r.item_code) as FeeRule['item_code'],
+    nth_from: Number(r.nth_from),
+    nth_to: r.nth_to == null ? null : Number(r.nth_to),
+    unit_amount: Number(r.unit_amount),
+    qty: Number(r.qty),
+    label: String(r.label),
+    is_tentative: Number(r.is_tentative),
+    sort_order: Number(r.sort_order),
+  }));
+  const people = await rowsOf(tx, "SELECT id, seq, fee_class_override FROM recital_people WHERE household_id = ? AND status = 'active' ORDER BY seq, id", [householdId]);
+  const castRows = await rowsOf(
+    tx,
+    `SELECT c.person_id, c.status, w.fee_type, w.status AS work_status, w.work_code, w.title, w.extra_fee
+     FROM recital_casts c JOIN recital_people p ON p.id = c.person_id JOIN recital_works w ON w.id = c.work_id
+     WHERE p.household_id = ? AND p.status = 'active' ORDER BY c.id`,
+    [householdId],
+  );
+  const activeRows = await rowsOf(
+    tx,
+    "SELECT id, person_id, item_code, ref, label, qty, unit_amount, amount FROM recital_charges WHERE household_id = ? AND status = 'active' ORDER BY id",
+    [householdId],
+  );
+
+  const feePeople: FeePerson[] = people.map((p) => {
+    const pid = Number(p.id);
+    const cs: FeeCast[] = castRows.filter((c) => Number(c.person_id) === pid).map((c) => ({
+      status: String(c.status), fee_type: String(c.fee_type), work_status: String(c.work_status), work_code: String(c.work_code),
+      title: String(c.title), extra_fee: c.extra_fee == null ? null : Number(c.extra_fee),
+    }));
+    const fc = p.fee_class_override == null ? null : String(p.fee_class_override);
+    return { personId: pid, seq: Number(p.seq), feeClass: (fc !== null && FEE_CLASSES.includes(fc) ? fc : null) as FeeClass, ...feeCounts(cs) };
+  });
+  const active: (ChargeLine & { id: number })[] = activeRows.map((r) => ({
+    id: Number(r.id), personId: r.person_id == null ? null : Number(r.person_id), itemCode: String(r.item_code), ref: String(r.ref ?? ''),
+    label: String(r.label), qty: Number(r.qty), unitAmount: Number(r.unit_amount), amount: Number(r.amount),
+  }));
+
+  // 今の1人目＝base の行で、単価が first の base の規則の額と同じ行の人
+  const firstBase = rules.find((r) => r.payer_role === 'first' && r.item_code === 'base');
+  const firstLine = firstBase ? active.find((a) => a.itemCode === 'base' && a.unitAmount === firstBase.unit_amount && a.personId != null) : undefined;
+  const currentFirst = firstLine?.personId ?? null;
+
+  const expected = expectedCharges(rules, feePeople, currentFirst);
+  const { add, voidIds } = diffCharges(active, expected.lines);
+  const at = nowUtcIso();
+  const stmts: { sql: string; args: (string | number | null)[] }[] = [];
+  if (voidIds.length > 0) {
+    stmts.push({
+      sql: `UPDATE recital_charges SET status = 'void', void_reason = 'recompute', voided_at = ? WHERE id IN (${voidIds.map(() => '?').join(',')})`,
+      args: [at, ...voidIds],
+    });
+  }
+  for (const l of add) {
+    stmts.push({
+      sql: `INSERT INTO recital_charges (event_key, household_id, person_id, item_code, ref, label, qty, unit_amount, amount, due_on, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+      args: [eventKey, householdId, l.personId, l.itemCode, l.ref, l.label, l.qty, l.unitAmount, l.amount, settings.pay_due, at],
+    });
+  }
+  if (stmts.length > 0) await tx.batch(stmts);
+
+  const sumOf = (xs: number[]) => Math.max(0, xs.reduce((a, b) => a + b, 0));
+  const voided = new Set(voidIds);
+  const totalBefore = sumOf(active.map((a) => a.amount));
+  const totalAfter = sumOf([...active.filter((a) => !voided.has(a.id)).map((a) => a.amount), ...add.map((l) => l.amount)]);
+  if (totalAfter !== totalBefore) {
+    await logChangeTx(tx, { eventKey, householdId, action: 'total_changed', actor, before: { total: totalBefore }, after: { total: totalAfter } });
+  }
+  return { totalBefore, totalAfter, firstPersonId: expected.firstPersonId };
+}
+
+/** スタッフがメールアドレスを直す。鍵も作り直し（古い URL は使えない）、新しいアドレスへ URL のメールを送る */
+export async function changeHouseholdEmail(householdId: number, email: string, staffName: string): Promise<{ token: string }> {
+  const e = normalizeEmail(typeof email === 'string' ? email : '');
+  if (!EMAIL_RE.test(e)) throw new Error('recital_entry:bad_email');
+  const token = randomBytes(24).toString('hex');
+  await withWriteTx(async (tx) => {
+    const [h] = await rowsOf(tx, 'SELECT event_key FROM recital_households WHERE id = ?', [householdId]);
+    if (!h) throw new Error('recital_entry:no_household');
+    const eventKey = String(h.event_key);
+    const dup = await rowsOf(
+      tx,
+      "SELECT id FROM recital_households WHERE event_key = ? AND email = ? AND status = 'active' AND id <> ? LIMIT 1",
+      [eventKey, e, householdId],
+    );
+    if (dup.length > 0) throw new Error('recital_entry:same_email');
+    await tx.execute({ sql: 'UPDATE recital_households SET email = ?, edit_token = ? WHERE id = ?', args: [e, token, householdId] });
+    await logChangeTx(tx, { eventKey, householdId, action: 'email_edit', actor: staffName, after: { field: 'email' } });
+    await logChangeTx(tx, { eventKey, householdId, action: 'token_regenerated', actor: staffName });
+  });
+  try {
+    await sendRecitalMail({ kind: 'resend_url', householdId });
+  } catch (err) {
+    console.error(`[recital] URLのメールを送れませんでした household=${householdId}`, errText(err));
+  }
+  return { token };
+}
+
+/** 鍵（マイページの URL）を作り直す。メールは送らない（スタッフが URL を写す） */
+export async function regenerateToken(householdId: number, staffName: string): Promise<{ token: string }> {
+  const token = randomBytes(24).toString('hex');
+  await withWriteTx(async (tx) => {
+    const [h] = await rowsOf(tx, 'SELECT event_key FROM recital_households WHERE id = ?', [householdId]);
+    if (!h) throw new Error('recital_entry:no_household');
+    await tx.execute({ sql: 'UPDATE recital_households SET edit_token = ? WHERE id = ?', args: [token, householdId] });
+    await logChangeTx(tx, { eventKey: String(h.event_key), householdId, action: 'token_regenerated', actor: staffName });
+  });
+  return { token };
 }
