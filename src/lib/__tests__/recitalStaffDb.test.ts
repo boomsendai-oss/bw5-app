@@ -116,6 +116,11 @@ describe('setFeeClass（特別な料金ボタン。5-1・5-7 の例）', () => {
     expect(await count(`SELECT COUNT(*) n FROM recital_refunds WHERE household_id=?`, [h])).toBe(0);
     expect(await count(`SELECT COUNT(*) n FROM recital_changes WHERE household_id=?`, [h])).toBe(changes);
   });
+  it('まだ返していない返す分があって追加分が出る時は、その額を返す（画面で「先に返す分を取り消す」を出す）', async () => {
+    const { p } = await one('t-sd-6b', [['W1']], [26500]);
+    expect(await staff.setFeeClass(p[0], 'no_coop', '登録もれ', N)).toMatchObject({ refund: 7500, refundTodo: 0 });
+    expect(await staff.setFeeClass(p[0], null, '戻した', N, { dryRun: true })).toMatchObject({ totalAfter: 26500, extra: 7500, refund: 0, refundTodo: 7500 });
+  });
   it('名前が無ければ throw', async () => {
     const { p } = await one('t-sd-7', [['W1']]);
     await expect(staff.setFeeClass(p[0], 'no_coop', '登録もれ', '')).rejects.toThrow('staff_name');
@@ -186,6 +191,12 @@ describe('そのほかの金額の直し（adjust。K228）', () => {
     await staff.addAdjustCharge(h, { direction: 'down', amount: 1000, reason: '試し' }, N);
     expect(await count(`SELECT COUNT(*) n FROM recital_refunds WHERE household_id=?`, [h])).toBe(0);
     expect(await total(h)).toMatchObject({ total: 25500, overpaid: 1000 });
+  });
+  it('世帯がもう active でなければ not_active（invalid とは分ける）', async () => {
+    const { h } = await one('t-sd-a5', [['W1']]);
+    await core.execute(`UPDATE recital_households SET status='merged' WHERE id=?`, [h]);
+    expect(await staff.addAdjustCharge(h, { direction: 'up', amount: 100, reason: '試し' }, N)).toEqual({ ok: false, code: 'not_active' });
+    expect(await count(`SELECT COUNT(*) n FROM recital_charges WHERE household_id=? AND item_code='adjust'`, [h])).toBe(0);
   });
   it('特別な料金の確かめは、生きている adjust の和を返す', async () => {
     const { h, p } = await one('t-sd-a4', [['W1']]);
@@ -268,7 +279,7 @@ describe('mergeHouseholds（5-2・5-7 の例）', () => {
     expect(m?.reason).toBe('家族');
     // まとめた入金は2行とも confirmed_by と今日の日
     expect(await count(`SELECT COUNT(*) n FROM recital_payments WHERE memo='移した' AND source='manual' AND confirmed_by=? AND household_id IN (?,?)`, [N, A.h, B.h])).toBe(2);
-    expect(await count(`SELECT COUNT(*) n FROM event_ledger WHERE event_key='t-sd-m7'`, []).catch(() => 0)).toBe(0);
+    expect(await count(`SELECT COUNT(*) n FROM event_ledger WHERE event_key='t-sd-m7'`, [])).toBe(0);
   });
   it('「振り込みました」の印：もとにあり先に無ければ写し、もとは空にする', async () => {
     const A = await one('t-sd-m8', [['W1']]); const B = await one('t-sd-m8', [['W1']]);
@@ -293,6 +304,12 @@ describe('mergeHouseholds（5-2・5-7 の例）', () => {
     const A = await one('t-sd-m9', [['W1']]); const B = await one('t-sd-m9', [['W1']]);
     expect(await staff.mergeHouseholds(B.h, A.h, { reason: '二重', samePeople: [{ dropPersonId: A.p[0], keepPersonId: B.p[0] }] }, N)).toEqual({ ok: false, code: 'bad_pair' });
     expect(await staff.mergeHouseholds(B.h, A.h, { reason: '二重', samePeople: [{ dropPersonId: B.p[0], keepPersonId: B.p[0] }] }, N)).toEqual({ ok: false, code: 'bad_pair' });
+    // 2人を同じ1人に重ねる組も bad_pair（画面だけでなくサーバでも拒む）
+    const D = await one('t-sd-m9', [['W1'], ['W1']]);
+    expect(await staff.mergeHouseholds(D.h, A.h, {
+      reason: '二重', samePeople: [{ dropPersonId: D.p[0], keepPersonId: A.p[0] }, { dropPersonId: D.p[1], keepPersonId: A.p[0] }],
+    }, N)).toEqual({ ok: false, code: 'bad_pair' });
+    expect((await core.getOne(`SELECT status FROM recital_households WHERE id=?`, [D.h]))?.status).toBe('active');
     const X = await one('t-sd-m9x', [['W1']]);
     expect(await staff.mergeHouseholds(X.h, A.h, { reason: '家族', samePeople: [] }, N)).toEqual({ ok: false, code: 'other_event' });
     const C = await one('t-sd-m9', [['W1']], [30000]);

@@ -162,6 +162,7 @@ export async function recordManualPaymentAction(
   } catch (e) {
     const m = errMsg(e);
     if (m.includes('recital_money:negative')) return { ok: false, error: '払った額がマイナスになります' };
+    if (m.includes('recital_money:not_active')) return { ok: false, error: NOT_ACTIVE };
     if (m.includes('recital_money:')) return { ok: false, error: '入れた値を確かめてください' };
     throw e;
   }
@@ -290,7 +291,10 @@ export async function adjustAction(
   const bad = await activeCheck(householdId);
   if (bad) return { ok: false, error: bad };
   const r = await addAdjustCharge(householdId, { direction: x.direction, amount: x.amount, reason: x.reason.trim() }, staffName, { dryRun: dryRun === true });
-  if (!r.ok) return { ok: false, error: r.code === 'over_total' ? '今の合計より多くは下げられません' : '入れた値を確かめてください' };
+  if (!r.ok) {
+    if (r.code === 'not_active') return { ok: false, error: NOT_ACTIVE };
+    return { ok: false, error: r.code === 'over_total' ? '今の合計より多くは下げられません' : '入れた値を確かめてください' };
+  }
   if (dryRun !== true) done(householdId);
   return r;
 }

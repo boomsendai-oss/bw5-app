@@ -17,7 +17,10 @@ import { expireOpenCheckout } from '@/lib/recitalPayDb';
 
 // ---------- 型（Task 20 の Produces） ----------
 
-export type FeeChangePreview = { changed: boolean; totalBefore: number; totalAfter: number; refund: number; extra: number; adjustActive: number };
+/** refundTodo は直す前の、まだ返していない返す分（todo）の和。追加分が出る時に「先に返す分を取り消す」を出すため（Task 20 の直しで足した） */
+export type FeeChangePreview = {
+  changed: boolean; totalBefore: number; totalAfter: number; refund: number; extra: number; adjustActive: number; refundTodo: number;
+};
 export type MergeResult =
   | { ok: true; totalBefore: number; totalAfter: number; moved: number; refund: number }
   | { ok: false; code: 'same' | 'not_active' | 'other_event' | 'has_adjust' | 'has_refund_todo' | 'bad_pair' };
@@ -147,13 +150,13 @@ async function applyFeeClassTx(tx: Transaction, p: PersonCtx, next: FeeClass, re
     eventKey: p.eventKey, householdId: p.householdId, personId: p.id, action: 'fee_class_set',
     before: { feeClass: p.feeClass }, after: { feeClass: next }, reason, actor: staffName, isException: false,
   });
-  return { changed: true, totalBefore: before.m.total, totalAfter: after.m.total, refund, extra };
+  return { changed: true, totalBefore: before.m.total, totalAfter: after.m.total, refund, extra, refundTodo: before.refundTodo };
 }
 
 /** 変えなかった時の確かめの数（合計は今の値） */
 async function unchangedTx(tx: Transaction, householdId: number): Promise<Omit<FeeChangePreview, 'adjustActive'>> {
   const cur = await readHouseholdMoneyTx(tx, householdId);
-  return { changed: false, totalBefore: cur.m.total, totalAfter: cur.m.total, refund: 0, extra: 0 };
+  return { changed: false, totalBefore: cur.m.total, totalAfter: cur.m.total, refund: 0, extra: 0, refundTodo: cur.refundTodo };
 }
 
 // ---------- 特別な料金ボタン ----------
@@ -189,14 +192,14 @@ async function logTotalChangedTx(tx: Transaction, eventKey: string, householdId:
 
 /**
  * 3つの種類の外の額を足す・引く（手の調整の行）。金額は1以上の整数・理由必須（ちがえば invalid）。
- * 下げる時、今の合計をこえて下げられない（over_total）。返す分は作らない（K217。多く払った分は 6番の手で）。
+ * 下げる時、今の合計をこえて下げられない（over_total）。世帯が active でなければ not_active。返す分は作らない（K217。多く払った分は 6番の手で）。
  */
 export async function addAdjustCharge(
   householdId: number,
   x: { direction: 'down' | 'up'; amount: number; reason: string },
   staffName: string,
   opts?: { dryRun?: boolean },
-): Promise<{ ok: true; totalBefore: number; totalAfter: number } | { ok: false; code: 'over_total' | 'invalid' }> {
+): Promise<{ ok: true; totalBefore: number; totalAfter: number } | { ok: false; code: 'over_total' | 'invalid' | 'not_active' }> {
   checkStaff(staffName);
   if (!isId(householdId) || !x || (x.direction !== 'down' && x.direction !== 'up')) return { ok: false, code: 'invalid' };
   if (!(Number.isInteger(x.amount) && x.amount >= 1) || isBlank(x.reason)) return { ok: false, code: 'invalid' };
@@ -207,7 +210,8 @@ export async function addAdjustCharge(
   try {
     r = await runTx(dryRun, async (tx) => {
       const [h] = await rowsOf(tx, 'SELECT event_key, status FROM recital_households WHERE id = ?', [householdId]);
-      if (!h || String(h.status) !== 'active') throw new CodeFail('invalid');
+      if (!h) throw new CodeFail('invalid');
+      if (String(h.status) !== 'active') throw new CodeFail('not_active');
       const eventKey = String(h.event_key);
       const totalBefore = await chargeTotalTx(tx, householdId);
       if (x.direction === 'down' && x.amount > totalBefore) throw new CodeFail('over_total');
@@ -228,7 +232,7 @@ export async function addAdjustCharge(
       return { totalBefore, totalAfter };
     });
   } catch (e) {
-    if (e instanceof CodeFail) return { ok: false, code: e.code as 'over_total' | 'invalid' };
+    if (e instanceof CodeFail) return { ok: false, code: e.code as 'over_total' | 'invalid' | 'not_active' };
     throw e;
   }
   if (!dryRun && r.totalAfter !== r.totalBefore) await afterTotalChanged(householdId);
@@ -314,15 +318,19 @@ export async function mergeHouseholds(
       if ((await adjustActiveCountTx(tx, fromId)) > 0) throw new CodeFail<MergeFailCode>('has_adjust');
       if (bf.refundTodo > 0) throw new CodeFail<MergeFailCode>('has_refund_todo');
 
-      // 3. 同じ人の組：drop は from の、keep は into の生きている人。drop は1回だけ
+      // 3. 同じ人の組：drop は from の、keep は into の生きている人。drop も keep も1回だけ（2人を同じ1人に重ねない）
       const activeIds = async (hid: number) =>
         new Set((await rowsOf(tx, "SELECT id FROM recital_people WHERE household_id = ? AND status = 'active'", [hid])).map((r) => Number(r.id)));
       const fromPeople = await activeIds(fromId);
       const intoPeople = await activeIds(intoId);
       const drops = new Set<number>();
+      const keeps = new Set<number>();
       for (const s of pairs) {
-        if (!fromPeople.has(s.dropPersonId) || !intoPeople.has(s.keepPersonId) || drops.has(s.dropPersonId)) throw new CodeFail<MergeFailCode>('bad_pair');
+        if (!fromPeople.has(s.dropPersonId) || !intoPeople.has(s.keepPersonId) || drops.has(s.dropPersonId) || keeps.has(s.keepPersonId)) {
+          throw new CodeFail<MergeFailCode>('bad_pair');
+        }
         drops.add(s.dropPersonId);
+        keeps.add(s.keepPersonId);
       }
 
       // 4. 人を移す。同じ人の二重は withdrawn にして出演を out

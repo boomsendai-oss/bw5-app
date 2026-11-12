@@ -13,6 +13,19 @@ const mail = vi.hoisted(() => ({
 const auth = vi.hoisted(() => ({ ok: true }));
 vi.mock('@/lib/eventAuth', () => ({ isAuthorizedServer: async () => auth.ok }));
 vi.mock('next/cache', () => ({ revalidatePath: () => undefined }));
+// 書き込みの直前に1回だけ差し込む仕事（「画面の確かめのあと、書く前に別の人がまとめた」を作る）。空のときは本物の withWriteTx をそのまま通す
+const txHook = vi.hoisted(() => ({ before: null as null | (() => Promise<void>) }));
+vi.mock('@/lib/db', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/db')>();
+  return {
+    ...real,
+    withWriteTx: async <T,>(fn: Parameters<typeof real.withWriteTx<T>>[0]): Promise<T> => {
+      const h = txHook.before;
+      if (h) { txHook.before = null; await h(); }
+      return real.withWriteTx(fn);
+    },
+  };
+});
 vi.mock('@/lib/recitalMail', () => mail);
 vi.mock('@/lib/recitalMail.ts', () => mail);
 
@@ -141,6 +154,23 @@ describe('特別な料金・そのほかの金額の直し・まとめる・照�
     expect((await core.getOne('SELECT status FROM recital_households WHERE id = ?', [b.householdId])).status).toBe('active');
   });
 
+  it('手で入金を記録：外の確かめのあと、書く前にまとめが入ったら拒み、入金の行を作らない', async () => {
+    const ev = 't-act-20d'; await seedEvent(ev); await seedRules(ev); const w1 = await seedWork(ev, 'W01');
+    const a = await seedHousehold(ev, { recompute: true, people: [{ casts: [[w1, 'in']] }] });
+    const b = await seedHousehold(ev, { recompute: true, people: [{ casts: [[w1, 'in']] }] });
+    // activeCheck（書き込みの外）は通る。そのあと、入金の書き込みの直前に、別の画面のまとめが先に書き終わる
+    txHook.before = async () => {
+      const r = await act.mergeAction(b.householdId, a.householdId, { reason: '家族', samePeople: [] }, 'KEIKO', false);
+      expect(r).toMatchObject({ ok: true });
+    };
+    const r = await act.recordManualPaymentAction(b.householdId, { method: 'cash', amount: 26500, paidOn: todayJst(), memo: '' }, 'TARO');
+    expect(r).toEqual({ ok: false, error: 'この世帯はまとめた（または有効でない）ので、できません' });
+    expect(txHook.before).toBeNull();
+    expect((await core.getOne('SELECT status FROM recital_households WHERE id = ?', [b.householdId])).status).toBe('merged');
+    expect(await countOf("SELECT COUNT(*) AS n FROM recital_payments WHERE household_id = ? AND method = 'cash'", [b.householdId])).toBe(0);
+    expect(mail.sendPaidMail).not.toHaveBeenCalled();
+  });
+
   it('まとめた世帯は、特別な料金・手の調整・照合・まとめるを失敗で返し、何も書かない', async () => {
     const ev = 't-act-20b'; await seedEvent(ev); await seedRules(ev); const w1 = await seedWork(ev, 'W01');
     const a = await seedHousehold(ev, { recompute: true, people: [{ casts: [[w1, 'in']] }] });
@@ -154,6 +184,18 @@ describe('特別な料金・そのほかの金額の直し・まとめる・照�
     // まとめた b には請求の行ができない（人は a へ移っているので、人の操作は a の世帯で受ける）
     expect(await countOf("SELECT COUNT(*) AS n FROM recital_charges WHERE household_id = ? AND status = 'active'", [b.householdId])).toBe(0);
     expect(await countOf('SELECT COUNT(*) AS n FROM recital_changes WHERE household_id IN (?, ?)', [a.householdId, b.householdId])).toBe(changes);
+
+    // 人がまだ残っている、まとめた世帯（印だけ merged にした）の人の特別な料金・照合も拒む
+    const m = await seedHousehold(ev, { recompute: true, people: [{ casts: [[w1, 'in']] }] });
+    await core.execute(`UPDATE recital_households SET status='merged', merged_into=? WHERE id=?`, [a.householdId, m.householdId]);
+    const mChanges = await countOf('SELECT COUNT(*) AS n FROM recital_changes WHERE household_id = ?', [m.householdId]);
+    const notActive = { ok: false, error: 'この世帯はまとめた（または有効でない）ので、できません' };
+    expect(await act.feeClassAction(m.personIds[0], 'no_coop', '登録もれ', 'TARO', false)).toEqual(notActive);
+    expect(await act.feeClassAction(m.personIds[0], 'no_coop', '登録もれ', 'TARO', true)).toEqual(notActive);
+    expect(await act.matchAction(m.personIds[0], { none: true }, '確かめた', 'TARO', false)).toEqual(notActive);
+    expect(await act.adjustAction(m.householdId, { direction: 'up', amount: 1000, reason: '試し' }, 'TARO', false)).toEqual(notActive);
+    expect((await core.getOne('SELECT fee_class_override f, match_status s FROM recital_people WHERE id = ?', [m.personIds[0]]))).toEqual({ f: null, s: 'none' });
+    expect(await countOf('SELECT COUNT(*) AS n FROM recital_changes WHERE household_id = ?', [m.householdId])).toBe(mChanges);
   });
 
   it('名前・理由が無ければ失敗で返す／特別な料金の dryRun は書かない', async () => {

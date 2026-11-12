@@ -34,7 +34,7 @@ const NOTE_MAYBE_DOUBLE = '（二重の記録かもしれません）';
 /** 世帯をまとめる時の「移す」の調整の行に書くメモ（設計書 03 3-4 method）。二重の記録の判定から外す */
 const MEMO_MOVED = '移した';
 
-function fail(code: 'bad_input' | 'live_exists' | 'row_over' | 'negative' | 'over_overpaid'): never {
+function fail(code: 'bad_input' | 'live_exists' | 'row_over' | 'negative' | 'over_overpaid' | 'not_active'): never {
   throw new Error(`recital_money:${code}`);
 }
 
@@ -259,6 +259,8 @@ export async function cancelRefund(refundId: number, reason: string, staffName: 
 
 /**
  * スタッフの「手で入金を記録」（現金／調整だけ。振込とカードは選べない）。調整はメモ必須、マイナスは打ちまちがいの打ち消し。
+ * 世帯が active でなければ（まとめた世帯）書き込みの中で拒む（recital_money:not_active）。画面の確かめのあとにまとめられた時も、
+ * まとめた世帯に入金の行を作らないため。守りは insertPaymentTx には入れない（カードの知らせは、たどれた世帯に記録するため）。
  * 書き込みのあと afterMoneyChanged(id, 'payment') を中で呼ぶ。メールは送らない（呼ぶ側が sendPaidMail を呼ぶ）。
  */
 export async function recordManualPayment(
@@ -270,13 +272,16 @@ export async function recordManualPayment(
   if (x.method === 'cash' && !(Number.isInteger(x.amount) && x.amount >= 1)) fail('bad_input');
   if (x.method === 'adjust' && (!isNonZeroInt(x.amount) || isBlank(x.memo))) fail('bad_input');
   if (isBlank(staffName)) fail('bad_input');
-  const r = await withWriteTx((tx) =>
-    insertPaymentTx(
+  const r = await withWriteTx(async (tx) => {
+    const h = await tx.execute({ sql: 'SELECT status FROM recital_households WHERE id = ?', args: [householdId] });
+    if (!h.rows[0]) fail('bad_input');
+    if (String(h.rows[0].status) !== 'active') fail('not_active');
+    return insertPaymentTx(
       tx,
       { householdId, method: x.method, amount: x.amount, paidOn: x.paidOn, source: 'manual', confirmedBy: staffName, memo: x.memo ?? null },
       staffName,
-    ),
-  );
+    );
+  });
   await notifyAfterWrite(householdId);
   return { paymentId: r.paymentId, after: r.after };
 }

@@ -26,7 +26,7 @@ const feeLabel = (v: FeeClass) => FEE_OPTIONS.find((o) => o.value === v)?.label 
 export type FeePanelPerson = { id: number; name: string; feeClass: FeeClass };
 export type AdjustRow = { id: number; amount: number; reason: string };
 
-type FeePreview = { changed: boolean; totalBefore: number; totalAfter: number; refund: number; extra: number; adjustActive: number };
+type FeePreview = { changed: boolean; totalBefore: number; totalAfter: number; refund: number; extra: number; adjustActive: number; refundTodo: number };
 
 /** 金額の欄の字 → 1以上の整数。読めなければ NaN */
 function parsePositive(s: string): number {
@@ -119,6 +119,9 @@ export default function FeeClassPanel(props: { householdId: number; people: FeeP
                   <p className="font-bold">今の合計 {yen(preview.totalBefore)} → 直したあと {yen(preview.totalAfter)}</p>
                   {preview.refund > 0 && <p>返す分 {yen(preview.refund)}（「返す分」に出ます）</p>}
                   {preview.extra > 0 && <p>追加分 {yen(preview.extra)}</p>}
+                  {preview.extra > 0 && preview.refundTodo > 0 && (
+                    <p className="font-bold">まだ返していない返す分 {yen(preview.refundTodo)}があります（先に『返す分を取り消す』を）。</p>
+                  )}
                   {preview.totalAfter > preview.totalBefore && (
                     <p className="font-bold text-red-700">押す前に、公式LINEで家庭に一言伝えてください。</p>
                   )}

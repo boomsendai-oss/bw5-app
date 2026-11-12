@@ -21,7 +21,7 @@ const feeLabel = (v: string | null | undefined) => (v ? FEE_LABEL[v] ?? v : 'ふ
 const MEMBER_STATUS_LABEL: Record<string, string> = { active: '在籍', leave: '休会', withdrew: '退会' };
 
 type Preview = {
-  changed: boolean; totalBefore: number; totalAfter: number; refund: number; extra: number; adjustActive: number;
+  changed: boolean; totalBefore: number; totalAfter: number; refund: number; extra: number; adjustActive: number; refundTodo: number;
   presetClass: string | null; keptClass: string | null;
 };
 type Choice = { memberId: number } | { none: true };
@@ -140,10 +140,14 @@ export default function MatchPanel(props: { personId: number; personLabel: strin
           {preview.totalAfter !== preview.totalBefore && <p className="font-bold">今の合計 {yen(preview.totalBefore)} → 結んだあと {yen(preview.totalAfter)}</p>}
           {preview.refund > 0 && <p>返す分 {yen(preview.refund)}</p>}
           {preview.extra > 0 && <p>追加分 {yen(preview.extra)}</p>}
+          {preview.extra > 0 && preview.refundTodo > 0 && (
+            <p className="font-bold">まだ返していない返す分 {yen(preview.refundTodo)}があります（先に『返す分を取り消す』を）。</p>
+          )}
           {preview.presetClass && preview.keptClass !== preview.presetClass && (
             <p>登録は「{feeLabel(preview.presetClass)}」、今は「{feeLabel(preview.keptClass)}」です（印は変えません。直すときは「特別な料金」で）。</p>
           )}
           {preview.totalAfter === preview.totalBefore && !(preview.presetClass && preview.keptClass !== preview.presetClass) && <p>金額は変わりません。</p>}
+          {preview.adjustActive !== 0 && <p>手の調整 {yen(preview.adjustActive)}があります。</p>}
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">

@@ -186,6 +186,12 @@ describe('守り', () => {
     expect(r.after).toEqual({ total: 26500, paid: 0, remaining: 26500, overpaid: 0 });
     await expect(money.recordManualPayment(hid, { method: 'adjust', amount: -1, paidOn: '2026-12-21', memo: '打ちまちがい' }, 'TARO')).rejects.toThrow('recital_money:negative');
   });
+  it('recordManualPayment：まとめた世帯は書き込みの中で拒み、入金の行を作らない（Task 20 の直し）', async () => {
+    const hid = await seedHousehold('t-money', { total: 26500, cast: 'in' });
+    await core.execute(`UPDATE recital_households SET status = 'merged' WHERE id = ?`, [hid]);
+    await expect(money.recordManualPayment(hid, { method: 'cash', amount: 26500, paidOn: '2026-12-21', memo: '' }, 'TARO')).rejects.toThrow('recital_money:not_active');
+    expect(Number((await core.getOne('SELECT COUNT(*) AS n FROM recital_payments WHERE household_id = ?', [hid]))?.n)).toBe(0);
+  });
   it('recordManualPayment と cancelRefund は書き込みのあと afterMoneyChanged(id,"payment") を呼ぶ', async () => {
     // afterMoneyChanged は同じファイルなので vi.spyOn(money, 'afterMoneyChanged') では捕まらない。中で呼ぶ所を内部の関数 notifyMoneyChanged にして、試験はその spy で見る
     const hid = await seedHousehold('t-money', { total: 26500, cast: 'in' });
