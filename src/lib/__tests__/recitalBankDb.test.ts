@@ -31,6 +31,10 @@ vi.mock('@/lib/db', async (importOriginal) => {
   };
 });
 
+// Task 29 の画面の Server Action の試験のため：ログインの確かめは通す・revalidatePath は何もしない（ほかの試験はこの2つを使わない）
+vi.mock('@/lib/eventAuth', async (orig) => ({ ...(await orig<typeof import('@/lib/eventAuth')>()), isAuthorizedServer: async () => true }));
+vi.mock('next/cache', () => ({ revalidatePath: () => undefined }));
+
 delete process.env.GMAIL_APP_PASSWORD;
 await setupRecitalTestDb('bank');
 const { getOne, getAll, execute } = await import('../db');
@@ -954,5 +958,30 @@ describe('listImports', () => {
     const bad = SAMPLE.map((x) => (x.pos === '1-1' ? { ...x, balance: 153001 } : x));
     await ingestBankBatch(b(bad, { event_key: ev }), 'dry', 'test', new Date('2026-12-17T12:00:00+09:00'));
     expect((await listImports(ev)).map((x) => x.check_result)).toEqual(['ng:12/16:26500', 'ok']);
+  });
+});
+
+describe('見てほしい入金の画面：候補の無い行を、探した世帯に当てる（Task 29 の見直し1回目）', () => {
+  it('候補の無い行 → 探す欄で世帯を見つける → assignAction（assignBankRow）で当たる。2回目はほかの人の文', async () => {
+    const act = await import('../../app/staff/bw6/bank/actions');
+    // 画面の Server Action は ?ev= を pickStaffEventKey の3つしか通さないので、この試験だけ bw6-smoke を使う（ほかの試験は使わない）
+    const ev = 'bw6-smoke';
+    await seedEvent(ev);
+    const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    // 番号が無く、名義も金額も合わない行（候補が1つも出ない）
+    const row = await insertLedgerRow(ev, { amount: 20000, desc_raw: '振込 サトウ イチロウ' });
+    const v = (await listReviewRows(ev)).find((x) => x.rowId === row)!;
+    expect(v.group).toBe('no_candidate');
+    expect(v.candidates).toEqual([]);
+
+    const found = await act.searchHouseholdsForBankAction(ev, '4823');
+    expect(found).toEqual({ ok: true, hits: [expect.objectContaining({ householdId: A, refCode: '4823', status: 'active', remaining: 26500 })] });
+
+    const x = { rowId: row, householdId: A, amount: v.leftover, sendRemaining: false, confirmFlag: false, staffName: 'KEIKO' };
+    expect(await act.assignAction(x)).toEqual({ ok: true });
+    expect(await rowState(row)).toBe('matched');
+    expect((await readHouseholdMoney(A)).m.remaining).toBe(6500);
+    // 同じ行をもう一度（別の画面で押した形）：生の語ではなく、ほかの人の文
+    expect(await act.assignAction(x)).toEqual({ ok: false, error: expect.stringContaining('ほかの人が、いま同じ入金を当てました') });
   });
 });

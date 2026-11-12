@@ -9,7 +9,7 @@
 import type { Transaction } from '@libsql/client';
 import { batch, getAll, getOne, withWriteTx } from '@/lib/db';
 import { nowUtcIso, shiftDays, todayJst } from '@/lib/dateJst';
-import { FIRST5_LIMIT, bankToldWaitDue, householdView, jstToMs, moneySummary, type RecitalSettings } from '@/lib/recital';
+import { FIRST5_LIMIT, bankToldWaitDue, householdView, jstToMs, moneySummary, type MoneySummary, type RecitalSettings } from '@/lib/recital';
 import { checkBatch, flagRows, normalizeBatch, type BankBatchIn, type LedgerRowLite, type NormRow } from '@/lib/recitalBankBatch';
 import { candidatesFor, decideRow, surnameMatches, type Candidate, type MatchHousehold, type MatchRow, type ReviewKind } from '@/lib/recitalBankMatch';
 import { getRecitalEvent, getRecitalSettings, logChangeTx, readMoneyByHousehold, type HouseholdRow } from '@/lib/recitalDb';
@@ -1232,8 +1232,13 @@ export async function cancelBankPayment(
  * 「振り込みました」のまま3日の世帯（2-20）。active で、印（bank_told_at・bank_told_amount）があり、残りが 0 より大きく、
  * bankToldWaitDue（3日の数え方の正本。休みの日は数えない）が true の世帯。並びは bank_told_at の古い順。
  * 最初の画面の見てほしいことの4番 (b) も、これを呼ぶ（条件を2か所に持たない）。
+ * pre：呼ぶ側がもう読んだ設定・世帯ごとのお金（readMoneyByHousehold の返り）があれば渡す（同じ表を2回読まない）。
  */
-export async function listToldWaiting(eventKey: string, now?: Date): Promise<HouseholdRow[]> {
+export async function listToldWaiting(
+  eventKey: string,
+  now?: Date,
+  pre?: { settings?: RecitalSettings; money?: Map<number, MoneySummary> },
+): Promise<HouseholdRow[]> {
   const nowMs = (now ?? new Date()).getTime();
   const hs = await getAll(
     `SELECT * FROM recital_households
@@ -1242,8 +1247,8 @@ export async function listToldWaiting(eventKey: string, now?: Date): Promise<Hou
     [eventKey],
   );
   if (hs.length === 0) return [];
-  const s = await getRecitalSettings(eventKey);
-  const money = await readMoneyByHousehold(eventKey);
+  const s = pre?.settings ?? (await getRecitalSettings(eventKey));
+  const money = pre?.money ?? (await readMoneyByHousehold(eventKey));
   return hs
     .filter((h) => (money.get(Number(h.id))?.remaining ?? 0) > 0 && bankToldWaitDue(String(h.bank_told_at), nowMs, s.bank_rest_from, s.bank_rest_to))
     .map((h) => ({ ...h }) as HouseholdRow);

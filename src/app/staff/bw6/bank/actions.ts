@@ -9,9 +9,8 @@
 import { revalidatePath } from 'next/cache';
 import { RECITAL_STAFF_NAMES, pickStaffEventKey } from '@/lib/recital';
 import { assignBankRow, mergeManualRow, restoreBankRow, setBankRowState } from '@/lib/recitalBankDb';
-import { loadHouseholdDetail, searchHouseholds } from '@/lib/recitalDb';
+import { loadHouseholdDetail, readMoneyByHousehold, searchHouseholds } from '@/lib/recitalDb';
 import { requireRecitalStaff } from '@/lib/recitalGuard';
-import { readHouseholdMoney } from '@/lib/recitalMoneyDb';
 
 type Result = { ok: true } | { ok: false; error: string; code?: 'confirm_flag' };
 
@@ -43,11 +42,18 @@ function toMessage(e: unknown, where: string): { error: string; code?: 'confirm_
   return { error: '記録できませんでした。画面を開き直して、もう一度押してください' };
 }
 
-/** 世帯が active か（まとめた世帯には当てない）。無い・active でなければ失敗の文 */
+const READ_FAIL = '読めませんでした。少し待ってから、もう一度押してください';
+
+/** 世帯が active か（まとめた世帯には当てない）。無い・active でなければ失敗の文。読めない時も文を返す（例外を画面に出さない） */
 async function activeCheck(householdId: number): Promise<string | null> {
-  const d = await loadHouseholdDetail(householdId);
-  if (!d) return '世帯が見つかりません。画面を開き直してください';
-  return d.household.status === 'active' ? null : NOT_ACTIVE;
+  try {
+    const d = await loadHouseholdDetail(householdId);
+    if (!d) return '世帯が見つかりません。画面を開き直してください';
+    return d.household.status === 'active' ? null : NOT_ACTIVE;
+  } catch (e) {
+    console.error('[recital] 見てほしい入金で世帯を読めませんでした', errMsg(e).startsWith('recital_') ? errMsg(e) : 'error');
+    return READ_FAIL;
+  }
 }
 
 function done(): void {
@@ -55,20 +61,28 @@ function done(): void {
   revalidatePath('/staff/bw6');
 }
 
-/** 候補に無い家庭を探す（16 の searchHouseholds。鍵・メール・電話は返さない）。今の残りも付ける（2つに分ける時の初めの値） */
-export async function searchHouseholdsForBankAction(
-  ev: string,
-  q: string,
-): Promise<{ householdId: number; refCode: string; contactName: string; status: string; remaining: number }[]> {
+export type BankSearchHit = { householdId: number; refCode: string; contactName: string; status: string; remaining: number };
+
+/**
+ * 候補に無い家庭を探す（16 の searchHouseholds。鍵・メール・電話は返さない）。今の残りも付ける（2つに分ける時の初めの値）。
+ * 残りは発表会ごとに1回で読む（readMoneyByHousehold。世帯ごとに引かない）。
+ */
+export async function searchHouseholdsForBankAction(ev: string, q: string): Promise<{ ok: true; hits: BankSearchHit[] } | { ok: false; error: string }> {
   await requireRecitalStaff();
-  if (typeof q !== 'string') return [];
-  const hits = await searchHouseholds(pickStaffEventKey(ev), q.slice(0, 50));
-  const out = [];
-  for (const h of hits) {
-    const money = await readHouseholdMoney(h.id);
-    out.push({ householdId: h.id, refCode: h.ref_code, contactName: h.contact_name, status: h.status, remaining: money.m.remaining });
+  if (typeof q !== 'string' || q.trim() === '') return { ok: true, hits: [] };
+  const eventKey = pickStaffEventKey(ev);
+  try {
+    const hits = await searchHouseholds(eventKey, q.slice(0, 50));
+    if (hits.length === 0) return { ok: true, hits: [] };
+    const money = await readMoneyByHousehold(eventKey);
+    return {
+      ok: true,
+      hits: hits.map((h) => ({ householdId: h.id, refCode: h.ref_code, contactName: h.contact_name, status: h.status, remaining: money.get(h.id)?.remaining ?? 0 })),
+    };
+  } catch (e) {
+    console.error('[recital] 見てほしい入金で家庭を探せませんでした', errMsg(e).startsWith('recital_') ? errMsg(e) : 'error');
+    return { ok: false, error: '探せませんでした。少し待ってから、もう一度押してください' };
   }
-  return out;
 }
 
 /**

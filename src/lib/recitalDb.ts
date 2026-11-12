@@ -832,7 +832,8 @@ export async function listAttention(eventKey: string, now?: Date): Promise<Atten
     for (const r of (await listReviewRows(eventKey)).filter((x) => x.group !== 'closed')) {
       out.push({ no: 4, label: `見てほしい入金：${r.rowDate}`, href: BANK_HREF });
     }
-    for (const h of await listToldWaiting(eventKey, new Date(nowMs))) {
+    // 設定とお金は、この関数でもう読んだ物を渡す（同じ表を2回読まない）
+    for (const h of await listToldWaiting(eventKey, new Date(nowMs), { settings, money })) {
       out.push({ no: 4, label: `『振り込みました』のまま3日：${h.ref_code}`, href: BANK_HREF, householdId: Number(h.id) });
     }
   }

@@ -1,7 +1,8 @@
 'use client';
 
 // BW6 発表会の「見てほしい入金」のカード（Task 29。決まりの紙 2-19・2-24）。
-// ② 人が決める入金（候補はラジオ。どれも初めは選ばない）③ 候補の無い入金（まとめて「発表会ではない」）④ 片づいた入金（たたむ）。
+// ② 人が決める入金（候補はラジオ。どれも初めは選ばない）③ 候補の無い入金（②と同じカード。探す欄で世帯を選んで当てられる・
+// 「まとめて選ぶ」で、まとめて「発表会ではない」）④ 片づいた入金（たたむ）。
 // どのボタンも2段階：押すと中身と名前の欄が開き、名前を選んで、もう1回押すと記録する（confirm() は使わない）。
 // 種類・候補・印は listReviewRows（28）の返りをそのまま出す（ここで計算し直さない）。残高は出さない。
 // 入力欄は文字色と下地色を両方決める（RECITAL_INPUT_CLS。CLAUDE.md 11）。
@@ -86,7 +87,7 @@ export default function ReviewCards({ rows, ev }: { rows: ReviewRowView[]; ev: s
           review.map((r) => <ReviewCard key={r.rowId} row={r} ev={ev} />)
         )}
       </section>
-      <NoCandidateList rows={noCand} />
+      <NoCandidateList rows={noCand} ev={ev} />
       <ClosedList rows={closed} />
     </>
   );
@@ -131,7 +132,10 @@ function RowFacts({ row }: { row: ReviewRowView }) {
 
 type Mode = null | 'assign' | 'split' | 'not_recital' | 'hold' | 'void' | 'restore' | 'merge';
 
-function ReviewCard({ row, ev }: { row: ReviewRowView; ev: string }) {
+/** ③のカードの「まとめて選ぶ」（まとめて「発表会ではない」にするため） */
+type Bulk = { checked: boolean; disabled: boolean; onChange: (on: boolean) => void };
+
+function ReviewCard({ row, ev, bulk }: { row: ReviewRowView; ev: string; bulk?: Bulk }) {
   const [selected, setSelected] = useState<number | null>(null); // 初めはどれも選ばない
   const [extra, setExtra] = useState<Option[]>([]);
   const [q, setQ] = useState('');
@@ -162,12 +166,14 @@ function ReviewCard({ row, ev }: { row: ReviewRowView; ev: string }) {
     const t = q.trim();
     if (t === '') return;
     startTransition(async () => {
-      const hits = await searchHouseholdsForBankAction(ev, t);
+      const r = await searchHouseholdsForBankAction(ev, t);
+      if (!r.ok) { setSearchMsg(r.error); return; }
+      const hits = r.hits;
       setExtra((prev) => {
         const ids = new Set(prev.map((o) => o.householdId));
         return [...prev, ...hits.filter((h) => !ids.has(h.householdId))];
       });
-      setSearchMsg(hits.length === 0 ? '見つかりませんでした' : `${hits.length}件 見つかりました（下の候補に足しました）`);
+      setSearchMsg(hits.length === 0 ? '見つかりませんでした' : `${hits.length}件 見つかりました（当てる世帯に足しました）`);
     });
   };
 
@@ -215,11 +221,27 @@ function ReviewCard({ row, ev }: { row: ReviewRowView; ev: string }) {
 
   return (
     <article className="rounded-xl border border-sand-200 bg-white p-4 text-navy-700">
+      {bulk && (
+        <label className="mb-2 flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={bulk.checked}
+            disabled={bulk.disabled}
+            onChange={(e) => bulk.onChange(e.target.checked)}
+            className="mt-1 size-4 accent-brand-600"
+          />
+          <span className="text-sand-800">
+            まとめて選ぶ（発表会ではない）
+            {bulk.disabled && <span className="block text-xs">一部を当てた行なので、発表会ではないにはできません。下で世帯を選んで、のこりを当ててください</span>}
+          </span>
+        </label>
+      )}
       <RowFacts row={row} />
 
       {/* 候補（ラジオ。初めは選ばない） */}
       <fieldset className="mt-3">
         <legend className="text-xs font-bold text-sand-800">当てる世帯（候補）</legend>
+        {options.length === 0 && <p className="mt-1 text-sm text-sand-800">候補がありません。下の欄で家庭を探して選んでください</p>}
         <ul className="mt-1 space-y-1">
           {options.map((o) => {
             const c = row.candidates.find((x) => x.householdId === o.householdId);
@@ -415,8 +437,11 @@ function ReviewCard({ row, ev }: { row: ReviewRowView; ev: string }) {
   );
 }
 
-/** ③ 候補の無い入金：チェックボックスで選んで、まとめて「発表会ではない」 */
-function NoCandidateList({ rows }: { rows: ReviewRowView[] }) {
+/**
+ * ③ 候補の無い入金：②と同じカード（探す欄で世帯を選んで「この世帯に当てる」・保留の行は「もとにもどす」）。
+ * 「まとめて選ぶ」で選んだ行を、まとめて「発表会ではない」にする。一部を当てた行（のこりの行）は入金があるので、まとめては選べない（当てるのはカードで）。
+ */
+function NoCandidateList({ rows, ev }: { rows: ReviewRowView[]; ev: string }) {
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [confirming, setConfirming] = useState(false);
   const [name, setName] = useState('');
@@ -424,6 +449,8 @@ function NoCandidateList({ rows }: { rows: ReviewRowView[] }) {
   const [pending, startTransition] = useTransition();
   if (rows.length === 0) return null;
 
+  // 画面を開き直して消えた行は数えない
+  const ids = rows.filter((r) => picked.has(r.rowId) && !r.isLeftover).map((r) => r.rowId);
   const toggle = (id: number, on: boolean) => setPicked((s) => {
     const n = new Set(s);
     if (on) n.add(id); else n.delete(id);
@@ -431,7 +458,6 @@ function NoCandidateList({ rows }: { rows: ReviewRowView[] }) {
   });
   const go = () => {
     if (!name) { setError('名前を選んでください'); return; }
-    const ids = rows.filter((r) => picked.has(r.rowId)).map((r) => r.rowId);
     startTransition(async () => {
       const r = await setStateAction({ rowIds: ids, state: 'not_recital', memo: null, staffName: name });
       if (!r.ok) { setError(r.error); return; }
@@ -440,44 +466,35 @@ function NoCandidateList({ rows }: { rows: ReviewRowView[] }) {
   };
 
   return (
-    <section className="rounded-xl border border-sand-200 bg-white p-4 text-navy-700">
-      <h2 className="text-lg font-bold">候補の無い入金 {rows.length}件</h2>
-      <ul className="mt-2 divide-y divide-sand-100">
-        {rows.map((r) => (
-          <li key={r.rowId} className="py-2">
-            <label className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                checked={picked.has(r.rowId)}
-                disabled={r.isLeftover}
-                onChange={(e) => toggle(r.rowId, e.target.checked)}
-                className="mt-1 size-4 accent-brand-600"
-              />
-              <div className="min-w-0 flex-1">
-                <RowFacts row={r} />
-                {r.isLeftover && <p className="text-xs text-sand-800">一部を当てた行なので、発表会ではないにはできません</p>}
-              </div>
-            </label>
-          </li>
-        ))}
-      </ul>
-      {!confirming ? (
-        <button type="button" disabled={picked.size === 0} onClick={() => { setConfirming(true); setError(''); }} className={`${BTN} mt-2`}>
-          選んだ {picked.size}件を「発表会ではない」にする
-        </button>
-      ) : (
-        <div className="mt-2 space-y-2 rounded-lg border border-sand-200 bg-sand-50 p-3 text-sm">
-          <p className="font-bold text-red-800">{NOT_RECITAL_NOTE}（{picked.size}件）</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <StaffNamePicker value={name} onChange={setName} />
-            <button type="button" disabled={pending || picked.size === 0} onClick={go} className={BTN_GO}>
-              {pending ? '記録しています…' : '発表会ではないにする'}
-            </button>
-            <button type="button" onClick={() => { setConfirming(false); setError(''); }} className="px-2 py-2 text-sm text-sand-700">やめる</button>
+    <section className="space-y-3">
+      <h2 className="text-lg font-bold text-navy-700">候補の無い入金 {rows.length}件</h2>
+      {rows.map((r) => (
+        <ReviewCard
+          key={r.rowId}
+          row={r}
+          ev={ev}
+          bulk={{ checked: picked.has(r.rowId), disabled: r.isLeftover, onChange: (on) => toggle(r.rowId, on) }}
+        />
+      ))}
+      <div className="rounded-xl border border-sand-200 bg-white p-4 text-navy-700">
+        {!confirming ? (
+          <button type="button" disabled={ids.length === 0} onClick={() => { setConfirming(true); setError(''); }} className={BTN}>
+            選んだ {ids.length}件を「発表会ではない」にする
+          </button>
+        ) : (
+          <div className="space-y-2 text-sm">
+            <p className="font-bold text-red-800">{NOT_RECITAL_NOTE}（{ids.length}件）</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <StaffNamePicker value={name} onChange={setName} />
+              <button type="button" disabled={pending || ids.length === 0} onClick={go} className={BTN_GO}>
+                {pending ? '記録しています…' : '発表会ではないにする'}
+              </button>
+              <button type="button" onClick={() => { setConfirming(false); setError(''); }} className="px-2 py-2 text-sm text-sand-700">やめる</button>
+            </div>
+            {error && <p className="font-bold text-red-800">{error}</p>}
           </div>
-          {error && <p className="font-bold text-red-800">{error}</p>}
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 }

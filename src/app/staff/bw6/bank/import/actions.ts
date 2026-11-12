@@ -33,15 +33,21 @@ function parseBalance(x: unknown): number | null {
   return Number.isSafeInteger(n) ? n : null;
 }
 
-/** 検算が合わなかった時の「◯月◯日のあたり」（金額は出さない） */
-function nearDay(near: string): string {
-  const m = /(\d{1,2})月(\d{1,2})日/.exec(near);
-  return m ? `${Number(m[1])}月${Number(m[2])}日のあたり` : '日付の読めない行のあたり';
+/**
+ * 検算が合わなかった時の文。27 の near（わけ＋場所）から金額の所（「の ◯円の行のあたり」）だけを「のあたり」に変え、わけは残す。
+ * 例：「12月16日の 26,500円の行のあたり」→「12月16日のあたりが合いません」／
+ * 「残高が読めない行があります（入出金明細の一覧の画面で撮ってください）：12月16日の 26,500円の行のあたり」→ わけ＋「12月16日のあたり」／
+ * 「12月14日（期間の開始日）」→ そのまま
+ */
+function nearMessageOf(near: string): string {
+  const s = near.replace(/の\s*[\d,]+円の行のあたり/, 'のあたり');
+  if (!s.includes('：') && s.endsWith('のあたり')) return `${s}が合いません`;
+  return `検算が合いません（${s}）`;
 }
 
 /** 入れた結果の文（数だけ） */
 function resultText(r: IngestResult): { ok: boolean; text: string } {
-  if (!r.check.ok) return { ok: false, text: `${nearDay(r.check.near)}が合いません。何も入れていません` };
+  if (!r.check.ok) return { ok: false, text: `${nearMessageOf(r.check.near)}。何も入れていません` };
   const auto = r.auto_matched > 0 ? `・自動で当たった ${r.auto_matched}行` : '';
   return { ok: true, text: `読んだ ${r.read_rows}行・新しく入った ${r.inserted}行・もうあった ${r.existing}行・はじいた ${r.rejected}行${auto}` };
 }
