@@ -50,7 +50,16 @@ const isTransferIn = (r: { dir: string; kind: string }) => r.dir === 'in' && r.k
  * 別のプロセス（別のサーバ）どうしがぶつかった時は、今までどおり SQLITE_BUSY が出る（呼ぶ側が busy に直す）。待って入れ直す輪ではない。
  */
 let writeChain: Promise<unknown> = Promise.resolve();
+/**
+ * 1本ずつ通すのは手元のファイルの DB（TURSO_DATABASE_URL が空か file: で始まる）の時だけ。
+ * 本番の Turso（HTTP）では、今までどおりそのまま書く（止まった書き込み1本で、このファイルの書き込みが全部待たないように）
+ */
+function serialFor(url: string | undefined): boolean {
+  const u = (url ?? '').trim();
+  return u === '' || u.startsWith('file:');
+}
 function serialWrite<T>(run: () => Promise<T>): Promise<T> {
+  if (!serialFor(process.env.TURSO_DATABASE_URL)) return run();
   const p = writeChain.then(run);
   writeChain = p.catch(() => undefined);
   return p;
@@ -532,7 +541,11 @@ async function matchOneRow(
 }
 
 /** 同じファイルの中から matchOneRow を呼ぶ時の通り道（試験の spy 用。ほかのファイルからは使わない） */
-export const __internal = { matchOneRow: (eventKey: string, rowId: number, firstOk: boolean) => matchOneRow(eventKey, rowId, firstOk) };
+export const __internal = {
+  matchOneRow: (eventKey: string, rowId: number, firstOk: boolean) => matchOneRow(eventKey, rowId, firstOk),
+  /** 書き込みを1本ずつ通すか（試験用。手元のファイルの DB だけ true） */
+  serialFor,
+};
 
 /**
  * dry：書かない。新しい入金の振込の行と、前の回が当てる前に止まった台帳の行と、（はじめの5件の間は）台帳で first5 で待っている行の全部について、
@@ -768,7 +781,14 @@ export async function listReviewRows(eventKey: string): Promise<ReviewRowView[]>
         notice: cand.notice, memo: r.memo == null ? null : String(r.memo), overInfo,
       });
     }
-    if (updates.length > 0) await serialWrite(() => batch(updates, 'write'));
+    if (updates.length > 0) {
+      // 種類の書きもどしが落ちても、一覧は出す（次に開いた時に書き直す）。ログには行の数と短い語だけ
+      try {
+        await serialWrite(() => batch(updates, 'write'));
+      } catch (e) {
+        console.error(`[recital] 見てほしい入金の種類を書きもどせませんでした rows=${updates.length}`, isBusyError(e) ? 'busy' : 'db_error');
+      }
+    }
   }
   for (const r of closedRows) {
     out.push({
@@ -877,7 +897,8 @@ export async function assignBankRow(
     const toRefHousehold = !!refH && alloc.length === 1 && alloc[0].householdId === refH.id;
     // はじめの5件に数えるのは、条件がそろった行（first5）を、1世帯に全額、番号の世帯へ当てた時だけ（2-23）
     const source: 'bank_auto' | 'bank_staff' = kind === 'first5' && toRefHousehold ? 'bank_auto' : 'bank_staff';
-    const extras = kind === 'sum' && toRefHousehold ? pickSumRows(openOthers, refH.remaining - rest) : [];
+    // 足すとぴったりの組に入れるのは new の行だけ（保留はスタッフが決めた物なので、ここで当てない）
+    const extras = kind === 'sum' && toRefHousehold ? pickSumRows(openOthers.filter((x) => String(x.state) === 'new'), refH.remaining - rest) : [];
     if (extras.some((x) => x.check_flag != null) && !opts.confirmFlag) fail28('confirm_flag');
 
     // 読みまちがいで取り消した入金と同じ額で、同じ世帯に当て直す時は、確認のメールを出さない（K202）
@@ -898,6 +919,7 @@ export async function assignBankRow(
 
     const paymentIds: number[] = [];
     const newestOf = new Map<number, number>();
+    const logs: { hid: number; rowId: number; amount: number; paymentId: number }[] = [];
     const pay = async (hid: number, amount: number, r2: any) => {
       const desc = r2.desc_raw == null ? null : String(r2.desc_raw);
       const res = await insertPaymentTx(
@@ -910,7 +932,7 @@ export async function assignBankRow(
       );
       paymentIds.push(res.paymentId);
       newestOf.set(hid, Math.max(newestOf.get(hid) ?? 0, res.paymentId));
-      await logChangeTx(tx, { eventKey, householdId: hid, action: 'bank_row_decided', actor: staffName, after: { rowId: Number(r2.id), householdId: hid, amount } });
+      logs.push({ hid, rowId: Number(r2.id), amount, paymentId: res.paymentId });
     };
     const decide = async (id: number, state: string, matchBy: 'auto' | 'staff') => {
       const u = await tx.execute({
@@ -924,6 +946,11 @@ export async function assignBankRow(
     for (const x of extras) {
       await pay(refH!.id, x.rest, x);
       await decide(Number(x.id), String(x.state), 'staff');
+    }
+    // 記録は入金ごとに1行。paymentIds＝この1回の操作でその世帯に作った入金の全部（取り消す時に、組の待ちのメールもいっしょに取りやめるため）
+    for (const l of logs) {
+      const group = logs.filter((x) => x.hid === l.hid).map((x) => x.paymentId);
+      await logChangeTx(tx, { eventKey, householdId: l.hid, action: 'bank_row_decided', actor: staffName, after: { rowId: l.rowId, householdId: l.hid, amount: l.amount, paymentId: l.paymentId, paymentIds: group } });
     }
     return { paymentIds, households: [...amountOf.keys()], newestOf, quiet };
   });
@@ -1020,6 +1047,8 @@ export async function mergeManualRow(manualRowId: number, newRowId: number, staf
     if (!man || !neu) fail28('not_found');
     if (String(man.source) !== 'manual' || String(man.state) === 'void') fail28('bad_state');
     if (!['chat', 'file'].includes(String(neu.source)) || String(neu.state) === 'void' || String(neu.event_key) !== String(man.event_key)) fail28('bad_state');
+    // 入金が付くのは入金の振込の行だけ（核の insertPaymentTx と同じ守り）
+    if (!isTransferIn({ dir: String(neu.dir), kind: String(neu.kind) })) fail28('bad_state');
     if (String(neu.row_date) !== String(man.row_date) || String(neu.dir) !== String(man.dir) || Number(neu.amount) !== Number(man.amount)) fail28('bad_state');
     if ((await paidOnRowTx(tx, newRowId)) > 0) fail28('bad_state');
     const desc = neu.desc_raw == null ? null : String(neu.desc_raw);
@@ -1141,7 +1170,16 @@ export async function cancelBankPayment(
         }
       }
 
-      await cancelWaitingMailsTx(tx, paymentId);
+      // 待ちのメールの取りやめ：この入金と、同じ1回の操作（足すとぴったり）で作った入金の鍵の分も（鍵は新しい方の入金に付いているため）
+      const together = new Set<number>([paymentId]);
+      for (const c of await read("SELECT after_json FROM recital_changes WHERE household_id = ? AND action = 'bank_row_decided' ORDER BY id DESC", [hid])) {
+        try {
+          const a = JSON.parse(String(c.after_json ?? 'null')) as { paymentIds?: unknown } | null;
+          const ids = Array.isArray(a?.paymentIds) ? a.paymentIds.map(Number) : [];
+          if (ids.includes(paymentId)) ids.forEach((x) => together.add(x));
+        } catch { /* 読めない記録は飛ばす */ }
+      }
+      for (const id of together) await cancelWaitingMailsTx(tx, id);
       await logChangeTx(tx, {
         eventKey, householdId: hid, action: 'payment_cancelled', actor: staffName, reason,
         after: { paymentId, amount, reversalId: neg.paymentId, bankRowId: rowId },

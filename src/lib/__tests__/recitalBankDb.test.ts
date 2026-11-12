@@ -13,7 +13,7 @@ vi.mock('@/lib/recitalBankMatch', async (orig) => {
 });
 
 // 書き込みの失敗を作るための差し込み口（busy の試験だけ。空のときは本物の withWriteTx をそのまま通す）
-const txFault = vi.hoisted(() => ({ next: null as Error | null }));
+const txFault = vi.hoisted(() => ({ next: null as Error | null, batch: null as Error | null }));
 vi.mock('@/lib/db', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/db')>();
   return {
@@ -22,6 +22,11 @@ vi.mock('@/lib/db', async (importOriginal) => {
       const e = txFault.next;
       if (e) { txFault.next = null; throw e; }
       return real.withWriteTx(fn);
+    },
+    batch: async (...a: Parameters<typeof real.batch>) => {
+      const e = txFault.batch;
+      if (e) { txFault.batch = null; throw e; }
+      return real.batch(...a);
     },
   };
 });
@@ -813,5 +818,56 @@ describe('見てほしい入金のボタン：前のタスクから持ち越し�
     txFault.next = Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY' });
     await expect(cancelBankPayment(p, 'wrong_household', 'KEIKO')).rejects.toThrow('busy');
     expect(await count('SELECT COUNT(*) n FROM recital_payments WHERE household_id=?', [A])).toBe(1);
+  });
+});
+
+describe('見てほしい入金のボタン：見直し1回目', () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); txFault.next = null; txFault.batch = null; });
+
+  it('書き込みを1本ずつ通すのは手元のファイルの DB の時だけ（本番の Turso ではそのまま書く）', () => {
+    const { serialFor } = bankDb.__internal;
+    expect(serialFor(undefined)).toBe(true);
+    expect(serialFor('')).toBe(true);
+    expect(serialFor('file:./data/test.db')).toBe(true);
+    expect(serialFor('libsql://example-db.turso.io')).toBe(false);
+    expect(serialFor('https://example-db.turso.io')).toBe(false);
+  });
+  it('種類の書きもどしが落ちても、一覧は出る（ログに名義を出さない）', async () => {
+    const ev = 't-bank-r2a'; await seedEvent(ev); await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    txFault.batch = new Error('recital_test:batch');
+    const rows = await listReviewRows(ev);
+    expect(rows.find((x) => x.rowId === row)).toMatchObject({ group: 'review', reviewKind: 'first5' });
+    expect(err).toHaveBeenCalled();
+    expect(err.mock.calls.flat().join(' ')).not.toMatch(/ヤマダ|4823/);
+    expect((await getOne(`SELECT review_kind k FROM recital_bank_rows WHERE id=?`, [row]))?.k).toBeNull();
+  });
+  it('足すとぴったりで2行に当てた古い方を取り消すと、新しい方の鍵で待っていたメールも取りやめ', async () => {
+    const ev = 't-bank-r2c'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [32500] });
+    const row26500 = await insertLedgerRow(ev, { amount: 26500, balance: 150000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await insertLedgerRow(ev, { amount: 6000, balance: 156000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-12-16T22:00:00+09:00'));
+    const { paymentIds: [p1, p2] } = await assignBankRow(row26500, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    expect((await getOne(`SELECT status FROM recital_mail_log WHERE dedupe_key=?`, [`bank_paid:${p2}`]))?.status).toBe('waiting');
+    await cancelBankPayment(p1, 'wrong_household', 'KEIKO');
+    expect((await getOne(`SELECT status FROM recital_mail_log WHERE dedupe_key=?`, [`bank_paid:${p2}`]))?.status).toBe('cancelled');
+  });
+  it('足すとぴったりの組に、保留にした行は入れない（その行は保留のまま）', async () => {
+    const ev = 't-bank-r2d'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [32500] });
+    const row26500 = await insertLedgerRow(ev, { amount: 26500, balance: 150000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const row6000 = await insertLedgerRow(ev, { amount: 6000, balance: 156000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await setBankRowState([row6000], 'hold', '確かめ中', 'KEIKO');
+    const { paymentIds } = await assignBankRow(row26500, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    expect(paymentIds).toHaveLength(1);
+    expect(await rowState(row6000)).toBe('hold');
+    expect((await readHouseholdMoney(A)).m.remaining).toBe(6000);
+  });
+  it('同じ入金にする：新しい行が入金の振込でなければ bad_state', async () => {
+    const ev = 't-bank-r2e'; await seedEvent(ev);
+    const man = await insertLedgerRow(ev, { source: 'manual', kind: 'other', amount: 300, balance: null });
+    const neu = await insertLedgerRow(ev, { source: 'chat', kind: 'other', amount: 300, balance: 150300 });
+    await expect(mergeManualRow(man, neu, 'KEIKO')).rejects.toThrow('bad_state');
+    expect(await rowState(man)).toBe('new');
   });
 });
