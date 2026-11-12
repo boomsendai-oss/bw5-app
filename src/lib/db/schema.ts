@@ -1,4 +1,5 @@
 import type { InStatement } from '@libsql/client';
+import { RECITAL_SCHEMA_STATEMENTS } from './recitalSchema';
 
 /**
  * All CREATE TABLE / CREATE INDEX statements for the BOOMapp database.
@@ -1568,5 +1569,6 @@ export function getSchemaStatements(): InStatement[] {
       sql: `CREATE INDEX IF NOT EXISTS idx_kiosk_payments_session ON kiosk_payments (stripe_session_id)`,
       args: [],
     },
+    ...RECITAL_SCHEMA_STATEMENTS,
   ];
 }
