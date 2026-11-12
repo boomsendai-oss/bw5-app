@@ -222,3 +222,37 @@ describe('parseGmoStatementCsv の直し（裁定3〜6）', () => {
     }
   });
 });
+
+// ---- 見直しの直し2（controller の裁定） ----
+describe('重ね撮り：説明が両方そろっている写しは説明も同じでないと重ねない（直し2-1）', () => {
+  const top = r('1-1', '12/16', 'in', 26500, 154000, 'transfer', '振込 4823 ヤマダ ハナコ');
+  const X1 = (pos: string) => r(pos, '12/15', 'in', 6000, 127500, 'transfer', '振込 4867 ヤマダ タロウ');
+  const Z = (pos: string) => r(pos, '12/15', 'out', 6000, 121500, 'debit');
+  const X0 = (pos: string) => r(pos, '12/15', 'in', 6000, 127500, 'transfer', '振込 4823 ヤマダ ハナコ');
+  const W = (pos: string) => r(pos, '12/15', 'out', 500, 127500, 'debit');
+  const run = (rows: BankBatchRowIn[]) => {
+    const bb = b(rows);
+    const n = normalizeBatch(bb, '2026-12-16');
+    return { n, c: checkBatch(bb, n, [], { startDate: '2026-12-14' }) };
+  };
+  it('重ねずに続けて撮った2枚（+6000/−6000 が2回・残高も同じ）を重ねない → つなぎ目に重なりが無いので ng', () => {
+    const { n, c } = run([top, X1('1-2'), Z('1-3'), X0('2-1'), Z('2-2'), W('2-3')]);
+    expect(n.map((x) => x.pos)).toEqual(['1-1', '1-2', '1-3', '2-1', '2-2', '2-3']);
+    expect(c).toEqual({ ok: false, near: { date: '2026-12-15', amount: 6000 } });
+  });
+  it('本当に2行重ねた2枚（説明は NFKC で同じ）→ 1本にして ok', () => {
+    const { n, c } = run([top, X1('1-2'), Z('1-3'), { ...X1('2-1'), desc: '振込　４８６７　ヤマダ　タロウ' }, Z('2-2'), X0('2-3'), Z('2-4'), W('2-5')]);
+    expect(n.map((x) => x.pos)).toEqual(['1-1', '1-2', '1-3', '2-3', '2-4', '2-5']);
+    expect(c).toEqual({ ok: true });
+  });
+  it('どちらかの写しの説明が欠けていれば、説明はくらべない（今までどおり重ねる）', () => {
+    const { n, c } = run([top, { ...X1('1-2'), cut: true, desc: '振込 4823 ヤマ' }, Z('1-3'), X1('2-1'), Z('2-2'), X0('2-3'), Z('2-4'), W('2-5')]);
+    expect(n.map((x) => x.pos)).toEqual(['1-1', '2-1', '1-3', '2-3', '2-4', '2-5']);
+    expect(c).toEqual({ ok: true });
+  });
+});
+
+it('明細CSV：入金も出金も 0 の行 → 金額は読めない（直し2-2）', () => {
+  const csv = '日付,摘要,入金金額,出金金額,残高,メモ\r\n2026/12/15,ﾃﾞﾋﾞｯﾄ,0,0,126500,\r\n';
+  expect(parseGmoStatementCsv(new Uint8Array(iconv.encode(csv, 'shift_jis')))[0]).toMatchObject({ amount: null, unread: 'amount' });
+});

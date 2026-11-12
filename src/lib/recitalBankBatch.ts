@@ -128,8 +128,17 @@ const sameRowKey = (r: BankBatchRowIn) => {
 const descComplete = (r: BankBatchRowIn) => !r.cut && !unreadWords(r.unread).includes('desc');
 
 /**
+ * 2枚の写しが同じ行か。日付・入出・金額・残高が同じで、両方の説明が欠けていない時は説明（NFKC・空白を取る）も同じこと。
+ * どちらかの説明が欠けている時は説明をくらべない。重ねずに続けて撮った2枚で、同じ日・同じ額の入出金が続いた行を
+ * 重ね撮りと取りちがえて、別の家庭の入金を消さないため。
+ */
+const descKey = (r: BankBatchRowIn) => r.desc.normalize('NFKC').replace(/\s/g, '');
+const sameOverlapRow = (a: BankBatchRowIn, c: BankBatchRowIn) =>
+  sameRowKey(a) === sameRowKey(c) && (!descComplete(a) || !descComplete(c) || descKey(a) === descKey(c));
+
+/**
  * chat の行を枚・行の順に1本に並べ、枚のつなぎ目だけ、前の枚の下からの並びと次の枚の上からの並びが
- * （日付・入出・金額・残高で）いちばん長く一致する所を1つにする（1枚の中は消さない）。
+ * （sameOverlapRow で）いちばん長く一致する所を1つにする（1枚の中は消さない）。
  * 重なった行は、前の枚の写しの説明が欠けていて次の枚の写しが欠けていない時だけ、次の枚の写しを同じ位置に置く。
  * noOverlap は、重なりが1行も無かったつなぎ目の前の枚のいちばん下の行（検算3。images は数えるのに使わない）。
  */
@@ -143,7 +152,7 @@ function mergeChatSheets(rows: BankBatchRowIn[]): { ordered: BankBatchRowIn[]; n
     let overlap = 0;
     for (let n = Math.min(prev.length, next.length); n >= 1 && overlap === 0; n--) {
       let same = true;
-      for (let i = 0; i < n && same; i++) same = sameRowKey(prev[prev.length - n + i]) === sameRowKey(next[i]);
+      for (let i = 0; i < n && same; i++) same = sameOverlapRow(prev[prev.length - n + i], next[i]);
       if (same) overlap = n;
     }
     if (overlap === 0) noOverlap.push(prev[prev.length - 1]);
@@ -355,8 +364,8 @@ export function parseGmoStatementCsv(buf: Uint8Array): BankBatchIn['rows'] {
     const withdrawalOut = withdrawal.v !== null && withdrawal.v > 0;
     const dir: BankBatchRowIn['dir'] = depositIn ? 'in' : 'out';
     let amount: number | null = depositIn ? deposit.v : withdrawal.v;
-    // 数でない欄がある・入金と出金の両方に金額がある・どちらも空 → 金額は読めない（0 にしない・片方を捨てない）
-    if ((!deposit.empty && deposit.v === null) || (!withdrawal.empty && withdrawal.v === null) || (depositIn && withdrawalOut) || amount === null) {
+    // 数でない欄がある・入金と出金の両方に金額がある・どちらも空か 0 → 金額は読めない（0 にしない・片方を捨てない）
+    if ((!deposit.empty && deposit.v === null) || (!withdrawal.empty && withdrawal.v === null) || depositIn === withdrawalOut) {
       amount = null;
       unread.push('amount');
     }
