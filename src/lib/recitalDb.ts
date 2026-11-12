@@ -2,7 +2,7 @@
 // DB は src/lib/db.ts 経由だけ（createClient を呼ばない）。名前と型の正本は
 // .superpowers/sdd/2026-11-12-bw6-recital-stage1/ref/split.md ③。
 // 記録の日時は UTC ISO（nowUtcIso）。設定の日時は JST 'YYYY-MM-DD HH:MM'。
-import { execute, getAll, getOne, withWriteTx } from '@/lib/db';
+import { batch, execute, getAll, getOne, withWriteTx } from '@/lib/db';
 import type { Transaction } from '@libsql/client';
 import { nowUtcIso } from '@/lib/dateJst';
 import {
@@ -18,6 +18,7 @@ import {
 } from '@/lib/recital';
 import { feeCheck, type FeeRule } from '@/lib/recitalFee';
 import type { MemberLite } from '@/lib/recitalMatch';
+import { recitalResetStatements } from '@/lib/recitalReset';
 
 // ---------- 型（各表の列そのまま） ----------
 
@@ -434,4 +435,24 @@ export async function logChangeTx(
       json(c.before), json(c.after), c.actor, c.reason ?? null, c.isException ? 1 : 0, nowUtcIso(),
     ],
   });
+}
+
+// ---------- テストデータを消す ----------
+
+/**
+ * 試しの発表会（is_test=1）のテストデータを消す。返り値は表の名前→消す前の数。
+ * is_test=0・無い発表会は文の中の守りで全部0になり、何も消さない。dryRun は数えるだけ。
+ * 設定・料金の規則・作品・事前登録は残す（消す表は recitalResetStatements が正本）。
+ */
+export async function resetTestEvent(eventKey: string, opts: { dryRun: boolean }): Promise<Record<string, number>> {
+  const stmts = recitalResetStatements(eventKey);
+  const counts: Record<string, number> = {};
+  for (const s of stmts) {
+    const row = await getOne(s.countSql, s.args);
+    counts[s.table] = Number(row?.n ?? 0);
+  }
+  if (!opts.dryRun) {
+    await batch(stmts.map((s) => ({ sql: s.deleteSql, args: s.args })), 'write');
+  }
+  return counts;
 }

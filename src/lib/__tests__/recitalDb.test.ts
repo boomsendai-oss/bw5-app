@@ -3,6 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { setupRecitalTestDb, seedRecitalTestEvent, seedHousehold } from './recitalTestSeed';
 import type { WorkInput } from '../recitalDb';
+import { recitalResetStatements } from '../recitalReset';
 
 await setupRecitalTestDb('db');
 const core = await import('../db');
@@ -221,5 +222,29 @@ describe('readMoneyViewTx と listWorkCounts', () => {
     const counts = await db.listWorkCounts('t-db-cnt');
     expect(counts.get(workIds.W01)).toEqual({ in: 2, maybe: 1, paid: 1, unpaid: 1, snsNg: true });
     expect(counts.get(workIds.W02)).toEqual({ in: 0, maybe: 0, paid: 0, unpaid: 0, snsNg: false });
+  });
+});
+
+describe('resetTestEvent', () => {
+  it('is_test=0 の発表会を渡すと何も消さない（全部0）', async () => {
+    await seedRecitalTestEvent('t-reset-live', { isTest: 0 });
+    const hid = await seedHousehold('t-reset-live', { total: 26500, cast: 'in' });
+    const r = await db.resetTestEvent('t-reset-live', { dryRun: false });
+    expect(Object.values(r).every((n) => n === 0)).toBe(true);
+    expect(await core.getOne('SELECT id FROM recital_households WHERE id=?', [hid])).not.toBeNull();
+  });
+  it('is_test=1 は入金〜変えた記録まで消し、設定・規則・作品・事前登録は残す／dryRun は数えるだけ', async () => {
+    await seedRecitalTestEvent('t-reset-test');
+    const hid = await seedHousehold('t-reset-test', { total: 26500, cast: 'in' });
+    await core.execute("INSERT INTO recital_payments (event_key, household_id, method, amount, paid_on, source, created_at) VALUES ('t-reset-test', ?, 'cash', 26500, '2026-12-21', 'manual', ?)", [hid, new Date().toISOString()]);
+    const dry = await db.resetTestEvent('t-reset-test', { dryRun: true });
+    expect(dry.recital_payments).toBe(1); expect(dry.recital_households).toBe(1);
+    expect(await core.getOne('SELECT id FROM recital_households WHERE id=?', [hid])).not.toBeNull();
+    await db.resetTestEvent('t-reset-test', { dryRun: false });
+    for (const t of ['recital_payments', 'recital_charges', 'recital_casts', 'recital_people', 'recital_households']) expect(Number((await core.getOne(`SELECT COUNT(*) n FROM ${t} WHERE event_key='t-reset-test'`)).n)).toBe(0);
+    for (const t of ['recital_settings', 'recital_fee_rules', 'recital_works']) expect(Number((await core.getOne(`SELECT COUNT(*) n FROM ${t} WHERE event_key='t-reset-test'`)).n)).toBeGreaterThan(0);
+  });
+  it('消す順は 入金→返す分→開いている支払い→請求→出演→人→世帯→台帳→束→メール記録→変えた記録', () => {
+    expect(recitalResetStatements('x').map((s) => s.table)).toEqual(['recital_payments', 'recital_refunds', 'recital_checkouts', 'recital_charges', 'recital_casts', 'recital_people', 'recital_households', 'recital_bank_rows', 'recital_imports', 'recital_mail_log', 'recital_changes']);
   });
 });
