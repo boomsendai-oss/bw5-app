@@ -84,6 +84,23 @@ export async function sendEmail(opts: { to: string; subject: string; text?: stri
   });
 }
 
+/**
+ * 写し(BCC)を付けない送り口(BW6 発表会のメール。設計書 07 7-7)。送り方は sendEmail と同じで bcc だけ付けない。
+ * 鍵(GMAIL_APP_PASSWORD)が無ければ Error('mail_not_configured') を投げる(黙って return しない)。
+ * html を渡さないときは、text を HTML に直して(< > & などを逃がしてから改行を <br />)付ける。
+ * ⚠️ nodemailer の例外の文には宛先が入ることがある。呼ぶ側はその文をログや DB にそのまま書かない(R-18)。
+ */
+export async function sendEmailNoBcc(opts: { to: string; subject: string; text?: string; html?: string }): Promise<void> {
+  if (!transporter) throw new Error('mail_not_configured');
+  await transporter.sendMail({
+    from: FROM,
+    to: opts.to,
+    subject: opts.subject,
+    text: opts.text,
+    html: opts.html ?? (opts.text ? escapeHtml(opts.text).replace(/\n/g, '<br />') : undefined),
+  });
+}
+
 // 入金期限（固定）
 export const PAYMENT_DEADLINE_LABEL = '2026年5月12日(火) 15:00 まで';
 
