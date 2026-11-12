@@ -27,6 +27,21 @@ vi.mock('@/lib/db', async (importOriginal) => {
   };
 });
 
+// 番号を出す関数の差し込み口（番号切れ・ぶつかり続けを作る）。空のときは本物の pickRef を通す。
+const refFault = vi.hoisted(() => ({ mode: null as null | 'none' | { always: string } }));
+vi.mock('@/lib/recitalRef', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/recitalRef')>();
+  return {
+    ...real,
+    pickRef: (...a: Parameters<typeof real.pickRef>) => {
+      const m = refFault.mode;
+      if (m === 'none') return null;
+      if (m) return m.always;
+      return real.pickRef(...a);
+    },
+  };
+});
+
 await setupRecitalTestDb('entry');
 const core = await import('../db');
 const entry = await import('../recitalEntryDb');
@@ -34,7 +49,9 @@ const { workIds: W } = await seedRecitalTestEvent('t-entry');
 
 // 手元のファイル DB（libsql の file:）は、書き込みが同時に来ると2つ目が開始の時点で busy になり、
 // その接続が使えないまま残ってあとの書き込みが全部 busy になる（@libsql/client の作り）。
-// 本物の同時の試験は、12/8 の通し試しの前に Turso の試しの DB に向けて回す（そのとき TURSO_DATABASE_URL を libsql:// にする）。
+// 本物の同時の試験は、12/8 の通し試しの前に Turso の試しの DB に向けて回す：
+//   RECITAL_TEST_DB_URL=libsql://<試しの DB> RECITAL_TEST_DB_TOKEN=<鍵> npx vitest run src/lib/__tests__/recitalEntryDb.test.ts
+//   （setupRecitalTestDb がその DB に向ける。DB は消さないので毎回空の試しの DB を使う。本番の URL と同じなら止まる）
 const LOCAL_FILE_DB = (process.env.TURSO_DATABASE_URL ?? '').startsWith('file:');
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- 試験の呼び出しの記録は動的 */
@@ -97,6 +114,38 @@ it('書き込みが SQLITE_BUSY で失敗したら busy の断り（何も書か
   const r = await entry.submitEntry(s, NOW);
   expect(r.ok && r.replay).toBe(false);
   expect(Number((await core.getOne('SELECT COUNT(*) n FROM recital_households WHERE submit_key=?', [s.submitKey])).n)).toBe(1);
+});
+
+it('締切の直前に送り、締切のあとに同じ submit_key で押し直す → 1回目の結果・世帯は1つ', async () => {
+  const { workIds: C } = await seedRecitalTestEvent('t-entry-close');
+  const s = sub({ eventKey: 't-entry-close', people: [kid({ works: [{ workId: C.W01, status: 'in' }] })] });
+  const a = await entry.submitEntry(s, new Date('2027-01-31T14:59:00Z'));
+  expect(a.ok).toBe(true);
+  const b = await entry.submitEntry(s, new Date('2027-01-31T15:00:00Z'));
+  expect(b.ok && b.replay).toBe(true);
+  expect(b.ok && [b.householdId, b.refCode, b.token, b.total]).toEqual(a.ok && [a.householdId, a.refCode, a.token, a.total]);
+  expect(Number((await core.getOne('SELECT COUNT(*) n FROM recital_households WHERE submit_key=?', [s.submitKey])).n)).toBe(1);
+  // 新しい submit_key なら締切の断り
+  expect(await entry.submitEntry(sub({ eventKey: 't-entry-close', people: [kid({ works: [{ workId: C.W01, status: 'in' }] })] }), new Date('2027-01-31T15:00:00Z'))).toMatchObject({ ok: false, code: 'closed' });
+});
+
+it('整理番号が尽きた（pickRef が null）→ busy・何も書かない', async () => {
+  const s = sub();
+  refFault.mode = 'none';
+  try {
+    expect(await entry.submitEntry(s, NOW)).toMatchObject({ ok: false, code: 'busy' });
+  } finally { refFault.mode = null; }
+  expect(Number((await core.getOne('SELECT COUNT(*) n FROM recital_households WHERE submit_key=?', [s.submitKey])).n)).toBe(0);
+});
+
+it('整理番号が4回続けて一意に当たる → busy・何も書かない', async () => {
+  const first = await entry.submitEntry(sub(), NOW);
+  const s = sub();
+  refFault.mode = { always: first.ok ? first.refCode : '' };
+  try {
+    expect(await entry.submitEntry(s, NOW)).toMatchObject({ ok: false, code: 'busy' });
+  } finally { refFault.mode = null; }
+  expect(Number((await core.getOne('SELECT COUNT(*) n FROM recital_households WHERE submit_key=?', [s.submitKey])).n)).toBe(0);
 });
 
 it('seq の一意エラーも busy・ほかの例外は投げ直す', async () => {

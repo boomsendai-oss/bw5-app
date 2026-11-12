@@ -237,6 +237,12 @@ type TxOutcome =
   | { kind: 'created'; householdId: number; token: string; refCode: string; total: number; view: HouseholdView; personIds: number[] };
 
 export async function submitEntry(s: EntrySubmission, now: Date = new Date()): Promise<SubmitResult> {
+  if (typeof s.submitKey !== 'string' || !SUBMIT_KEY_RE.test(s.submitKey)) return fail('invalid');
+  // 同じ submit_key の2回目は、受付の状態・中身・同じ電話の確かめより先に1回目の結果を返す
+  // （締切のあとや作品の状態が変わったあとの押し直し、1回目の世帯に当たる same_phone で止めないため）
+  const prior = await getOne('SELECT id FROM recital_households WHERE submit_key = ?', [s.submitKey]);
+  if (prior) return replayResult(Number(prior.id));
+
   // 1. 受付の状態
   const event = await getRecitalEvent(s.eventKey);
   if (!event) return fail('invalid');
@@ -246,15 +252,10 @@ export async function submitEntry(s: EntrySubmission, now: Date = new Date()): P
   if (phase !== 'open') return fail(phase);
 
   // 2. 中身
-  if (typeof s.submitKey !== 'string' || !SUBMIT_KEY_RE.test(s.submitKey)) return fail('invalid');
   const today = todayJst(now);
   const works = new Map((await listWorks(s.eventKey)).map((w) => [Number(w.id), w]));
   const errors = validate(s, settings, works, today);
   if (Object.keys(errors).length > 0) return fail('invalid', errors);
-
-  // 同じ submit_key の2回目は、同じ電話・同じ人の確かめより先に1回目の結果を返す（1回目の世帯に当たって止まらないため）
-  const prior = await getOne('SELECT id FROM recital_households WHERE submit_key = ?', [s.submitKey]);
-  if (prior) return replayResult(Number(prior.id));
 
   // 3. 同じ電話・同じ人
   if (!s.confirmNotFamily && (await samePhoneExists(s.eventKey, s.contact.phone))) return fail('same_phone');
@@ -323,6 +324,10 @@ export async function submitEntry(s: EntrySubmission, now: Date = new Date()): P
           if (isRefConflict(e) && retry < 3) {
             used.add(pick);
             continue;
+          }
+          if (isRefConflict(e)) {
+            console.error(`[recital] 整理番号が4回続けてぶつかりました event=${s.eventKey}`);
+            throw new EntryBusyError('recital_entry:ref_conflict');
           }
           throw e;
         }

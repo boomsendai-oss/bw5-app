@@ -4,13 +4,42 @@
 import { readdirSync, readFileSync, rmSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 
-/** 試験用のファイル DB を作り直し、initDb と台帳SQLを全部（名前順に）流す。 */
+/** .env.local などに書かれた TURSO_DATABASE_URL（本番の向け先）。読めなければ空。 */
+function envFileDbUrls(): string[] {
+  const out: string[] = [];
+  for (const f of ['.env', '.env.local', '.env.production', '.env.production.local']) {
+    let text = '';
+    try { text = readFileSync(f, 'utf8'); } catch { continue; }
+    for (const line of text.split('\n')) {
+      const m = /^\s*(?:export\s+)?TURSO_DATABASE_URL\s*=\s*(.*)$/.exec(line);
+      if (m) out.push(m[1].trim().replace(/^['"]|['"]$/g, ''));
+    }
+  }
+  return out;
+}
+
+/**
+ * 試験用の DB を用意し、initDb と台帳SQLを全部（名前順に）流す。
+ * ふだんは ./data/test_recital_<name>.db を作り直す。
+ * RECITAL_TEST_DB_URL（と RECITAL_TEST_DB_TOKEN）があれば、その DB（Turso の試しの DB）に向ける。
+ * その DB は消さないので、毎回空の試しの DB を渡す。本番の向け先（TURSO_DATABASE_URL）と同じなら止める。
+ */
 export async function setupRecitalTestDb(name: string): Promise<void> {
-  const file = `./data/test_recital_${name}.db`;
-  process.env.TURSO_DATABASE_URL = `file:${file}`;
-  delete process.env.TURSO_AUTH_TOKEN;
-  delete process.env.SKIP_DB_INIT;
-  for (const s of ['', '-shm', '-wal']) { try { rmSync(file + s); } catch { /* 初回は無い */ } }
+  const remote = (process.env.RECITAL_TEST_DB_URL ?? '').trim();
+  if (remote !== '') {
+    const prod = [process.env.TURSO_DATABASE_URL ?? '', ...envFileDbUrls()].map((u) => u.trim()).filter((u) => u !== '');
+    if (prod.includes(remote)) throw new Error('setupRecitalTestDb: RECITAL_TEST_DB_URL が TURSO_DATABASE_URL（本番）と同じです');
+    process.env.TURSO_DATABASE_URL = remote;
+    if (process.env.RECITAL_TEST_DB_TOKEN) process.env.TURSO_AUTH_TOKEN = process.env.RECITAL_TEST_DB_TOKEN;
+    else delete process.env.TURSO_AUTH_TOKEN;
+    delete process.env.SKIP_DB_INIT;
+  } else {
+    const file = `./data/test_recital_${name}.db`;
+    process.env.TURSO_DATABASE_URL = `file:${file}`;
+    delete process.env.TURSO_AUTH_TOKEN;
+    delete process.env.SKIP_DB_INIT;
+    for (const s of ['', '-shm', '-wal']) { try { rmSync(file + s); } catch { /* 初回は無い */ } }
+  }
   const core = await import('../db');
   await core.initDb();
   const dir = 'scripts/migrations';
