@@ -3,6 +3,7 @@
 // 見る順は「出演なし」→ 世帯の言葉ごと（R-46）。期限は呼ぶ側が pay_due_override ?? pay_due を渡す。
 // 日付は日付と曜日だけで書く（決まり 5）。金額は yenJa、日付は jpDate／slashDate（recitalPublic.ts）。
 import type { HouseholdView, MoneySummary } from './recital';
+import { isIsoDate, shiftDays, todayJst } from './dateJst';
 import { jpDate, slashDate, yenJa } from './recitalPublic';
 
 export type MyTopInput = {
@@ -81,4 +82,46 @@ export function payAreaText(state: PayState, payOpenAt: string): string | null {
     case 'refund_hold': return 'お預かりしている分があります。スクールからご連絡します';
     default: return null;
   }
+}
+
+/** 金額の欄の字 → 1以上の整数（Task 23「振り込みました」）。NFKC にして `,`・`円`・空白を取る。ちがえば null */
+export function parseYenInput(x: string): number | null {
+  if (typeof x !== 'string') return null;
+  const t = x.normalize('NFKC').replace(/[,円\s]/g, '');
+  if (!/^\d+$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isSafeInteger(n) && n >= 1 ? n : null;
+}
+
+// ---------- お振込みのご案内と「振り込みました」（Task 23。D5 2-20・2-24） ----------
+
+/** '2027-02-10' → '2027年2月10日（水）'（ご案内の期限の形。曜日は weekdayJst で出す） */
+export function longJpDate(ymd: string): string {
+  return `${Number(ymd.slice(0, 4))}年${jpDate(ymd)}`;
+}
+
+/** 年末年始の1行。今日が休みの終わりの日（bank_rest_to）まで出す。日付が読めなければ出さない（K215。メールと同じ文） */
+export function bankRestLine(from: string, to: string, todayYmd: string): string | null {
+  if (!isIsoDate(from) || !isIsoDate(to)) return null;
+  if (todayYmd > to) return null;
+  return `${jpDate(from)}〜${jpDate(to)}のお振込みは、${jpDate(shiftDays(to, 1))}からじゅんに確認します。`;
+}
+
+/**
+ * 振込の進み（2-20「家庭の画面の状態」）：印があれば「◯月◯日 ご連絡を受けました」「確認中」
+ * （残りが印の金額より多ければ「お振込み ◯円（確認中）／のこり ◯円」も）。印が無く振込が当たっていれば「◯月◯日に ◯円を確認しました」。
+ * toldAt は押した時（UTC ISO）。日は JST の日付で書く。lastBank はいちばん新しい振込の入金（明細の日付と額）
+ */
+export function bankProgressLines(x: {
+  toldAt: string | null; toldAmount: number | null; remaining: number; lastBank: { date: string; amount: number } | null;
+}): string[] {
+  if (x.toldAt != null) {
+    const ms = Date.parse(x.toldAt);
+    const lines = [Number.isNaN(ms) ? 'ご連絡を受けました' : `${jpDate(todayJst(new Date(ms)))} ご連絡を受けました`, '確認中'];
+    const told = x.toldAmount ?? 0;
+    if (x.remaining > told) lines.push(`お振込み ${yenJa(told)}（確認中）／のこり ${yenJa(x.remaining - told)}`);
+    return lines;
+  }
+  if (x.lastBank && isIsoDate(x.lastBank.date)) return [`${jpDate(x.lastBank.date)}に ${yenJa(x.lastBank.amount)}を確認しました`];
+  return [];
 }

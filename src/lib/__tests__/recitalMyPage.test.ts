@@ -1,6 +1,6 @@
 // BW6 発表会（段階1）のマイページの文（recitalMyPage.ts・純）の試験。文の正本は設計書 04 4-2 マイページ。
 import { describe, it, expect } from 'vitest';
-import { myTopLines, closedNotice, nextTodos, payAreaText, type MyTopInput } from '../recitalMyPage';
+import { myTopLines, closedNotice, nextTodos, payAreaText, parseYenInput, longJpDate, bankRestLine, bankProgressLines, type MyTopInput } from '../recitalMyPage';
 
 const m = (total: number, paid: number) => ({ total, paid, remaining: Math.max(0, total - paid), overpaid: Math.max(0, paid - total) });
 const base: Omit<MyTopInput, 'view' | 'm'> = { hasIn: true, hasMaybe: false, payDue: '2027-02-10', todayYmd: '2026-12-20', changeClose: '2027-01-31 23:59', afterChangeClose: false, payMethod: null };
@@ -80,5 +80,46 @@ describe('払うの置き場の文（K224・K207）', () => {
     expect(payAreaText('refund_hold', '2026-12-15 12:00')).toBe('お預かりしている分があります。スクールからご連絡します');
     expect(payAreaText('hidden', '2026-12-15 12:00')).toBeNull();
     expect(payAreaText('show', '2026-12-15 12:00')).toBeNull();
+  });
+});
+
+describe('金額の欄の字（parseYenInput・Task 23）', () => {
+  it.each([['26,500', 26500], ['２６５００', 26500], ['26500円', 26500], [' 26500 ', 26500], ['0', null], ['', null], ['abc', null], ['-100', null], ['26500.5', null]] as const)(
+    '%s → %s',
+    (x, want) => expect(parseYenInput(x)).toBe(want),
+  );
+});
+
+describe('お振込みのご案内の差し込み（Task 23・D5 2-24）', () => {
+  it('期限は「2027年2月10日（水）」の形', () => {
+    expect(longJpDate('2027-02-10')).toBe('2027年2月10日（水）');
+  });
+  it('年末年始の1行は休みの終わりの日まで（K215）', () => {
+    const line = '12月30日（水）〜1月3日（日）のお振込みは、1月4日（月）からじゅんに確認します。';
+    expect(bankRestLine('2026-12-30', '2027-01-03', '2026-12-20')).toBe(line);
+    expect(bankRestLine('2026-12-30', '2027-01-03', '2027-01-03')).toBe(line);
+    expect(bankRestLine('2026-12-30', '2027-01-03', '2027-01-04')).toBeNull();
+    expect(bankRestLine('', '2027-01-03', '2026-12-20')).toBeNull();
+  });
+});
+
+describe('振込の進み（Task 23・D5 2-20 家庭の画面の状態）', () => {
+  it('印がある：ご連絡を受けた日（JST）と「確認中」', () => {
+    expect(bankProgressLines({ toldAt: '2026-12-20T16:00:00.000Z', toldAmount: 26500, remaining: 26500, lastBank: null })).toEqual([
+      '12月21日（月） ご連絡を受けました', '確認中',
+    ]);
+  });
+  it('確認の前に作品を足した：お振込み（確認中）とのこり', () => {
+    expect(bankProgressLines({ toldAt: '2026-12-20T03:00:00.000Z', toldAmount: 26500, remaining: 32500, lastBank: null })).toEqual([
+      '12月20日（日） ご連絡を受けました', '確認中', 'お振込み 26,500円（確認中）／のこり 6,000円',
+    ]);
+  });
+  it('印が閉じて振込が当たった：いちばん新しい振込の日と額', () => {
+    expect(bankProgressLines({ toldAt: null, toldAmount: null, remaining: 6000, lastBank: { date: '2026-12-21', amount: 26500 } })).toEqual([
+      '12月21日（月）に 26,500円を確認しました',
+    ]);
+  });
+  it('どちらも無ければ出さない', () => {
+    expect(bankProgressLines({ toldAt: null, toldAmount: null, remaining: 26500, lastBank: null })).toEqual([]);
   });
 });

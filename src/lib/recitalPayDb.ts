@@ -2,13 +2,13 @@
 // 決まりの正本は設計書 05 5-6（開いている支払いは世帯に1つまで・30分で切れる・開いた時と「払う」の時に Stripe に聞く）、
 // 04 4-2 の「払う」の表、決まり K55・K172・K194・K204・K207・K224、裁定 R-43・R-98。
 // 金額はいつもサーバで、その時の今の残り（印があれば 残り−印の金額）から出す。家庭から金額を受けない。
-// 22（Stripe の知らせ）・23（銀行振込）がこのファイルに足す。ログに名前・メールは出さない。金額は 22 の「額がちがう」の1行だけ（計画どおり）。
+// 22（Stripe の知らせ）・23（銀行振込を選ぶ・「振り込みました」）がこのファイルに足した。ログに名前・メールは出さない。金額は 22 の「額がちがう」の1行だけ（計画どおり）。
 import { execute, getOne, withWriteTx } from '@/lib/db';
-import { nowUtcIso, todayJst } from '@/lib/dateJst';
+import { isIsoDate, nowUtcIso, todayJst } from '@/lib/dateJst';
 import { payableAmount, payButtonState, payGate, recitalMyUrl } from '@/lib/recital';
-import { getRecitalSettings } from '@/lib/recitalDb';
+import { getRecitalSettings, logChangeTx } from '@/lib/recitalDb';
 import { requireHouseholdByToken } from '@/lib/recitalGuard';
-import { sendPaidMail } from '@/lib/recitalMail';
+import { maybeResendBankGuide, sendPaidMail } from '@/lib/recitalMail';
 import { notifyTaro } from '@/lib/notify';
 import { afterMoneyChanged, insertPaymentTx, readHouseholdMoney, readHouseholdMoneyTx } from '@/lib/recitalMoneyDb';
 import {
@@ -279,6 +279,94 @@ export async function startCardPayment(
     throw busy();
   }
   return { url: session.url };
+}
+
+// ---------- 銀行振込（Task 23） ----------
+
+export type BankChooseResult = { ok: true } | { blocked: 'not_open' | 'no_bank_text' | 'nothing_due' };
+
+/**
+ * 「払う」で銀行振込を選ぶ（04 4-2・D5 2-24・K210）。鍵が open でない → not_open／bank_text が空 → no_bank_text／
+ * 払う額（印があれば 残り−印の金額）が0以下 → nothing_due。選べたら pay_method=bank にし、書き込みの外で
+ * 開いているカードの画面を切り、ご案内のメールを出す（同じ金額のご案内を続けて2回は出さないのは 10 の中）。鍵の合わない世帯は throw。
+ */
+export async function chooseBankTransfer(token: string): Promise<BankChooseResult> {
+  const d = await requireHouseholdByToken(token);
+  if (!d || d.household.status !== 'active') throw notFound();
+  const h = d.household;
+  const householdId = Number(h.id);
+  const s = await getRecitalSettings(h.event_key);
+  if (payGate(s, Date.now()) !== 'open') return { blocked: 'not_open' };
+  if (s.bank_text.trim() === '') return { blocked: 'no_bank_text' };
+  const hm = await readHouseholdMoney(householdId);
+  if (payableAmount(hm.m, hm.told) <= 0) return { blocked: 'nothing_due' };
+  await execute("UPDATE recital_households SET pay_method = 'bank' WHERE id = ? AND status = 'active'", [householdId]);
+  await expireOpenCheckout(householdId, 'bank_chosen');
+  try {
+    await maybeResendBankGuide(householdId);
+  } catch (e) {
+    // 払い方はもう変わっている。ご案内の画面はいつも出るので、メールの失敗はログだけ
+    console.error(`[recital] お振込みのご案内を出せませんでした household=${householdId}`, e instanceof Error ? e.message : String(e));
+  }
+  return { ok: true };
+}
+
+export type BankToldInput = { date: string; name: string; amount: number };
+
+/**
+ * 「振り込みました」の印（家庭・スタッフ。D5 2-20・K204）。形がおかしい入力（日の形・空白だけの名前・1以上の整数でない金額）と、
+ * 有効でない世帯は throw。今日（JST）より先の日 → future／残りが0 → nothing_due。
+ * 印が無ければ5列を入れる。あれば日・名前・金額だけ直す（押した時・だれが押したかは変えない）。
+ * 変えた記録には前とあとの { date, amount, by } だけを残す（名前は入れない。R-18）。書き込みの外で開いているカードの画面を切る。メールは出さない。
+ */
+export async function markBankTold(
+  householdId: number,
+  x: BankToldInput,
+  by: 'family' | 'staff',
+  actor: string,
+  now: Date = new Date(),
+): Promise<{ ok: boolean; code?: 'future' | 'nothing_due' }> {
+  if (!Number.isInteger(householdId)) throw new Error('recital_pay:bad_input');
+  if (!x || !isIsoDate(x.date)) throw new Error('recital_pay:bad_input');
+  if (typeof x.name !== 'string' || x.name.trim() === '') throw new Error('recital_pay:bad_input');
+  if (!Number.isInteger(x.amount) || x.amount < 1) throw new Error('recital_pay:bad_input');
+  if (by !== 'family' && by !== 'staff') throw new Error('recital_pay:bad_input');
+  if (typeof actor !== 'string' || actor.trim() === '') throw new Error('recital_pay:bad_input');
+  if (x.date > todayJst(now)) return { ok: false, code: 'future' };
+  const name = x.name.trim();
+
+  const r = await withWriteTx(async (tx) => {
+    const hr = await tx.execute({ sql: 'SELECT event_key, status FROM recital_households WHERE id = ?', args: [householdId] });
+    const h = hr.rows[0];
+    if (!h || String(h.status) !== 'active') throw new Error('recital_pay:bad_input');
+    const cur = await readHouseholdMoneyTx(tx, householdId);
+    if (cur.m.remaining <= 0) return { ok: false as const, code: 'nothing_due' as const };
+    let after: { date: string; amount: number; by: 'family' | 'staff' };
+    if (cur.told == null) {
+      await tx.execute({
+        sql: `UPDATE recital_households SET bank_told_at = ?, bank_told_date = ?, bank_told_name = ?, bank_told_amount = ?, bank_told_by = ?
+              WHERE id = ?`,
+        args: [nowUtcIso(now), x.date, name, x.amount, by, householdId],
+      });
+      after = { date: x.date, amount: x.amount, by };
+    } else {
+      await tx.execute({
+        sql: 'UPDATE recital_households SET bank_told_date = ?, bank_told_name = ?, bank_told_amount = ? WHERE id = ?',
+        args: [x.date, name, x.amount, householdId],
+      });
+      after = { date: x.date, amount: x.amount, by: cur.told.by };
+    }
+    await logChangeTx(tx, {
+      eventKey: String(h.event_key), householdId, action: 'bank_told', actor,
+      before: cur.told == null ? null : { date: cur.told.date, amount: cur.told.amount, by: cur.told.by },
+      after,
+    });
+    return { ok: true as const };
+  });
+  if (!r.ok) return r;
+  // 二重払いを止めるため、開いているカードの画面を切る（家庭が次に「カードで払う」を押せば、確かめのあと作り直す）
+  await expireOpenCheckout(householdId, 'bank_told');
+  return { ok: true };
 }
 
 // ---------- Stripe の知らせ（Task 22） ----------

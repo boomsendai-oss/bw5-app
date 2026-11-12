@@ -13,6 +13,8 @@ const mailMock = async (importActual: <T>() => Promise<T>) => {
   return {
     sendRecitalMail: vi.fn(async () => ({ status: 'sent', logId: 1 })),
     sendPaidMail: vi.fn(async (...a: Parameters<typeof actual.sendPaidMail>) => (mailMode.real ? actual.sendPaidMail(...a) : { status: 'none' })),
+    // 23 のご案内は本物（中の送る所も本物＝メールの鍵が無い試験環境では「失敗」で記録だけ残る）
+    maybeResendBankGuide: actual.maybeResendBankGuide,
   };
 };
 vi.mock('@/lib/recitalMail', (importActual) => mailMock(importActual));
@@ -30,7 +32,7 @@ const entry = await import('../recitalEntryDb');
 const money = await import('../recitalMoneyDb');
 const { insertPaymentTx, recordManualPayment, afterMoneyChanged } = money;
 const pay = await import('../recitalPayDb');
-const { startCardPayment, syncCardCheckout, applyRecitalWebhookEvent, handleRecitalWebhook } = pay;
+const { startCardPayment, syncCardCheckout, applyRecitalWebhookEvent, handleRecitalWebhook, chooseBankTransfer, markBankTold } = pay;
 const { notifyTaro } = await import('../notify');
 const { isMailConfigured } = await import('../email');
 
@@ -53,7 +55,7 @@ const FEE_RULES: [string, string, number, number | null, number, number, string]
 
 const workIdsOf: Record<string, number[]> = {};
 
-async function seedPayEvent(eventKey: string, stripeMode: 'test' | 'live', opts: { payOk?: boolean } = {}): Promise<void> {
+async function seedPayEvent(eventKey: string, stripeMode: 'test' | 'live', opts: { payOk?: boolean; bankText?: string } = {}): Promise<void> {
   const now = nowUtcIso();
   await execute(
     'INSERT INTO recital_events (event_key, title, show_date, rehearsal_date, venue, is_test, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)',
@@ -62,7 +64,7 @@ async function seedPayEvent(eventKey: string, stripeMode: 'test' | 'live', opts:
   const settings: Record<string, string> = {
     entry_open_at: '2026-01-01 00:00', entry_close_at: '2099-01-31 23:59', change_close_at: '2099-01-31 23:59',
     pay_open_at: '2026-01-01 00:00', pay_due: '2099-02-10', suspended: '0', stripe_mode: stripeMode,
-    bank_text: '（試しの振込先）', test_mail_to: 'test@example.invalid', consent_items: '同意の文（試し）',
+    bank_text: opts.bankText ?? '（試しの振込先）', test_mail_to: 'test@example.invalid', consent_items: '同意の文（試し）',
   };
   if (opts.payOk !== false) settings.pay_ok_at = '2026-01-01 00:00';
   for (const [key, value] of Object.entries(settings)) {
@@ -115,12 +117,17 @@ async function seedOpenCheckout(hid: number, x: { sessionId: string; amount: num
   return Number(r.lastInsertRowid);
 }
 
-/** 2作品目を足す（applyHouseholdEdits。合計 32,500） */
-async function addWork(hid: number): Promise<void> {
+/** 2作品目を in／out にする（applyHouseholdEdits のあとに afterMoneyChanged(hid,'total')。8 が中で呼んでいても、2回目は同じ金額なので何も起きない） */
+async function setWork2(hid: number, status: 'in' | 'out', totalAfter: number): Promise<void> {
   const p = await core.getOne("SELECT id, event_key FROM recital_people WHERE household_id = ? AND status = 'active'", [hid]);
-  const r = await entry.applyHouseholdEdits(hid, [{ type: 'cast_set', personId: Number(p.id), workId: workIdsOf[String(p.event_key)][1], status: 'in' }], { actor: '試し', by: 'staff', reason: '試し' });
-  expect(r).toMatchObject({ ok: true, totalAfter: 32500 });
+  const r = await entry.applyHouseholdEdits(hid, [{ type: 'cast_set', personId: Number(p.id), workId: workIdsOf[String(p.event_key)][1], status }], { actor: '試し', by: 'staff', reason: '試し' });
+  expect(r).toMatchObject({ ok: true, totalAfter });
+  await afterMoneyChanged(hid, 'total');
 }
+/** 2作品目を足す（合計 32,500） */
+const addWork = (hid: number) => setWork2(hid, 'in', 32500);
+/** 2作品目をやめる（合計 26,500 にもどる） */
+const dropWork = (hid: number) => setWork2(hid, 'out', 26500);
 
 // ---------- Stripe の差しかえ ----------
 
@@ -179,6 +186,7 @@ async function checkout(sessionId: string) {
 await seedPayEvent('t-pay', 'test');
 await seedPayEvent('t-pay-closed', 'test', { payOk: false });
 await seedPayEvent('t-pay-live', 'live');
+await seedPayEvent('t-pay-nobank', 'test', { bankText: '' });
 
 // =====================================================================
 describe('Task 21 開いている支払い（作る・聞く・切る）', () => {
@@ -661,5 +669,128 @@ describe('Task 22 カードの知らせの記録', () => {
     expect((await payments(hid)).length + (await payments(h2)).length).toBe(1);
     expect(vi.mocked(notifyTaro)).toHaveBeenCalledTimes(1);
     expect(notifyCalls()).toContain('まとめ先をたどれませんでした');
+  });
+});
+
+// =====================================================================
+describe('Task 23 お振込みのご案内と「振り込みました」', () => {
+  let hid = 0;
+  let token = '';
+  let hid2 = 0;
+  beforeAll(async () => {
+    ({ hid, token } = await newHousehold());   // 合計 26,500・払い方は空・ご案内0通
+    ({ hid: hid2 } = await newHousehold());
+    // resetStripe() は呼ばない（決済の画面の番号 cs_test_<n> が前の describe の行とかぶるため）
+  });
+
+  async function guideKeys(h: number): Promise<string[]> {
+    const rows = await core.getAll("SELECT dedupe_key FROM recital_mail_log WHERE household_id = ? AND mail_kind = 'bank_guide' ORDER BY id", [h]);
+    return rows.map((r) => String(r.dedupe_key));
+  }
+  async function told(h: number) {
+    const r = await row(h);
+    return {
+      bank_told_at: r.bank_told_at, bank_told_date: r.bank_told_date, bank_told_name: r.bank_told_name,
+      bank_told_amount: r.bank_told_amount == null ? null : Number(r.bank_told_amount), bank_told_by: r.bank_told_by,
+    };
+  }
+  async function changes(h: number, action: string) {
+    const rows = await core.getAll('SELECT action, before_json, after_json, actor, reason FROM recital_changes WHERE household_id = ? AND action = ? ORDER BY id', [h, action]);
+    return rows.map((r) => ({ action: String(r.action), before_json: String(r.before_json), after_json: String(r.after_json), actor: String(r.actor), reason: r.reason }));
+  }
+
+  it('銀行振込を選ぶ：pay_method=bank・開いているカードの画面を切る・ご案内1通', async () => {
+    await startCardPayment(token, {});
+    expect(await chooseBankTransfer(token)).toEqual({ ok: true });
+    expect((await row(hid)).pay_method).toBe('bank');
+    expect(await openRows(hid)).toEqual([]);
+    expect(await guideKeys(hid)).toEqual([`bank_guide:${hid}:26500:1`]);
+  });
+  it('同じ金額で選び直してもご案内は増えない', async () => {
+    await chooseBankTransfer(token);
+    expect(await guideKeys(hid)).toHaveLength(1);
+  });
+  it('出し直しは合計が変わった時だけ（26,500→32,500→26,500 で3通）', async () => {
+    await addWork(hid);
+    await dropWork(hid);
+    expect(await guideKeys(hid)).toEqual([`bank_guide:${hid}:26500:1`, `bank_guide:${hid}:32500:2`, `bank_guide:${hid}:26500:3`]);
+  });
+  it('当てた・取り消しただけでは出さない', async () => {
+    await recordManualPayment(hid, { method: 'cash', amount: 1000, paidOn: '2026-12-20', memo: '試し' }, '試し');
+    await afterMoneyChanged(hid, 'payment');
+    expect(await guideKeys(hid)).toHaveLength(3);
+  });
+  it('カードの世帯は合計が変わってもご案内を出さない', async () => {
+    const { hid: h } = await newHousehold();
+    await execute("UPDATE recital_households SET pay_method = 'card' WHERE id = ?", [h]);
+    await addWork(h);
+    expect(await guideKeys(h)).toEqual([]);
+  });
+  it('bank_text が空なら選べない・メールも出ない', async () => {
+    const { hid: h, token: t } = await newHousehold('t-pay-nobank');
+    expect(await chooseBankTransfer(t)).toEqual({ blocked: 'no_bank_text' });
+    expect((await row(h)).pay_method).toBeNull();
+    expect(await guideKeys(h)).toEqual([]);
+  });
+  it('支払いの鍵が閉じていれば not_open', async () => {
+    const { hid: h, token: t } = await newHousehold('t-pay-closed');
+    expect(await chooseBankTransfer(t)).toEqual({ blocked: 'not_open' });
+    expect((await row(h)).pay_method).toBeNull();
+    expect(await guideKeys(h)).toEqual([]);
+  });
+  it('残り0なら nothing_due', async () => {
+    const { hid: h, token: t } = await newHousehold();
+    await recordManualPayment(h, { method: 'cash', amount: 26500, paidOn: '2026-12-20', memo: '' }, '試し');
+    expect(await chooseBankTransfer(t)).toEqual({ blocked: 'nothing_due' });
+    expect((await row(h)).pay_method).toBeNull();
+    expect(await guideKeys(h)).toEqual([]);
+  });
+  it('鍵が合わなければ throw', async () => {
+    await expect(chooseBankTransfer('0'.repeat(48))).rejects.toThrow();
+  });
+
+  const now = new Date('2026-12-20T03:00:00Z'); // JST 12/20 12:00
+  it('振り込みました：未来の日は不可', async () => {
+    expect(await markBankTold(hid2, { date: '2026-12-21', name: '4827 ヤマダ ハナコ', amount: 26500 }, 'family', 'family', now)).toEqual({ ok: false, code: 'future' });
+    expect((await told(hid2)).bank_told_at).toBeNull();
+  });
+  it('振り込みました：初めて押すと5つの列が入る', async () => {
+    expect(await markBankTold(hid2, { date: '2026-12-20', name: '4827 ヤマダ ハナコ', amount: 26500 }, 'family', 'family', now)).toEqual({ ok: true });
+    expect(await told(hid2)).toEqual({ bank_told_at: '2026-12-20T03:00:00.000Z', bank_told_date: '2026-12-20', bank_told_name: '4827 ヤマダ ハナコ', bank_told_amount: 26500, bank_told_by: 'family' });
+  });
+  it('押し直しは日・名前・金額だけ（押した時と、だれが押したかは変えない）・前の値は記録へ・名前は記録に入れない', async () => {
+    await markBankTold(hid2, { date: '2026-12-19', name: 'ヤマダ ハナコ', amount: 26000 }, 'staff', '試し', new Date('2026-12-21T01:00:00Z'));
+    expect(await told(hid2)).toMatchObject({ bank_told_at: '2026-12-20T03:00:00.000Z', bank_told_date: '2026-12-19', bank_told_name: 'ヤマダ ハナコ', bank_told_amount: 26000, bank_told_by: 'family' });
+    const logs = await changes(hid2, 'bank_told');
+    expect(logs).toHaveLength(2);
+    expect(JSON.parse(logs[0].before_json)).toBeNull();
+    expect(JSON.parse(logs[0].after_json)).toEqual({ date: '2026-12-20', amount: 26500, by: 'family' });
+    expect(JSON.parse(logs[1].before_json)).toEqual({ date: '2026-12-20', amount: 26500, by: 'family' });
+    expect(JSON.parse(logs[1].after_json)).toEqual({ date: '2026-12-19', amount: 26000, by: 'family' });
+    expect(logs.map((l) => l.actor)).toEqual(['family', '試し']);
+    expect(JSON.stringify(logs)).not.toContain('ヤマダ');
+  });
+  it('振り込みました：メールは出さない', async () => {
+    expect(await guideKeys(hid2)).toEqual([]);
+  });
+  it('振り込みました：残りが無ければ nothing_due', async () => {
+    const { hid: h } = await newHousehold();
+    await recordManualPayment(h, { method: 'cash', amount: 26500, paidOn: '2026-12-20', memo: '' }, '試し');
+    expect(await markBankTold(h, { date: '2026-12-20', name: '4827 ヤマダ ハナコ', amount: 26500 }, 'family', 'family', new Date('2026-12-20T03:00:00Z'))).toEqual({ ok: false, code: 'nothing_due' });
+    expect((await told(h)).bank_told_at).toBeNull();
+  });
+  it('振り込みました：0円・空の名前・日付の形ちがいは throw', async () => {
+    const { hid: h } = await newHousehold(); const now = new Date('2026-12-20T03:00:00Z');
+    await expect(markBankTold(h, { date: '2026-12-20', name: 'ヤマダ', amount: 0 }, 'family', 'family', now)).rejects.toThrow();
+    await expect(markBankTold(h, { date: '2026-12-20', name: '  ', amount: 26500 }, 'family', 'family', now)).rejects.toThrow();
+    await expect(markBankTold(h, { date: '12/20', name: 'ヤマダ', amount: 26500 }, 'family', 'family', now)).rejects.toThrow();
+    await expect(markBankTold(h, { date: '2026-12-20', name: 'ヤマダ', amount: 26500.5 }, 'family', 'family', now)).rejects.toThrow();
+    expect((await told(h)).bank_told_at).toBeNull();
+  });
+  it('振り込みましたで開いているカードの画面を切る', async () => {
+    const { hid: h, token: t } = await newHousehold();
+    await startCardPayment(t, {});
+    await markBankTold(h, { date: '2026-12-20', name: '4827 ヤマダ ハナコ', amount: 26500 }, 'family', 'family', new Date('2026-12-20T03:00:00Z'));
+    expect(await openRows(h)).toEqual([]);
   });
 });

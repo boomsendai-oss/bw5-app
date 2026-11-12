@@ -284,11 +284,10 @@ export async function recordManualPayment(
 // ---------- お金が変わったあと ----------
 
 /**
- * お金が変わったあとの仕事（21 がカードの作り直し、23 がご案内の出し直しを足す）。書き込み（withWriteTx）の中から呼ばない。
+ * お金が変わったあとの仕事（21 のカードの作り直し、23 のご案内の出し直し）。書き込み（withWriteTx）の中から呼ばない。
  * 失敗は console.error だけで、呼んだ操作は止めない（throw しない）。
  */
 export async function afterMoneyChanged(householdId: number, cause: 'total' | 'payment'): Promise<void> {
-  void cause;
   // カード（Task 21）：開いている支払いの額が今の払う額（0 も含む）とちがえば切る。新しい画面は、次に家庭が「払う」を押した時に作る
   try {
     const open = await getOne("SELECT amount FROM recital_checkouts WHERE household_id = ? AND status = 'open' ORDER BY id LIMIT 1", [householdId]);
@@ -302,6 +301,20 @@ export async function afterMoneyChanged(householdId: number, cause: 'total' | 'p
     }
   } catch (e) {
     console.error(`[recital] カードの決済の画面の作り直しに失敗しました household=${householdId}`, e instanceof Error ? e.message : String(e));
+  }
+  // 銀行振込（Task 23）：合計が変わった時だけ、振込を選んだ有効な世帯に、ご案内を新しい金額で出し直す（同じ金額なら出さないのは 10 の中）。
+  // 入金を当てた・取り消した（payment）では出さない（一部だけ当てたあとに2通にしない。D5 2-24）
+  if (cause === 'total') {
+    try {
+      const h = await getOne('SELECT pay_method, status FROM recital_households WHERE id = ?', [householdId]);
+      if (h && String(h.pay_method) === 'bank' && String(h.status) === 'active') {
+        // recitalMail はこのファイルを読むので、関数の中で読む
+        const { maybeResendBankGuide } = await import('./recitalMail');
+        await maybeResendBankGuide(householdId);
+      }
+    } catch (e) {
+      console.error(`[recital] お振込みのご案内の出し直しに失敗しました household=${householdId}`, e instanceof Error ? e.message : String(e));
+    }
   }
 }
 

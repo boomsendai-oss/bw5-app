@@ -3,22 +3,24 @@
 // 出すのはその世帯の申込の中身・金額・支払いの状態だけ。ほかの世帯の情報・作品ごとの名簿は出さない。
 // 電話・メール・生年月日・スタッフのメモ・メールの記録・変えた記録は、画面にもクライアントの部品にも渡さない（R-66）。
 // 文の正本は設計書 04 4-2「マイページ」。「払う」（PaySection・Task 21）は payState が show の時だけ MoneyBox の children に入れる。
+// 「お振込みのご案内」（Task 23）の金額・期限・振込先・名義の1行・年末年始の1行・振込の進みは、ここで今の値から作って渡す。
 // 開いている支払い（カードの決済の画面）がある世帯は、描く前に Stripe に聞いて合わせる。聞けなければ「ご入金を確認しています」で「払う」を出さない（R-98）。
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { getOne } from '@/lib/db';
 import { todayJst } from '@/lib/dateJst';
-import { canFamilyEdit, deadlineMs, entryPhase, householdViewLabel, payButtonState, payGate } from '@/lib/recital';
+import { canFamilyEdit, deadlineMs, entryPhase, householdViewLabel, payButtonState, payGate, payableAmount } from '@/lib/recital';
 import { getRecitalSettings, listWorks, type HouseholdDetail, type PersonRow } from '@/lib/recitalDb';
 import { markMyPageOpened } from '@/lib/recitalFamilyDb';
 import { requireHouseholdByToken } from '@/lib/recitalGuard';
 import { CARD_CHECKING_TEXT, CARD_PAID_RETURN_TEXT, syncCardCheckout } from '@/lib/recitalPayDb';
-import { closedNotice, myTopLines, nextTodos, payAreaText } from '@/lib/recitalMyPage';
+import { bankProgressLines, bankRestLine, closedNotice, longJpDate, myTopLines, nextTodos, payAreaText } from '@/lib/recitalMyPage';
 import { FAMILY_ADD_LINE, fiveLines } from '@/lib/recitalPublic';
 import { FiveLines } from '@/components/recital/FiveLines';
 import { MoneyBox } from '@/components/recital/MoneyBox';
 import { InstaEditor } from './InstaEditor';
+import type { BankGuideData } from './BankGuide';
 import { PaySection } from './PaySection';
 
 export const dynamic = 'force-dynamic';
@@ -87,7 +89,34 @@ async function loadMyPageState(d: HouseholdDetail, x: { checking: boolean }) {
   const todos = nextTodos({ payState: payShown ? 'show' : 'hidden', remaining: d.money.remaining, payDue, hasMaybe, canEditWorks: false, changeClose: settings.change_close_at });
   const closed = closedNotice({ afterChangeClose, remaining: d.money.remaining, payDue, changeClose: settings.change_close_at });
 
-  return { settings, workById, people, hasMaybe, phase, payState, lines, todos, closed };
+  return { settings, workById, people, hasMaybe, phase, payState, payDue, lines, todos, closed };
+}
+
+/** 「お振込みのご案内」の中身と振込の進み（Task 23・D5 2-20・2-24）。bank_text が空なら案内は null（銀行振込は選べない） */
+function bankViewOf(d: HouseholdDetail, bankText: string, payDue: string, restFrom: string, restTo: string) {
+  const h = d.household;
+  const told = h.bank_told_at == null ? null : { amount: Number(h.bank_told_amount ?? 0) };
+  const today = todayJst();
+  const kana = [h.contact_last_kana, h.contact_first_kana].filter((x) => x && x.trim() !== '').join(' ');
+  const guide: BankGuideData | null = bankText.trim() === ''
+    ? null
+    : {
+        amount: payableAmount(d.money, told),
+        payDueLong: longJpDate(payDue),
+        bankText,
+        refCode: h.ref_code,
+        nameLine: `${h.ref_code} ${kana}`.trim(),
+        restLine: bankRestLine(restFrom, restTo, today),
+      };
+  // いちばん新しい振込の入金（明細の日付と額）。印が閉じたあとの「◯月◯日に ◯円を確認しました」に使う
+  const lastBank = [...d.payments].reverse().find((p) => p.method === 'bank' && Number(p.amount) > 0) ?? null;
+  const progress = bankProgressLines({
+    toldAt: h.bank_told_at,
+    toldAmount: told ? told.amount : null,
+    remaining: d.money.remaining,
+    lastBank: lastBank ? { date: String(lastBank.bank_date ?? lastBank.paid_on), amount: Number(lastBank.amount) } : null,
+  });
+  return { guide, progress, today };
 }
 
 const CAST_LABEL: Record<string, string> = { in: '出る', maybe: '迷っている', out: 'やめた作品', passed: '見送り' };
@@ -140,7 +169,8 @@ export default async function Bw6MyPage({ searchParams }: { searchParams: Promis
   }
   const d = reread ?? first;
   const h = d.household;
-  const { settings, workById, people, hasMaybe, phase, payState, lines, todos, closed } = await loadMyPageState(d, { checking });
+  const { settings, workById, people, hasMaybe, phase, payState, payDue, lines, todos, closed } = await loadMyPageState(d, { checking });
+  const bankView = bankViewOf(d, settings.bank_text, payDue, settings.bank_rest_from, settings.bank_rest_to);
   const showPaySection = payState === 'show' && !checking;
   const showChecking = checking && payState !== 'hidden';
   // 決済の画面から戻った（?paid=1）時の受付の文は、今の状態と合う時だけ（残りが無い・確認中）。
@@ -189,7 +219,15 @@ export default async function Bw6MyPage({ searchParams }: { searchParams: Promis
           <p className="rounded-xl border border-sand-300 bg-sand-100 px-4 py-3 text-base font-bold leading-relaxed text-navy-700">{CARD_PAID_RETURN_TEXT}</p>
         )}
         {showPaySection && (
-          <PaySection token={h.edit_token} remaining={d.money.remaining} toldAmount={h.bank_told_at == null ? null : Number(h.bank_told_amount ?? 0)} />
+          <PaySection
+            token={h.edit_token}
+            remaining={d.money.remaining}
+            toldAmount={h.bank_told_at == null ? null : Number(h.bank_told_amount ?? 0)}
+            bank={bankView.guide}
+            payMethod={h.pay_method}
+            progress={bankView.progress}
+            today={bankView.today}
+          />
         )}
       </MoneyBox>
 

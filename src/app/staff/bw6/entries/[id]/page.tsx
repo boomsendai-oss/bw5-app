@@ -1,7 +1,7 @@
 // スタッフ：BW6 発表会の世帯の画面（04 4-4）。上から：金額と状態／お支払い／中身（人と出演）／入金の行／返す分／送ったメール／変えた記録／ボタン。
 // 個人情報を出すので、proxy の cookie の確認に加えてセッションを本検証する（規約4.5）。
 // 発表会の設定は世帯の event_key で読む（?ev= は使わない）。鍵（edit_token）とメールアドレスは画面にも client の部品にも渡さない。
-// 「お支払い」の欄は StaffPaySection、入金の行は PaymentRows にまとめてある（23 が「振り込みましたの印を付ける」を StaffPaySection に、
+// 「お支払い」の欄は StaffPaySection、入金の行は PaymentRows にまとめてある（23 が「振り込みましたの印を付ける」を StaffPaySection に足した。
 // 28 が「この入金を取り消す」を PaymentRows の行の横に足す。家庭の部品 src/app/bw6/my/PaySection.tsx とは別の物）。
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
@@ -19,7 +19,7 @@ import {
 import CopyButtons from './CopyButtons';
 import HouseholdEditor from './HouseholdEditor';
 import type { CastValue, EditorContact, EditorPerson } from './editorModel';
-import MoneyButtons, { RefundCancelButton } from './MoneyButtons';
+import MoneyButtons, { BankToldButton, RefundCancelButton } from './MoneyButtons';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +48,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 const Empty = ({ children }: { children: React.ReactNode }) => <p className="text-sm text-sand-700">{children}</p>;
 
-/** 「お支払い」の欄（払い方と「振り込みました」の印）。23 はここに「振り込みましたの印を付ける」を足す */
+/** 「お支払い」の欄（払い方と「振り込みました」の印）。有効な世帯で残りがある間だけ「振り込みましたの印を付ける」（Task 23） */
 function StaffPaySection({ d }: { d: HouseholdDetail }) {
   const h = d.household;
   return (
@@ -69,6 +69,14 @@ function StaffPaySection({ d }: { d: HouseholdDetail }) {
           )}
         </dd>
       </dl>
+      {h.status === 'active' && d.money.remaining > 0 && (
+        <BankToldButton
+          householdId={h.id}
+          remaining={d.money.remaining}
+          toldAmount={h.bank_told_at == null ? null : Number(h.bank_told_amount ?? 0)}
+          today={todayJst()}
+        />
+      )}
     </Section>
   );
 }

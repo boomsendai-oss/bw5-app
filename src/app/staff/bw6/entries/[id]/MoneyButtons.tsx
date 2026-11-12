@@ -1,13 +1,14 @@
 'use client';
 
-// BW6 発表会のスタッフの世帯の画面のお金のボタン：「手で入金を記録」（現金／調整）と、返す分の行の「返す分を取り消す」。
+// BW6 発表会のスタッフの世帯の画面のお金のボタン：「手で入金を記録」（現金／調整）と、返す分の行の「返す分を取り消す」、
+// 「お支払い」の欄の「振り込みましたの印を付ける」（Task 23）。
 // 振込は選べない（「見てほしい入金」から当てる）。入金の記録は消さない。まちがいはマイナスの調整で打ち消す（5-6）。
 // 2段階＋名前を選ぶ（confirm() のダイアログは使わない）。入力欄は文字色と下地色を両方決める（CLAUDE.md 11）。
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import StaffNamePicker from '@/components/recital/StaffNamePicker';
 import { RECITAL_INPUT_CLS } from '@/components/recital/inputCls';
-import { cancelRefundAction, recordManualPaymentAction } from './actions';
+import { cancelRefundAction, markBankToldByStaffAction, recordManualPaymentAction } from './actions';
 
 const BTN_MAIN = 'rounded-lg bg-brand-600 px-4 py-2 font-bold text-white disabled:opacity-50';
 const BTN_SUB = 'rounded-lg border border-sand-300 bg-white px-4 py-2 text-navy-700 disabled:opacity-50';
@@ -182,6 +183,84 @@ export function RefundCancelButton({ householdId, refundId }: { householdId: num
           <button type="button" onClick={toConfirm} className={BTN_MAIN}>取り消す</button>
         ) : (
           <button type="button" onClick={go} disabled={pending} className={BTN_MAIN}>はい、この返す分を取り消す</button>
+        )}
+        <button type="button" onClick={close} disabled={pending} className={BTN_SUB}>やめる</button>
+      </div>
+      {error && <p className="text-sm font-bold text-red-700">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * 「振り込みましたの印を付ける」（Task 23・D5 2-20）。家庭の「振り込みました」と同じ3つの欄（お振込みの日・お名前・金額）＋名前を選ぶ・2段階。
+ * 初めの値：日＝今日・お名前＝空・金額＝今の残り（印があればその値）。印があるときは日・お名前・金額を直す（押した時・押した人は変わらない）。
+ */
+export function BankToldButton(props: { householdId: number; remaining: number; toldAmount: number | null; today: string }) {
+  const { householdId, remaining, toldAmount, today } = props;
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [date, setDate] = useState(today);
+  const [payer, setPayer] = useState('');
+  const [amountText, setAmountText] = useState(String(toldAmount ?? remaining));
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+  const [pending, startTransition] = useTransition();
+  const edit = <T,>(set: (v: T) => void) => (v: T) => { set(v); setConfirming(false); };
+  const close = () => { setOpen(false); setConfirming(false); setDate(today); setPayer(''); setAmountText(String(toldAmount ?? remaining)); setError(''); };
+  const amount = parseAmount(amountText);
+
+  const toConfirm = () => {
+    if (date === '' || date > today) { setError('日を確かめてください（先の日は入れられません）'); return; }
+    if (payer.trim() === '') { setError('お名前を入れてください'); return; }
+    if (!Number.isInteger(amount) || amount < 1) { setError('金額は1円以上の整数で入れてください'); return; }
+    if (!name) { setError('名前を選んでください'); return; }
+    setError('');
+    setConfirming(true);
+  };
+  const go = () => {
+    startTransition(async () => {
+      const r = await markBankToldByStaffAction(householdId, { date, name: payer, amount: amountText }, name);
+      if (!r.ok) { setError(r.error); setConfirming(false); return; }
+      close();
+      setMsg('印を付けました。ご家庭のマイページは「確認中」になります。');
+      router.refresh();
+    });
+  };
+
+  if (!open) {
+    return (
+      <div className="mt-3">
+        <button type="button" onClick={() => { setOpen(true); setMsg(''); }} className={BTN_SUB}>振り込みましたの印を付ける</button>
+        {msg && <p className="mt-2 text-sm font-bold text-navy-700">{msg}</p>}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-3 space-y-3 rounded-lg bg-sand-50 p-3 text-navy-700">
+      <h3 className="font-bold">振り込みましたの印を付ける</h3>
+      <p className="text-xs text-sand-700">公式LINEで「振り込みました」と連絡が来たときに付けます。付けた日から3日は、催促が行きません。</p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <label className="block text-sm">
+          お振込みの日
+          <input type="date" value={date} max={today} onChange={(e) => edit(setDate)(e.target.value)} className={`${RECITAL_INPUT_CLS} mt-1`} />
+        </label>
+        <label className="block text-sm">
+          お名前（振込依頼人名）
+          <input type="text" value={payer} onChange={(e) => edit(setPayer)(e.target.value)} placeholder="4827 ヤマダ ハナコ" autoComplete="off" className={`${RECITAL_INPUT_CLS} mt-1`} />
+        </label>
+        <label className="block text-sm">
+          金額（円）
+          <input type="text" inputMode="numeric" value={amountText} onChange={(e) => edit(setAmountText)(e.target.value)} className={`${RECITAL_INPUT_CLS} mt-1`} />
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <StaffNamePicker value={name} onChange={edit(setName)} />
+        {!confirming ? (
+          <button type="button" onClick={toConfirm} className={BTN_MAIN}>印を付ける</button>
+        ) : (
+          <button type="button" onClick={go} disabled={pending} className={BTN_MAIN}>はい、{yen(amount)}の印を付ける</button>
         )}
         <button type="button" onClick={close} disabled={pending} className={BTN_SUB}>やめる</button>
       </div>

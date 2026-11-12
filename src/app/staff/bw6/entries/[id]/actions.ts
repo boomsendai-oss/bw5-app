@@ -13,6 +13,8 @@ import { applyHouseholdEdits, changeHouseholdEmail, type HouseholdEdit } from '@
 import { requireRecitalStaff } from '@/lib/recitalGuard';
 import { sendPaidMail, sendRecitalMail } from '@/lib/recitalMail';
 import { cancelRefund, readHouseholdMoney, recordManualPayment } from '@/lib/recitalMoneyDb';
+import { parseYenInput } from '@/lib/recitalMyPage';
+import { markBankTold } from '@/lib/recitalPayDb';
 import { EDIT_FAIL_LABEL, labelOf, mailStatusLabel } from '../../labels';
 import { editPreview, type EditPreview } from './editorModel';
 
@@ -181,6 +183,40 @@ export async function cancelRefundAction(householdId: number, refundId: number, 
     await cancelRefund(refundId, reason.trim(), staffName);
   } catch (e) {
     if (errMsg(e).includes('recital_money:')) return { ok: false, error: '取り消せませんでした（もう取り消したかもしれません）' };
+    throw e;
+  }
+  done(householdId);
+  return { ok: true };
+}
+
+/**
+ * 「振り込みましたの印を付ける」（Task 23・D5 2-20。公式LINEで「振り込みました」と連絡が来たとき、家庭の代わりに付ける）。
+ * 決まりは家庭の「振り込みました」と同じ（markBankTold。by=staff）：先の日は不可・残りがある間だけ・印があれば日・お名前・金額だけ直す。
+ * まとめた世帯は拒む。お名前・金額はログに出さない。
+ */
+export async function markBankToldByStaffAction(
+  householdId: number,
+  x: { date: string; name: string; amount: string },
+  staffName: string,
+): Promise<{ ok: true } | Fail> {
+  await requireRecitalStaff();
+  if (!isId(householdId)) return { ok: false, error: '世帯が見つかりません' };
+  if (!RECITAL_STAFF_NAMES.includes(staffName)) return { ok: false, error: NAME_ERROR };
+  if (!x || typeof x.date !== 'string' || typeof x.name !== 'string' || typeof x.amount !== 'string') return { ok: false, error: '入れた値を確かめてください' };
+  if (!isIsoDate(x.date)) return { ok: false, error: '日を確かめてください（先の日は入れられません）' };
+  if (isBlank(x.name)) return { ok: false, error: 'お名前を入れてください' };
+  const amount = parseYenInput(x.amount);
+  if (amount == null) return { ok: false, error: '金額は1円以上の整数で入れてください' };
+  const bad = await activeCheck(householdId);
+  if (bad) return { ok: false, error: bad };
+  try {
+    const r = await markBankTold(householdId, { date: x.date, name: x.name, amount }, 'staff', staffName);
+    if (!r.ok) {
+      return { ok: false, error: r.code === 'future' ? '日を確かめてください（先の日は入れられません）' : '残りが無いので、印は付けられません' };
+    }
+  } catch (e) {
+    const m = errMsg(e);
+    if (m.includes('recital_pay:bad_input')) return { ok: false, error: '入れた値を確かめてください' };
     throw e;
   }
   done(householdId);
