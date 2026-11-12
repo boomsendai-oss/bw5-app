@@ -9,6 +9,7 @@ import { isAuthorizedServer } from '@/lib/eventAuth';
 import { RECITAL_EVENT, pickStaffEventKey } from '@/lib/recital';
 import { countRecitalPeople, getRecitalEvent, getRecitalSettings, listAttention, searchHouseholds } from '@/lib/recitalDb';
 import AttentionList from './AttentionList';
+import { liveBanners } from './banners';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +52,7 @@ export default async function StaffBw6Page({ searchParams }: { searchParams: Pro
     q ? searchHouseholds(ev, q) : Promise.resolve([]),
   ]);
   const settingsHref = withEv('/staff/bw6/settings', ev);
+  const banners = liveBanners(settings);
 
   return (
     <div>
@@ -78,7 +80,7 @@ export default async function StaffBw6Page({ searchParams }: { searchParams: Pro
       <div className="mx-auto max-w-3xl space-y-5 p-4">
         {!isLive && (
           <p className="rounded-lg border border-navy-200 bg-navy-50 px-3 py-2 text-sm text-navy-700">
-            試しの発表会（{ev}）を見ています。ここの申込は本番の数字に入りません。
+            試しの発表会（{ev}）を見ています。ここの申込は本番の数字に入りません。人数は数えません。
           </p>
         )}
         {!event && (
@@ -86,13 +88,13 @@ export default async function StaffBw6Page({ searchParams }: { searchParams: Pro
             この発表会（{ev}）は、まだ作られていません。
           </p>
         )}
-        {isLive && settings.suspended && (
+        {isLive && banners.suspended && (
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
             まだ止めたままです（受付は開いていません）。
             <Link href={settingsHref} className="ml-1 font-bold underline">設定の画面へ</Link>
           </p>
         )}
-        {isLive && settings.pay_ok_at === null && (
+        {isLive && banners.payNotOpen && (
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
             支払いは、まだ開けていません。
             <Link href={settingsHref} className="ml-1 font-bold underline">設定の画面へ</Link>
