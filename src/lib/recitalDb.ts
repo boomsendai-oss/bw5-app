@@ -939,6 +939,69 @@ export async function searchHouseholds(eventKey: string, q: string): Promise<Hou
   return hits.slice(0, 20).map(toHit);
 }
 
+// ---------- 申込の一覧（Task 19） ----------
+
+/** 申込の一覧の1行。鍵（edit_token）・メール・電話は持たない */
+export type EntryListRow = {
+  id: number; refCode: string; contactName: string; peopleCount: number; worksCount: number;
+  total: number; paid: number; remaining: number; overpaid: number; view: HouseholdView;
+  mailOpened: boolean; bankTold: boolean; payMethod: string | null;
+};
+
+/**
+ * 申込の一覧。active の世帯だけ・新しい順（seq の大きい順）。表ごとに1回ずつ読んで JS で世帯ごとにまとめる（世帯ごとに引かない）。
+ * 人は active の人。worksCount は in・maybe で作品が dropped でない出演の数（active の人の分）。
+ * お金は readMoneyByHousehold（moneySummary）、見え方は householdView に、readMoneyViewTx と同じ材料（hasIn／hasMaybe）を渡す。
+ */
+export async function listEntryRows(eventKey: string): Promise<EntryListRow[]> {
+  const households = await getAll(
+    `SELECT id, ref_code, contact_last_name, contact_first_name, pay_method, mail_opened_at, bank_told_at
+     FROM recital_households WHERE event_key = ? AND status = 'active' ORDER BY seq DESC, id DESC`,
+    [eventKey],
+  );
+  const peopleCount = new Map<number, number>();
+  for (const p of await getAll("SELECT household_id FROM recital_people WHERE event_key = ? AND status = 'active' AND household_id IS NOT NULL", [eventKey])) {
+    const hid = Number(p.household_id);
+    peopleCount.set(hid, (peopleCount.get(hid) ?? 0) + 1);
+  }
+  const casts = new Map<number, { works: number; hasIn: boolean; hasMaybe: boolean }>();
+  for (const c of await getAll(
+    `SELECT p.household_id, c.status FROM recital_casts c
+     JOIN recital_people p ON p.id = c.person_id
+     JOIN recital_works w ON w.id = c.work_id
+     WHERE c.event_key = ? AND p.status = 'active' AND p.household_id IS NOT NULL AND w.status <> 'dropped' AND c.status IN ('in', 'maybe')`,
+    [eventKey],
+  )) {
+    const hid = Number(c.household_id);
+    const e = casts.get(hid) ?? { works: 0, hasIn: false, hasMaybe: false };
+    e.works++;
+    if (c.status === 'in') e.hasIn = true;
+    else e.hasMaybe = true;
+    casts.set(hid, e);
+  }
+  const money = await readMoneyByHousehold(eventKey);
+  return households.map((h) => {
+    const id = Number(h.id);
+    const m = money.get(id) ?? ZERO_MONEY;
+    const cc = casts.get(id) ?? { works: 0, hasIn: false, hasMaybe: false };
+    return {
+      id,
+      refCode: str(h.ref_code),
+      contactName: `${str(h.contact_last_name)} ${str(h.contact_first_name)}`.trim(),
+      peopleCount: peopleCount.get(id) ?? 0,
+      worksCount: cc.works,
+      total: m.total,
+      paid: m.paid,
+      remaining: m.remaining,
+      overpaid: m.overpaid,
+      view: householdView({ hasIn: cc.hasIn, hasMaybe: cc.hasMaybe, paid: m.paid, remaining: m.remaining }),
+      mailOpened: h.mail_opened_at != null,
+      bankTold: h.bank_told_at != null,
+      payMethod: h.pay_method == null ? null : String(h.pay_method),
+    };
+  });
+}
+
 // ---------- テストデータを消す ----------
 
 /**
