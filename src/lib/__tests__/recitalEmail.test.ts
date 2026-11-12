@@ -111,6 +111,23 @@ describe('buildRecitalMail', () => {
     expect(t).not.toContain('カード');
   });
 
+  it('宛名は「（名前）様」（空白を入れない）', () => {
+    for (const k of ['receipt', 'change', 'complete', 'extra_complete', 'remaining', 'bank_guide'] as const)
+      expect(buildRecitalMail(k, { ...D, change: CH }).text.startsWith('ヤマダ ハナコ様\n')).toBe(true);
+  });
+
+  it('申込完了のマイページの行に「お支払い」を出さない（まだ出ている物だけ・K221）', () => {
+    const paidM = { total: 32500, paid: 32500, remaining: 0, overpaid: 0 };
+    const c = buildRecitalMail('complete', { ...D, via: 'card', m: paidM, paid: { amount: 32500, dateLabel: '12月21日' }, paidTotal: 32500 }).text;
+    expect(c).toContain('■ マイページ（インスタはこちら）');
+    expect(c).not.toContain('■ マイページ（お支払い');
+    const z = buildRecitalMail('complete', { ...D, zeroComplete: true, chargeLines: [], m: { total: 0, paid: 0, remaining: 0, overpaid: 0 } }).text;
+    expect(z).toContain('■ マイページ（インスタはこちら）');
+    expect(z).not.toContain('■ マイページ（お支払い');
+    // 受付の控えは「お支払い」をそのまま出す
+    expect(buildRecitalMail('receipt', D).text).toContain('■ マイページ（お支払い、インスタはこちら）');
+  });
+
   it('世帯をまとめた時の変更の控えは「1つにまとめて」とまとめ先の整理番号を出す', () => {
     const t = buildRecitalMail('change', { ...D, change: { ...CH, merged: { intoRefCode: '5724' } } }).text;
     expect(t).toContain('5724');

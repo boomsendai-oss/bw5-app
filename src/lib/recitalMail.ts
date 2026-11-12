@@ -94,8 +94,21 @@ async function insertLog(
   }
 }
 
+/** 失敗にする。取った印（sent_at）も空に戻す */
 async function markFailed(logId: number, error: string): Promise<void> {
-  await execute("UPDATE recital_mail_log SET status = 'failed', error = ? WHERE id = ? AND status = 'waiting'", [error, logId]);
+  await execute("UPDATE recital_mail_log SET status = 'failed', error = ?, sent_at = NULL WHERE id = ? AND status = 'waiting'", [error, logId]);
+}
+
+/**
+ * 送る直前に行を取る（status は増やさず、sent_at を「取った」印に使う）。取れた1人だけが送る。
+ * 同時に2つの待ちを出す（2回押し・見回りとボタン）や、すぐ送る途中の行を待ちを出す側が拾うのを防ぐ。
+ */
+async function claimLog(logId: number, now: Date): Promise<boolean> {
+  const r = await execute(
+    "UPDATE recital_mail_log SET sent_at = ? WHERE id = ? AND status = 'waiting' AND sent_at IS NULL",
+    [nowUtcIso(now), logId],
+  );
+  return r.rowsAffected === 1;
 }
 
 /** 例外から残してよいのは code だけ（英数の短い物）。文は宛先を含むことがあるので残さない（R-18） */
@@ -295,14 +308,13 @@ async function buildMailData(
   };
 }
 
-// ---------- 送る（宛先の確かめから先。待ちを出す時もここを通る） ----------
+// ---------- 送る（宛先の確かめから先。待ちを出す時もここを通る。呼ぶ前に claimLog で行を取っておく） ----------
 
 async function deliver(
   row: { logId: number; kind: MailKind; householdId: number; dedupeKey: string | null },
   via: MailVia | undefined,
   now: Date,
-  onlyIfWaiting: boolean,
-): Promise<'sent' | 'failed' | 'skipped'> {
+): Promise<'sent' | 'failed'> {
   let to: string;
   let subject: string;
   let text: string;
@@ -324,11 +336,6 @@ async function deliver(
     const data = await buildMailData(row.kind, row.householdId, s, row.logId, row.dedupeKey, via, now);
     ({ subject, text } = buildRecitalMail(row.kind, data));
     bcc = s.mail_bcc_staff;
-    if (onlyIfWaiting) {
-      // 待ちを出す前に、取りやめ（入金の取り消し）や別の出し手が先に動いていないかを見直す
-      const cur = await getOne('SELECT status FROM recital_mail_log WHERE id = ?', [row.logId]);
-      if (!cur || cur.status !== 'waiting') return 'skipped';
-    }
     if (bcc) await sendEmail({ to, subject, text });
     else await sendEmailNoBcc({ to, subject, text });
   } catch (e) {
@@ -337,7 +344,7 @@ async function deliver(
     await markFailed(row.logId, err);
     return 'failed';
   }
-  await execute("UPDATE recital_mail_log SET status = 'sent', sent_at = ?, error = NULL WHERE id = ?", [nowUtcIso(now), row.logId]);
+  await execute("UPDATE recital_mail_log SET status = 'sent', sent_at = ?, error = NULL WHERE id = ? AND status = 'waiting'", [nowUtcIso(now), row.logId]);
   return 'sent';
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -359,8 +366,10 @@ export async function sendRecitalMail(
   if (duplicate) return { status: 'duplicate', logId };
   if (x.forceWait) return { status: 'waiting', logId };
   if (x.deferAtNight && !inSendWindow(now)) return { status: 'waiting', logId };
-  const r = await deliver({ logId, kind: x.kind, householdId: x.householdId, dedupeKey }, x.via, now, false);
-  return { status: r === 'skipped' ? 'waiting' : r, logId };
+  // 待ちにしないと決まったら、すぐ取る（送るまでの間に、待ちを出す側が同じ行を拾わないように）
+  if (!(await claimLog(logId, now))) return { status: 'waiting', logId };
+  const r = await deliver({ logId, kind: x.kind, householdId: x.householdId, dedupeKey }, x.via, now);
+  return { status: r, logId };
 }
 
 /**
@@ -404,11 +413,12 @@ export async function flushWaitingMails(eventKey: string, now: Date = new Date()
   const out = { sent: 0, failed: 0 };
   if (!inSendWindow(now)) return out;
   const rows = await getAll(
-    "SELECT id, household_id, mail_kind, dedupe_key FROM recital_mail_log WHERE event_key = ? AND status = 'waiting' ORDER BY id LIMIT ?",
+    "SELECT id, household_id, mail_kind, dedupe_key FROM recital_mail_log WHERE event_key = ? AND status = 'waiting' AND sent_at IS NULL ORDER BY id LIMIT ?",
     [eventKey, limit],
   );
   for (const r of rows) {
     const logId = Number(r.id);
+    if (!(await claimLog(logId, now))) continue; // ほかの出し手が先に取った・取りやめになった
     if (r.household_id == null) {
       await markFailed(logId, '世帯が無い');
       out.failed++;
@@ -418,10 +428,9 @@ export async function flushWaitingMails(eventKey: string, now: Date = new Date()
       { logId, kind: String(r.mail_kind) as MailKind, householdId: Number(r.household_id), dedupeKey: r.dedupe_key == null ? null : String(r.dedupe_key) },
       undefined,
       now,
-      true,
     );
     if (res === 'sent') out.sent++;
-    else if (res === 'failed') out.failed++;
+    else out.failed++;
   }
   return out;
 }
@@ -429,16 +438,16 @@ export async function flushWaitingMails(eventKey: string, now: Date = new Date()
 /** 入金を取り消したとき、その入金の待ちのメールを出さずに閉じる（取りやめ。K202） */
 export async function cancelWaitingMailsTx(tx: Transaction, paymentId: number): Promise<void> {
   await tx.execute({
-    sql: "UPDATE recital_mail_log SET status = 'cancelled' WHERE dedupe_key = ? AND status = 'waiting'",
+    sql: "UPDATE recital_mail_log SET status = 'cancelled' WHERE dedupe_key = ? AND status = 'waiting' AND sent_at IS NULL",
     args: ['bank_paid:' + paymentId],
   });
 }
 
-/** 今日（JST）の発表会のメールの数（sent＋failed。待ち・取りやめは数えない）。warn＝上限に近い（07 7-7） */
+/** 今日（JST）の発表会のメールの数（sent＋failed。待ち・取りやめは数えない）。送った日で数える（sent_at、無ければ created_at）。warn＝上限に近い（07 7-7） */
 export async function countRecitalMailsToday(now: Date = new Date()): Promise<{ count: number; warn: boolean }> {
   const start = jstToMs(todayJst(now));
   const r = await getOne(
-    "SELECT COUNT(*) AS n FROM recital_mail_log WHERE status IN ('sent', 'failed') AND created_at >= ? AND created_at < ?",
+    "SELECT COUNT(*) AS n FROM recital_mail_log WHERE status IN ('sent', 'failed') AND COALESCE(sent_at, created_at) >= ? AND COALESCE(sent_at, created_at) < ?",
     [new Date(start).toISOString(), new Date(start + 86_400_000).toISOString()],
   );
   const count = Number(r?.n ?? 0);

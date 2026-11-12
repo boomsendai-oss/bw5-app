@@ -52,7 +52,7 @@ function viaLabel(via: MailVia | undefined): string | null {
 }
 
 function head(d: RecitalMailData): string[] {
-  return [`${d.contactName} 様`, '', 'こんにちは、BOOMダンススクールです。'];
+  return [`${d.contactName}様`, '', 'こんにちは、BOOMダンススクールです。'];
 }
 
 function foot(): string[] {
@@ -76,8 +76,13 @@ function inLines(d: RecitalMailData): string[] {
   return d.people.filter((p) => p.inWorks.length > 0).map((p) => `　${p.name}：${p.inWorks.join('、')}`);
 }
 
-function mypageBlock(d: RecitalMailData, withItems: boolean): string[] {
-  return [withItems ? `■ マイページ（${d.mypageItems}はこちら）` : '■ マイページ', `　${d.myUrl}`];
+function mypageBlock(d: RecitalMailData, withItems: boolean, items: string = d.mypageItems): string[] {
+  return [withItems && items !== '' ? `■ マイページ（${items}はこちら）` : '■ マイページ', `　${d.myUrl}`];
+}
+
+/** 申込完了のメールは、もう払う物が無いので「お支払い」を出さない（まだ出ている物だけ。07 7-8 の見本・K221） */
+function itemsAfterComplete(d: RecitalMailData): string {
+  return d.mypageItems.split('、').map((x) => x.trim()).filter((x) => x !== '' && x !== 'お支払い').join('、');
 }
 
 function changeCloseLine(d: RecitalMailData): string {
@@ -156,7 +161,7 @@ function zeroCompleteText(d: RecitalMailData): string[] {
     '■ お申し込みの中身',
     ...applyLines(d),
     `■ 金額　${yen(0)}`,
-    ...mypageBlock(d, true),
+    ...mypageBlock(d, true, itemsAfterComplete(d)),
     '　このURLは、ご家族だけのものです。ほかの方に送らないでください。',
     changeCloseLine(d),
     ...foot(),
@@ -272,7 +277,7 @@ function completeText(d: RecitalMailData): string[] {
     ...inLines(d),
     `■ お支払い　${payLine(d.paidTotal ?? d.m.paid, d)}`,
     `　${NO_RETURN}`,
-    ...mypageBlock(d, true),
+    ...mypageBlock(d, true, itemsAfterComplete(d)),
     `■ 次のご連絡は、${d.nextContact}です。`,
     ...foot(),
   ];

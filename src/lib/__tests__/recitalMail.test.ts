@@ -151,6 +151,39 @@ it('flushWaitingMails は 8:00〜21:00 だけ待ちを出し、取りやめは�
   expect(lastCall().text).toContain('12月21日のお振込み 26,500円を確認しました。');
 });
 
+it('flushWaitingMails を同時に2回呼んでも、待ちの1通は1回だけ送る', async () => {
+  await seedRecitalTestEvent('t-mail-race');
+  const ids: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    const hid = await seedHousehold('t-mail-race', { total: 26500, cast: 'in' });
+    ids.push((await mail.sendRecitalMail({ kind: 'receipt', householdId: hid, deferAtNight: true }, at('2026-12-20 22:00'))).logId!);
+  }
+  sendEmailNoBcc.mockClear();
+  const [a, b] = await Promise.all([
+    mail.flushWaitingMails('t-mail-race', at('2026-12-21 08:00')),
+    mail.flushWaitingMails('t-mail-race', at('2026-12-21 08:00')),
+  ]);
+  expect(sendEmailNoBcc).toHaveBeenCalledTimes(3);
+  expect(a.sent + b.sent).toBe(3);
+  expect(a.failed + b.failed).toBe(0);
+  for (const id of ids) expect((await core.getOne('SELECT status s FROM recital_mail_log WHERE id = ?', [id])).s).toBe('sent');
+});
+
+it('すぐ送っている途中の行は、その間に動いた flushWaitingMails が送り直さない', async () => {
+  await seedRecitalTestEvent('t-mail-race2');
+  const hid = await seedHousehold('t-mail-race2', { total: 26500, cast: 'in' });
+  sendEmailNoBcc.mockClear();
+  let during: { sent: number; failed: number } | null = null;
+  sendEmailNoBcc.mockImplementationOnce(async () => {
+    during = await mail.flushWaitingMails('t-mail-race2', at('2026-12-20 10:00')); // SMTP を待っている間に待ちを出す
+  });
+  const r = await mail.sendRecitalMail({ kind: 'receipt', householdId: hid }, at('2026-12-20 10:00'));
+  expect(r.status).toBe('sent');
+  expect(during).toEqual({ sent: 0, failed: 0 });
+  expect(sendEmailNoBcc).toHaveBeenCalledTimes(1);
+  expect((await core.getOne('SELECT status s FROM recital_mail_log WHERE id = ?', [r.logId])).s).toBe('sent');
+});
+
 describe('sendPaidMail', () => {
   it('カードで残り0 → complete（カードの件名）', async () => {
     const hid = await seedHousehold('t-mail', { total: 26500, cast: 'in' });
@@ -292,4 +325,15 @@ it('変更の控え：前の控えより後の変えた記録から「変わっ�
   expect(c.text).toContain('■ 金額　26,500円 → 32,500円');
   expect(c.text).toContain('お支払いは、2月10日（水）までです。今すぐでも、あとからでも大丈夫です。');
   expect(c.text).not.toContain('TEST-BANK-TEXT');
+});
+
+it('countRecitalMailsToday：夜に待ちになって次の朝に出したメールは、出した日に数える', async () => {
+  await seedRecitalTestEvent('t-mail-day');
+  const hid = await seedHousehold('t-mail-day', { total: 26500, cast: 'in' });
+  await mail.sendRecitalMail({ kind: 'receipt', householdId: hid, deferAtNight: true }, at('2027-03-01 22:00'));
+  const before20 = (await mail.countRecitalMailsToday(at('2027-03-01 23:00'))).count;
+  const before21 = (await mail.countRecitalMailsToday(at('2027-03-02 12:00'))).count;
+  expect((await mail.flushWaitingMails('t-mail-day', at('2027-03-02 08:00'))).sent).toBe(1);
+  expect((await mail.countRecitalMailsToday(at('2027-03-01 23:00'))).count).toBe(before20);
+  expect((await mail.countRecitalMailsToday(at('2027-03-02 12:00'))).count).toBe(before21 + 1);
 });
