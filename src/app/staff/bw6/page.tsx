@@ -157,6 +157,8 @@ export default async function StaffBw6Page({ searchParams }: { searchParams: Pro
             { href: '/staff/bw6/works', label: '作品' },
             { href: '/staff/bw6/entries', label: '申込' },
             { href: '/staff/bw6/settings', label: '設定' },
+            { href: '/staff/bw6/bank', label: '見てほしい入金' },
+            { href: '/staff/bw6/bank/import', label: '入金の取り込み' },
           ].map((b) => (
             <Link
               key={b.href}

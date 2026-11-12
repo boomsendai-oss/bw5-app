@@ -1,7 +1,7 @@
 // BW6 発表会（段階1）の recitalBankDb.ts（束を入れる・自動で当てる）の試験（実 DB・試験用のファイル DB）。Task 27。
 // 自分の t-bank-* の発表会だけを見る（種の bw6-test の行を数に入れない）。名前・番号はすべて作り物。
 // メールの鍵を消してから読む（送れない時は 10 の「鍵が無い」で failed。夜の「待ち」の判定はその前に通る）。
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { setupRecitalTestDb } from './recitalTestSeed';
 import type { BankBatchIn, BankBatchRowIn } from '../recitalBankBatch';
@@ -917,5 +917,42 @@ describe('getBankAskFacts', () => {
     expect(f.reviewCount).toBe(before + 1);
     expect(f.reviewCount).toBe((await listReviewRows(ev)).filter((x) => x.group !== 'closed').length);
     expect((await listReviewRows(ev)).some((x) => x.group === 'closed')).toBe(true);
+  });
+});
+
+// ---------- Task 29：見てほしい入金と、入金の取り込みの画面が読む2つ ----------
+const { listToldWaiting, listImports } = bankDb;
+
+describe('listToldWaiting（「振り込みました」のまま3日）', () => {
+  // 自分の発表会を2つ作る（27・28 の世帯は使わない）。休みの設定は 27 の seedEvent のまま（bank_rest_from 12/30・bank_rest_to 1/3）
+  const ev = 't-bank-told1', ev2 = 't-bank-told2'; let A = 0;
+  beforeAll(async () => {
+    await seedEvent(ev); A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    await execute(`UPDATE recital_households SET bank_told_at='2027-02-05T03:00:00.000Z', bank_told_date='2027-02-05', bank_told_amount=26500, bank_told_by='family' WHERE id=?`, [A]);
+    await seedEvent(ev2); const B = await seedHousehold(ev2, { ref: '4867', lastKana: 'スズキ', charges: [26500] });
+    await execute(`UPDATE recital_households SET bank_told_at='2026-12-29T03:00:00.000Z', bank_told_date='2026-12-29', bank_told_amount=26500, bank_told_by='family' WHERE id=?`, [B]);
+  });
+  it('2/5 に押した → 2/7 の朝は出ない、2/8 の朝に出る', async () => {
+    // bank_told_at = 2027-02-05T03:00:00Z（JST 2/5 昼）、残り 26,500
+    expect(await listToldWaiting(ev, new Date('2027-02-07T08:00:00+09:00'))).toHaveLength(0);
+    expect((await listToldWaiting(ev, new Date('2027-02-08T08:00:00+09:00'))).map((h) => h.id)).toEqual([A]);
+  });
+  it('12/30〜1/3 は数えない（12/29 に押した → 1/6 に出る）', async () => {
+    expect(await listToldWaiting(ev2, new Date('2027-01-05T08:00:00+09:00'))).toHaveLength(0);
+    expect(await listToldWaiting(ev2, new Date('2027-01-06T08:00:00+09:00'))).toHaveLength(1);
+  });
+  it('残りが 0 の世帯・印が閉じた世帯は出ない', async () => {
+    // ev の世帯 A に 26,500 の行を当てる（9 が印を閉じ、残りも 0）
+    await assignBankRow(await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' }), [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    expect(await listToldWaiting(ev, new Date('2027-02-08T08:00:00+09:00'))).toHaveLength(0);
+  });
+});
+describe('listImports', () => {
+  it('新しい順。dry の合わなかった行もふくむ', async () => {
+    const ev = 't-bank-imp'; await seedEvent(ev);
+    await ingestBankBatch(b(SAMPLE, { event_key: ev }), 'commit', 'test', new Date('2026-12-16T12:00:00+09:00'));
+    const bad = SAMPLE.map((x) => (x.pos === '1-1' ? { ...x, balance: 153001 } : x));
+    await ingestBankBatch(b(bad, { event_key: ev }), 'dry', 'test', new Date('2026-12-17T12:00:00+09:00'));
+    expect((await listImports(ev)).map((x) => x.check_result)).toEqual(['ng:12/16:26500', 'ok']);
   });
 });

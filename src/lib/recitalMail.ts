@@ -55,8 +55,8 @@ function hhmmToMin(s: string): number {
   return h * 60 + m;
 }
 
-/** JST の 8:00〜21:00（分でくらべる。21:00 ちょうどは中） */
-function inSendWindow(now: Date): boolean {
+/** JST の 8:00〜21:00（分でくらべる。21:00 ちょうどは中）。29 の「待ちのメールを、今出す」もこれで確かめる */
+export function inSendWindow(now: Date): boolean {
   const j = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const min = j.getUTCHours() * 60 + j.getUTCMinutes();
   return min >= hhmmToMin(MAIL_SEND_FROM) && min <= hhmmToMin(MAIL_SEND_UNTIL);

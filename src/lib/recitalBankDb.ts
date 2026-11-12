@@ -9,10 +9,10 @@
 import type { Transaction } from '@libsql/client';
 import { batch, getAll, getOne, withWriteTx } from '@/lib/db';
 import { nowUtcIso, shiftDays, todayJst } from '@/lib/dateJst';
-import { FIRST5_LIMIT, householdView, jstToMs, moneySummary, type RecitalSettings } from '@/lib/recital';
+import { FIRST5_LIMIT, bankToldWaitDue, householdView, jstToMs, moneySummary, type RecitalSettings } from '@/lib/recital';
 import { checkBatch, flagRows, normalizeBatch, type BankBatchIn, type LedgerRowLite, type NormRow } from '@/lib/recitalBankBatch';
 import { candidatesFor, decideRow, surnameMatches, type Candidate, type MatchHousehold, type MatchRow, type ReviewKind } from '@/lib/recitalBankMatch';
-import { getRecitalEvent, getRecitalSettings, logChangeTx } from '@/lib/recitalDb';
+import { getRecitalEvent, getRecitalSettings, logChangeTx, readMoneyByHousehold, type HouseholdRow } from '@/lib/recitalDb';
 import { cancelWaitingMailsTx, sendPaidMail } from '@/lib/recitalMail';
 import { afterMoneyChanged, insertPaymentTx, readHouseholdMoneyTx } from '@/lib/recitalMoneyDb';
 import { reversedBankPaymentIds } from '@/lib/recitalMyPage';
@@ -1222,5 +1222,42 @@ export async function cancelBankPayment(
   if (r.kind === 'refund_done') return { ok: false, code: 'refund_done' };
   await afterMoneyChanged(r.householdId, 'payment');
   return { ok: true };
+}
+
+// =====================================================================
+// Task 29：見てほしい入金と、入金の取り込みの画面が読む物。
+// =====================================================================
+
+/**
+ * 「振り込みました」のまま3日の世帯（2-20）。active で、印（bank_told_at・bank_told_amount）があり、残りが 0 より大きく、
+ * bankToldWaitDue（3日の数え方の正本。休みの日は数えない）が true の世帯。並びは bank_told_at の古い順。
+ * 最初の画面の見てほしいことの4番 (b) も、これを呼ぶ（条件を2か所に持たない）。
+ */
+export async function listToldWaiting(eventKey: string, now?: Date): Promise<HouseholdRow[]> {
+  const nowMs = (now ?? new Date()).getTime();
+  const hs = await getAll(
+    `SELECT * FROM recital_households
+     WHERE event_key = ? AND status = 'active' AND bank_told_at IS NOT NULL AND bank_told_amount IS NOT NULL
+     ORDER BY bank_told_at, id`,
+    [eventKey],
+  );
+  if (hs.length === 0) return [];
+  const s = await getRecitalSettings(eventKey);
+  const money = await readMoneyByHousehold(eventKey);
+  return hs
+    .filter((h) => (money.get(Number(h.id))?.remaining ?? 0) > 0 && bankToldWaitDue(String(h.bank_told_at), nowMs, s.bank_rest_from, s.bank_rest_to))
+    .map((h) => ({ ...h }) as HouseholdRow);
+}
+
+/** recital_imports の列そのまま */
+export type ImportRow = {
+  id: number; event_key: string; created_at: string; kind: string; read_rows: number; inserted: number; existing: number; rejected: number;
+  imported_by: string | null; imported_at: string | null; shot_on: string | null; range_from: string | null; range_to: string | null;
+  images: number | null; source: string | null; check_result: string | null;
+};
+
+/** その発表会の束の記録の全部（imported_at の新しい順。合わなかった束・dry の記録もふくむ） */
+export async function listImports(eventKey: string): Promise<ImportRow[]> {
+  return (await getAll('SELECT * FROM recital_imports WHERE event_key = ? ORDER BY imported_at DESC, id DESC', [eventKey])).map((r) => ({ ...r }) as ImportRow);
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

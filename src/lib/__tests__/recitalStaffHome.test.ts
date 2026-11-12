@@ -139,7 +139,8 @@ describe('listAttention', () => {
       [ev, new Date().toISOString()],
     );
     const h = await seedHousehold(ev, { people: [{ casts: [[w, 'in']] }], charges: [26500] });
-    await core.execute(`UPDATE recital_households SET bank_told_at='2027-02-05T01:00:00.000Z' WHERE id=?`, [h.householdId]);
+    // 印は本物の書き手（家庭の「振り込みました」・スタッフの代わりの印）と同じく、日時・日付・金額・だれをそろえて入れる（29 の listToldWaiting は金額も見る）
+    await core.execute(`UPDATE recital_households SET bank_told_at='2027-02-05T01:00:00.000Z', bank_told_date='2027-02-05', bank_told_amount=26500, bank_told_by='family' WHERE id=?`, [h.householdId]);
     const now = new Date('2027-02-08T08:00:00+09:00');
     expect((await db.listAttention(ev, now)).filter((i) => i.no === 4)).toHaveLength(0);
     await core.execute(`UPDATE recital_settings SET value='2026-12-14 10:00' WHERE event_key=? AND key='pay_ok_at'`, [ev]);

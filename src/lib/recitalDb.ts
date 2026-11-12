@@ -9,7 +9,6 @@ import {
   RECITAL_SETTING_DEFAULTS,
   RECITAL_SETTING_KEYS_LOCKED,
   RECITAL_STAFF_NAMES,
-  bankToldWaitDue,
   checkSettingValue,
   countPeople,
   householdView,
@@ -647,8 +646,11 @@ export async function logChangeTx(
 
 // ---------- スタッフの最初の画面（Task 16）：人数・見てほしいこと・探す ----------
 
-/** 発表会の世帯ごとのお金（式4行）。生きている請求・入金の全部・返す分 todo を、表ごとに1回だけ読む（世帯ごとに引かない） */
-async function readMoneyByHousehold(eventKey: string): Promise<Map<number, MoneySummary>> {
+/**
+ * 発表会の世帯ごとのお金（式4行）。生きている請求・入金の全部・返す分 todo を、表ごとに1回だけ読む（世帯ごとに引かない）。
+ * 29 の listToldWaiting（recitalBankDb）も、これで残りを読む。
+ */
+export async function readMoneyByHousehold(eventKey: string): Promise<Map<number, MoneySummary>> {
   const acc = new Map<number, { c: number[]; p: number[]; r: number[] }>();
   const at = (hid: number) => {
     let e = acc.get(hid);
@@ -822,18 +824,15 @@ export async function listAttention(eventKey: string, now?: Date): Promise<Atten
     }
   }
 
-  // 4番：入金（払うを開けた後だけ）。(a) は 28 の listReviewRows（closed でない行ごとに1件。条件を2か所に持たない）。
-  // (b) は 29 ができるまでの仮の書き方（29 が listToldWaiting に置きかえる）
+  // 4番：入金（払うを開けた後だけ）。(a) は 28 の listReviewRows（closed でない行ごとに1件）。
+  // (b) は 29 の listToldWaiting（世帯ごとに1件）。どちらも条件を2か所に持たない
   if (payGate(settings, nowMs) === 'open') {
     // recitalBankDb はこのファイルを読むので、関数の中で読む
-    const { listReviewRows } = await import('./recitalBankDb');
+    const { listReviewRows, listToldWaiting } = await import('./recitalBankDb');
     for (const r of (await listReviewRows(eventKey)).filter((x) => x.group !== 'closed')) {
       out.push({ no: 4, label: `見てほしい入金：${r.rowDate}`, href: BANK_HREF });
     }
-    for (const h of active) {
-      if (!h.bank_told_at) continue;
-      if ((money.get(Number(h.id)) ?? ZERO_MONEY).remaining <= 0) continue;
-      if (!bankToldWaitDue(h.bank_told_at, nowMs, settings.bank_rest_from, settings.bank_rest_to)) continue;
+    for (const h of await listToldWaiting(eventKey, new Date(nowMs))) {
       out.push({ no: 4, label: `『振り込みました』のまま3日：${h.ref_code}`, href: BANK_HREF, householdId: Number(h.id) });
     }
   }
