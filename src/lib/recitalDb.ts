@@ -222,6 +222,155 @@ export async function listFeeRules(eventKey: string): Promise<(FeeRule & { id: n
   }));
 }
 
+// ---------- 設定の画面（Task 18）：料金の規則を直す・特別な料金の事前登録・会員を探す ----------
+
+const FEE_ROLES: readonly string[] = ['first', 'family'];
+const FEE_ITEMS: readonly string[] = ['base', 'tshirt', 'coop_ticket', 'add_work'];
+const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
+
+/** 規則1行の形（03 3-4）。label は空にしない（請求の行の名前になるため） */
+function isFeeRuleShape(r: FeeRule): boolean {
+  if (!FEE_ROLES.includes(r.payer_role) || !FEE_ITEMS.includes(r.item_code)) return false;
+  if (!isInt(r.nth_from) || r.nth_from < 1) return false;
+  if (r.nth_to !== null && (!isInt(r.nth_to) || r.nth_to < r.nth_from)) return false;
+  if (!isInt(r.unit_amount) || r.unit_amount < 0) return false;
+  if (!isInt(r.qty) || r.qty < 1) return false;
+  if (typeof r.label !== 'string' || r.label.trim() === '') return false;
+  if (r.is_tentative !== 0 && r.is_tentative !== 1) return false;
+  return isInt(r.sort_order);
+}
+
+/** 同じ役・同じ種類で、何作品目の範囲（nth_to が空＝上は無し）が重なるか */
+function rangesOverlap(a: { nth_from: number; nth_to: number | null }, b: { nth_from: number; nth_to: number | null }): boolean {
+  const aTo = a.nth_to ?? Number.POSITIVE_INFINITY;
+  const bTo = b.nth_to ?? Number.POSITIVE_INFINITY;
+  return a.nth_from <= bTo && b.nth_from <= aTo;
+}
+
+/**
+ * 料金の規則を1行直す（id あり）／足す（id なし）。受付を開けたら変えない（03 3-4・決まり3）：
+ * suspended=0、その発表会に entry_opened の記録が1つでもある（止め直しても戻らない）、本番の発表会（is_test=0）に世帯が1つでもある、のどれかなら opened。
+ * 同じ役・同じ種類で範囲が重なる行は invalid（同じ人に2行が当たり、請求の行が入れかわり続けるのを防ぐ）。
+ */
+export async function saveFeeRule(
+  eventKey: string,
+  rule: FeeRule & { id?: number },
+  staffName: string,
+): Promise<{ ok: true; id: number } | { ok: false; code: 'opened' | 'invalid' }> {
+  if (!RECITAL_STAFF_NAMES.includes(staffName)) throw new Error('recital_fee_rule:staff_name');
+  return withWriteTx(async (tx) => {
+    const one = async (sql: string) => (await tx.execute({ sql, args: [eventKey] })).rows[0];
+    const sus = await one("SELECT value FROM recital_settings WHERE event_key = ? AND key = 'suspended'");
+    // 行が無いときは parseRecitalSettings と同じく「止めている」と読む
+    if (sus != null && String(sus.value) === '0') return { ok: false, code: 'opened' };
+    if (await one("SELECT 1 AS x FROM recital_changes WHERE event_key = ? AND action = 'entry_opened' LIMIT 1")) return { ok: false, code: 'opened' };
+    const ev = await one('SELECT is_test FROM recital_events WHERE event_key = ?');
+    if (ev != null && Number(ev.is_test) === 0 && (await one('SELECT 1 AS x FROM recital_households WHERE event_key = ? LIMIT 1'))) {
+      return { ok: false, code: 'opened' };
+    }
+
+    if (!isFeeRuleShape(rule)) return { ok: false, code: 'invalid' };
+    if (rule.id != null && !isInt(rule.id)) return { ok: false, code: 'invalid' };
+    const others = await tx.execute({
+      sql: 'SELECT id, payer_role, item_code, nth_from, nth_to FROM recital_fee_rules WHERE event_key = ?',
+      args: [eventKey],
+    });
+    if (rule.id != null && !others.rows.some((o) => Number(o.id) === rule.id)) return { ok: false, code: 'invalid' };
+    const clash = others.rows.some((o) =>
+      Number(o.id) !== rule.id && String(o.payer_role) === rule.payer_role && String(o.item_code) === rule.item_code
+      && rangesOverlap({ nth_from: Number(o.nth_from), nth_to: o.nth_to == null ? null : Number(o.nth_to) }, rule));
+    if (clash) return { ok: false, code: 'invalid' };
+
+    const fields = [rule.payer_role, rule.item_code, rule.nth_from, rule.nth_to, rule.unit_amount, rule.qty, rule.label.trim(), rule.is_tentative, rule.sort_order];
+    if (rule.id != null) {
+      await tx.execute({
+        sql: `UPDATE recital_fee_rules SET payer_role = ?, item_code = ?, nth_from = ?, nth_to = ?, unit_amount = ?, qty = ?, label = ?, is_tentative = ?, sort_order = ?
+              WHERE id = ? AND event_key = ?`,
+        args: [...fields, rule.id, eventKey],
+      });
+      return { ok: true, id: rule.id };
+    }
+    const r = await tx.execute({
+      sql: `INSERT INTO recital_fee_rules (payer_role, item_code, nth_from, nth_to, unit_amount, qty, label, is_tentative, sort_order, event_key, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [...fields, eventKey, nowUtcIso()],
+    });
+    return { ok: true, id: Number(r.lastInsertRowid) };
+  });
+}
+
+export type FeePresetRow = {
+  id: number; memberId: number; feeClass: 'no_coop' | 'tshirt_only' | 'free'; memo: string | null; createdBy: string; createdAt: string; member: MemberLite | null;
+};
+
+const PRESET_CLASSES: readonly string[] = ['no_coop', 'tshirt_only', 'free'];
+
+/** 事前登録の一覧（登録の順）。会員は loadMembersLite を1回だけ呼んで引き当てる（名前・カナ・生年月日はこの表に写さない。3-9） */
+export async function listFeePresets(eventKey: string): Promise<FeePresetRow[]> {
+  const [rows, members] = await Promise.all([
+    getAll('SELECT id, member_id, fee_class, memo, created_by, created_at FROM recital_fee_presets WHERE event_key = ? ORDER BY id', [eventKey]),
+    loadMembersLite(),
+  ]);
+  const byId = new Map(members.map((m) => [m.id, m]));
+  return rows.map((r) => ({
+    id: Number(r.id),
+    memberId: Number(r.member_id),
+    feeClass: String(r.fee_class) as FeePresetRow['feeClass'],
+    memo: r.memo == null ? null : String(r.memo),
+    createdBy: str(r.created_by),
+    createdAt: str(r.created_at),
+    member: byId.get(Number(r.member_id)) ?? null,
+  }));
+}
+
+/** 事前登録を入れる。同じ会員の行がもうあれば、種類とメモを直す（1人に1行）。もう申し込んだ人の印は変わらない（K226） */
+export async function saveFeePreset(
+  eventKey: string,
+  x: { memberId: number; feeClass: 'no_coop' | 'tshirt_only' | 'free'; memo: string | null },
+  staffName: string,
+): Promise<{ ok: true; id: number } | { ok: false; code: 'no_member' }> {
+  if (!RECITAL_STAFF_NAMES.includes(staffName)) throw new Error('recital_fee_preset:staff_name');
+  if (!PRESET_CLASSES.includes(x.feeClass)) throw new Error('recital_fee_preset:bad_class');
+  if (!isInt(x.memberId)) return { ok: false, code: 'no_member' };
+  const memo = x.memo == null || x.memo.trim() === '' ? null : x.memo.trim();
+  return withWriteTx(async (tx) => {
+    const m = await tx.execute({ sql: 'SELECT id FROM boom_members WHERE id = ?', args: [x.memberId] });
+    if (m.rows.length === 0) return { ok: false, code: 'no_member' };
+    const cur = await tx.execute({ sql: 'SELECT id FROM recital_fee_presets WHERE event_key = ? AND member_id = ?', args: [eventKey, x.memberId] });
+    if (cur.rows.length > 0) {
+      const id = Number(cur.rows[0].id);
+      await tx.execute({ sql: 'UPDATE recital_fee_presets SET fee_class = ?, memo = ? WHERE id = ? AND event_key = ?', args: [x.feeClass, memo, id, eventKey] });
+      return { ok: true, id };
+    }
+    const r = await tx.execute({
+      sql: 'INSERT INTO recital_fee_presets (event_key, member_id, fee_class, memo, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+      args: [eventKey, x.memberId, x.feeClass, memo, nowUtcIso(), staffName],
+    });
+    return { ok: true, id: Number(r.lastInsertRowid) };
+  });
+}
+
+/** 事前登録を消す（その発表会の行だけ）。もう申し込んだ人の印は変わらない（K226） */
+export async function deleteFeePreset(eventKey: string, id: number, staffName: string): Promise<void> {
+  if (!RECITAL_STAFF_NAMES.includes(staffName)) throw new Error('recital_fee_preset:staff_name');
+  await execute('DELETE FROM recital_fee_presets WHERE id = ? AND event_key = ?', [id, eventKey]);
+}
+
+/** 会員を探す（20 も使う）。カナ（normalizeKana どうし）か、氏名（空白をとった物どうし）の部分一致。20件まで */
+export async function searchMembers(q: string): Promise<MemberLite[]> {
+  const t = q.normalize('NFKC').replace(/[\s　]/g, '');
+  if (t === '') return [];
+  const kq = normalizeKana(t);
+  const hits: MemberLite[] = [];
+  for (const m of await loadMembersLite()) {
+    const kana = normalizeKana((m.fullNameKana ?? '').normalize('NFKC'));
+    const name = (m.fullName ?? '').normalize('NFKC').replace(/[\s　]/g, '');
+    if ((kq !== '' && kana.includes(kq)) || name.includes(t)) hits.push(m);
+    if (hits.length >= 20) break;
+  }
+  return hits;
+}
+
 /** 会員を照合の形に詰める（全タスク共通）。退会は withdrew のまま、休会（member_type='休会'）は leave。 */
 export async function loadMembersLite(): Promise<MemberLite[]> {
   const rows = await getAll('SELECT id, full_name, full_name_kana, birthday, status, member_type FROM boom_members');

@@ -273,6 +273,16 @@ function isHhmmStrict(s: string): boolean {
   return !!m && Number(m[1]) <= 23 && Number(m[2]) <= 59;
 }
 
+function isHttpsUrl(s: string): boolean {
+  if (s.length > 2000 || !/^https:\/\/\S+$/.test(s)) return false;
+  try {
+    const u = new URL(s);
+    return u.protocol === 'https:' && u.hostname !== '';
+  } catch {
+    return false;
+  }
+}
+
 function isJstDateTime(s: string): boolean {
   const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$/.exec(s);
   return !!m && isIsoDate(m[1]) && isHhmmStrict(m[2]);
@@ -324,6 +334,11 @@ export function checkSettingValue(key: string, value: string): string | null {
   if (key === 'test_mail_to') {
     if (value === '') return null;
     return value.split('@').length === 2 && !/\s/.test(value) ? null : 'メールアドレスの形で入れてください';
+  }
+  if (key === 'line_url') {
+    // 公開ページで href に出すので https:// だけ（javascript: などを入れさせない）。空は「受付を開ける」の line_empty で止まる
+    if (value === '') return null;
+    return isHttpsUrl(value) ? null : '「https://」で始まるURLを入れてください';
   }
   if (TEXT_KEYS.has(key)) {
     return [...value].length <= TEXT_MAX ? null : `${TEXT_MAX}字までにしてください`;
