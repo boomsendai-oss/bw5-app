@@ -4,7 +4,7 @@
 // 自動で当てるのは、番号・金額・姓が全部合う時だけ（番号の検査の数字が1けたの打ちまちがいを防ぐ）。
 // 姓が合うだけ・金額が合うだけでは当てない。ほかは「見てほしい入金」に回して候補を出す。
 import { FIRST5_LIMIT, type HouseholdView } from '@/lib/recital';
-import { isValidRef, REF_SEPARATORS } from '@/lib/recitalRef';
+import { escapeForClass, isValidRef, REF_SEPARATORS } from '@/lib/recitalRef';
 
 export type ReviewKind = 'unread' | 'manual' | 'no_ref' | 'bad_ref' | 'gone' | 'paid' | 'sum' | 'short' | 'over' | 'name' | 'first5';
 export type MatchHousehold = { id: number; refCode: string; status: 'active' | 'merged'; mergedInto: number | null; view: HouseholdView; remaining: number; totalBeforeLastDrop: number | null; surnamesKana: string[]; told: { date: string; name: string | null; amount: number } | null };
@@ -33,7 +33,6 @@ function norm(s: string): string {
     .replace(/[ー-]/g, '');
 }
 
-const escapeForClass = (s: string) => s.replace(/[\\\]\[^\-]/g, (ch) => `\\${ch}`);
 /** 「振り込みました」の名義の頭の番号と区切り（Task 4 の REF_SEPARATORS）と空白 */
 const TOLD_HEAD = new RegExp(`^[\\s]*\\d*[${escapeForClass(REF_SEPARATORS)}\\s]*`);
 
@@ -113,7 +112,8 @@ export function candidatesFor(row: MatchRow, all: MatchHousehold[]): { list: Can
   };
 
   // ref：状態は問わない。まとめた世帯なら、まとめた先の世帯にも
-  const refs = validRefsIn((row.refRead ?? '') + row.nameRaw);
+  // 間に数字でない区切りを入れる（番号と名義の頭の数字がつながって、ない番号の4けたができないように）
+  const refs = validRefsIn(`${row.refRead ?? ''} ${row.nameRaw}`);
   for (const h of all) {
     if (!refs.has(h.refCode)) continue;
     add(h.id, 'ref');

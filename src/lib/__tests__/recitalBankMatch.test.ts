@@ -96,6 +96,13 @@ describe('candidatesFor（K203）', () => {
     expect(c.list.find((x) => x.householdId === 5)?.why).toContain('ref');
     expect(c.list.find((x) => x.householdId === 6)?.why).toEqual(expect.arrayContaining(['ref', 'before_drop', 'surname']));
   });
+  it('番号と名義の頭の数字はつなげない（4823 と 4867 のつなぎ目の 2348 は ref にしない）', () => {
+    // 2348 は「4823」+「4867」のつなぎ目にだけ出る、検査に合う4けた（この試験のためだけの作り物の番号）
+    const S = H({ id: 7, refCode: '2348', surnamesKana: ['スズキ'], remaining: 32500 });
+    const c = candidatesFor(R({ refRead: '4823', nameRaw: '4867ヤマダハナコ' }), [H(), S]);
+    expect(c.list.find((x) => x.householdId === 7)).toBeUndefined();
+    expect(c.list.map((x) => x.householdId)).toEqual([1]);
+  });
   it('15 関係ない入金 → 候補0', () => expect(candidatesFor(R({ refRead: null, refOk: 0, nameRaw: 'カ)ナニカ', amount: 1234, remainingOfRow: 1234 }), [A, B]).list).toEqual([]));
 });
 

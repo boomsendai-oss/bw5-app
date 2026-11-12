@@ -45,7 +45,8 @@ export function pickRef(used: ReadonlySet<string>, skip: readonly string[], rand
   return free[Math.min(free.length - 1, Math.floor(rand() * free.length))];
 }
 
-const escapeForClass = (s: string) => s.replace(/[\\\]\[^\-]/g, (ch) => `\\${ch}`);
+/** 正規表現の [ ] の中に入れる文字を逃がす（26 の recitalBankMatch も import して使う） */
+export const escapeForClass = (s: string) => s.replace(/[\\\]\[^\-]/g, (ch) => `\\${ch}`);
 const REF_AT_HEAD = new RegExp(`^(\\d{4})(?!\\d)[${escapeForClass(REF_SEPARATORS)}]?`);
 
 /**
