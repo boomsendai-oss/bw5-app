@@ -820,4 +820,20 @@ describe('Task 23 お振込みのご案内と「振り込みました」', () =>
     await markBankTold(h, { date: '2026-12-20', name: '4827 ヤマダ ハナコ', amount: 26500 }, 'family', 'family', new Date('2026-12-20T03:00:00Z'));
     expect(await openRows(h)).toEqual([]);
   });
+  it('振り込みました（家庭）：支払いの鍵が閉じていれば not_open・何も書かない／スタッフは付けられる', async () => {
+    const { hid: h } = await newHousehold('t-pay-closed');
+    const now = new Date('2026-12-20T03:00:00Z');
+    expect(await markBankTold(h, { date: '2026-12-20', name: '4827 ヤマダ ハナコ', amount: 26500 }, 'family', 'family', now)).toEqual({ ok: false, code: 'not_open' });
+    expect((await told(h)).bank_told_at).toBeNull();
+    expect(await changes(h, 'bank_told')).toEqual([]);
+    expect(await markBankTold(h, { date: '2026-12-20', name: '4827 ヤマダ ハナコ', amount: 26500 }, 'staff', '試し', now)).toEqual({ ok: true });
+    expect((await told(h)).bank_told_by).toBe('staff');
+  });
+  it('振り込みました（家庭）：お預かりの世帯（refund_hold）は not_open', async () => {
+    const { hid: h } = await newHousehold();
+    await recordManualPayment(h, { method: 'cash', amount: 26500, paidOn: '2026-12-20', memo: '' }, '試し');
+    await withWriteTx((tx) => money.createRefundTx(tx, { householdId: h, amount: 26500, reasonNo: 4, reason: '試し', createdBy: '試し' }));
+    expect(await markBankTold(h, { date: '2026-12-20', name: '4827 ヤマダ ハナコ', amount: 26500 }, 'family', 'family', new Date('2026-12-20T03:00:00Z'))).toEqual({ ok: false, code: 'not_open' });
+    expect((await told(h)).bank_told_at).toBeNull();
+  });
 });

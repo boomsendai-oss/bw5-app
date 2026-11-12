@@ -95,4 +95,30 @@ describe('/api/cron/recital-morning', () => {
     expect(err.mock.calls.flat().join(' ')).not.toMatch(/example\.com/);
     err.mockRestore();
   });
+  it('1つの発表会の声かけが throw しても、ほかの発表会は続ける・500 にしない（ログは recital_ の決まった言葉だけ）', async () => {
+    vi.setSystemTime(new Date('2027-01-03T23:00:00Z'));   // JST 1/4 8:00
+    events([{ event_key: 'bw6', is_test: 0 }, { event_key: 'bw6-other', is_test: 0 }]);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.mocked(getBankAskFacts).mockRejectedValueOnce(new Error('db: ヤマダハナコ someone@example.com'));
+    const res = await POST(req('/api/cron/recital-morning', auth));
+    expect(res.status).toBe(200);
+    expect(getBankAskFacts).toHaveBeenCalledWith('bw6-other', expect.any(Date));
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(await res.json()).toEqual({ ok: true, sent: 4, failed: 2, asked: 1 });
+    expect(err).toHaveBeenCalled();
+    const logged = err.mock.calls.flat().join(' ');
+    expect(logged).not.toMatch(/example\.com|ヤマダ/);
+    err.mockRestore();
+  });
+  it('声かけの知らせが recital_ の決まった言葉で throw したら、その言葉はログに出す', async () => {
+    vi.setSystemTime(new Date('2027-01-03T23:00:00Z'));
+    events([{ event_key: 'bw6', is_test: 0 }]);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    notify.mockRejectedValueOnce(new Error('recital_notify:failed'));
+    const res = await POST(req('/api/cron/recital-morning', auth));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, sent: 2, failed: 1, asked: 0 });
+    expect(err.mock.calls.flat().join(' ')).toContain('recital_notify:failed');
+    err.mockRestore();
+  });
 });

@@ -7,7 +7,7 @@
 //
 // やること：
 //  1. 全部の発表会（試しの発表会も）で、夜に待たせた振込の確認メールを出す（flushWaitingMails。1回20通まで。発表会ごとに try/catch）。
-//  2. retry が無い時だけ、試しでない発表会で、休み明けの朝（bank_rest_to の次の日）なら TARO に1回声をかける。
+//  2. retry が無い時だけ、試しでない発表会で、休み明けの朝（bank_rest_to の次の日）なら TARO に1回声をかける（発表会ごとに try/catch）。
 // 毎朝の見回り（①・イ・②）は後の計画でここに足す。
 // 返す物とログに、名前・金額・宛先を入れない（返すのは数だけ）。
 import { NextRequest, NextResponse } from 'next/server';
@@ -51,14 +51,19 @@ async function handle(req: NextRequest) {
     const nowJst = nowJstOf(now);
     for (const r of rows.filter((x) => Number(x.is_test) === 0)) {
       const eventKey = String(r.event_key);
-      const s = await getRecitalSettings(eventKey);
-      if (!shouldAskTaro({ nowJst, slot: MORNING_SLOT, s, gate: payGate(s, now.getTime()), okBatchToday: false })) continue;
-      const f = await getBankAskFacts(eventKey, now);
-      await notifyTaro({
-        ...buildAskMessage({ startDate: f.startDate, lastShotOn: f.lastShotOn, reviewCount: f.reviewCount, url: BANK_URL, afterRest: true }),
-        subjectPrefix: '【BOOM】BW6',
-      });
-      asked++;
+      try {
+        const s = await getRecitalSettings(eventKey);
+        if (!shouldAskTaro({ nowJst, slot: MORNING_SLOT, s, gate: payGate(s, now.getTime()), okBatchToday: false })) continue;
+        const f = await getBankAskFacts(eventKey, now);
+        await notifyTaro({
+          ...buildAskMessage({ startDate: f.startDate, lastShotOn: f.lastShotOn, reviewCount: f.reviewCount, url: BANK_URL, afterRest: true }),
+          subjectPrefix: '【BOOM】BW6',
+        });
+        asked++;
+      } catch (e) {
+        // ほかの発表会は続ける（夜の入口と同じ）。エラーの文は中身を含むことがあるので、recital_ の決まった言葉のほかは出さない
+        console.error(`[recital-morning] 声かけできませんでした event=${eventKey}`, e instanceof Error && e.message.startsWith('recital_') ? e.message : 'error');
+      }
     }
   }
   return NextResponse.json({ ok: true, sent, failed, asked });

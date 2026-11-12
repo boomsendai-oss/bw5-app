@@ -26,6 +26,8 @@ import { PaySection } from './PaySection';
 import { WorkEditor, type WorkEditorPerson } from './WorkEditor';
 
 export const dynamic = 'force-dynamic';
+// この画面のボタンの処理（メール・お金が変わったあとの仕事）が、ふつうの時間で切れないように（Server Action はこの画面の時間を使う）
+export const maxDuration = 60;
 
 export const metadata: Metadata = {
   title: 'BW6 マイページ',

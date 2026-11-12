@@ -321,6 +321,7 @@ export const BANK_TOLD_NAME_MAX = 60;
 /**
  * 「振り込みました」の印（家庭・スタッフ。D5 2-20・K204）。形がおかしい入力（日の形・空白だけか60字をこえる名前・1以上の整数でない金額）と、
  * 有効でない世帯は throw。今日（JST）より先の日 → future／残りが0 → nothing_due。
+ * 家庭（by=family）は「払う」が出ている時だけ（chooseBankTransfer と同じ payButtonState が show でなければ not_open）。スタッフは鍵に関係なく付けられる。
  * 印が無ければ5列を入れる。あれば日・名前・金額だけ直す（押した時・だれが押したかは変えない）。
  * 変えた記録には前とあとの { date, amount, by } だけを残す（名前は入れない。R-18）。書き込みの外で開いているカードの画面を切る。メールは出さない。
  */
@@ -330,7 +331,7 @@ export async function markBankTold(
   by: 'family' | 'staff',
   actor: string,
   now: Date = new Date(),
-): Promise<{ ok: boolean; code?: 'future' | 'nothing_due' }> {
+): Promise<{ ok: boolean; code?: 'future' | 'nothing_due' | 'not_open' }> {
   if (!Number.isInteger(householdId)) throw new Error('recital_pay:bad_input');
   if (!x || !isIsoDate(x.date)) throw new Error('recital_pay:bad_input');
   if (typeof x.name !== 'string' || x.name.trim() === '') throw new Error('recital_pay:bad_input');
@@ -340,6 +341,13 @@ export async function markBankTold(
   if (typeof actor !== 'string' || actor.trim() === '') throw new Error('recital_pay:bad_input');
   if (x.date > todayJst(now)) return { ok: false, code: 'future' };
   const name = x.name.trim();
+  // 家庭の印は「払う」が出ている時だけ（鍵が open でない・お預かりの世帯は付けられない）。鍵は設定から、世帯のお金は書き込みの中で見る
+  let gate: ReturnType<typeof payGate> | null = null;
+  if (by === 'family') {
+    const ek = await getOne('SELECT event_key FROM recital_households WHERE id = ?', [householdId]);
+    if (!ek) throw new Error('recital_pay:bad_input');
+    gate = payGate(await getRecitalSettings(String(ek.event_key)), now.getTime());
+  }
 
   const r = await withWriteTx(async (tx) => {
     const hr = await tx.execute({ sql: 'SELECT event_key, status FROM recital_households WHERE id = ?', args: [householdId] });
@@ -347,6 +355,9 @@ export async function markBankTold(
     if (!h || String(h.status) !== 'active') throw new Error('recital_pay:bad_input');
     const cur = await readHouseholdMoneyTx(tx, householdId);
     if (cur.m.remaining <= 0) return { ok: false as const, code: 'nothing_due' as const };
+    if (gate != null && payButtonState({ gate, view: cur.view, m: cur.m, refundTodo: cur.refundTodo }) !== 'show') {
+      return { ok: false as const, code: 'not_open' as const };
+    }
     let after: { date: string; amount: number; by: 'family' | 'staff' };
     if (cur.told == null) {
       await tx.execute({

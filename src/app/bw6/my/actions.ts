@@ -60,6 +60,7 @@ export async function chooseBankAction(token: string): Promise<BankChooseResult 
 const TOLD_ERRORS = {
   future: 'お振込みの日に、今日より先の日は入れられません。',
   nothing_due: 'お支払いの残りはありません。',
+  not_open: 'いまは、お支払いの受付をしていません。',
 } as const;
 
 /**

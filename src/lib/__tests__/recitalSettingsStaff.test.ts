@@ -1,11 +1,15 @@
 // BW6 発表会（段階1）の設定の画面（Task 18）の DB の試験（実 DB・試験用のファイル DB ./data/test_recital_settings_staff.db）。
 // 料金の規則を直す（saveFeeRule）・特別な料金の事前登録（listFeePresets／saveFeePreset／deleteFeePreset）・会員を探す（searchMembers）。
 // 試験ごとに自分の発表会のキー（t-set-…）の行だけを見る。名前は「試験」などの仮の字だけ。
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { readdirSync, readFileSync, rmSync } from 'node:fs';
-import { RECITAL_STAFF_NAMES, checkSettingValue } from '../recital';
+import { RECITAL_EVENT, RECITAL_STAFF_NAMES, checkSettingValue } from '../recital';
 import { feeCheck } from '../recitalFee';
 import { seedEvent, seedRules, seedHousehold, seedMember } from './recitalStaffSeed';
+
+// 設定の画面の Server Action（openPayAction）を呼ぶ試験のため、ログインの確かめと revalidatePath だけ mock する
+vi.mock('@/lib/eventAuth', () => ({ isAuthorizedServer: async () => true }));
+vi.mock('next/cache', () => ({ revalidatePath: () => undefined }));
 
 const TEST_DB = './data/test_recital_settings_staff.db';
 process.env.TURSO_DATABASE_URL = `file:${TEST_DB}`;
@@ -177,5 +181,31 @@ describe('公式LINEのURL（line_url）は https:// だけ（公開ページで
     await expect(db.saveRecitalSetting('t-set-5', 'line_url', 'javascript:alert(1)', NAME)).rejects.toThrow();
     await db.saveRecitalSetting('t-set-5', 'line_url', 'https://lin.ee/abc', NAME);
     expect((await db.getRecitalSettings('t-set-5')).line_url).toBe('https://lin.ee/abc');
+  });
+});
+
+describe('支払いを開ける（openPayAction）：本番の発表会でカードが試しのモードなら開けない', () => {
+  const answers = { replied: true, smokeOk: true };
+  const payOkAt = async (ev: string) => (await db.getRecitalSettings(ev)).pay_ok_at;
+
+  it('本番（is_test=0）で stripe_mode=test は拒む・pay_ok_at は空のまま', async () => {
+    await seedEvent(RECITAL_EVENT.live, { settings: { stripe_mode: 'test', bank_text: '（試しの振込先）' } });
+    const act = await import('../../app/staff/bw6/settings/actions');
+    expect(await act.openPayAction(RECITAL_EVENT.live, answers, NAME)).toEqual({
+      ok: false, error: '本番の発表会なのに、カードが試しのモードです。開けられません。',
+    });
+    expect(await payOkAt(RECITAL_EVENT.live)).toBeNull();
+  });
+  it('本番で stripe_mode=live なら開けられる', async () => {
+    await core.execute("UPDATE recital_settings SET value = 'live' WHERE event_key = ? AND key = 'stripe_mode'", [RECITAL_EVENT.live]);
+    const act = await import('../../app/staff/bw6/settings/actions');
+    expect(await act.openPayAction(RECITAL_EVENT.live, answers, NAME)).toMatchObject({ ok: true });
+    expect(await payOkAt(RECITAL_EVENT.live)).not.toBeNull();
+  });
+  it('試しの発表会（is_test=1）は stripe_mode=test のままで開けられる', async () => {
+    await seedEvent(RECITAL_EVENT.smoke, { isTest: true, settings: { stripe_mode: 'test', bank_text: '（試しの振込先）' } });
+    const act = await import('../../app/staff/bw6/settings/actions');
+    expect(await act.openPayAction(RECITAL_EVENT.smoke, answers, NAME)).toMatchObject({ ok: true });
+    expect(await payOkAt(RECITAL_EVENT.smoke)).not.toBeNull();
   });
 });

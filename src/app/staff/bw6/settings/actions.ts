@@ -86,6 +86,7 @@ export async function suspendEntryAction(ev: string, staffName: string): Promise
 
 /**
  * 支払いを開ける（pay_ok_at を入れる。K224）。TARO の返事と本番の少額の試しの2つに印が要る。
+ * 本番の発表会（is_test=0）は stripe_mode が live でなければ拒む（試しのカードで払えたことにしない）。
  * 振込先（bank_text）が空の時は「カードだけで開けてよい」も要る（4-9・K210）。戻すボタンは作らない。
  */
 export async function openPayAction(
@@ -98,6 +99,11 @@ export async function openPayAction(
   const eventKey = pickStaffEventKey(ev);
   if (answers?.replied !== true || answers?.smokeOk !== true) return { ok: false, error: '2つの確かめに印を付けてください' };
   const s = await getRecitalSettings(eventKey);
+  // 本番の発表会（is_test=0。行が無い時も本番あつかい）で、カードが試しのモードのまま開けると、家庭が試しのカードで「払えた」になる
+  const event = await getRecitalEvent(eventKey);
+  if (event?.is_test !== 1 && s.stripe_mode !== 'live') {
+    return { ok: false, error: '本番の発表会なのに、カードが試しのモードです。開けられません。' };
+  }
   if (s.bank_text.trim() === '' && answers.cardOnlyOk !== true) {
     return { ok: false, error: '振込先（bank_text）が空です。「カードだけで開けてよい」にも印を付けてください' };
   }
