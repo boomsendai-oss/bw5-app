@@ -138,21 +138,27 @@ export default async function StaffBw6EntriesPage({ searchParams }: { searchPara
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-sand-100">
-                  {shown.map((r) => (
-                    <tr key={r.id} className="hover:bg-sand-50">
-                      <td className="px-3 py-2">
-                        <Link href={rowHref(r.id)} className="font-mono font-bold text-brand-700 underline">{r.refCode}</Link>
+                  {shown.map((r) => {
+                    // 行のどこを押しても世帯の画面へ（各セルの中身を block の Link にする。Tab で止まるのは整理番号だけ）
+                    const cell = (children: React.ReactNode, cls = '', focus = false) => (
+                      <td className="p-0">
+                        <Link href={rowHref(r.id)} tabIndex={focus ? undefined : -1} className={`block px-3 py-2 ${cls}`}>{children}</Link>
                       </td>
-                      <td className="px-3 py-2"><Link href={rowHref(r.id)}>{r.contactName}</Link></td>
-                      <td className="px-3 py-2 text-right">{r.peopleCount}</td>
-                      <td className="px-3 py-2 text-right">{r.worksCount}</td>
-                      <td className="px-3 py-2 text-right">{yen(r.total)}</td>
-                      <td className="px-3 py-2 text-right">{yen(r.paid)}</td>
-                      <td className="px-3 py-2 text-right font-bold">{yen(r.remaining)}</td>
-                      <td className="px-3 py-2">{householdViewLabel(r.view, r.remaining)}</td>
-                      <td className="px-3 py-2"><div className="flex flex-wrap gap-1"><Marks r={r} /></div></td>
-                    </tr>
-                  ))}
+                    );
+                    return (
+                      <tr key={r.id} className="cursor-pointer hover:bg-sand-50">
+                        {cell(r.refCode, 'font-mono font-bold text-brand-700 underline', true)}
+                        {cell(r.contactName)}
+                        {cell(r.peopleCount, 'text-right')}
+                        {cell(r.worksCount, 'text-right')}
+                        {cell(yen(r.total), 'text-right')}
+                        {cell(yen(r.paid), 'text-right')}
+                        {cell(yen(r.remaining), 'text-right font-bold')}
+                        {cell(householdViewLabel(r.view, r.remaining))}
+                        {cell(<span className="flex flex-wrap gap-1"><Marks r={r} /></span>)}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

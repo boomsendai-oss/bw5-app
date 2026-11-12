@@ -17,7 +17,8 @@ import {
   PAY_METHOD_EMPTY, PAY_METHOD_LABEL, REFUND_STATUS_LABEL, labelOf, mailStatusLabel,
 } from '../../labels';
 import CopyButtons from './CopyButtons';
-import HouseholdEditor, { type CastValue, type EditorContact, type EditorPerson } from './HouseholdEditor';
+import HouseholdEditor from './HouseholdEditor';
+import type { CastValue, EditorContact, EditorPerson } from './editorModel';
 import MoneyButtons, { RefundCancelButton } from './MoneyButtons';
 
 export const dynamic = 'force-dynamic';
@@ -297,10 +298,10 @@ export default async function StaffBw6HouseholdPage({ params }: { params: Promis
                 tshirtSizes={settings.tshirt_sizes}
               />
             ) : (
-              <Empty>この世帯は「{h.status}」なので、代わりに直すはできません。</Empty>
+              <Empty>この世帯は「{h.status}」なので、代わりに直す・手で入金を記録・控えを送り直す・メールアドレスを直すはできません。</Empty>
             )}
-            <MoneyButtons householdId={h.id} remaining={d.money.remaining} today={todayJst()} />
-            <CopyButtons householdId={h.id} refCode={h.ref_code} remaining={d.money.remaining} payDue={payDue} />
+            {h.status === 'active' && <MoneyButtons householdId={h.id} remaining={d.money.remaining} today={todayJst()} />}
+            <CopyButtons householdId={h.id} refCode={h.ref_code} remaining={d.money.remaining} payDue={payDue} active={h.status === 'active'} />
           </div>
         </Section>
       </div>

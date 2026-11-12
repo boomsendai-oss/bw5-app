@@ -45,12 +45,13 @@ function ManualCopy({ text }: { text: string }) {
   );
 }
 
-export default function CopyButtons(props: { householdId: number; refCode: string; remaining: number; payDue: string }) {
+/** active でない（まとめた）世帯では、控えの送り直しとメールアドレスの直しを出さない（サーバでも拒む） */
+export default function CopyButtons(props: { householdId: number; refCode: string; remaining: number; payDue: string; active: boolean }) {
   return (
     <div className="space-y-3">
       <MyUrlButton householdId={props.householdId} />
-      <ResendReceiptButton householdId={props.householdId} />
-      <ChangeEmailBox householdId={props.householdId} />
+      {props.active && <ResendReceiptButton householdId={props.householdId} />}
+      {props.active && <ChangeEmailBox householdId={props.householdId} />}
       <LineReplies refCode={props.refCode} remaining={props.remaining} payDue={props.payDue} />
     </div>
   );
@@ -137,7 +138,9 @@ function ChangeEmailBox({ householdId }: { householdId: number }) {
       const r = await changeEmailAction(householdId, email, name);
       if (!r.ok) { setError(r.error); setConfirming(false); return; }
       close();
-      setMsg('直しました。新しいアドレスへマイページのURLを送りました');
+      setMsg(r.mailSent
+        ? '直しました。新しいアドレスへマイページのURLを送りました'
+        : `直しました。新しいアドレスへのURLのメール：${r.mailStatus ?? '記録が見つかりません'}`);
       router.refresh();
     });
   };

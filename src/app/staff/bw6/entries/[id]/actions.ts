@@ -12,8 +12,9 @@ import { loadHouseholdDetail } from '@/lib/recitalDb';
 import { applyHouseholdEdits, changeHouseholdEmail, type HouseholdEdit } from '@/lib/recitalEntryDb';
 import { requireRecitalStaff } from '@/lib/recitalGuard';
 import { sendPaidMail, sendRecitalMail } from '@/lib/recitalMail';
-import { cancelRefund, recordManualPayment } from '@/lib/recitalMoneyDb';
-import { EDIT_FAIL_LABEL, labelOf } from '../../labels';
+import { cancelRefund, readHouseholdMoney, recordManualPayment } from '@/lib/recitalMoneyDb';
+import { EDIT_FAIL_LABEL, labelOf, mailStatusLabel } from '../../labels';
+import { editPreview, type EditPreview } from './editorModel';
 
 type Fail = { ok: false; error: string };
 
@@ -21,6 +22,15 @@ const NAME_ERROR = '名前を選んでください';
 const isId = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0;
 const isBlank = (s: unknown) => typeof s !== 'string' || s.trim() === '';
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+const NOT_ACTIVE = 'この世帯はまとめた（または有効でない）ので、できません';
+
+/** 世帯が active か（まとめた世帯にはお金・メールの操作をさせない）。無い・active でなければ失敗の文 */
+async function activeCheck(householdId: number): Promise<string | null> {
+  const d = await loadHouseholdDetail(householdId);
+  if (!d) return '世帯が見つかりません';
+  return d.household.status === 'active' ? null : NOT_ACTIVE;
+}
 
 function done(householdId: number): void {
   revalidatePath('/staff/bw6/entries/' + householdId);
@@ -35,14 +45,14 @@ function receivedAtToIso(v: string | null): string | null | undefined {
 }
 
 /**
- * 代わりに直す。dryRun なら書かずに合計と残りの前→あとだけを返す（K227。画面の「確かめる」）。
- * 理由が空なら拒む。家庭から聞いた日時は任意。
+ * 代わりに直す。dryRun なら書かずに、合計・残り・お支払いずみの分の前→あとと追加分を返す（K227。画面の「確かめる」）。
+ * 前→あとは今の払った額（readHouseholdMoney）と editPreview（式は moneySummary）で出す。理由が空なら拒む。家庭から聞いた日時は任意。
  */
 export async function editHouseholdAction(
   householdId: number,
   edits: HouseholdEdit[],
   x: { reason: string; receivedAtJst: string | null; staffName: string; dryRun?: boolean },
-): Promise<{ ok: true; totalBefore: number; totalAfter: number; remainingBefore: number | null; remainingAfter: number | null } | Fail> {
+): Promise<({ ok: true } & EditPreview) | Fail> {
   await requireRecitalStaff();
   if (!isId(householdId)) return { ok: false, error: EDIT_FAIL_LABEL.invalid };
   if (!RECITAL_STAFF_NAMES.includes(x?.staffName)) return { ok: false, error: NAME_ERROR };
@@ -51,18 +61,19 @@ export async function editHouseholdAction(
   if (receivedAt === undefined) return { ok: false, error: '日時を確かめてください' };
   if (!Array.isArray(edits) || edits.length === 0) return { ok: false, error: '変えた欄がありません' };
 
+  // 前→あとの「払った額」は、直す前に読む（直しのあとの仕事で返す分ができても、確かめの数が動かないように）
+  let paid: number;
+  try {
+    paid = (await readHouseholdMoney(householdId)).m.paid;
+  } catch {
+    return { ok: false, error: '世帯が見つかりません' };
+  }
   const r = await applyHouseholdEdits(householdId, edits, {
     actor: x.staffName, by: 'staff', reason: x.reason.trim(), receivedAt, dryRun: x.dryRun === true,
   });
   if (!r.ok) return { ok: false, error: labelOf(EDIT_FAIL_LABEL, r.code) };
   if (x.dryRun !== true) done(householdId);
-  return {
-    ok: true,
-    totalBefore: r.totalBefore,
-    totalAfter: r.totalAfter,
-    remainingBefore: 'remainingBefore' in r ? r.remainingBefore : null,
-    remainingAfter: 'remainingAfter' in r ? r.remainingAfter : null,
-  };
+  return { ok: true, ...editPreview(r.totalBefore, r.totalAfter, paid) };
 }
 
 /** マイページの URL（家庭向けのドメイン）。押した時だけ渡す（初めの HTML に鍵を入れない）。記録・ログに鍵を出さない */
@@ -78,6 +89,8 @@ export async function myPageUrlAction(householdId: number): Promise<{ url: strin
 export async function resendReceiptAction(householdId: number): Promise<{ ok: true; status: string } | Fail> {
   await requireRecitalStaff();
   if (!isId(householdId)) return { ok: false, error: '世帯が見つかりません' };
+  const bad = await activeCheck(householdId);
+  if (bad) return { ok: false, error: bad };
   try {
     const r = await sendRecitalMail({ kind: 'receipt', householdId });
     done(householdId);
@@ -88,13 +101,18 @@ export async function resendReceiptAction(householdId: number): Promise<{ ok: tr
   }
 }
 
-/** メールアドレスを直す（鍵も作り直す＝古い URL は使えない。新しいアドレスへの URL のメールは 8 が中で送る） */
-export async function changeEmailAction(householdId: number, email: string, staffName: string): Promise<{ ok: true } | Fail> {
+/**
+ * メールアドレスを直す（鍵も作り直す＝古い URL は使えない。新しいアドレスへの URL のメールは 8 が中で送る）。
+ * 返す mailStatus は、そのあとのいちばん新しい URL のメールの行の状態の言葉（送った・失敗など。行が無ければ null）。
+ */
+export async function changeEmailAction(householdId: number, email: string, staffName: string): Promise<{ ok: true; mailStatus: string | null; mailSent: boolean } | Fail> {
   await requireRecitalStaff();
   if (!isId(householdId)) return { ok: false, error: '世帯が見つかりません' };
   if (!RECITAL_STAFF_NAMES.includes(staffName)) return { ok: false, error: NAME_ERROR };
   const e = typeof email === 'string' ? email.trim() : '';
   if (e === '' || e.split('@').length !== 2 || /\s/.test(e)) return { ok: false, error: 'メールアドレスの形で入れてください' };
+  const bad = await activeCheck(householdId);
+  if (bad) return { ok: false, error: bad };
   try {
     await changeHouseholdEmail(householdId, e, staffName);
   } catch (err) {
@@ -105,18 +123,20 @@ export async function changeEmailAction(householdId: number, email: string, staf
     throw err;
   }
   done(householdId);
-  return { ok: true };
+  const mail = (await loadHouseholdDetail(householdId))?.mails.find((m) => m.mail_kind === 'resend_url') ?? null;
+  return { ok: true, mailStatus: mail ? mailStatusLabel(mail) : null, mailSent: mail?.status === 'sent' };
 }
 
 /**
  * 手で入金を記録（現金／調整だけ。振込は「見てほしい入金」から当てる）。決まりは 9 の recordManualPayment と同じ：
- * 現金は1以上の整数、調整は0でない整数でメモ必須。日は今日（JST）まで。afterMoneyChanged は中で呼ばれる。ここは sendPaidMail だけ。
+ * 現金は1以上の整数、調整は0でない整数でメモ必須。日は今日（JST）まで。まとめた世帯は拒む。afterMoneyChanged は中で呼ばれる。ここは sendPaidMail だけ。
+ * 返す mail は送ったメールの種類と状態（sent・waiting・failed・duplicate。送らなかった時は null）。
  */
 export async function recordManualPaymentAction(
   householdId: number,
   x: { method: 'cash' | 'adjust'; amount: number; paidOn: string; memo: string },
   staffName: string,
-): Promise<{ ok: true; mail: string | null } | Fail> {
+): Promise<{ ok: true; mail: { kind: string; status: string } | null } | Fail> {
   await requireRecitalStaff();
   if (!isId(householdId)) return { ok: false, error: '世帯が見つかりません' };
   if (!RECITAL_STAFF_NAMES.includes(staffName)) return { ok: false, error: NAME_ERROR };
@@ -126,6 +146,8 @@ export async function recordManualPaymentAction(
   if (!isIsoDate(x.paidOn) || x.paidOn > todayJst()) return { ok: false, error: '日を確かめてください（先の日は入れられません）' };
   const memo = typeof x.memo === 'string' ? x.memo.trim() : '';
   if (x.method === 'adjust' && memo === '') return { ok: false, error: '調整はメモを入れてください' };
+  const bad = await activeCheck(householdId);
+  if (bad) return { ok: false, error: bad };
 
   let paymentId: number;
   try {
@@ -139,7 +161,7 @@ export async function recordManualPaymentAction(
   done(householdId);
   try {
     const r = await sendPaidMail(householdId, paymentId, x.method);
-    return { ok: true, mail: 'kind' in r ? r.kind : null };
+    return { ok: true, mail: 'kind' in r ? { kind: r.kind, status: r.status } : null };
   } catch (e) {
     // 入金はもう記録できている。メールの失敗はログだけにして、記録は成り立ったと返す
     console.error(`[recital] 入金のあとのメールを送れませんでした household=${householdId}`, errMsg(e));

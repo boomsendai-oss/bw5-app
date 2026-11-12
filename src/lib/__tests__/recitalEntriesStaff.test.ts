@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readdirSync, readFileSync, rmSync } from 'node:fs';
 import { mailStatusLabel } from '../../app/staff/bw6/labels';
+import { buildEdits, editPreview, editorStateFrom, type EditorState } from '../../app/staff/bw6/entries/[id]/editorModel';
 import { seedEvent, seedHousehold, seedRules, seedWork } from './recitalStaffSeed';
 
 const TEST_DB = './data/test_recital_entries_staff.db';
@@ -72,5 +73,67 @@ describe('送ったメールの状態の言葉（Task 10 の申し送り）', ()
     expect(mailStatusLabel({ status: 'sent', sent_at: '2026-12-15T03:00:00.000Z' })).toBe('送った');
     expect(mailStatusLabel({ status: 'failed', sent_at: '2026-12-15T03:00:00.000Z' })).toBe('失敗');
     expect(mailStatusLabel({ status: 'cancelled', sent_at: null })).toBe('取りやめ');
+  });
+});
+
+describe('代わりに直すの差分（editorModel）', () => {
+  const props0: EditorState = {
+    people: [{
+      id: 1, last_name: '試験', first_name: '人1', last_kana: 'シケン', first_kana: 'ヒトイチ', birthday: '2015-05-05', display_name: '',
+      tshirt_size: 'S', insta_handle: '', name_ok: 1, photo_ok: 1, sns_ok: 1, staff_note: '',
+    }],
+    casts: { '1:10': 'in', '1:11': '' },
+    contact: { contact_last_name: '試験', contact_first_name: '試し', contact_last_kana: 'シケン', contact_first_kana: 'タメシ', phone: '09000000000', staff_note: '' },
+  };
+
+  it('2回続けて直しても、1回目の直しを戻す差分が出ない（開くたびに今の値から写し直す）', () => {
+    // 1回目：開く → 姓を直す
+    const base1 = editorStateFrom(props0);
+    const cur1 = editorStateFrom(base1);
+    cur1.people[0].last_name = '直した';
+    expect(base1.people[0].last_name).toBe('試験'); // 写しは中の物を共有しない
+    const edits1 = buildEdits(base1, cur1);
+    expect(edits1).toEqual([{ type: 'person', personId: 1, fields: { last_name: '直した' } }]);
+
+    // 書いたあと、画面は新しい値（props1）で描き直される
+    const props1: EditorState = { ...props0, people: [{ ...props0.people[0], last_name: '直した' }] };
+
+    // 2回目：開く（props1 から写し直す）→ Tシャツと出演を直す
+    const base2 = editorStateFrom(props1);
+    const cur2 = editorStateFrom(base2);
+    cur2.people[0].tshirt_size = 'M';
+    cur2.casts['1:11'] = 'maybe';
+    const edits2 = buildEdits(base2, cur2);
+    expect(edits2).toEqual([
+      { type: 'person', personId: 1, fields: { tshirt_size: 'M' } },
+      { type: 'cast_set', personId: 1, workId: 11, status: 'maybe' },
+    ]);
+    expect(JSON.stringify(edits2)).not.toContain('last_name');
+  });
+
+  it('何も変えなければ差分なし・空の Tシャツとインスタは null・連絡する人の欄', () => {
+    const base = editorStateFrom(props0);
+    expect(buildEdits(base, editorStateFrom(base))).toEqual([]);
+    const cur = editorStateFrom(base);
+    cur.people[0].tshirt_size = '';
+    cur.contact.phone = '09011112222';
+    expect(buildEdits(base, cur)).toEqual([
+      { type: 'person', personId: 1, fields: { tshirt_size: null } },
+      { type: 'contact', fields: { phone: '09011112222' } },
+    ]);
+  });
+});
+
+describe('書く前の確かめのお金（editPreview・K227）', () => {
+  it('合計が下がって、払った額が合計をこえる時は「お支払いずみの分」が増える', () => {
+    expect(editPreview(32500, 26500, 32500)).toEqual({
+      totalBefore: 32500, totalAfter: 26500, remainingBefore: 0, remainingAfter: 0, overpaidBefore: 0, overpaidAfter: 6000, extra: 0,
+    });
+  });
+  it('払ったあとに合計が上がると、追加分が出る', () => {
+    expect(editPreview(26500, 32500, 26500)).toMatchObject({ remainingBefore: 0, remainingAfter: 6000, overpaidBefore: 0, overpaidAfter: 0, extra: 6000 });
+  });
+  it('まだ払っていない時も、残りの増えた分が追加分', () => {
+    expect(editPreview(26500, 32500, 0)).toMatchObject({ remainingBefore: 26500, remainingAfter: 32500, extra: 6000 });
   });
 });

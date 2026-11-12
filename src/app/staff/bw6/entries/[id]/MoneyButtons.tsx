@@ -13,11 +13,24 @@ const BTN_MAIN = 'rounded-lg bg-brand-600 px-4 py-2 font-bold text-white disable
 const BTN_SUB = 'rounded-lg border border-sand-300 bg-white px-4 py-2 text-navy-700 disabled:opacity-50';
 const yen = (n: number) => `${n.toLocaleString('ja-JP')}円`;
 
-const PAID_MAIL_LABEL: Record<string, string> = {
-  complete: '「申込完了」のメールを送りました',
-  extra_complete: '「追加分のお支払い完了」のメールを送りました',
-  remaining: '「あと◯円のお知らせ」のメールを送りました',
+const PAID_MAIL_NAME: Record<string, string> = {
+  complete: '「申込完了」',
+  extra_complete: '「追加分のお支払い完了」',
+  remaining: '「あと◯円のお知らせ」',
 };
+const PAID_MAIL_STATUS: Record<string, string> = {
+  waiting: '待ち（あとで送られます）',
+  failed: '失敗（送れませんでした）',
+  duplicate: '重複（もう送ってあります）',
+};
+
+/** 入金のあとのメールの結果の文。「送りました」と言うのは sent の時だけ */
+function paidMailText(mail: { kind: string; status: string } | null): string {
+  if (!mail) return '';
+  const name = PAID_MAIL_NAME[mail.kind] ?? mail.kind;
+  if (mail.status === 'sent') return `${name}のメールを送りました。`;
+  return `${name}のメール：${PAID_MAIL_STATUS[mail.status] ?? mail.status}`;
+}
 
 /** 金額の欄の字 → 整数（調整はマイナスも）。読めなければ NaN */
 function parseAmount(s: string): number {
@@ -62,7 +75,7 @@ export default function MoneyButtons(props: { householdId: number; remaining: nu
       const r = await recordManualPaymentAction(householdId, { method, amount, paidOn, memo }, name);
       if (!r.ok) { setError(r.error); setConfirming(false); return; }
       reset();
-      setMsg(`記録しました。${r.mail ? PAID_MAIL_LABEL[r.mail] ?? '' : ''}`);
+      setMsg(`記録しました。${paidMailText(r.mail)}`);
       router.refresh();
     });
   };
