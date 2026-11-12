@@ -748,6 +748,26 @@ describe('Task 23 お振込みのご案内と「振り込みました」', () =>
   it('鍵が合わなければ throw', async () => {
     await expect(chooseBankTransfer('0'.repeat(48))).rejects.toThrow();
   });
+  it('お預かりの世帯（返す分 todo が残り以上＝refund_hold）は not_open', async () => {
+    const { hid: h, token: t } = await newHousehold();
+    // 払ったあとに返す分（todo）ができると、払った額が0にもどり、残り 26,500 ＝ 返す分 26,500（「払う」は refund_hold）
+    await recordManualPayment(h, { method: 'cash', amount: 26500, paidOn: '2026-12-20', memo: '' }, '試し');
+    await withWriteTx((tx) => money.createRefundTx(tx, { householdId: h, amount: 26500, reasonNo: 4, reason: '試し', createdBy: '試し' }));
+    expect(await money.readHouseholdMoney(h)).toMatchObject({ m: { remaining: 26500 }, refundTodo: 26500 });
+    expect(await chooseBankTransfer(t)).toEqual({ blocked: 'not_open' });
+    expect((await row(h)).pay_method).toBeNull();
+    expect(await guideKeys(h)).toEqual([]);
+  });
+  it('まとめた世帯は銀行振込を選べない（throw）・振り込みましたも付けられない（throw）', async () => {
+    const { hid: target } = await newHousehold();
+    const { hid: h, token: t } = await newHousehold();
+    await execute("UPDATE recital_households SET status = 'merged', merged_into = ? WHERE id = ?", [target, h]);
+    await expect(chooseBankTransfer(t)).rejects.toThrow();
+    await expect(markBankTold(h, { date: '2026-12-20', name: '4827 ヤマダ ハナコ', amount: 26500 }, 'family', 'family', new Date('2026-12-20T03:00:00Z'))).rejects.toThrow();
+    expect((await row(h)).pay_method).toBeNull();
+    expect((await told(h)).bank_told_at).toBeNull();
+    expect(await guideKeys(h)).toEqual([]);
+  });
 
   const now = new Date('2026-12-20T03:00:00Z'); // JST 12/20 12:00
   it('振り込みました：未来の日は不可', async () => {
@@ -786,6 +806,13 @@ describe('Task 23 お振込みのご案内と「振り込みました」', () =>
     await expect(markBankTold(h, { date: '12/20', name: 'ヤマダ', amount: 26500 }, 'family', 'family', now)).rejects.toThrow();
     await expect(markBankTold(h, { date: '2026-12-20', name: 'ヤマダ', amount: 26500.5 }, 'family', 'family', now)).rejects.toThrow();
     expect((await told(h)).bank_told_at).toBeNull();
+  });
+  it('振り込みました：お名前は60字まで（61字は throw）', async () => {
+    const { hid: h } = await newHousehold(); const now = new Date('2026-12-20T03:00:00Z');
+    await expect(markBankTold(h, { date: '2026-12-20', name: 'ア'.repeat(61), amount: 26500 }, 'family', 'family', now)).rejects.toThrow();
+    expect((await told(h)).bank_told_at).toBeNull();
+    expect(await markBankTold(h, { date: '2026-12-20', name: 'ア'.repeat(60), amount: 26500 }, 'family', 'family', now)).toEqual({ ok: true });
+    expect((await told(h)).bank_told_name).toBe('ア'.repeat(60));
   });
   it('振り込みましたで開いているカードの画面を切る', async () => {
     const { hid: h, token: t } = await newHousehold();

@@ -286,7 +286,7 @@ export async function startCardPayment(
 export type BankChooseResult = { ok: true } | { blocked: 'not_open' | 'no_bank_text' | 'nothing_due' };
 
 /**
- * 「払う」で銀行振込を選ぶ（04 4-2・D5 2-24・K210）。鍵が open でない → not_open／bank_text が空 → no_bank_text／
+ * 「払う」で銀行振込を選ぶ（04 4-2・D5 2-24・K210）。「払う」が出ない（鍵が open でない・お預かり）→ not_open／残りが無い → nothing_due／bank_text が空 → no_bank_text／
  * 払う額（印があれば 残り−印の金額）が0以下 → nothing_due。選べたら pay_method=bank にし、書き込みの外で
  * 開いているカードの画面を切り、ご案内のメールを出す（同じ金額のご案内を続けて2回は出さないのは 10 の中）。鍵の合わない世帯は throw。
  */
@@ -296,9 +296,12 @@ export async function chooseBankTransfer(token: string): Promise<BankChooseResul
   const h = d.household;
   const householdId = Number(h.id);
   const s = await getRecitalSettings(h.event_key);
-  if (payGate(s, Date.now()) !== 'open') return { blocked: 'not_open' };
-  if (s.bank_text.trim() === '') return { blocked: 'no_bank_text' };
   const hm = await readHouseholdMoney(householdId);
+  // 「払う」と同じ出し方（startCardPayment と同じ payButtonState）。お預かりの世帯（refund_hold）も選べない
+  const state = payButtonState({ gate: payGate(s, Date.now()), view: hm.view, m: hm.m, refundTodo: hm.refundTodo });
+  if (state === 'before' || state === 'preparing' || state === 'refund_hold') return { blocked: 'not_open' };
+  if (state === 'hidden') return { blocked: 'nothing_due' };
+  if (s.bank_text.trim() === '') return { blocked: 'no_bank_text' };
   if (payableAmount(hm.m, hm.told) <= 0) return { blocked: 'nothing_due' };
   await execute("UPDATE recital_households SET pay_method = 'bank' WHERE id = ? AND status = 'active'", [householdId]);
   await expireOpenCheckout(householdId, 'bank_chosen');
@@ -312,9 +315,11 @@ export async function chooseBankTransfer(token: string): Promise<BankChooseResul
 }
 
 export type BankToldInput = { date: string; name: string; amount: number };
+/** 「振り込みました」のお名前（振込依頼人名）の字数の上限（インスタの欄と同じ数え方。これより長いのは形ちがいで throw） */
+export const BANK_TOLD_NAME_MAX = 60;
 
 /**
- * 「振り込みました」の印（家庭・スタッフ。D5 2-20・K204）。形がおかしい入力（日の形・空白だけの名前・1以上の整数でない金額）と、
+ * 「振り込みました」の印（家庭・スタッフ。D5 2-20・K204）。形がおかしい入力（日の形・空白だけか60字をこえる名前・1以上の整数でない金額）と、
  * 有効でない世帯は throw。今日（JST）より先の日 → future／残りが0 → nothing_due。
  * 印が無ければ5列を入れる。あれば日・名前・金額だけ直す（押した時・だれが押したかは変えない）。
  * 変えた記録には前とあとの { date, amount, by } だけを残す（名前は入れない。R-18）。書き込みの外で開いているカードの画面を切る。メールは出さない。
@@ -329,6 +334,7 @@ export async function markBankTold(
   if (!Number.isInteger(householdId)) throw new Error('recital_pay:bad_input');
   if (!x || !isIsoDate(x.date)) throw new Error('recital_pay:bad_input');
   if (typeof x.name !== 'string' || x.name.trim() === '') throw new Error('recital_pay:bad_input');
+  if ([...x.name.trim()].length > BANK_TOLD_NAME_MAX) throw new Error('recital_pay:bad_input');
   if (!Number.isInteger(x.amount) || x.amount < 1) throw new Error('recital_pay:bad_input');
   if (by !== 'family' && by !== 'staff') throw new Error('recital_pay:bad_input');
   if (typeof actor !== 'string' || actor.trim() === '') throw new Error('recital_pay:bad_input');

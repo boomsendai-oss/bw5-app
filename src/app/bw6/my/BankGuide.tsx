@@ -8,6 +8,7 @@
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { RECITAL_INPUT_CLS } from '@/components/recital/inputCls';
+import { BANK_GUIDE_FIXED_NOTE } from '@/lib/recitalEmail';
 import { yenJa } from '@/lib/recitalPublic';
 import { markBankToldAction } from './actions';
 
@@ -91,6 +92,7 @@ export function BankToldForm(props: { token: string; today: string; initialAmoun
           onChange={(e) => setName(e.target.value)}
           placeholder="4827 ヤマダ ハナコ"
           autoComplete="off"
+          maxLength={60}
           className={`${RECITAL_INPUT_CLS} mt-1`}
           required
         />
@@ -165,7 +167,7 @@ export function BankGuide(props: {
           <p>お振込み先</p>
           <div className="pl-4">
             <p className="whitespace-pre-wrap break-words select-text">{guide.bankText}</p>
-            <p>※ BOOM は個人の事業のため、受取人名に代表の氏名が出ます。</p>
+            <p>{BANK_GUIDE_FIXED_NOTE}</p>
           </div>
         </div>
 

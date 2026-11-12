@@ -218,6 +218,9 @@ function changeText(d: RecitalMailData): string[] {
   ];
 }
 
+/** 振込先の下の固定の1行（画面 BankGuide.tsx とメールで同じ文。bank_text には入れない。D5 2-24） */
+export const BANK_GUIDE_FIXED_NOTE = '※ BOOM は個人の事業のため、受取人名に代表の氏名が出ます。';
+
 function bankGuideText(d: RecitalMailData): string[] {
   const g = d.guide ?? { amount: d.m.remaining, bankText: '', nameLine: d.refCode, restLine: null };
   const bankLines = g.bankText.split('\n').map((l) => l.trim()).filter((l) => l !== '').map((l) => `　${l}`);
@@ -230,6 +233,7 @@ function bankGuideText(d: RecitalMailData): string[] {
     '',
     'お振込み先',
     ...bankLines,
+    `　${BANK_GUIDE_FIXED_NOTE}`,
     '',
     `あなたの整理番号　${d.refCode}`,
     '',

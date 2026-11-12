@@ -65,6 +65,20 @@ describe('まとめた世帯にはお金とメールの操作をさせない（�
     expect(mail.sendRecitalMail).not.toHaveBeenCalled();
   });
 
+  it('「振り込みましたの印を付ける」も、まとめた世帯は失敗で返り、印を書かない（Task 23）', async () => {
+    const ev = 't-act-23'; await seedEvent(ev); await seedRules(ev); const w1 = await seedWork(ev, 'W01');
+    const a = await seedHousehold(ev, { recompute: true, people: [{ casts: [[w1, 'in']] }] });
+    const m = await seedHousehold(ev, { recompute: true, people: [{ casts: [[w1, 'in']] }], email: 'merged23@example.com' });
+    await core.execute(`UPDATE recital_households SET status='merged', merged_into=? WHERE id=?`, [a.householdId, m.householdId]);
+    const r = await act.markBankToldByStaffAction(m.householdId, { date: todayJst(), name: '4827 ヤマダ ハナコ', amount: '26500' }, 'TARO');
+    expect(r).toMatchObject({ ok: false });
+    expect((await core.getOne('SELECT bank_told_at FROM recital_households WHERE id = ?', [m.householdId])).bank_told_at).toBeNull();
+    expect(await countOf("SELECT COUNT(*) AS n FROM recital_changes WHERE household_id = ? AND action = 'bank_told'", [m.householdId])).toBe(0);
+    // active の世帯なら付けられる（スタッフが付けたことが残る）
+    expect(await act.markBankToldByStaffAction(a.householdId, { date: todayJst(), name: '4827 ヤマダ ハナコ', amount: '26500' }, 'TARO')).toEqual({ ok: true });
+    expect((await core.getOne('SELECT bank_told_by FROM recital_households WHERE id = ?', [a.householdId])).bank_told_by).toBe('staff');
+  });
+
   it('active の世帯なら手で入金を記録でき、メールの状態（sent 以外も）をそのまま返す', async () => {
     const ev = 't-act-2'; await seedEvent(ev); await seedRules(ev); const w1 = await seedWork(ev, 'W01');
     const a = await seedHousehold(ev, { recompute: true, people: [{ casts: [[w1, 'in']] }] });

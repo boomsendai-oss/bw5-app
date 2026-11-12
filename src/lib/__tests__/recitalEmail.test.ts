@@ -63,6 +63,16 @@ describe('buildRecitalMail', () => {
     expect(g).not.toContain('［コピーする］');
   });
 
+  it('ご案内のメールにも、振込先の下に画面と同じ固定の ※ の1行（bank_text には入れない。D5 2-24）', () => {
+    const lines = buildRecitalMail('bank_guide', D).text.split('\n');
+    const i = lines.findIndex((l) => l.includes('TEST-BANK-TEXT'));
+    expect(i).toBeGreaterThan(-1);
+    expect(lines[i + 1]).toBe('　※ BOOM は個人の事業のため、受取人名に代表の氏名が出ます。');
+    expect(D.guide!.bankText).not.toContain('※');
+    for (const k of ['receipt', 'change', 'complete', 'extra_complete', 'remaining', 'resend_url'] as const)
+      expect(buildRecitalMail(k, { ...D, change: CH, via: 'bank' }).text).not.toContain('受取人名に代表の氏名');
+  });
+
   it('控えの金額と内わけは請求の行から（直書きしない）', () => {
     const t = buildRecitalMail('receipt', D).text;
     expect(t).toContain('■ 金額　32,500円');

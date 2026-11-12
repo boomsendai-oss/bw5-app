@@ -6,7 +6,7 @@ import { updateInstaHandle } from '@/lib/recitalEntryDb';
 import { requireHouseholdByToken } from '@/lib/recitalGuard';
 import { parseYenInput } from '@/lib/recitalMyPage';
 import {
-  CARD_CHECKING_TEXT, RecitalPayError, chooseBankTransfer, markBankTold, startCardPayment, type BankChooseResult, type CardPayResult,
+  BANK_TOLD_NAME_MAX, CARD_CHECKING_TEXT, RecitalPayError, chooseBankTransfer, markBankTold, startCardPayment, type BankChooseResult, type CardPayResult,
 } from '@/lib/recitalPayDb';
 
 /** インスタの欄を変える。確かめ（鍵・その世帯の人か・100字・止めている間）は updateInstaHandle の中 */
@@ -71,6 +71,7 @@ export async function markBankToldAction(
 ): Promise<{ ok: true } | { error: string }> {
   if (typeof token !== 'string' || !x || typeof x !== 'object') return { error: '入力を確かめてください。' };
   if (typeof x.date !== 'string' || typeof x.name !== 'string' || typeof x.amount !== 'string') return { error: '入力を確かめてください。' };
+  if ([...x.name.trim()].length > BANK_TOLD_NAME_MAX) return { error: '入力を確かめてください。' };
   const amount = parseYenInput(x.amount);
   if (amount == null) return { error: '金額を確かめてください。' };
   const d = await requireHouseholdByToken(token);
