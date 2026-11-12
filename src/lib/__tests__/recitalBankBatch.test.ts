@@ -144,3 +144,81 @@ describe('parseGmoStatementCsv', () => {
 });
 
 it('buildRowKey', () => expect(buildRowKey({ rowDate: '2026-12-16', dir: 'in', amount: 26500, balance: 153000 })).toBe('2026-12-16|in|26500|153000'));
+
+// ---- 見直しの直し（controller の裁定 1〜6） ----
+describe('重ね撮り：2行以上の重なり（裁定1）・説明の欠けていない方を残す（裁定2）', () => {
+  const S1 = [
+    r('1-1', '12/16', 'in', 26500, 153000, 'transfer', '振込 4823 ヤマダ ハナコ'),
+    r('1-2', '12/15', 'out', 1000, 126500, 'debit'),
+    r('1-3', '12/15', 'in', 6000, 127500, 'transfer', '振込 4867 ヤマダ タロウ'),
+  ];
+  const tail = (sheet: number, from: number) => [
+    r(`${sheet}-${from}`, '12/14', 'out', 500, 121500, 'debit'),
+    r(`${sheet}-${from + 1}`, '12/14', 'out', 3000, 122000, 'debit'),
+  ];
+  const copy = (x: BankBatchRowIn, pos: string, over: Partial<BankBatchRowIn> = {}) => ({ ...x, pos, ...over });
+  const run = (rows: BankBatchRowIn[]) => {
+    const bb = b(rows);
+    const n = normalizeBatch(bb, '2026-12-16');
+    return { n, c: checkBatch(bb, n, [], { startDate: '2026-12-14' }) };
+  };
+  it('2行の重なり → 1本にして ok', () => {
+    const { n, c } = run([...S1, copy(S1[1], '2-1'), copy(S1[2], '2-2'), ...tail(2, 3)]);
+    expect(n.map((x) => x.pos)).toEqual(['1-1', '1-2', '1-3', '2-3', '2-4']);
+    expect(c).toEqual({ ok: true });
+  });
+  it('3行の重なり → 1本にして ok', () => {
+    const { n, c } = run([...S1, copy(S1[0], '2-1'), copy(S1[1], '2-2'), copy(S1[2], '2-3'), ...tail(2, 4)]);
+    expect(n.map((x) => x.pos)).toEqual(['1-1', '1-2', '1-3', '2-4', '2-5']);
+    expect(c).toEqual({ ok: true });
+  });
+  it('重なりが無い → ng（1枚目のいちばん下のあたり）', () => {
+    expect(run([...S1, ...tail(2, 1)]).c).toEqual({ ok: false, near: { date: '2026-12-15', amount: 6000 } });
+  });
+  it('1枚目の行の説明が切れている（cut）→ 2枚目の欠けていない方を、同じ位置に残す', () => {
+    const cutRow = copy(S1[2], '1-3', { desc: '振込 4867 ヤマ', cut: true });
+    const { n, c } = run([S1[0], S1[1], cutRow, copy(S1[2], '2-1'), ...tail(2, 2)]);
+    expect(n.map((x) => x.pos)).toEqual(['1-1', '1-2', '2-1', '2-2', '2-3']);
+    expect(n[2]).toMatchObject({ descRaw: '振込 4867 ヤマダ タロウ', cut: 0, unread: null, refRead: '4867' });
+    expect(c).toEqual({ ok: true });
+  });
+  it('1枚目の行の説明が読めない（unread に desc）→ 2枚目の方を残す。両方欠けていれば1枚目のまま', () => {
+    const u = copy(S1[2], '1-3', { unread: 'desc' });
+    expect(run([S1[0], S1[1], u, copy(S1[2], '2-1'), ...tail(2, 2)]).n[2].pos).toBe('2-1');
+    expect(run([S1[0], S1[1], u, copy(S1[2], '2-1', { cut: true }), ...tail(2, 2)]).n[2].pos).toBe('1-3');
+  });
+});
+
+describe('parseGmoStatementCsv の直し（裁定3〜6）', () => {
+  const H = '日付,摘要,入金金額,出金金額,残高,メモ\r\n';
+  const enc = (s: string) => new Uint8Array(iconv.encode(H + s, 'shift_jis'));
+  const fileBatch = (rows: BankBatchRowIn[]) => b(rows, { source: 'file', images: 0, range_from: '2026-12-15', range_to: '2026-12-15' });
+  it('1日だけの古い順 CSV → 残高のつながりで向きを決め、新しい順にして検算に合う', () => {
+    const rows = parseGmoStatementCsv(enc('2026/12/15,ﾃﾞﾋﾞｯﾄ,,1000,126500,\r\n2026/12/15,振込 4823 ﾔﾏﾀﾞ ﾊﾅｺ,26500,,153000,\r\n'));
+    expect(rows.map((x) => x.pos)).toEqual(['f-3', 'f-2']);
+    const f = fileBatch(rows);
+    expect(checkBatch(f, normalizeBatch(f, '2026-12-16'), [], { startDate: '2026-12-14' })).toEqual({ ok: true });
+  });
+  it('1日だけの新しい順 CSV → そのまま', () => {
+    const rows = parseGmoStatementCsv(enc('2026/12/15,振込 4823 ﾔﾏﾀﾞ ﾊﾅｺ,26500,,153000,\r\n2026/12/15,ﾃﾞﾋﾞｯﾄ,,1000,126500,\r\n'));
+    expect(rows.map((x) => x.pos)).toEqual(['f-2', 'f-3']);
+  });
+  it('数字だけを読む（0x10・1e3 は読めない）', () => {
+    const rows = parseGmoStatementCsv(enc('2026/12/15,振込 4823 ﾔﾏﾀﾞ ﾊﾅｺ,0x10,,1e3,\r\n'));
+    expect(rows[0]).toMatchObject({ amount: null, balance: null, unread: 'amount,balance' });
+    expect(parseGmoStatementCsv(enc('2026/12/15,ﾃﾞﾋﾞｯﾄ,,"1,000円",￥126500,\r\n'))[0]).toMatchObject({ amount: 1000, balance: 126500, unread: '' });
+  });
+  it('入金と出金の両方に金額がある行 → 金額は読めない（止める）', () => {
+    const rows = parseGmoStatementCsv(enc('2026/12/15,振込 4823 ﾔﾏﾀﾞ ﾊﾅｺ,26500,1000,153000,\r\n'));
+    expect(rows[0]).toMatchObject({ amount: null, unread: 'amount' });
+  });
+  it('金額・残高が空か数でない → 0 にせず読めない、束は ng', () => {
+    const rows = parseGmoStatementCsv(enc('2026/12/15,振込 4823 ﾔﾏﾀﾞ ﾊﾅｺ,26500,,,\r\n2026/12/15,ﾃﾞﾋﾞｯﾄ,,abc,126500,\r\n2026/12/15,ﾃﾞﾋﾞｯﾄ,,,126000,\r\n'));
+    expect(rows.map((x) => [x.amount, x.balance, x.unread])).toEqual([[26500, null, 'balance'], [null, 126500, 'amount'], [null, 126000, 'amount']]);
+    for (const row of rows) {
+      const f = fileBatch([row]);
+      expect(validateBatchShape(f).ok).toBe(true);
+      expect(checkBatch(f, normalizeBatch(f, '2026-12-16'), [], { startDate: '2026-12-14' }).ok).toBe(false);
+    }
+  });
+});

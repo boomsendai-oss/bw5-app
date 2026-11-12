@@ -124,35 +124,43 @@ const sameRowKey = (r: BankBatchRowIn) => {
   return `${md}|${r.dir}|${r.amount ?? ''}|${r.balance ?? ''}`;
 };
 
+/** 説明が欠けていない（切れていない・unread に desc が無い）行か */
+const descComplete = (r: BankBatchRowIn) => !r.cut && !unreadWords(r.unread).includes('desc');
+
+/**
+ * chat の行を枚・行の順に1本に並べ、枚のつなぎ目だけ、前の枚の下からの並びと次の枚の上からの並びが
+ * （日付・入出・金額・残高で）いちばん長く一致する所を1つにする（1枚の中は消さない）。
+ * 重なった行は、前の枚の写しの説明が欠けていて次の枚の写しが欠けていない時だけ、次の枚の写しを同じ位置に置く。
+ * noOverlap は、重なりが1行も無かったつなぎ目の前の枚のいちばん下の行（検算3。images は数えるのに使わない）。
+ */
+function mergeChatSheets(rows: BankBatchRowIn[]): { ordered: BankBatchRowIn[]; noOverlap: BankBatchRowIn[] } {
+  const sheets = chatSheets(rows);
+  const ordered = [...(sheets[0] ?? [])];
+  const noOverlap: BankBatchRowIn[] = [];
+  for (let k = 1; k < sheets.length; k++) {
+    const prev = sheets[k - 1];
+    const next = sheets[k];
+    let overlap = 0;
+    for (let n = Math.min(prev.length, next.length); n >= 1 && overlap === 0; n--) {
+      let same = true;
+      for (let i = 0; i < n && same; i++) same = sameRowKey(prev[prev.length - n + i]) === sameRowKey(next[i]);
+      if (same) overlap = n;
+    }
+    if (overlap === 0) noOverlap.push(prev[prev.length - 1]);
+    // 重なった行は ordered の後ろ overlap 行（前の枚の写し。前のつなぎ目で置きかえた写しのこともある）
+    const base = ordered.length - overlap;
+    for (let i = 0; i < overlap; i++) {
+      if (!descComplete(ordered[base + i]) && descComplete(next[i])) ordered[base + i] = next[i];
+    }
+    ordered.push(...next.slice(overlap));
+  }
+  return { ordered, noOverlap };
+}
+
 /** 束を1本の「上が新しい順」の行にする（重ね撮りの1本化・年・番号・row_key と #n） */
 export function normalizeBatch(b: BankBatchIn, handedJstDate: string): NormRow[] {
-  let ordered: BankBatchRowIn[];
-  if (b.source === 'chat') {
-    // ①枚・行の順に並べる ②枚のつなぎ目だけ、いちばん長く一致する並びを後の枚の側から消す（1枚の中は消さない）
-    const sheets = chatSheets(b.rows);
-    ordered = [...(sheets[0] ?? [])];
-    for (let k = 1; k < sheets.length; k++) {
-      const prev = sheets[k - 1];
-      const next = sheets[k];
-      let overlap = 0;
-      for (let n = Math.min(prev.length, next.length); n >= 1; n--) {
-        let same = true;
-        for (let i = 0; i < n; i++) {
-          if (sameRowKey(prev[prev.length - n + i]) !== sameRowKey(next[i])) {
-            same = false;
-            break;
-          }
-        }
-        if (same) {
-          overlap = n;
-          break;
-        }
-      }
-      ordered.push(...next.slice(overlap));
-    }
-  } else {
-    ordered = [...b.rows];
-  }
+  // ①②chat だけ、枚・行の順に並べて、つなぎ目の重なりを1つにする（file・manual は渡された順のまま＝H13）
+  const ordered = b.source === 'chat' ? mergeChatSheets(b.rows).ordered : [...b.rows];
 
   const rows: NormRow[] = ordered.map((x) => {
     const words = unreadWords(x.unread);
@@ -221,16 +229,13 @@ export function checkBatch(b: BankBatchIn, rows: NormRow[], ledger: LedgerRowLit
   }
   if (b.source === 'file') return { ok: true };
 
-  // 3 枚のつなぎ目（rows の pos に出てくる枚どうしで見る。images は数えるのに使わない）
-  const sheets = chatSheets(b.rows);
-  for (let k = 0; k + 1 < sheets.length; k++) {
-    const bottom = sheets[k][sheets[k].length - 1];
-    const top = sheets[k + 1][0];
-    if (sameRowKey(bottom) !== sameRowKey(top)) {
-      // 枚 k のいちばん下は1本化で消えない（消すのは後の枚の側）ので、年の付いた行が rows にある
-      const r = rows.find((x) => x.pos === bottom.pos);
-      return { ok: false, near: { date: r?.rowDate ?? '', amount: r?.amount ?? bottom.amount ?? 0 } };
-    }
+  // 3 枚のつなぎ目：どのつなぎ目にも、重ねた行が1行以上ある（rows の pos に出てくる枚どうしで見る）
+  const bottom = mergeChatSheets(b.rows).noOverlap[0];
+  if (bottom) {
+    // 年の付いた日付は rows から引く（同じ pos、無ければ同じ日付・入出・金額・残高の行）
+    const raw = new Map(b.rows.map((x) => [x.pos, x]));
+    const r = rows.find((x) => x.pos === bottom.pos) ?? rows.find((x) => raw.has(x.pos) && sameRowKey(raw.get(x.pos)!) === sameRowKey(bottom));
+    return { ok: false, near: { date: r?.rowDate ?? '', amount: r?.amount ?? bottom.amount ?? 0 } };
   }
 
   // 5 期間の開始日が声かけの日より後
@@ -299,13 +304,21 @@ function parseCsvLine(line: string): string[] {
   return out;
 }
 
-/** 金額の欄を整数にする。空・数でない時は null */
-function parseYen(s: string | undefined): number | null {
-  const t = String(s ?? '').replace(/[,円¥\s]/g, '');
-  if (t === '') return null;
-  const n = Number(t);
-  return Number.isInteger(n) && n >= 0 ? n : null;
+/** 金額の欄を読む。`,`・`円`・`¥`・`￥`・空白を取ったあと、数字だけなら整数。空は empty、ほか（0x10・1e3・-5 など）は bad */
+function parseYen(s: string | undefined): { v: number | null; empty: boolean } {
+  const t = String(s ?? '').replace(/[,円¥￥\s]/g, '');
+  if (t === '') return { v: null, empty: true };
+  return /^\d+$/.test(t) ? { v: Number(t), empty: false } : { v: null, empty: false };
 }
+
+/** 上が新しい順として、となりの2行の残高がつながるか（読めない残高・金額があれば false） */
+const balanceChains = (rows: BankBatchRowIn[]) =>
+  rows.every((up, i) => {
+    const dn = rows[i + 1];
+    if (!dn) return true;
+    if (up.balance === null || dn.balance === null || up.amount === null) return false;
+    return up.balance === dn.balance + (up.dir === 'in' ? up.amount : -up.amount);
+  });
 
 /**
  * GMO の明細 CSV（Shift_JIS・見出し `日付,摘要,入金金額,出金金額,残高,メモ`。④C-16）を、上が新しい順の行にする。
@@ -338,21 +351,27 @@ export function parseGmoStatementCsv(buf: Uint8Array): BankBatchIn['rows'] {
     const withdrawal = parseYen(f[iOut]);
     const balance = parseYen(f[iBal]);
     const unread: string[] = [];
-    let dir: BankBatchRowIn['dir'] = 'out';
-    let amount: number | null;
-    if (deposit !== null && deposit > 0) {
-      dir = 'in';
-      amount = deposit;
-    } else {
-      amount = withdrawal;
-      if (amount === null) unread.push('amount');
+    const depositIn = deposit.v !== null && deposit.v > 0;
+    const withdrawalOut = withdrawal.v !== null && withdrawal.v > 0;
+    const dir: BankBatchRowIn['dir'] = depositIn ? 'in' : 'out';
+    let amount: number | null = depositIn ? deposit.v : withdrawal.v;
+    // 数でない欄がある・入金と出金の両方に金額がある・どちらも空 → 金額は読めない（0 にしない・片方を捨てない）
+    if ((!deposit.empty && deposit.v === null) || (!withdrawal.empty && withdrawal.v === null) || (depositIn && withdrawalOut) || amount === null) {
+      amount = null;
+      unread.push('amount');
     }
-    if (balance === null) unread.push('balance');
+    const balanceV = balance.v;
+    if (balanceV === null) unread.push('balance');
     const descNfkc = descAll.normalize('NFKC');
     const kind: BankBatchRowIn['kind'] = dir === 'in' && descNfkc.trimStart().startsWith('振込') ? 'transfer' : descNfkc.includes('デビット') ? 'debit' : 'other';
-    rows.push({ pos: `f-${li + 1}`, date, dir, amount, balance, kind, desc: dir === 'in' && kind === 'transfer' ? descAll : '', cut: false, unread: unread.join(',') });
+    rows.push({ pos: `f-${li + 1}`, date, dir, amount, balance: balanceV, kind, desc: dir === 'in' && kind === 'transfer' ? descAll : '', cut: false, unread: unread.join(',') });
   }
-  // 古い順の CSV なら逆にする（はじめと終わりの日付でくらべる）
-  if (rows.length > 1 && rows[0].date < rows[rows.length - 1].date) rows.reverse();
+  // 古い順の CSV なら逆にする。はじめと終わりの日付がちがえば日付で、同じ日なら残高のつながる向きで決める
+  if (rows.length > 1) {
+    const first = rows[0].date;
+    const last = rows[rows.length - 1].date;
+    const oldFirst = first !== last ? first < last : !balanceChains(rows) && balanceChains([...rows].reverse());
+    if (oldFirst) rows.reverse();
+  }
   return rows;
 }
