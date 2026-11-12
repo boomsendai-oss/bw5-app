@@ -2,7 +2,8 @@
 // client の部品からは型だけ（import type）を読む。
 // 金額は「送る」（recitalEntryDb.ts の submitEntry）と同じ材料・同じ関数で出す（計算を2か所に書かない）。
 // URL の送り直しは、申込があるかを返り値の数でしか返さない（宛先も世帯の番号も返さない。画面には出さない）。
-import { getAll } from '@/lib/db';
+import { execute, getAll } from '@/lib/db';
+import { nowUtcIso } from '@/lib/dateJst';
 import { normalizeEmail, normalizePhone } from '@/lib/recital';
 import { buildEntryFeePeople } from '@/lib/recitalEntryDb';
 import { expectedCharges, type ChargeLine } from '@/lib/recitalFee';
@@ -93,4 +94,20 @@ export async function resendMyPageUrl(eventKey: string, by: { email: string } | 
     }
   }
   return { sent };
+}
+
+/**
+ * マイページを開いた印（Task 14）。opened_at は初めの1回だけ。控えのメールのリンク（&from=mail）から開いた時は
+ * mail_opened_at も初めの1回だけ入れる。値は nowUtcIso。変えた記録は書かない。
+ */
+export async function markMyPageOpened(householdId: number, fromMail: boolean, now: Date = new Date()): Promise<void> {
+  const at = nowUtcIso(now);
+  if (fromMail) {
+    await execute(
+      'UPDATE recital_households SET opened_at = COALESCE(opened_at, ?), mail_opened_at = COALESCE(mail_opened_at, ?) WHERE id = ?',
+      [at, at, householdId],
+    );
+  } else {
+    await execute('UPDATE recital_households SET opened_at = COALESCE(opened_at, ?) WHERE id = ?', [at, householdId]);
+  }
 }

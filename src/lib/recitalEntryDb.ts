@@ -26,6 +26,7 @@ import { getRecitalEvent, getRecitalSettings, listFeeRules, listWorks, loadMembe
 import { diffCharges, expectedCharges, type ChargeLine, type FeePerson, type FeeRule } from '@/lib/recitalFee';
 import { matchFeePreset, matchMember } from '@/lib/recitalMatch';
 import { pickRef } from '@/lib/recitalRef';
+import { requireHouseholdByToken } from '@/lib/recitalGuard';
 import { sendRecitalMail } from '@/lib/recitalMail';
 import { afterMoneyChanged } from '@/lib/recitalMoneyDb';
 
@@ -843,4 +844,37 @@ export async function regenerateToken(householdId: number, staffName: string): P
     await logChangeTx(tx, { eventKey: String(h.event_key), householdId, action: 'token_regenerated', actor: staffName });
   });
   return { token };
+}
+
+// =====================================================================
+// Task 14：マイページのインスタの欄（04 4-2「載せる名前・インスタ」・5-13、R-18）
+// =====================================================================
+
+const INSTA_MAX = 100;
+
+/**
+ * 家庭がマイページでインスタの欄を変える。鍵（edit_token）の完全一致の世帯の、生きている人だけ。
+ * 前後の空白だけ取って生のまま入れる（空は null）。100字まで。受付を止めている間は ok:false（見るだけ）。
+ * 締切のあとも変えられる。変更の控えのメールは送らない。変えた記録は insta_edit（前後の値は渡さない）。
+ */
+export async function updateInstaHandle(token: string, personId: number, handle: string | null): Promise<{ ok: boolean }> {
+  if (handle !== null && typeof handle !== 'string') return { ok: false };
+  const value = handle === null ? null : handle.trim() === '' ? null : handle.trim();
+  if (value !== null && [...value].length > INSTA_MAX) return { ok: false };
+  const d = await requireHouseholdByToken(token);
+  if (!d || d.household.status !== 'active') return { ok: false };
+  const pid = Number(personId);
+  if (!d.people.some((p) => Number(p.id) === pid && p.status === 'active')) return { ok: false };
+  const eventKey = d.household.event_key;
+  const settings = await getRecitalSettings(eventKey);
+  if (entryPhase(settings, Date.now(), d.household.extend_until) === 'suspended') return { ok: false };
+  const householdId = Number(d.household.id);
+  await withWriteTx(async (tx) => {
+    await tx.execute({
+      sql: "UPDATE recital_people SET insta_handle = ? WHERE id = ? AND household_id = ? AND status = 'active'",
+      args: [value, pid, householdId],
+    });
+    await logChangeTx(tx, { eventKey, householdId, personId: pid, action: 'insta_edit', actor: 'family' });
+  });
+  return { ok: true };
 }
