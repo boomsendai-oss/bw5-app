@@ -32,6 +32,13 @@ describe('validateBatchShape', () => {
     expect(validateBatchShape(b([r('m-1', '2026-12-16', 'in', 26500, null, 'transfer', '振込 4823 ヤマダ ハナコ')], { source: 'manual', images: 0 })).ok).toBe(false);
     expect(validateBatchShape(b([r('m-1', '12/16', 'in', 26500, 1, 'transfer', 'x')], { source: 'manual', images: 0 })).ok).toBe(false);
   });
+  // Task 30：読む役の手順書（boom-events-hub/docs/bw6-bank-read.md）に載せる見本の束と同じ物
+  it('手順書の見本の束は形が合う', () => {
+    const sample = { event_key: 'bw6', source: 'chat', shot_on: '2026-12-16', range_from: '2026-12-14', range_to: '2026-12-16', images: 1, account: '円普通預金',
+      rows: [{ pos: '1-1', date: '12/16', dir: 'in', amount: 26500, balance: 100000, kind: 'transfer', desc: '振込　４８２７　ヤマダ　ハナコ', cut: false, unread: '' },
+             { pos: '1-2', date: '12/15', dir: 'out', amount: 1000, balance: 73500, kind: 'debit', desc: '', cut: false, unread: '' }] };
+    expect(validateBatchShape(sample).ok).toBe(true);
+  });
 });
 
 describe('inferRowYear（渡した日 JST より先にならない、いちばん新しい年）', () => {
