@@ -1,10 +1,16 @@
 // BW6 発表会（段階1）の recitalBankDb.ts（束を入れる・自動で当てる）の試験（実 DB・試験用のファイル DB）。Task 27。
 // 自分の t-bank-* の発表会だけを見る（種の bw6-test の行を数に入れない）。名前・番号はすべて作り物。
 // メールの鍵を消してから読む（送れない時は 10 の「鍵が無い」で failed。夜の「待ち」の判定はその前に通る）。
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { setupRecitalTestDb } from './recitalTestSeed';
 import type { BankBatchIn, BankBatchRowIn } from '../recitalBankBatch';
+
+// decideRow は本物のまま。書き込みの中の守り（not_active）の試験だけ、1回だけ返りを差しかえる
+vi.mock('@/lib/recitalBankMatch', async (orig) => {
+  const real = await orig<typeof import('../recitalBankMatch')>();
+  return { ...real, decideRow: vi.fn(real.decideRow) };
+});
 
 delete process.env.GMAIL_APP_PASSWORD;
 await setupRecitalTestDb('bank');
@@ -13,7 +19,9 @@ const { getRecitalSettings, saveRecitalSetting } = await import('../recitalDb');
 const { readHouseholdMoney } = await import('../recitalMoneyDb');
 const { buildRowKey } = await import('../recitalBankBatch');
 const { pickRef } = await import('../recitalRef');
-const { ingestBankBatch, bankStartDate, loadMatchHouseholds } = await import('../recitalBankDb');
+const bankDb = await import('../recitalBankDb');
+const { ingestBankBatch, bankStartDate, loadMatchHouseholds } = bankDb;
+const { decideRow } = await import('../recitalBankMatch');
 
 const r = (pos: string, date: string, dir: 'in' | 'out', amount: number | null, balance: number | null, kind: 'transfer' | 'debit' | 'other', desc = '', over: Partial<BankBatchRowIn> = {}): BankBatchRowIn =>
   ({ pos, date, dir, amount, balance, kind, desc, cut: false, unread: '', ...over });
@@ -144,7 +152,7 @@ describe('ingestBankBatch', () => {
     const ev = 't-bank-3'; await seedEvent(ev);
     const bad = SAMPLE.map((x) => (x.pos === '1-1' ? { ...x, balance: 153001 } : x));
     const res = await ingestBankBatch(b(bad, { event_key: ev }), 'commit', 'test', NOON);
-    expect(res.check).toEqual({ ok: false, near: '12月16日の 26,500円の行のあたり', lastOkDate: null });
+    expect(res.check).toEqual({ ok: false, near: '残高がつながりません：12月16日の 26,500円の行のあたり', lastOkDate: null });
     expect((await getOne(`SELECT COUNT(*) n FROM recital_bank_rows WHERE event_key=?`, [ev]))?.n).toBe(0);
     expect(await getOne(`SELECT inserted, rejected, read_rows, check_result FROM recital_imports WHERE event_key=?`, [ev]))
       .toMatchObject({ inserted: 0, rejected: 5, read_rows: 5, check_result: 'ng:12/16:26500' });
@@ -341,5 +349,85 @@ describe('ingestBankBatch：Task 26 の見直しから持ち越した約束', ()
     const [h] = await loadMatchHouseholds(ev);
     expect(h).toMatchObject({ id: A, refCode: '4823', status: 'active', remaining: 26500, totalBeforeLastDrop: 38500, told: { date: '2026-12-16', name: 'サトウ ハナコ', amount: 26500 } });
     expect([...h.surnamesKana].sort()).toEqual(['サトウ', 'ヤマダ']);
+  });
+});
+
+describe('ingestBankBatch：見直し1回目', () => {
+  const NOON = new Date('2026-12-16T12:00:00+09:00');
+  afterEach(() => { vi.restoreAllMocks(); });
+  // 2世帯（4823・4867）にぴったりの2行。いちばん下はデビット
+  const two = [
+    r('1-1', '12/16', 'in', 6000, 159500, 'transfer', '振込 4867 ヤマダ タロウ'),
+    r('1-2', '12/16', 'in', 26500, 153500, 'transfer', '振込 4823 ヤマダ ハナコ'),
+    r('1-3', '12/15', 'out', 1000, 127000, 'debit'),
+  ];
+
+  it('1行が当てる途中で失敗：ほかの行は当たってメールも出て、最後に match_failed／同じ束を渡し直すと、残った行が当たり、当たった行は2回記録しない', async () => {
+    const ev = 't-bank-r1'; await seedEvent(ev);
+    const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const B = await seedHousehold(ev, { ref: '4867', lastKana: 'ヤマダ', charges: [6000] });
+    // 古い順に当てるので、1回目の呼び出しは 1-2（4823）。それだけを止まった形にする
+    vi.spyOn(bankDb.__internal, 'matchOneRow').mockRejectedValueOnce(new Error('recital_test:stop'));
+    await expect(ingestBankBatch({ ...b(two, { event_key: ev }), first_ok: true }, 'commit', 'test', NOON)).rejects.toThrow('recital_bank:match_failed');
+    expect(await getOne(`SELECT state, review_kind, check_flag FROM recital_bank_rows WHERE event_key=? AND ref_read='4823'`, [ev])).toEqual({ state: 'new', review_kind: null, check_flag: null });
+    expect((await readHouseholdMoney(B)).m.remaining).toBe(0);
+    expect(await count(`SELECT COUNT(*) n FROM recital_mail_log WHERE household_id=? AND dedupe_key LIKE 'bank_paid:%'`, [B])).toBe(1);
+    expect((await readHouseholdMoney(A)).m.remaining).toBe(26500);
+    vi.restoreAllMocks();
+    // 渡し直し：dry でも当たる見込みに出る → commit で当たる
+    const dry = await ingestBankBatch({ ...b(two, { event_key: ev }), first_ok: true }, 'dry', 'test', NOON);
+    expect(dry).toMatchObject({ inserted: 0, existing: 3, auto_matched: 0, review: { first5: 1 } }); // dry は first_ok を付けずに見る（はじめの5件の間）
+    const again = await ingestBankBatch({ ...b(two, { event_key: ev }), first_ok: true }, 'commit', 'test', NOON);
+    expect(again).toMatchObject({ inserted: 0, existing: 3, auto_matched: 1 });
+    expect((await readHouseholdMoney(A)).m.remaining).toBe(0);
+    expect(await count('SELECT COUNT(*) n FROM recital_payments WHERE household_id=?', [A])).toBe(1);
+    expect(await count('SELECT COUNT(*) n FROM recital_payments WHERE household_id=?', [B])).toBe(1);
+  });
+
+  it('書き込みの中の守り：自動と決まっても、世帯がまとめた世帯なら入金を作らない（recital_bank:not_active）', async () => {
+    const ev = 't-bank-na'; await seedEvent(ev);
+    const target = await seedHousehold(ev, { ref: '4867', lastKana: 'ヤマダ', charges: [26500] });
+    const merged = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    await execute(`UPDATE recital_households SET status='merged', merged_into=? WHERE id=?`, [target, merged]);
+    vi.mocked(decideRow).mockReturnValueOnce({ auto: true, householdId: merged });
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await expect(ingestBankBatch({ ...b(SAMPLE, { event_key: ev }), first_ok: true }, 'commit', 'test', NOON)).rejects.toThrow('recital_bank:match_failed');
+    expect(err.mock.calls.some((c) => c.includes('recital_bank:not_active'))).toBe(true);
+    expect(await count('SELECT COUNT(*) n FROM recital_payments WHERE event_key=?', [ev])).toBe(0);
+    expect(await getOne(`SELECT state FROM recital_bank_rows WHERE event_key=? AND ref_read='4823'`, [ev])).toEqual({ state: 'new' });
+  });
+
+  it('重なる日の撮り直しで、同じ番号・同じ日・同じ金額の入金が残高だけちがって入る → twin の印、自動で当てない', async () => {
+    const ev = 't-bank-tw'; await seedEvent(ev); await fillFirst5(ev);
+    // 1日目：4823 の世帯はまだ無い（bad_ref で待つ）
+    await ingestBankBatch(b(SAMPLE, { event_key: ev }), 'commit', 'test', NOON);
+    const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    // 2日目：12/16 の入金の下に 12/16 のデビットが写り、入金の行の残高が 153,000 → 152,000 に変わった
+    const day2 = [
+      r('1-1', '12/16', 'in', 26500, 152000, 'transfer', '振込　４８２３　ヤマダ　ハナコ'),
+      r('1-2', '12/16', 'out', 1000, 125500, 'debit'),
+      r('1-3', '12/15', 'out', 1000, 126500, 'debit'),
+      r('1-4', '12/15', 'in', 6000, 127500, 'transfer', '振込 4867 ヤマダ タロウ'),
+    ];
+    const dry = await ingestBankBatch(b(day2, { event_key: ev }), 'dry', 'test', new Date('2026-12-17T12:00:00+09:00'));
+    expect(dry).toMatchObject({ check: { ok: true }, inserted: 2, auto_matched: 0, flagged: 1 });
+    const res = await ingestBankBatch(b(day2, { event_key: ev }), 'commit', 'test', new Date('2026-12-17T12:00:00+09:00'));
+    expect(res).toMatchObject({ auto_matched: 0, flagged: 1 });
+    expect(await getOne(`SELECT check_flag, state FROM recital_bank_rows WHERE event_key=? AND balance=152000`, [ev])).toEqual({ check_flag: 'twin', state: 'new' });
+    expect(await count('SELECT COUNT(*) n FROM recital_payments WHERE household_id=?', [A])).toBe(0);
+  });
+
+  it('残高が読めない行で合わない → わけを言う', async () => {
+    const ev = 't-bank-bu'; await seedEvent(ev);
+    const rows = SAMPLE.map((x) => (x.pos === '1-2' ? { ...x, balance: null, unread: 'balance' } : x));
+    const res = await ingestBankBatch(b(rows, { event_key: ev }), 'dry', 'test', NOON);
+    expect(res.check).toEqual({ ok: false, near: '残高が読めない行があります（入出金明細の一覧の画面で撮ってください）：12月15日の 1,000円の行のあたり', lastOkDate: null });
+  });
+
+  it('期間の開始日で合わない（range_from が / の形でも）→ 開始日の文', async () => {
+    const ev = 't-bank-st'; await seedEvent(ev);
+    const res = await ingestBankBatch(b(SAMPLE, { event_key: ev, range_from: '2026/12/16' }), 'dry', 'test', NOON);
+    expect(res.check).toEqual({ ok: false, near: '12月14日（期間の開始日）', lastOkDate: null });
+    expect((await getOne(`SELECT check_result FROM recital_imports WHERE event_key=?`, [ev]))?.check_result).toBe('ng:12/14:0');
   });
 });

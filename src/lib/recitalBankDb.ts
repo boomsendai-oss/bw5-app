@@ -202,16 +202,68 @@ function conditionsOf(row: MatchRow, byRef: Map<string, MatchHousehold>): [boole
 const yen = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 const mdParts = (iso: string): [number, number] | null => (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? [Number(iso.slice(5, 7)), Number(iso.slice(8, 10))] : null);
 
-function nearText(near: { date: string; amount: number }, isStart: boolean): string {
+type FailReason = 'balance_unread' | 'chain' | null;
+
+/**
+ * 検算が落ちたわけ（文に出す分だけ）。checkBatch の⓪と1 と同じ順に見て、最初に落ちる所を返す
+ * （checkBatch は最初に落ちた所で返すので、同じ順で見れば同じ所になる）：⓪・1 で残高が読めない／1 の残高のつながり。
+ * ⓪の日付・金額・入出が読めない時と、2 から先（日付の順・枚のつなぎ目・開始日・前の日とのつなぎ目）は null（場所だけを出す）。
+ */
+function failReason(b: BankBatchIn, rows: NormRow[]): FailReason {
+  for (const r of rows) {
+    const w = r.unread ? r.unread.split(',') : [];
+    const blocking = ['date', 'amount', 'balance', 'dir'].filter((x) => w.includes(x));
+    if (blocking.length > 0) return blocking.includes('balance') ? 'balance_unread' : null;
+  }
+  if (b.source === 'manual') return rows.some((r) => r.balance === null) ? 'balance_unread' : null;
+  for (let i = 0; i + 1 < rows.length; i++) {
+    const up = rows[i];
+    const dn = rows[i + 1];
+    if (up.balance === null || dn.balance === null) return 'balance_unread';
+    if (up.balance !== dn.balance + (up.dir === 'in' ? up.amount : -up.amount)) return 'chain';
+  }
+  return rows.some((r) => r.balance === null) ? 'balance_unread' : null;
+}
+
+function nearText(near: { date: string; amount: number }, isStart: boolean, reason: FailReason): string {
   const md = mdParts(near.date);
   const day = md ? `${md[0]}月${md[1]}日` : '日付の読めない';
   if (isStart) return `${day}（期間の開始日）`;
-  return `${day}の ${yen(near.amount)}円の行のあたり`;
+  const at = `${day}の ${yen(near.amount)}円の行のあたり`;
+  if (reason === 'balance_unread') return `残高が読めない行があります（入出金明細の一覧の画面で撮ってください）：${at}`;
+  if (reason === 'chain') return `残高がつながりません：${at}`;
+  return at;
 }
 
 function ngResult(near: { date: string; amount: number }): string {
   const md = mdParts(near.date);
   return `ng:${md ? `${md[0]}/${md[1]}` : '?'}:${near.amount}`;
+}
+
+// ---------- 入れる前の印（Task 27 の見直しの裁定） ----------
+
+type LedgerDeposit = { refRead: string; rowDate: string; amount: number; balance: number | null };
+
+/** 台帳の chat・file の入金の振込（void 以外・番号あり） */
+async function readLedgerDeposits(eventKey: string): Promise<LedgerDeposit[]> {
+  return (await getAll(
+    `SELECT ref_read, row_date, amount, balance FROM recital_bank_rows
+     WHERE event_key = ? AND state <> 'void' AND dir = 'in' AND kind = 'transfer' AND source IN ('chat', 'file') AND ref_read IS NOT NULL`,
+    [eventKey],
+  )).map((r) => ({ refRead: String(r.ref_read), rowDate: String(r.row_date), amount: Number(r.amount), balance: r.balance == null ? null : Number(r.balance) }));
+}
+
+/**
+ * 重なる日を撮り直した時、前の日の出金などで残高が変わると、同じ振込が別の鍵でもう1行入ることがある。
+ * 新しく入る入金の振込の行で、まだ印が無く、台帳に「同じ番号・同じ日・同じ金額で、残高だけがちがう」chat・file の行がある物に
+ * twin の印を付ける（自動で当てず、見てほしい入金へ。同じ束の中の行どうしは見ない＝同じ日の2件の入金は場面3のとおり）。
+ */
+function markSameRefTwins(rows: NormRow[], deposits: LedgerDeposit[], liveKeys: Set<string>): NormRow[] {
+  return rows.map((r) => {
+    if (r.checkFlag !== null || liveKeys.has(r.rowKey) || !isTransferIn(r) || r.refRead === null) return r;
+    const twin = deposits.some((l) => l.refRead === r.refRead && l.rowDate === r.rowDate && l.amount === r.amount && l.balance !== r.balance);
+    return twin ? { ...r, checkFlag: 'twin' } : r;
+  });
 }
 
 // ---------- 入れる ----------
@@ -244,7 +296,8 @@ export async function ingestBankBatch(b: BankBatchIn, mode: 'dry' | 'commit', im
 
   // ---- 合わない束：台帳・入金には何も書かない。束の記録だけ ----
   if (!check.ok) {
-    const isStart = check.near.amount === 0 && b.range_from > startDate && check.near.date === startDate;
+    // 開始日で落ちた時（checkBatch の5。円は 0・日は開始日）。範囲の開始日は checkBatch と同じく / を - にそろえてくらべる
+    const isStart = check.near.amount === 0 && check.near.date === startDate && b.range_from.replace(/\//g, '-') > startDate;
     const checkResult = ngResult(check.near);
     const full = mode === 'commit';
     await withWriteTx(async (tx) => {
@@ -267,14 +320,14 @@ export async function ingestBankBatch(b: BankBatchIn, mode: 'dry' | 'commit', im
       joinMismatch.push({ date: l.row_date, amount: l.amount });
     }
     return {
-      mode, check: { ok: false, near: nearText(check.near, isStart), lastOkDate: await lastOkDate(b.event_key) }, ...empty,
+      mode, check: { ok: false, near: nearText(check.near, isStart, isStart ? null : failReason(b, rows)), lastOkDate: await lastOkDate(b.event_key) }, ...empty,
       ...(joinMismatch.length > 0 ? { join_mismatch: joinMismatch } : {}),
     };
   }
 
   // ---- 合う束：分ける ----
   const liveKeys = new Set(ledger.map((l) => l.row_key));
-  const marked = flagRows(rows, ledger);
+  const marked = markSameRefTwins(flagRows(rows, ledger), await readLedgerDeposits(b.event_key), liveKeys);
   const newRows: { row: NormRow; index: number }[] = [];
   let existing = 0;
   marked.forEach((row, index) => {
@@ -337,6 +390,13 @@ export async function ingestBankBatch(b: BankBatchIn, mode: 'dry' | 'commit', im
 
   // ---- 当てる行：新しい入金の振込の行＋（first_ok の時だけ）台帳の first5 で待っている行の全部。古い順・同じ日は id の小さい順 ----
   const targetIds = new Set(insertedIds.filter((x) => x.transferIn).map((x) => x.id));
+  // 前の回が入れたあと当てる前に止まった行（60秒・メール・失敗）：new のまま種類も印も無い chat・file の入金の振込。
+  // 同じ束を渡し直せば、ここで当て直す（書き込みの中で state='new' を読み直すので、2回は記録しない）
+  for (const r of await getAll(
+    `SELECT id FROM recital_bank_rows
+     WHERE event_key = ? AND state = 'new' AND review_kind IS NULL AND check_flag IS NULL AND dir = 'in' AND kind = 'transfer' AND source IN ('chat', 'file')`,
+    [b.event_key],
+  )) targetIds.add(Number(r.id));
   if (b.first_ok === true) {
     for (const r of await getAll(`SELECT id FROM recital_bank_rows WHERE event_key = ? AND state = 'new' AND review_kind = 'first5'`, [b.event_key])) targetIds.add(Number(r.id));
   }
@@ -350,7 +410,7 @@ export async function ingestBankBatch(b: BankBatchIn, mode: 'dry' | 'commit', im
   for (const rowId of ordered) {
     let d: Awaited<ReturnType<typeof matchOneRow>>;
     try {
-      d = await matchOneRow(b.event_key, rowId, b.first_ok === true);
+      d = await __internal.matchOneRow(b.event_key, rowId, b.first_ok === true);
     } catch (e) {
       failedRows++;
       const code = e instanceof Error && e.message.startsWith('recital_') ? e.message : 'db_error';
@@ -442,8 +502,11 @@ async function matchOneRow(
   });
 }
 
+/** 同じファイルの中から matchOneRow を呼ぶ時の通り道（試験の spy 用。ほかのファイルからは使わない） */
+export const __internal = { matchOneRow: (eventKey: string, rowId: number, firstOk: boolean) => matchOneRow(eventKey, rowId, firstOk) };
+
 /**
- * dry：書かない。新しい入金の振込の行と、（はじめの5件の間は）台帳で first5 で待っている行の全部について、
+ * dry：書かない。新しい入金の振込の行と、前の回が当てる前に止まった台帳の行と、（はじめの5件の間は）台帳で first5 で待っている行の全部について、
  * commit の当て方を記憶の中だけでまねる（自動で当たった世帯の残りはその場で減らす＝同じ番号・同じ金額の2行目は当たらない）。
  * first_ok は付けずに見る。
  */
@@ -467,7 +530,14 @@ async function dryRun(b: BankBatchIn, allRows: NormRow[], newRows: { row: NormRo
     : [];
   // 束に写っている台帳の行（もうある行）には束の pos、写っていない行は ledger-<id>
   const posByKey = new Map(allRows.map((r) => [r.rowKey, r.pos]));
-  for (const l of ledgerFirst5) {
+  // 前の回が入れたあと当てる前に止まった行（commit がここで当て直す行。first5 の数に関係なく）
+  const resumeRows = await getAll(
+    `SELECT r.*, ${restSql} FROM recital_bank_rows r
+     WHERE r.event_key = ? AND r.state = 'new' AND r.review_kind IS NULL AND r.check_flag IS NULL AND r.dir = 'in' AND r.kind = 'transfer' AND r.source IN ('chat', 'file')
+     ORDER BY r.row_date, r.id`,
+    [b.event_key],
+  );
+  for (const l of [...ledgerFirst5, ...resumeRows]) {
     const rest = Number(l.rest);
     if (rest <= 0) continue;
     entries.push({ key: `l${l.id}`, date: String(l.row_date), group: 0, seq: Number(l.id), row: matchRowOfDb(l, rest), pos: posByKey.get(String(l.row_key)) ?? `ledger-${l.id}` });

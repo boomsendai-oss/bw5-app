@@ -51,13 +51,13 @@ const REF_AT_HEAD = new RegExp(`^(\\d{4})(?!\\d)[${escapeForClass(REF_SEPARATORS
 
 /**
  * 摘要から整理番号を読む（D5 2-16・K140）。
- * NFKC でそろえて空白を全部取る→頭の「振込」を外す→すぐあとが数字ちょうど4つ（5つ目が数字でない）ならそれが番号。
+ * NFKC でそろえて空白を全部取る→頭の「振込」があれば外す→すぐあとが数字ちょうど4つ（5つ目が数字でない）ならそれが番号。
+ * 「振込」の無い摘要（明細の CSV・手で打った行は数字から始まることがある）も、頭の数字4つを番号として読む（Task 27 の見直しの裁定）。
  * 番号のすぐあとの区切り1文字は取る。後ろの口座番号などの数字は読まない（nameRaw に残るだけ）。
  */
 export function readRefFromDesc(descRaw: string): { ref: string | null; refOk: boolean; nameRaw: string; descNorm: string } {
   const descNorm = descRaw.normalize('NFKC').replace(/\s/g, '');
-  if (!descNorm.startsWith('振込')) return { ref: null, refOk: false, nameRaw: descNorm, descNorm };
-  const rest = descNorm.slice('振込'.length);
+  const rest = descNorm.startsWith('振込') ? descNorm.slice('振込'.length) : descNorm;
   const m = REF_AT_HEAD.exec(rest);
   if (!m) return { ref: null, refOk: false, nameRaw: rest, descNorm };
   const ref = m[1];
