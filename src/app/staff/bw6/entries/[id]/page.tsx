@@ -2,7 +2,7 @@
 // 個人情報を出すので、proxy の cookie の確認に加えてセッションを本検証する（規約4.5）。
 // 発表会の設定は世帯の event_key で読む（?ev= は使わない）。鍵（edit_token）とメールアドレスは画面にも client の部品にも渡さない。
 // 「お支払い」の欄は StaffPaySection、入金の行は PaymentRows にまとめてある（23 が「振り込みましたの印を付ける」を StaffPaySection に足した。
-// 28 が「この入金を取り消す」を PaymentRows の行の横に足す。家庭の部品 src/app/bw6/my/PaySection.tsx とは別の物）。
+// 28 が「この入金を取り消す」（CancelPaymentButton）を PaymentRows の行の横に足した。家庭の部品 src/app/bw6/my/PaySection.tsx とは別の物）。
 // 20 が「特別な料金」（FeeClassPanel）・「世帯をまとめる」（MergePanel）を操作の欄に、「照合を決める」（MatchPanel）を人の横に足した。
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
@@ -14,10 +14,12 @@ import { getRecitalEvent, getRecitalSettings, listWorks, loadHouseholdDetail, lo
 import { memberWarn } from '@/lib/recitalMatch';
 import { countRecitalMailsToday } from '@/lib/recitalMail';
 import { maybeDoubleRecord } from '@/lib/recitalMoneyDb';
+import { reversedBankPaymentIds } from '@/lib/recitalMyPage';
 import {
   BANK_TOLD_BY_LABEL, CAST_STATUS_LABEL, FEE_CLASS_LABEL, MAIL_KIND_LABEL, MATCH_STATUS_LABEL, PAYMENT_METHOD_LABEL, PAYMENT_SOURCE_LABEL,
   PAY_METHOD_EMPTY, PAY_METHOD_LABEL, REFUND_STATUS_LABEL, labelOf, mailStatusLabel,
 } from '../../labels';
+import CancelPaymentButton from './CancelPaymentButton';
 import CopyButtons from './CopyButtons';
 import HouseholdEditor from './HouseholdEditor';
 import type { CastValue, EditorContact, EditorPerson } from './editorModel';
@@ -86,8 +88,13 @@ function StaffPaySection({ d }: { d: HouseholdDetail }) {
   );
 }
 
-/** 入金の行。28 はここの行の横に「この入金を取り消す」を足す */
+/**
+ * 入金の行。振込のプラスの行で、まだ取り消していない行の横にだけ「この入金を取り消す」（Task 28。有効な世帯だけ）。
+ * 取り消した行には「取り消し済み」と出す（マイナスの行と組にして見る。recitalMyPage の reversedBankPaymentIds）
+ */
 function PaymentRows({ d }: { d: HouseholdDetail }) {
+  const reversed = reversedBankPaymentIds(d.payments);
+  const canCancel = d.household.status === 'active';
   return (
     <Section title="入金">
       {d.payments.length === 0 ? (
@@ -101,6 +108,10 @@ function PaymentRows({ d }: { d: HouseholdDetail }) {
               <span>{labelOf(PAYMENT_METHOD_LABEL, p.method)}</span>
               <span className="text-sand-700">{labelOf(PAYMENT_SOURCE_LABEL, p.source)}</span>
               {p.memo && <span className="min-w-0 break-words text-sand-700">{p.memo}</span>}
+              {reversed.has(p.id) && <span className="rounded bg-sand-100 px-2 text-xs text-sand-800">取り消し済み</span>}
+              {canCancel && p.method === 'bank' && p.amount > 0 && p.bank_transaction_id != null && !reversed.has(p.id) && (
+                <CancelPaymentButton householdId={d.household.id} paymentId={p.id} amount={p.amount} />
+              )}
             </li>
           ))}
         </ul>

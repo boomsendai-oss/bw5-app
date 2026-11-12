@@ -15,7 +15,7 @@ import { getRecitalSettings, listWorks, type HouseholdDetail, type PersonRow, ty
 import { markMyPageOpened } from '@/lib/recitalFamilyDb';
 import { requireHouseholdByToken } from '@/lib/recitalGuard';
 import { CARD_CHECKING_TEXT, CARD_PAID_RETURN_TEXT, syncCardCheckout } from '@/lib/recitalPayDb';
-import { bankProgressLines, bankRestLine, closedNotice, longJpDate, myTopLines, nextTodos, payAreaText } from '@/lib/recitalMyPage';
+import { bankProgressLines, bankRestLine, closedNotice, lastLiveBankPayment, longJpDate, myTopLines, nextTodos, payAreaText } from '@/lib/recitalMyPage';
 import { FAMILY_ADD_LINE, fiveLines } from '@/lib/recitalPublic';
 import { workEditOptions, type EditWorkLite } from '@/lib/recitalWorkEdit';
 import { FiveLines } from '@/components/recital/FiveLines';
@@ -112,13 +112,12 @@ function bankViewOf(d: HouseholdDetail, bankText: string, payDue: string, restFr
         nameLine: `${h.ref_code} ${kana}`.trim(),
         restLine: bankRestLine(restFrom, restTo, today),
       };
-  // いちばん新しい振込の入金（明細の日付と額）。印が閉じたあとの「◯月◯日に ◯円を確認しました」に使う
-  const lastBank = [...d.payments].reverse().find((p) => p.method === 'bank' && Number(p.amount) > 0) ?? null;
+  // いちばん新しい、取り消していない振込の入金（明細の日付と額）。印が閉じたあとの「◯月◯日に ◯円を確認しました」に使う（Task 28：取り消した振込は出さない）
   const progress = bankProgressLines({
     toldAt: h.bank_told_at,
     toldAmount: told ? told.amount : null,
     remaining: d.money.remaining,
-    lastBank: lastBank ? { date: String(lastBank.bank_date ?? lastBank.paid_on), amount: Number(lastBank.amount) } : null,
+    lastBank: lastLiveBankPayment(d.payments),
   });
   return { guide, progress, today };
 }

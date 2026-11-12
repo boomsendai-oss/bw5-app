@@ -12,6 +12,20 @@ vi.mock('@/lib/recitalBankMatch', async (orig) => {
   return { ...real, decideRow: vi.fn(real.decideRow) };
 });
 
+// 書き込みの失敗を作るための差し込み口（busy の試験だけ。空のときは本物の withWriteTx をそのまま通す）
+const txFault = vi.hoisted(() => ({ next: null as Error | null }));
+vi.mock('@/lib/db', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/db')>();
+  return {
+    ...real,
+    withWriteTx: async <T,>(fn: Parameters<typeof real.withWriteTx<T>>[0]): Promise<T> => {
+      const e = txFault.next;
+      if (e) { txFault.next = null; throw e; }
+      return real.withWriteTx(fn);
+    },
+  };
+});
+
 delete process.env.GMAIL_APP_PASSWORD;
 await setupRecitalTestDb('bank');
 const { getOne, getAll, execute } = await import('../db');
@@ -20,7 +34,10 @@ const { readHouseholdMoney } = await import('../recitalMoneyDb');
 const { buildRowKey } = await import('../recitalBankBatch');
 const { pickRef } = await import('../recitalRef');
 const bankDb = await import('../recitalBankDb');
-const { ingestBankBatch, bankStartDate, loadMatchHouseholds } = bankDb;
+const { ingestBankBatch, bankStartDate, loadMatchHouseholds, listReviewRows, assignBankRow, setBankRowState, restoreBankRow, mergeManualRow, cancelBankPayment } = bankDb;
+const { recordManualPayment } = await import('../recitalMoneyDb');
+const { sendPaidMail } = await import('../recitalMail');
+const { readRefFromDesc } = await import('../recitalRef');
 const { decideRow } = await import('../recitalBankMatch');
 
 const r = (pos: string, date: string, dir: 'in' | 'out', amount: number | null, balance: number | null, kind: 'transfer' | 'debit' | 'other', desc = '', over: Partial<BankBatchRowIn> = {}): BankBatchRowIn =>
@@ -91,7 +108,12 @@ async function insertLedgerRow(
   eventKey: string,
   over: Partial<{ row_date: string; dir: string; kind: string; amount: number; balance: number | null; source: string; state: string; check_flag: string | null; desc_raw: string | null; review_kind: string | null; ref_read: string | null; ref_ok: number }>,
 ): Promise<number> {
-  const x = { row_date: '2026-12-16', dir: 'in', kind: 'transfer', amount: 26500, balance: 150000 as number | null, source: 'chat', state: 'new', check_flag: null, desc_raw: null, review_kind: null, ref_read: null, ref_ok: 0, ...over };
+  // desc_raw を渡して ref_read を渡さなければ、4 の readRefFromDesc で ref_read・ref_ok を入れる
+  const read = over.desc_raw != null && !('ref_read' in over) ? readRefFromDesc(over.desc_raw) : null;
+  const x = {
+    row_date: '2026-12-16', dir: 'in', kind: 'transfer', amount: 26500, balance: 150000 as number | null, source: 'chat', state: 'new', check_flag: null, desc_raw: null, review_kind: null,
+    ref_read: read ? read.ref : null, ref_ok: read?.refOk ? 1 : 0, ...over,
+  };
   const rowKey = buildRowKey({ rowDate: x.row_date, dir: x.dir, amount: x.amount, balance: x.balance });
   const res = await execute(
     `INSERT INTO recital_bank_rows (event_key, created_at, row_date, dir, amount, balance, kind, desc_raw, ref_read, ref_ok, row_key, source, state, check_flag, review_kind)
@@ -429,5 +451,367 @@ describe('ingestBankBatch：見直し1回目', () => {
     const res = await ingestBankBatch(b(SAMPLE, { event_key: ev, range_from: '2026/12/16' }), 'dry', 'test', NOON);
     expect(res.check).toEqual({ ok: false, near: '12月14日（期間の開始日）', lastOkDate: null });
     expect((await getOne(`SELECT check_result FROM recital_imports WHERE event_key=?`, [ev]))?.check_result).toBe('ng:12/14:0');
+  });
+});
+
+// ---------- Task 28：見てほしい入金のボタンと、入金の取り消し ----------
+// この試験ファイルの中だけの小さい助け（export しない）
+const o = { sendRemaining: false, confirmFlag: false };
+const mailKinds = async (hid: number) => (await getAll(`SELECT mail_kind FROM recital_mail_log WHERE household_id=? ORDER BY id`, [hid])).map((x) => String(x.mail_kind));
+const bankPaidMailKeys = async (hid: number) => (await getAll(`SELECT dedupe_key FROM recital_mail_log WHERE household_id=? AND dedupe_key LIKE 'bank_paid:%' ORDER BY id`, [hid])).map((x) => String(x.dedupe_key));
+const mailCount = async (hid: number) => count(`SELECT COUNT(*) n FROM recital_mail_log WHERE household_id=?`, [hid]);
+const rowState = async (rowId: number) => String((await getOne(`SELECT state FROM recital_bank_rows WHERE id=?`, [rowId]))?.state);
+/** base の行を1つ足す（合計を n ふやす） */
+async function addCharge(hid: number, n: number): Promise<void> {
+  const p = await getOne(`SELECT id, event_key FROM recital_people WHERE household_id=? ORDER BY id LIMIT 1`, [hid]);
+  await execute(
+    `INSERT INTO recital_charges (event_key, household_id, person_id, item_code, ref, label, qty, unit_amount, amount, status, created_at)
+     VALUES (?, ?, ?, 'base', '', '出演料（本体）', 1, ?, ?, 'active', ?)`,
+    [String(p?.event_key), hid, Number(p?.id), n, n, new Date().toISOString()],
+  );
+}
+
+describe('見てほしい入金のボタン', () => {
+  // 試験ごとに自分の発表会 t-bank-b<番号> と世帯・行を作る（前の試験の入金で残りがずれないように。ほかの試験の世帯・行を使わない）。
+  // 世帯の番号は検査に合う欠番（4823・4867・4872・4727・9827・1234・9054。本物の家庭には出ない）。
+  // assignBankRow ははじめの5件に関係しない（insertLedgerRow の行は review_kind が空なので first5 にならない）。
+  const fresh = async (no: string, hh: { ref: string; kana: string; charges: number[]; cast?: 'in' | 'out' }[]) => {
+    const ev = `t-bank-b${no}`; await seedEvent(ev);
+    const ids: number[] = [];
+    for (const h of hh) ids.push(await seedHousehold(ev, { ref: h.ref, lastKana: h.kana, charges: h.charges, cast: h.cast }));
+    return { ev, ids };
+  };
+  it('5 金額が少ない：一部として当てる。あと◯円を送るを選ぶと remaining のメール', async () => {
+    // A＝合計 32,500・払った 0。26,500 の行（short）→ 残り 6,000
+    const { ev, ids: [A] } = await fresh('5s', [{ ref: '4823', kana: 'ヤマダ', charges: [32500] }]);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await assignBankRow(row, [{ householdId: A, amount: 26500 }], { sendRemaining: true, confirmFlag: false }, 'KEIKO');
+    expect((await readHouseholdMoney(A)).m.remaining).toBe(6000);
+    expect(await mailKinds(A)).toContain('remaining');
+  });
+  it('5 送らないを選ぶと remaining のメールは出ない', async () => {
+    // A＝合計 32,500。26,500 の行（short）
+    const { ev, ids: [A] } = await fresh('5n', [{ ref: '4823', kana: 'ヤマダ', charges: [32500] }]);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await assignBankRow(row, [{ householdId: A, amount: 26500 }], { sendRemaining: false, confirmFlag: false }, 'KEIKO');
+    expect(await mailKinds(A)).not.toContain('remaining');
+  });
+  it('7 金額が多い：全額が入金、こえた 6,000 はしくみの返す分（source_payment_id 付き）', async () => {
+    // A＝合計 26,500。32,500 の行（over）→ 返す分 6,000
+    const { ev, ids: [A] } = await fresh('7', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }]);
+    const row = await insertLedgerRow(ev, { amount: 32500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const { paymentIds } = await assignBankRow(row, [{ householdId: A, amount: 32500 }], o, 'KEIKO');
+    expect(await getOne(`SELECT amount, status, reason_no, source_payment_id FROM recital_refunds WHERE household_id=?`, [A]))
+      .toMatchObject({ amount: 6000, status: 'todo', reason_no: 1, source_payment_id: paymentIds[0] });
+  });
+  it('4 足すとぴったり：1回押すと両方当たり、メールは1通（新しい方の入金の鍵）', async () => {
+    // A＝合計 32,500。同じ番号の 26,500 と 6,000 の行（足すと 32,500＝sum）
+    const { ev, ids: [A] } = await fresh('4', [{ ref: '4823', kana: 'ヤマダ', charges: [32500] }]);
+    const row26500 = await insertLedgerRow(ev, { amount: 26500, balance: 150000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await insertLedgerRow(ev, { amount: 6000, balance: 156000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const { paymentIds } = await assignBankRow(row26500, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    expect(paymentIds).toHaveLength(2);
+    expect(await bankPaidMailKeys(A)).toEqual([`bank_paid:${Math.max(...paymentIds)}`]);
+  });
+  it('9 2つの世帯に分ける：合計が行の額でなければ通さない／合えば入金2行', async () => {
+    // A・B＝合計 26,500 ずつ。53,000 の行
+    const { ev, ids: [A, B] } = await fresh('9', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }, { ref: '4867', kana: 'スズキ', charges: [26500] }]);
+    const row53000 = await insertLedgerRow(ev, { amount: 53000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await expect(assignBankRow(row53000, [{ householdId: A, amount: 26500 }, { householdId: B, amount: 20000 }], o, 'KEIKO')).rejects.toThrow('bad_alloc');
+    expect((await assignBankRow(row53000, [{ householdId: A, amount: 26500 }, { householdId: B, amount: 26500 }], o, 'KEIKO')).paymentIds).toHaveLength(2);
+  });
+  it('36 分けた片方を取り消す：行は matched のまま、のこり 26,500 の行として出る。全額では当てられない', async () => {
+    // A・B・C＝合計 26,500 ずつ。53,000 の行を A と B に分けたあと、B の分を取り消して C へ
+    const { ev, ids: [A, B, C] } = await fresh('36', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }, { ref: '4867', kana: 'スズキ', charges: [26500] }, { ref: '4872', kana: 'タナカ', charges: [26500] }]);
+    const row53000 = await insertLedgerRow(ev, { amount: 53000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const { paymentIds: [, payB] } = await assignBankRow(row53000, [{ householdId: A, amount: 26500 }, { householdId: B, amount: 26500 }], o, 'KEIKO');
+    await cancelBankPayment(payB, 'wrong_household', 'KEIKO');
+    const v = (await listReviewRows(ev)).find((x) => x.rowId === row53000);
+    expect(v).toMatchObject({ state: 'matched', isLeftover: true, leftover: 26500 });
+    await expect(assignBankRow(row53000, [{ householdId: C, amount: 53000 }], o, 'KEIKO')).rejects.toThrow('bad_alloc');
+    await assignBankRow(row53000, [{ householdId: C, amount: 26500 }], o, 'KEIKO');
+  });
+  it('29 取り消し：マイナスの行・台帳の行は new・残りがもどる・自動のメールは出ない／そのあと別の世帯に当て直せる', async () => {
+    // A・C＝合計 26,500。26,500 の行を A に当ててから取り消し、C に当て直す
+    const { ev, ids: [A, C] } = await fresh('29', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }, { ref: '4872', kana: 'タナカ', charges: [26500] }]);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const { paymentIds: [payA] } = await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    const before = await mailCount(A);
+    expect(await cancelBankPayment(payA, 'wrong_household', 'KEIKO')).toEqual({ ok: true });
+    expect(await getOne(`SELECT amount FROM recital_payments WHERE household_id=? ORDER BY id DESC LIMIT 1`, [A])).toMatchObject({ amount: -26500 });
+    expect(await rowState(row)).toBe('new');
+    expect((await readHouseholdMoney(A)).m.remaining).toBe(26500);
+    expect(await mailCount(A)).toBe(before);
+    await assignBankRow(row, [{ householdId: C, amount: 26500 }], o, 'KEIKO');
+    expect((await readHouseholdMoney(C)).m.remaining).toBe(0);
+  });
+  it('37 取り消した入金に返す分（todo）→ cancelled／もう返した（done）→ refund_done で何も変えない', async () => {
+    // A・D＝合計 26,500。32,500 の行をそれぞれに当てる → 返す分 6,000（todo・source_payment_id＝その入金）
+    const { ev, ids: [A, D] } = await fresh('37', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }, { ref: '4727', kana: 'サトウ', charges: [26500] }]);
+    const row32500 = await insertLedgerRow(ev, { amount: 32500, balance: 150000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const row32500b = await insertLedgerRow(ev, { amount: 32500, balance: 182500, desc_raw: '振込 4727 サトウ ジロウ' });
+    const { paymentIds: [p1] } = await assignBankRow(row32500, [{ householdId: A, amount: 32500 }], o, 'KEIKO');
+    await cancelBankPayment(p1, 'wrong_household', 'KEIKO');
+    expect(await getOne(`SELECT amount, status FROM recital_refunds WHERE source_payment_id=?`, [p1])).toEqual({ amount: 6000, status: 'cancelled' });
+    // D に 32,500 の行を当て、返す分を done にしてから取り消す
+    const { paymentIds: [p2] } = await assignBankRow(row32500b, [{ householdId: D, amount: 32500 }], o, 'KEIKO');
+    await execute(`UPDATE recital_refunds SET status='done' WHERE source_payment_id=?`, [p2]);
+    const n = (await getOne(`SELECT COUNT(*) n FROM recital_payments WHERE household_id=?`, [D]))?.n;
+    expect(await cancelBankPayment(p2, 'wrong_household', 'KEIKO')).toEqual({ ok: false, code: 'refund_done' });
+    expect((await getOne(`SELECT COUNT(*) n FROM recital_payments WHERE household_id=?`, [D]))?.n).toBe(n);
+  });
+  it('払った額が 0 未満になる取り消し → negative', async () => {
+    // E＝合計 26,500。26,500 の行を当てたあと、手で −26,500 の調整（打ちまちがいの打ち消し）が入っている
+    const { ev, ids: [E] } = await fresh('neg', [{ ref: '9827', kana: 'ヤマダ', charges: [26500] }]);
+    const rowE = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 9827 ヤマダ ハナコ' });
+    const { paymentIds: [p] } = await assignBankRow(rowE, [{ householdId: E, amount: 26500 }], o, 'KEIKO');
+    await recordManualPayment(E, { method: 'adjust', amount: -26500, paidOn: '2026-12-16', memo: '打ちまちがい' }, 'KEIKO');
+    expect(await cancelBankPayment(p, 'wrong_household', 'KEIKO')).toEqual({ ok: false, code: 'negative' });
+    expect(await rowState(rowE)).toBe('matched');
+  });
+  it('misread で取り消して、同じ世帯に同じ額で当て直す → メールの記録がふえない', async () => {
+    // A＝合計 26,500。26,500 の行を当てる（完了のメール1通）→ misread で取り消し → 同じ額で当て直す
+    const { ev, ids: [A] } = await fresh('mis', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }]);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const { paymentIds: [payA] } = await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    const n = await mailCount(A);
+    await cancelBankPayment(payA, 'misread', 'KEIKO');
+    await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    expect(await mailCount(A)).toBe(n);
+  });
+  it('取り消すと「振り込みました」の印がもどる（at・date・amount・by が同じ。名義は空）', async () => {
+    // F＝合計 26,500・印 26,500（家庭が押した）。26,500 の行
+    const { ev, ids: [F] } = await fresh('told', [{ ref: '1234', kana: 'ヤマダ', charges: [26500] }]);
+    const rowF = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 1234 ヤマダ ハナコ' });
+    const at0 = '2026-12-15T01:00:00.000Z';
+    await execute(`UPDATE recital_households SET bank_told_at=?, bank_told_date='2026-12-15', bank_told_name='1234 ヤマダ ハナコ', bank_told_amount=26500, bank_told_by='family' WHERE id=?`, [at0, F]);
+    const { paymentIds: [p] } = await assignBankRow(rowF, [{ householdId: F, amount: 26500 }], o, 'KEIKO');
+    expect((await getOne(`SELECT bank_told_at FROM recital_households WHERE id=?`, [F]))?.bank_told_at).toBeNull();
+    await cancelBankPayment(p, 'wrong_household', 'KEIKO');
+    expect(await getOne(`SELECT bank_told_at, bank_told_date, bank_told_amount, bank_told_by, bank_told_name FROM recital_households WHERE id=?`, [F]))
+      .toEqual({ bank_told_at: at0, bank_told_date: '2026-12-15', bank_told_amount: 26500, bank_told_by: 'family', bank_told_name: null });
+  });
+  it('夜に当てて待ちになったメールは、取り消すと cancelled', async () => {
+    // G＝合計 26,500。22:00 に 26,500 の行を当てる → 完了のメールは待ち
+    const { ev, ids: [G] } = await fresh('night', [{ ref: '9054', kana: 'ヤマダ', charges: [26500] }]);
+    const rowG = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 9054 ヤマダ ハナコ' });
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-12-16T22:00:00+09:00'));
+    const { paymentIds: [p] } = await assignBankRow(rowG, [{ householdId: G, amount: 26500 }], o, 'KEIKO');
+    expect((await getOne(`SELECT status FROM recital_mail_log WHERE dedupe_key=?`, [`bank_paid:${p}`]))?.status).toBe('waiting');
+    await cancelBankPayment(p, 'wrong_household', 'KEIKO');
+    expect((await getOne(`SELECT status FROM recital_mail_log WHERE dedupe_key=?`, [`bank_paid:${p}`]))?.status).toBe('cancelled');
+    vi.useRealTimers();
+  });
+  it('印のある行は confirmFlag なしでは当てない', async () => {
+    // A＝合計 26,500。印 last の付いた 26,500 の行
+    const { ev, ids: [A] } = await fresh('flag', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }]);
+    const lastRow = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ', check_flag: 'last' });
+    await expect(assignBankRow(lastRow, [{ householdId: A, amount: 26500 }], { sendRemaining: false, confirmFlag: false }, 'KEIKO')).rejects.toThrow('confirm_flag');
+  });
+  it('first5 の行を番号の世帯に当てる → source は bank_auto（はじめの5件に数える）', async () => {
+    const ev = 't-bank-b5'; await seedEvent(ev); const H5 = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    await ingestBankBatch(b(SAMPLE, { event_key: ev }), 'commit', 'test', new Date('2026-12-16T12:00:00+09:00'));   // first_ok なし → first5
+    const row = (await getOne(`SELECT id FROM recital_bank_rows WHERE event_key=? AND review_kind='first5'`, [ev]))!.id;
+    await assignBankRow(Number(row), [{ householdId: H5, amount: 26500 }], o, 'KEIKO');
+    expect(await getOne(`SELECT source, confirmed_by FROM recital_payments WHERE household_id=?`, [H5])).toEqual({ source: 'bank_auto', confirmed_by: 'KEIKO' });
+  });
+  it('発表会ではない：名義が消える／もとにもどす：理由が要る、名義は空のまま', async () => {
+    // 世帯なし。名義つきの 26,500 の行1つ
+    const { ev } = await fresh('nr', []);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await setBankRowState([row], 'not_recital', null, 'KEIKO');
+    expect(await getOne(`SELECT desc_raw, desc_norm, state FROM recital_bank_rows WHERE id=?`, [row])).toMatchObject({ desc_raw: null, desc_norm: null, state: 'not_recital' });
+    await expect(restoreBankRow(row, '', 'KEIKO')).rejects.toThrow('reason_required');
+    await restoreBankRow(row, '押しまちがい', 'KEIKO');
+    expect(await getOne(`SELECT desc_raw, state FROM recital_bank_rows WHERE id=?`, [row])).toMatchObject({ desc_raw: null, state: 'new' });
+  });
+  it('当てた入金がある行は 読みまちがい・発表会ではない にできない', async () => {
+    // A＝合計 26,500。26,500 の行を当ててから void／not_recital にしようとする
+    const { ev, ids: [A] } = await fresh('hp', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }]);
+    const matchedRow = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await assignBankRow(matchedRow, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    await expect(setBankRowState([matchedRow], 'void', null, 'KEIKO')).rejects.toThrow('has_payment');
+    await expect(setBankRowState([matchedRow], 'not_recital', null, 'KEIKO')).rejects.toThrow('has_payment');
+  });
+  it('35 同じ入金にする：manual の行は void、当てた入金は新しい行へ付けかわる、メールは出ない', async () => {
+    const ev = 't-bank-b35'; await seedEvent(ev); const H = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const man = await insertLedgerRow(ev, { source: 'manual', amount: 26500, row_date: '2026-12-16', balance: null, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const { paymentIds: [p] } = await assignBankRow(man, [{ householdId: H, amount: 26500 }], o, 'KEIKO');
+    const n = await mailCount(H);
+    const neu = await insertLedgerRow(ev, { source: 'chat', amount: 26500, row_date: '2026-12-16', desc_raw: '振込 4823 ヤマダ ハナコ', check_flag: 'manual_twin' });
+    await mergeManualRow(man, neu, 'KEIKO');
+    expect(await rowState(man)).toBe('void');
+    expect(await getOne(`SELECT state, check_flag FROM recital_bank_rows WHERE id=?`, [neu])).toEqual({ state: 'matched', check_flag: null });
+    expect(Number((await getOne(`SELECT bank_transaction_id t FROM recital_payments WHERE id=?`, [p]))?.t)).toBe(neu);
+    expect(await mailCount(H)).toBe(n);
+  });
+  it('listReviewRows：残高を返さない・保留の行も出る・候補0は no_candidate・外した行は closed', async () => {
+    // A＝合計 26,500。行：番号つき 26,500（review）／保留にした 5,000（候補0）／発表会ではないにした 7,000（closed）
+    const { ev } = await fresh('list', [{ ref: '4823', kana: 'ヤマダ', charges: [26500] }]);
+    const r1 = await insertLedgerRow(ev, { amount: 26500, balance: 150000, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const r2 = await insertLedgerRow(ev, { amount: 5000, balance: 155000, desc_raw: '振込 ﾀﾅｶ ｲﾁﾛｳ' });
+    const r3 = await insertLedgerRow(ev, { amount: 7000, balance: 162000, desc_raw: '振込 ｻﾄｳ ｼﾞﾛｳ' });
+    await setBankRowState([r2], 'hold', '確かめ中', 'KEIKO');
+    await setBankRowState([r3], 'not_recital', null, 'KEIKO');
+    const rows = await listReviewRows(ev);
+    expect(rows.every((x) => !('balance' in x))).toBe(true);
+    expect(rows.find((x) => x.rowId === r1)?.group).toBe('review');
+    expect(rows.find((x) => x.rowId === r2)).toMatchObject({ group: 'no_candidate', state: 'hold' });
+    expect(rows.find((x) => x.rowId === r3)?.group).toBe('closed');
+  });
+  it('listReviewRows は開くたびに種類を計算し直して書く（世帯が作品を足して残りが 32,500 になると、26,500 の行は over から short に変わる）', async () => {
+    const ev = 't-bank-b20'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [20000] });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await listReviewRows(ev);
+    expect((await getOne(`SELECT review_kind k FROM recital_bank_rows WHERE id=?`, [row]))?.k).toBe('over');
+    await addCharge(A, 12500);                      // 合計 32,500 にする（試験の中の小さな関数。base の行を1つ足す）
+    await listReviewRows(ev);
+    expect((await getOne(`SELECT review_kind k FROM recital_bank_rows WHERE id=?`, [row]))?.k).toBe('short');
+  });
+  // ── 場面の表（5-6）で、ほかの試験に無かった物
+  it('6 振込手数料ぶん少ない：short を「送らない」で当て → 差を手で調整 → 残り0 → メールはこの1通だけ（complete）', async () => {
+    const ev = 't-bank-b6'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const row = await insertLedgerRow(ev, { amount: 26060, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await assignBankRow(row, [{ householdId: A, amount: 26060 }], { sendRemaining: false, confirmFlag: false }, 'KEIKO');
+    expect(await mailKinds(A)).toEqual([]);
+    const { paymentId } = await recordManualPayment(A, { method: 'adjust', amount: 440, paidOn: '2026-12-16', memo: '振込手数料ぶん' }, 'KEIKO');
+    await sendPaidMail(A, paymentId, 'adjust');
+    expect((await readHouseholdMoney(A)).m.remaining).toBe(0);
+    expect(await mailKinds(A)).toEqual(['complete']);
+  });
+  it('8 払い済みの世帯に 26,500 → 当てると全額が返す分1番・確認のメールは出ない', async () => {
+    const ev = 't-bank-b8'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    await recordManualPayment(A, { method: 'cash', amount: 26500, paidOn: '2026-12-15', memo: '' }, 'KEIKO');
+    const before = await mailCount(A);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    expect(await getOne(`SELECT amount, reason_no FROM recital_refunds WHERE household_id=? AND status='todo'`, [A])).toMatchObject({ amount: 26500, reason_no: 1 });
+    expect(await bankPaidMailKeys(A)).toEqual([]);
+    expect(await mailCount(A)).toBe(before);
+  });
+  it('10・44 出演なしの世帯に当てても、返す分は自動で作らず、メールも0通', async () => {
+    const ev = 't-bank-b10'; await seedEvent(ev); const N = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [], cast: 'out' });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await assignBankRow(row, [{ householdId: N, amount: 26500 }], o, 'KEIKO');
+    expect((await getOne(`SELECT COUNT(*) n FROM recital_refunds WHERE household_id=?`, [N]))?.n).toBe(0);
+    expect(await mailCount(N)).toBe(0);
+  });
+  it('11 まとめた世帯の番号で来た入金 → まとめ先を選んで当てて残り0', async () => {
+    const ev = 't-bank-b11'; await seedEvent(ev);
+    const into = await seedHousehold(ev, { ref: '1007', lastKana: 'ヤマダ', charges: [26500] });
+    const from = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [] });
+    await execute(`UPDATE recital_households SET status='merged', merged_into=? WHERE id=?`, [into, from]);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    await expect(assignBankRow(row, [{ householdId: from, amount: 26500 }], o, 'KEIKO')).rejects.toThrow('merged');
+    await assignBankRow(row, [{ householdId: into, amount: 26500 }], o, 'KEIKO');
+    expect((await readHouseholdMoney(into)).m.remaining).toBe(0);
+  });
+  it('28「振り込みました」26,500 のあと作品を足して合計 32,500 → 26,500 の行は short、当てたあと残り 6,000', async () => {
+    const ev = 't-bank-b28'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [32500] });
+    await execute(`UPDATE recital_households SET bank_told_at=?, bank_told_date='2026-12-15', bank_told_amount=26500, bank_told_by='family' WHERE id=?`, [new Date().toISOString(), A]);
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    expect((await listReviewRows(ev)).find((x) => x.rowId === row)?.reviewKind).toBe('short');
+    await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    expect((await readHouseholdMoney(A)).m.remaining).toBe(6000);
+  });
+  // ── 2人が同時に押す（Review Focus）
+  it('同じ行を A と B に全額ずつ同時に当てる → 1つだけ通り、もう片方は row_over か bad_state か busy で、入金は1行', async () => {
+    const ev = 't-bank-bc1'; await seedEvent(ev);
+    const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] }); const B = await seedHousehold(ev, { ref: '4867', lastKana: 'スズキ', charges: [26500] });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 ヤマダ ハナコ' });
+    const rs = await Promise.allSettled([assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'TARO'), assignBankRow(row, [{ householdId: B, amount: 26500 }], o, 'KEIKO')]);
+    expect(rs.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    const err = rs.find((x) => x.status === 'rejected') as PromiseRejectedResult;
+    expect(['row_over', 'bad_state', 'recital_money:row_over', 'busy']).toContain(String(err.reason.message));   // libsql は同じプロセスから2本同時に書くと2本目が SQLITE_BUSY ですぐ落ちる＝busy に直して返す
+    expect((await getOne(`SELECT COUNT(*) n FROM recital_payments WHERE bank_transaction_id=?`, [row]))?.n).toBe(1);
+  });
+  it('同じ行を同じ世帯に2回 → 2回目は live_exists か bad_state か busy、メールは1通', async () => {
+    const ev = 't-bank-bc2'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const rs = await Promise.allSettled([assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'TARO'), assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO')]);
+    expect(rs.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect(await bankPaidMailKeys(A)).toHaveLength(1);
+  });
+});
+
+describe('見てほしい入金のボタン：前のタスクから持ち越した約束', () => {
+  const NOON = new Date('2026-12-16T12:00:00+09:00');
+  afterEach(() => { vi.restoreAllMocks(); txFault.next = null; });
+
+  it('(a) 取り消して new にもどした行は、次の「はい」の束でも自動で当たらない（K147）', async () => {
+    const ev = 't-bank-ka1'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    await ingestBankBatch({ ...b(SAMPLE, { event_key: ev }), first_ok: true }, 'commit', 'test', NOON);
+    const pay = await getOne(`SELECT id, bank_transaction_id FROM recital_payments WHERE household_id=?`, [A]);
+    await cancelBankPayment(Number(pay?.id), 'wrong_household', 'KEIKO');
+    expect(await rowState(Number(pay?.bank_transaction_id))).toBe('new');
+    const again = await ingestBankBatch({ ...b(SAMPLE, { event_key: ev }), first_ok: true }, 'commit', 'test', NOON);
+    expect(again.auto_matched).toBe(0);
+    expect((await readHouseholdMoney(A)).m.remaining).toBe(26500);
+    // 開いても first5 にならない（人が決めた行は、自動の種類にしない）
+    expect((await listReviewRows(ev)).find((x) => x.rowId === Number(pay?.bank_transaction_id))?.reviewKind).toBe('manual');
+  });
+  it('(a) 保留から「もとにもどす」した first5 の行は、次の「はい」の束でも自動で当たらない', async () => {
+    const ev = 't-bank-ka2'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    await ingestBankBatch(b(SAMPLE, { event_key: ev }), 'commit', 'test', NOON);                       // first5 で待つ
+    const row = Number((await getOne(`SELECT id FROM recital_bank_rows WHERE event_key=? AND review_kind='first5'`, [ev]))?.id);
+    await setBankRowState([row], 'hold', null, 'KEIKO');
+    await restoreBankRow(row, '押しまちがい', 'KEIKO');
+    expect(await getOne(`SELECT state, review_kind FROM recital_bank_rows WHERE id=?`, [row])).toEqual({ state: 'new', review_kind: 'manual' });
+    const dry = await ingestBankBatch(b(SAMPLE, { event_key: ev }), 'dry', 'test', NOON);
+    expect(dry.first5_rows?.some((x) => x.pos.startsWith('ledger-'))).toBe(false);
+    const res = await ingestBankBatch({ ...b(SAMPLE, { event_key: ev }), first_ok: true }, 'commit', 'test', NOON);
+    expect(res.auto_matched).toBe(0);
+    expect((await readHouseholdMoney(A)).m.remaining).toBe(26500);
+  });
+  it('(b) 何度渡しても当てられない行は、2回目で見てほしい入金へ回し、3回目の束は match_failed にしない', async () => {
+    const ev = 't-bank-kb'; await seedEvent(ev); await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const stop = vi.spyOn(bankDb.__internal, 'matchOneRow').mockRejectedValue(new Error('recital_test:stop'));
+    const bb = { ...b(SAMPLE, { event_key: ev }), first_ok: true };
+    await expect(ingestBankBatch(bb, 'commit', 'test', NOON)).rejects.toThrow('recital_bank:match_failed');
+    expect(await getOne(`SELECT review_kind, decided_by FROM recital_bank_rows WHERE event_key=? AND ref_read='4823'`, [ev])).toEqual({ review_kind: null, decided_by: null });
+    await expect(ingestBankBatch(bb, 'commit', 'test', NOON)).rejects.toThrow('recital_bank:match_failed');
+    expect(await getOne(`SELECT state, review_kind, decided_by FROM recital_bank_rows WHERE event_key=? AND ref_read='4823'`, [ev])).toEqual({ state: 'new', review_kind: 'manual', decided_by: 'system' });
+    stop.mockRestore();
+    await expect(ingestBankBatch(bb, 'commit', 'test', NOON)).resolves.toMatchObject({ auto_matched: 0 });
+    expect(err.mock.calls.flat().join(' ')).not.toMatch(/ヤマダ/);
+    expect((await listReviewRows(ev)).some((x) => x.group === 'review' && x.refRead === '4823')).toBe(true);
+  });
+  it('(d) void・出金の台帳の行には、核（insertPaymentTx）でも入金を作らない', async () => {
+    const ev = 't-bank-kd'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const voidRow = await insertLedgerRow(ev, { amount: 26500, state: 'void' });
+    const outRow = await insertLedgerRow(ev, { amount: 26500, dir: 'out', kind: 'debit', balance: 1000 });
+    const { withWriteTx } = await import('../db');
+    const { insertPaymentTx } = await import('../recitalMoneyDb');
+    for (const r of [voidRow, outRow]) {
+      await expect(withWriteTx((tx) => insertPaymentTx(tx, { householdId: A, method: 'bank', amount: 26500, paidOn: '2026-12-16', source: 'bank_staff', bankRowId: r }, 'KEIKO')))
+        .rejects.toThrow('recital_money:bad_input');
+      await expect(assignBankRow(r, [{ householdId: A, amount: 26500 }], o, 'KEIKO')).rejects.toThrow('bad_state');
+    }
+    expect(await count('SELECT COUNT(*) n FROM recital_payments WHERE household_id=?', [A])).toBe(0);
+  });
+  it('(e) まとめた世帯の振込の入金は取り消せない（merged）・同じ入金を2回は取り消せない（already_cancelled）', async () => {
+    const ev = 't-bank-ke'; await seedEvent(ev);
+    const into = await seedHousehold(ev, { ref: '4867', lastKana: 'ヤマダ', charges: [26500] });
+    const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    const { paymentIds: [p] } = await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    await execute(`UPDATE recital_households SET status='merged', merged_into=? WHERE id=?`, [into, A]);
+    await expect(cancelBankPayment(p, 'wrong_household', 'KEIKO')).rejects.toThrow('merged');
+    await execute(`UPDATE recital_households SET status='active', merged_into=NULL WHERE id=?`, [A]);
+    await cancelBankPayment(p, 'misread', 'KEIKO');
+    await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');      // 同じ行を同じ世帯に当て直す（行と世帯の合計は 26,500 にもどる）
+    await expect(cancelBankPayment(p, 'misread', 'KEIKO')).rejects.toThrow('already_cancelled');
+  });
+  it('書き込みが SQLITE_BUSY で落ちたら busy（当てる・取り消す）。何も書かない', async () => {
+    const ev = 't-bank-busy'; await seedEvent(ev); const A = await seedHousehold(ev, { ref: '4823', lastKana: 'ヤマダ', charges: [26500] });
+    const row = await insertLedgerRow(ev, { amount: 26500, desc_raw: '振込 4823 ヤマダ ハナコ' });
+    txFault.next = Object.assign(new Error('SQLITE_BUSY: database is locked'), { code: 'SQLITE_BUSY' });
+    await expect(assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO')).rejects.toThrow('busy');
+    expect(await count('SELECT COUNT(*) n FROM recital_payments WHERE household_id=?', [A])).toBe(0);
+    const { paymentIds: [p] } = await assignBankRow(row, [{ householdId: A, amount: 26500 }], o, 'KEIKO');
+    txFault.next = Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY' });
+    await expect(cancelBankPayment(p, 'wrong_household', 'KEIKO')).rejects.toThrow('busy');
+    expect(await count('SELECT COUNT(*) n FROM recital_payments WHERE household_id=?', [A])).toBe(1);
   });
 });

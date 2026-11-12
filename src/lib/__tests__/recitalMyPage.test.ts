@@ -1,6 +1,6 @@
 // BW6 発表会（段階1）のマイページの文（recitalMyPage.ts・純）の試験。文の正本は設計書 04 4-2 マイページ。
 import { describe, it, expect } from 'vitest';
-import { myTopLines, closedNotice, nextTodos, payAreaText, parseYenInput, longJpDate, bankRestLine, bankProgressLines, type MyTopInput } from '../recitalMyPage';
+import { myTopLines, closedNotice, nextTodos, payAreaText, parseYenInput, longJpDate, bankRestLine, bankProgressLines, lastLiveBankPayment, reversedBankPaymentIds, type MyTopInput } from '../recitalMyPage';
 
 const m = (total: number, paid: number) => ({ total, paid, remaining: Math.max(0, total - paid), overpaid: Math.max(0, paid - total) });
 const base: Omit<MyTopInput, 'view' | 'm'> = { hasIn: true, hasMaybe: false, payDue: '2027-02-10', todayYmd: '2026-12-20', changeClose: '2027-01-31 23:59', afterChangeClose: false, payMethod: null };
@@ -121,5 +121,21 @@ describe('振込の進み（Task 23・D5 2-20 家庭の画面の状態）', () =
   });
   it('どちらも無ければ出さない', () => {
     expect(bankProgressLines({ toldAt: null, toldAmount: null, remaining: 26500, lastBank: null })).toEqual([]);
+  });
+});
+
+describe('取り消した振込の入金（Task 28）', () => {
+  const p = (id: number, amount: number, row: number | null, method = 'bank', bank_date: string | null = '2026-12-21') => ({ id, method, amount, bank_transaction_id: row, bank_date, paid_on: '2026-12-22' });
+  it('取り消した振込は「確認しました」に出さない。前の振込が出る／ほかに無ければ出さない', () => {
+    expect(lastLiveBankPayment([p(1, 6000, 10, 'bank', '2026-12-18'), p(2, 26500, 11), p(3, -26500, 11, 'bank', null)])).toEqual({ date: '2026-12-18', amount: 6000 });
+    expect(lastLiveBankPayment([p(2, 26500, 11), p(3, -26500, 11, 'bank', null)])).toBeNull();
+  });
+  it('読みまちがいで同じ世帯・同じ行に当て直した：取り消した方だけが入り、当て直した方が出る', () => {
+    const pays = [p(2, 26500, 11), p(3, -26500, 11, 'bank', null), p(4, 26500, 11, 'bank', '2026-12-21')];
+    expect([...reversedBankPaymentIds(pays)]).toEqual([2]);
+    expect(lastLiveBankPayment(pays)).toEqual({ date: '2026-12-21', amount: 26500 });
+  });
+  it('ほかの行のマイナス・調整のマイナスは組にしない', () => {
+    expect([...reversedBankPaymentIds([p(2, 26500, 11), p(3, -26500, 12), p(4, -26500, null, 'adjust')])]).toEqual([]);
   });
 });

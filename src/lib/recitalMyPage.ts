@@ -125,3 +125,36 @@ export function bankProgressLines(x: {
   if (x.lastBank && isIsoDate(x.lastBank.date)) return [`${jpDate(x.lastBank.date)}に ${yenJa(x.lastBank.amount)}を確認しました`];
   return [];
 }
+
+/**
+ * 取り消した振込の入金（Task 28「この入金を取り消す」）の id。取り消しは、同じ台帳の行に、もとの額のマイナスの振込の行を入れる。
+ * 世帯の入金を id の順に見て、マイナスの振込の行ごとに、それより前の、同じ台帳の行・同じ額で、まだ組になっていないプラスの振込の行の
+ * いちばん新しい物と組にする（読みまちがいで同じ世帯に当て直した時も、取り消した方だけが入る）。
+ * マイページの「◯月◯日に ◯円を確認しました」と、スタッフの「この入金を取り消す」を出すかに使う。
+ */
+export function reversedBankPaymentIds(
+  payments: { id: number; method: string; amount: number; bank_transaction_id: number | null }[],
+): Set<number> {
+  const out = new Set<number>();
+  const bank = [...payments].filter((p) => p.method === 'bank' && p.bank_transaction_id != null).sort((a, b) => a.id - b.id);
+  for (const neg of bank) {
+    if (Number(neg.amount) >= 0) continue;
+    const pos = bank
+      .filter((p) => p.id < neg.id && Number(p.amount) === -Number(neg.amount) && p.bank_transaction_id === neg.bank_transaction_id && !out.has(p.id))
+      .pop();
+    if (pos) out.add(pos.id);
+  }
+  return out;
+}
+
+/** いちばん新しい、取り消していない振込の入金（明細の日付と額）。無ければ null（マイページの「◯月◯日に ◯円を確認しました」） */
+export function lastLiveBankPayment(
+  payments: { id: number; method: string; amount: number; bank_transaction_id: number | null; bank_date: string | null; paid_on: string }[],
+): { date: string; amount: number } | null {
+  const reversed = reversedBankPaymentIds(payments);
+  const p = [...payments]
+    .sort((a, b) => a.id - b.id)
+    .reverse()
+    .find((x) => x.method === 'bank' && Number(x.amount) > 0 && !reversed.has(x.id));
+  return p ? { date: String(p.bank_date ?? p.paid_on), amount: Number(p.amount) } : null;
+}

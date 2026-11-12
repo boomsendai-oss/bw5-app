@@ -4,16 +4,17 @@
 // proxy は DB を見られないので、どれも1行目で requireRecitalStaff() を呼んでセッションを本検証する（規約4.5）。
 // 変更の控え・afterMoneyChanged・新しいアドレスへの URL のメールは、呼ぶ先（8・9）が中でする。ここでは送らない・呼ばない。
 // 鍵（edit_token）とメールアドレスはログに出さない。
-// あとのタスク（23・20・28）は、このファイルに足す（世帯の画面の操作はここにまとめる）。
+// あとのタスク（23・20・28）は、このファイルに足す（世帯の画面の操作はここにまとめる）。28 は「この入金を取り消す」（cancelBankPaymentAction）を足した。
 import { revalidatePath } from 'next/cache';
 import { isIsoDate, todayJst } from '@/lib/dateJst';
 import { RECITAL_STAFF_NAMES, jstToMs, recitalMyUrl, type FeeClass } from '@/lib/recital';
+import { cancelBankPayment } from '@/lib/recitalBankDb';
 import { loadHouseholdDetail, searchHouseholds, type HouseholdHit } from '@/lib/recitalDb';
 import { applyHouseholdEdits, changeHouseholdEmail, type HouseholdEdit } from '@/lib/recitalEntryDb';
 import { requireRecitalStaff } from '@/lib/recitalGuard';
 import { sendPaidMail, sendRecitalMail } from '@/lib/recitalMail';
 import { cancelRefund, readHouseholdMoney, recordManualPayment } from '@/lib/recitalMoneyDb';
-import { parseYenInput } from '@/lib/recitalMyPage';
+import { parseYenInput, reversedBankPaymentIds } from '@/lib/recitalMyPage';
 import { markBankTold } from '@/lib/recitalPayDb';
 import type { MemberLite } from '@/lib/recitalMatch';
 import {
@@ -177,13 +178,17 @@ export async function recordManualPaymentAction(
   }
 }
 
-/** 返す分（todo）を取り消す。理由必須。afterMoneyChanged は cancelRefund が中で呼ぶ */
+/**
+ * 返す分（todo）を取り消す。理由必須。afterMoneyChanged は cancelRefund が中で呼ぶ。
+ * まとめた世帯は拒む（Task 28 で決め直した：世帯の画面のお金の操作はどれも、まとめた世帯ではさせない。まとめる前に返す分 todo は片づけてある）
+ */
 export async function cancelRefundAction(householdId: number, refundId: number, reason: string, staffName: string): Promise<{ ok: true } | Fail> {
   await requireRecitalStaff();
   if (!isId(householdId) || !isId(refundId)) return { ok: false, error: '返す分が見つかりません' };
   if (!RECITAL_STAFF_NAMES.includes(staffName)) return { ok: false, error: NAME_ERROR };
   if (isBlank(reason)) return { ok: false, error: '理由を入れてください' };
   const d = await loadHouseholdDetail(householdId);
+  if (d && d.household.status !== 'active') return { ok: false, error: NOT_ACTIVE };
   if (!d || !d.refunds.some((r) => r.id === refundId && r.status === 'todo')) return { ok: false, error: '返す分が見つかりません（もう取り消したかもしれません）' };
   try {
     await cancelRefund(refundId, reason.trim(), staffName);
@@ -192,6 +197,53 @@ export async function cancelRefundAction(householdId: number, refundId: number, 
     throw e;
   }
   done(householdId);
+  return { ok: true };
+}
+
+/** 2人が同時に押した時の文（row_over・live_exists・busy。Task 28） */
+const BANK_RACE = 'ほかの人が、いま同じ入金を当てました。画面を開き直してください';
+const CANCEL_REASONS: readonly string[] = ['wrong_household', 'misread'];
+
+/**
+ * 「この入金を取り消す」（Task 28・D5 2-24。K200・K202）。formData：householdId・paymentId・reason（wrong_household｜misread）・staffName。
+ * まとめた世帯は拒む。マイナスの行・返す分の片づけ・印をもどす・待ちのメールの取りやめは cancelBankPayment が1回の書き込みでする。メールは出さない。
+ */
+export async function cancelBankPaymentAction(formData: FormData): Promise<{ ok: true } | Fail> {
+  await requireRecitalStaff();
+  const householdId = Number(formData.get('householdId'));
+  const paymentId = Number(formData.get('paymentId'));
+  const reason = String(formData.get('reason') ?? '');
+  const staffName = String(formData.get('staffName') ?? '');
+  if (!isId(householdId) || !isId(paymentId)) return { ok: false, error: '入金が見つかりません' };
+  if (!RECITAL_STAFF_NAMES.includes(staffName)) return { ok: false, error: NAME_ERROR };
+  if (!CANCEL_REASONS.includes(reason)) return { ok: false, error: '理由を選んでください' };
+  const d = await loadHouseholdDetail(householdId);
+  if (!d) return { ok: false, error: '世帯が見つかりません' };
+  if (d.household.status !== 'active') return { ok: false, error: NOT_ACTIVE };
+  const p = d.payments.find((x) => x.id === paymentId && x.method === 'bank' && x.amount > 0 && x.bank_transaction_id != null);
+  if (!p || reversedBankPaymentIds(d.payments).has(paymentId)) return { ok: false, error: 'この入金は取り消せません（もう取り消したかもしれません）。画面を開き直してください' };
+  let r: Awaited<ReturnType<typeof cancelBankPayment>>;
+  try {
+    r = await cancelBankPayment(paymentId, reason as 'wrong_household' | 'misread', staffName);
+  } catch (e) {
+    const m = errMsg(e);
+    if (m === 'busy' || m.includes('recital_money:row_over') || m.includes('recital_money:live_exists')) return { ok: false, error: BANK_RACE };
+    if (m === 'already_cancelled') return { ok: false, error: 'この入金は、もう取り消してあります。画面を開き直してください' };
+    if (m === 'merged') return { ok: false, error: NOT_ACTIVE };
+    if (m === 'not_found' || m === 'bad_state') return { ok: false, error: 'この入金は取り消せません。画面を開き直してください' };
+    if (m === 'reason_required') return { ok: false, error: '理由を選んでください' };
+    throw e;
+  }
+  if (!r.ok) {
+    if (r.code === 'refund_done') {
+      const now = await loadHouseholdDetail(householdId);
+      const doneSum = (now ?? d).refunds.filter((x) => x.source_payment_id === paymentId && x.status === 'done').reduce((a, x) => a + Number(x.amount), 0);
+      return { ok: false, error: `この入金から、もう ${doneSum.toLocaleString('ja-JP')}円を返しています。先に、TARO に知らせてください` };
+    }
+    return { ok: false, error: '払った額が 0 円より少なくなるため、取り消せません。作る人に知らせてください' };
+  }
+  done(householdId);
+  revalidatePath('/staff/bw6');
   return { ok: true };
 }
 

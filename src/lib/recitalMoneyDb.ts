@@ -135,9 +135,11 @@ export async function insertPaymentTx(
 
   // 3. 台帳の行の守り（K200）
   if (p.bankRowId != null) {
-    const row = await tx.execute({ sql: 'SELECT event_key, amount FROM recital_bank_rows WHERE id = ?', args: [p.bankRowId] });
+    const row = await tx.execute({ sql: 'SELECT event_key, amount, dir, kind, state FROM recital_bank_rows WHERE id = ?', args: [p.bankRowId] });
     const r = row.rows[0];
     if (!r || String(r.event_key) !== eventKey) fail('bad_input');
+    // 入金の行が付くのは、void でない入金の振込の行だけ（Task 27 の書き込みと 28 のスタッフの当て方と同じ守り。出金・デビット・読みまちがいの行には付けない）
+    if (String(r.dir) !== 'in' || String(r.kind) !== 'transfer' || String(r.state) === 'void') fail('bad_input');
     const sameHousehold = await sumOf(
       tx,
       'SELECT COALESCE(SUM(amount), 0) AS n FROM recital_payments WHERE bank_transaction_id = ? AND household_id = ?',

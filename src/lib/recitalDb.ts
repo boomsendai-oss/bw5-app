@@ -822,18 +822,14 @@ export async function listAttention(eventKey: string, now?: Date): Promise<Atten
     }
   }
 
-  // 4番：入金（払うを開けた後だけ）。(a)(b) は 28・29 ができるまでの仮の SQL（28 が listReviewRows、29 が listToldWaiting に置きかえる）
+  // 4番：入金（払うを開けた後だけ）。(a) は 28 の listReviewRows（closed でない行ごとに1件。条件を2か所に持たない）。
+  // (b) は 29 ができるまでの仮の書き方（29 が listToldWaiting に置きかえる）
   if (payGate(settings, nowMs) === 'open') {
-    const rows = await getAll(
-      `SELECT r.id, r.row_date FROM recital_bank_rows r
-       LEFT JOIN (SELECT bank_transaction_id, SUM(amount) AS paid FROM recital_payments WHERE bank_transaction_id IS NOT NULL GROUP BY bank_transaction_id) x
-         ON x.bank_transaction_id = r.id
-       WHERE r.event_key = ? AND r.dir = 'in' AND r.kind = 'transfer'
-         AND (r.state IN ('new', 'hold') OR (r.state = 'matched' AND COALESCE(x.paid, 0) < r.amount))
-       ORDER BY r.row_date, r.id`,
-      [eventKey],
-    );
-    for (const r of rows) out.push({ no: 4, label: `見てほしい入金：${str(r.row_date)}`, href: BANK_HREF });
+    // recitalBankDb はこのファイルを読むので、関数の中で読む
+    const { listReviewRows } = await import('./recitalBankDb');
+    for (const r of (await listReviewRows(eventKey)).filter((x) => x.group !== 'closed')) {
+      out.push({ no: 4, label: `見てほしい入金：${r.rowDate}`, href: BANK_HREF });
+    }
     for (const h of active) {
       if (!h.bank_told_at) continue;
       if ((money.get(Number(h.id)) ?? ZERO_MONEY).remaining <= 0) continue;
