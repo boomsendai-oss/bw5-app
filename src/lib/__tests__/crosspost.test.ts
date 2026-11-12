@@ -19,6 +19,8 @@ import {
   buildXReplyCta,
   classifyByEnabled,
   findStalled,
+  splitStalled,
+  externalStallReason,
   type CrosspostRow,
 } from '../crosspost';
 import {
@@ -335,6 +337,82 @@ describe('findStalled', () => {
     const rows = [row({ id: 1, status: 'failed', attempts: MAX_ATTEMPTS })];
     expect(pickNext(rows)).toBeNull();
     expect(findStalled(rows)).toHaveLength(1);
+  });
+});
+
+// 打ち止めのうち「外部の理由(お金・本人のログイン待ち)」だけで止まっている行は cron を赤くしない。
+// ただし判定を広げると「永久に緑」の穴が理由付きで再発するので、狭い一致だけを外部扱いにする。
+describe('externalStallReason / splitStalled', () => {
+  const X402 =
+    'X media POST 402: {"detail":"credits depleted","status":402,"title":"Payment Required","type":"https://api.x.com/2/problems/credits-depleted"}';
+  const THREADS190 =
+    'コンテナ作成失敗: {"message":"Error validating access token: Session has expired on Sunday, 04-Oct-26 17:40:34 PDT.","type":"OAuthException","code":190,"error_subcode":0}';
+  const row = (o: Partial<CrosspostRow>): CrosspostRow => ({
+    id: 1,
+    reel_id: 1,
+    platform: 'x',
+    status: 'failed',
+    attempts: MAX_ATTEMPTS,
+    ...o,
+  });
+
+  it('Xの 402 credits depleted は外部の理由', () => {
+    expect(externalStallReason(row({ platform: 'x', error: X402 }))).toBe('x_credits_depleted');
+  });
+
+  it('Threads のアクセス鍵の期限切れ(OAuthException 190)は外部の理由', () => {
+    expect(externalStallReason(row({ platform: 'threads', error: THREADS190 }))).toBe('meta_auth_expired');
+  });
+
+  it('Facebook の鍵の期限切れも外部の理由', () => {
+    expect(
+      externalStallReason(row({ platform: 'facebook', error: 'Error validating access token: Session has expired' }))
+    ).toBe('meta_auth_expired');
+  });
+
+  it('X の 402 credits depleted 以外(429・500・処理失敗・ただの402)は外部扱いしない', () => {
+    expect(externalStallReason(row({ platform: 'x', error: 'X API 429: Too Many Requests' }))).toBeNull();
+    expect(externalStallReason(row({ platform: 'x', error: 'X media POST 500: internal' }))).toBeNull();
+    expect(externalStallReason(row({ platform: 'x', error: 'X media 処理失敗: {"state":"failed"}' }))).toBeNull();
+    expect(externalStallReason(row({ platform: 'x', error: 'X API 402: Payment Required' }))).toBeNull();
+  });
+
+  it('配信先とエラー文が食い違えば外部扱いしない', () => {
+    expect(externalStallReason(row({ platform: 'youtube', error: X402 }))).toBeNull();
+    expect(externalStallReason(row({ platform: 'x', error: THREADS190 }))).toBeNull();
+  });
+
+  it('Threads の鍵以外のエラー(動画処理失敗・190以外のOAuthException)は外部扱いしない', () => {
+    expect(externalStallReason(row({ platform: 'threads', error: '動画の処理に失敗(ERROR): 理由不明' }))).toBeNull();
+    expect(
+      externalStallReason(row({ platform: 'threads', error: '公開失敗: {"type":"OAuthException","code":100}' }))
+    ).toBeNull();
+  });
+
+  it('エラーが空なら外部扱いしない', () => {
+    expect(externalStallReason(row({ error: null }))).toBeNull();
+    expect(externalStallReason(row({ error: '' }))).toBeNull();
+  });
+
+  it('外部の理由だけなら blocking は0件(cronは緑・警告のみ)', () => {
+    const { blocking, external } = splitStalled([
+      row({ id: 1, platform: 'x', error: X402 }),
+      row({ id: 2, platform: 'threads', error: THREADS190 }),
+    ]);
+    expect(blocking).toEqual([]);
+    expect(external.map((r) => [r.id, r.externalReason])).toEqual([
+      [1, 'x_credits_depleted'],
+      [2, 'meta_auth_expired'],
+    ]);
+  });
+
+  it('外部の理由に1件でも別の打ち止めが混ざれば blocking に残る(cronは赤)', () => {
+    const { blocking, external } = splitStalled([
+      row({ id: 1, platform: 'x', error: X402 }),
+      row({ id: 2, platform: 'youtube', error: 'YouTube upload 500' }),
+    ]);
+    expect(blocking.map((r) => r.id)).toEqual([2]);
+    expect(external.map((r) => r.id)).toEqual([1]);
   });
 });
 

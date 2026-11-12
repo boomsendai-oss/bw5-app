@@ -420,6 +420,54 @@ export function findStalled(rows: CrosspostRow[]): CrosspostRow[] {
   return rows.filter((r) => r.status === 'failed' && r.attempts >= MAX_ATTEMPTS);
 }
 
+/** 外部の理由(お金・人のログイン待ち)で止まっている打ち止めの理由 */
+export type ExternalStallReason = 'x_credits_depleted' | 'meta_auth_expired';
+
+export const EXTERNAL_STALL_REASON_LABELS: Record<ExternalStallReason, string> = {
+  x_credits_depleted: 'Xの前払いクレジット切れ(402 credits depleted・課金の判断待ち)',
+  meta_auth_expired: 'Threads/Metaのアクセス鍵の期限切れ(再ログイン待ち)',
+};
+
+/**
+ * 打ち止めの行が「コードを直しても解決しない外部の理由」で止まっているかを判定する。
+ * 該当しなければ null(= 要調査の打ち止め。cronを赤くする)。
+ *
+ * ⚠️ 判定は**狭く**しておく。ここを広げると「永久に緑」の穴(findStalled のコメント)が
+ * 理由付きで再び開く。配信先とエラー文の両方が一致したものだけを外部扱いにする。
+ */
+export function externalStallReason(row: CrosspostRow): ExternalStallReason | null {
+  const err = row.error ?? '';
+  if (!err) return null;
+  if (row.platform === 'x' && /\b402\b/.test(err) && /credits[\s_-]*depleted/i.test(err)) {
+    return 'x_credits_depleted';
+  }
+  if (row.platform === 'threads' || row.platform === 'facebook') {
+    // Graph API の認証エラー: OAuthException code 190 (Error validating access token / Session has expired)
+    const oauth190 = /OAuthException/.test(err) && /"code"\s*:\s*190\b/.test(err);
+    const expired = /Error validating access token/i.test(err) || /Session has expired/i.test(err);
+    if (oauth190 || expired) return 'meta_auth_expired';
+  }
+  return null;
+}
+
+/**
+ * 打ち止めの行を「外部の理由で止まっている(警告だけ)」と「それ以外(赤くする)」に分ける。
+ * blocking が1件でもあれば cron は ok:false を返すこと。
+ */
+export function splitStalled(stalled: CrosspostRow[]): {
+  blocking: CrosspostRow[];
+  external: (CrosspostRow & { externalReason: ExternalStallReason })[];
+} {
+  const blocking: CrosspostRow[] = [];
+  const external: (CrosspostRow & { externalReason: ExternalStallReason })[] = [];
+  for (const r of stalled) {
+    const reason = externalStallReason(r);
+    if (reason) external.push({ ...r, externalReason: reason });
+    else blocking.push(r);
+  }
+  return { blocking, external };
+}
+
 export type ClassifiedRows = {
   /** env未設定なので skipped にする行 */
   toSkip: CrosspostRow[];
