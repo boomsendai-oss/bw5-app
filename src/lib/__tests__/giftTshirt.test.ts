@@ -26,6 +26,17 @@ describe('isGiftEligibleProduct', () => {
     expect(isGiftEligibleProduct('月謝 / 週1, 入会金x1, クーポン割引 (入会金)')).toBe(false);
     expect(isGiftEligibleProduct(null)).toBe(false);
   });
+  it('本番の請求の書式(プラン名に括弧入り)でも対象と判定する', () => {
+    const real =
+      'マンスリーレギュラー / 月謝4回(60分) 初月会費 (2026年11月 日割り11日分)x1, マンスリーレギュラー / 月謝4回(60分) 月会費 (2026年12月)x1, 入会金x1, クーポン割引 (入会金)x1, クーポン割引 (マンスリーレギュラー / 月謝4回(60分) 月会費 (2026年12月))x1';
+    expect(isGiftEligibleProduct(real)).toBe(true);
+    // 月会費の割引が無い(2週間を過ぎた入会)は対象外
+    const noMonthly = 'マンスリーレギュラー / 月謝4回(60分) 初月会費 (2026年5月 日割り18日分)x1, マンスリーレギュラー / 月謝4回(60分) 月会費 (2026年6月)x1, 入会金x1';
+    expect(isGiftEligibleProduct(noMonthly)).toBe(false);
+    // チケット会員の書式は対象外
+    const ticket = 'チケット会員 初月会費 (2026年11月 日割り22日分)x1, チケット会員 月会費 (2026年12月)x1, 入会金x1, クーポン割引 (入会金)x1';
+    expect(isGiftEligibleProduct(ticket)).toBe(false);
+  });
 });
 
 describe('decideNewClaims', () => {

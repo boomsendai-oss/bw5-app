@@ -28,7 +28,8 @@ export function isGiftEligibleProduct(productName: string | null | undefined): b
   return (
     s.includes('入会金x1') &&
     s.includes('クーポン割引 (入会金)') &&
-    /クーポン割引 \([^)]*月会費/.test(s) &&
+    // 品目ごとに見る(プラン名に「(60分)」のような括弧が入るので、正規表現の [^)]* では途中で切れる)
+    s.split(', ').some((item) => item.startsWith('クーポン割引 (') && item.includes('月会費')) &&
     !s.includes('チケット会員')
   );
 }
