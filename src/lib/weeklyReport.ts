@@ -151,8 +151,53 @@ export type WeeklyReportInput = {
     available: boolean;
   };
 
+  /**
+   * 冒頭3行(TARO方針 2026-11-13: スクールの大事な数字は「体験の予約数」「体験→入会の率」、
+   * 売上ではなく「利益」を見る)。無い場合は冒頭3行を出さない(旧入力との互換)。
+   */
+  headline?: {
+    /** 体験申込の累計を数えた月 'YYYY-MM'(=対象週の最終日の月。月曜1日の実行では前月になる) */
+    trial_bookings_ym?: string;
+    /** その月の1日〜対象週の最終日までの体験申込(申込日基準・キャンセル除外) */
+    trial_bookings_month: number;
+    /** 前月1日〜前月の同じ日までの体験申込(同条件) */
+    trial_bookings_prev_month_to_date: number;
+    /**
+     * 直近の「確定月」の営業利益。確定月 = 締まった月で4財源(売上・給与・スタジオ料・経費)が揃い、
+     * 給与が確定している月。見つからなければ null。
+     */
+    confirmed_profit: {
+      month: string;
+      operating_profit: number;
+      /** 確定月でもまだ仮の金額の項目(スタジオ料・決済手数料など)。行に注記する */
+      provisional?: string[];
+      /** 確定月の前月の営業利益(比較用)。前月が未確定なら null */
+      prev_month: string;
+      prev_operating_profit: number | null;
+    } | null;
+  };
+
+  /** 見張り(止まっている取り込み・仮の金額・LINEの急減)。無い場合は欄を出さない */
+  alerts?: {
+    /** 経費(expenses)に最後に行が入ってからの日数。経費が1件も無ければ null */
+    expense_stale_days: number | null;
+    /** 最後に経費が入った日 'YYYY-MM-DD'(JST) */
+    expense_last_import_on: string | null;
+    /** スタジオ代が仮(draft)のままの月 'YYYY-MM'(古い順) */
+    studio_provisional_months: string[];
+    /** LINE友だち数(ブロック除く)。Lstepの取込スナップショットから数える */
+    line_friends: { now: number; now_on: string; prev: number | null; prev_on: string | null } | null;
+  };
+
   insights_url: string;
 };
+
+/** 経費の取り込みがこの日数以上止まったら警告する */
+export const EXPENSE_STALE_DAYS = 7;
+
+/** LINE友だち数(ブロック除く)が1週間でこれ以上減ったら「急減」とみなす(人数と率のどちらか大きい方) */
+export const LINE_DROP_MIN_PEOPLE = 5;
+export const LINE_DROP_MIN_RATE = 0.03;
 
 export type WeeklyReport = { subject: string; text: string };
 
@@ -191,6 +236,123 @@ function vsPrev(label: string, now: number, prev: number, unit: string): string 
   const diff = now - prev;
   const arrow = diff > 0 ? '↑' : diff < 0 ? '↓' : '→';
   return `  ${label}: ${now}${unit} (先週 ${prev}${unit} ${arrow}${signed(diff)})`;
+}
+
+/** 'YYYY-MM' → 'M月' */
+function monthLabel(ym: string): string {
+  return `${Number(ym.slice(5, 7))}月`;
+}
+
+function arrowOf(diff: number): string {
+  return diff > 0 ? '↑' : diff < 0 ? '↓' : '→';
+}
+
+/**
+ * 冒頭3行: 体験の予約数 / 体験→入会の率 / 営業利益(確定月)。
+ * headline が無い入力では空配列(旧形式のレポートはそのまま)。
+ */
+export function buildHeadlineLines(i: WeeklyReportInput): string[] {
+  const h = i.headline;
+  if (!h) return [];
+  const out: string[] = [];
+
+  // 1) 体験の予約数(申込日基準・キャンセル除外)
+  {
+    const w = i.this_week.trial_bookings;
+    const pw = i.prev_week.trial_bookings;
+    const m = h.trial_bookings_month;
+    const pm = h.trial_bookings_prev_month_to_date;
+    const bym = h.trial_bookings_ym ?? i.year_month;
+    const [by, bm] = bym.split('-').map(Number);
+    const bpym = `${bm === 1 ? by - 1 : by}-${String(bm === 1 ? 12 : bm - 1).padStart(2, '0')}`;
+    out.push(
+      `① 体験の予約: 今週 ${w}件（前週 ${pw}件 ${arrowOf(w - pw)}${signed(w - pw)}）／${monthLabel(bym)}累計 ${m}件（${monthLabel(bpym)}の同じ日まで ${pm}件 ${arrowOf(m - pm)}${signed(m - pm)}）`
+    );
+  }
+
+  // 2) 体験→入会の率(分母はキャンセル除外)。確定した月どうしで比べ、暫定の月は参考で添える
+  {
+    const months = i.trial_cvr?.months ?? [];
+    const rate = (x: { trials: number; cancelled: number; enrolled: number }) => {
+      const d = x.trials - x.cancelled;
+      return d > 0 ? Math.round((100 * x.enrolled) / d) : null;
+    };
+    const settled = months.filter((x) => x.settled && rate(x) !== null);
+    const latest = settled[settled.length - 1];
+    const before = settled[settled.length - 2];
+    // 暫定の参考は「締まった月」のうち一番新しいもの。当月は体験そのものがまだ増えている途中で
+    // 入会の紐付けも追いついておらず、極端に低く出て誤読を招くため出さない。
+    const prov = months.filter((x) => !x.settled && rate(x) !== null && x.month < i.year_month);
+    const provLatest = prov[prov.length - 1];
+    if (!latest && !provLatest) {
+      out.push('② 体験→入会の率: 未計測');
+    } else {
+      const parts: string[] = [];
+      if (latest) {
+        const r = rate(latest)!;
+        let s = `${monthLabel(latest.month)} ${r}%（確定`;
+        if (before) {
+          const rb = rate(before)!;
+          s += `・${monthLabel(before.month)} ${rb}% ${arrowOf(r - rb)}${signed(r - rb)}pt`;
+        }
+        parts.push(s + '）');
+      }
+      if (provLatest) {
+        parts.push(`${monthLabel(provLatest.month)} ${rate(provLatest)}%（暫定・これから上がる）`);
+      }
+      out.push(`② 体験→入会の率: ${parts.join('／')}`);
+    }
+  }
+
+  // 3) 営業利益(確定月)
+  {
+    const c = h.confirmed_profit;
+    const note = c && c.provisional && c.provisional.length > 0 ? ` ※${c.provisional.join('・')}は仮の金額` : '';
+    if (!c) {
+      out.push('③ 営業利益（確定月）: 確定した月がありません（売上・給与・スタジオ代・経費のどれかが未取込か、給与が未確定）');
+    } else if (c.prev_operating_profit === null) {
+      out.push(`③ 営業利益（確定月）: ${monthLabel(c.month)} ${yen(c.operating_profit)}（${monthLabel(c.prev_month)}は未確定のため比較なし）${note}`);
+    } else {
+      const d = c.operating_profit - c.prev_operating_profit;
+      out.push(
+        `③ 営業利益（確定月）: ${monthLabel(c.month)} ${yen(c.operating_profit)}（${monthLabel(c.prev_month)} ${yen(c.prev_operating_profit)} ${arrowOf(d)}${d >= 0 ? '+' : '−'}${yen(Math.abs(d))}）${note}`
+      );
+    }
+  }
+  return out;
+}
+
+/** LINE友だち数の減り方が「急減」か(純関数) */
+export function isLineFriendDrop(now: number, prev: number): boolean {
+  const drop = prev - now;
+  if (drop <= 0) return false;
+  return drop >= Math.max(LINE_DROP_MIN_PEOPLE, Math.ceil(prev * LINE_DROP_MIN_RATE));
+}
+
+/** 見張りの警告(該当なしなら空配列) */
+export function buildAlertLines(i: WeeklyReportInput): string[] {
+  const a = i.alerts;
+  if (!a) return [];
+  const out: string[] = [];
+  if (a.expense_stale_days === null) {
+    out.push('⚠️ 経費が1件も取り込まれていません。営業利益が実際より大きく出ます。');
+  } else if (a.expense_stale_days >= EXPENSE_STALE_DAYS) {
+    out.push(
+      `⚠️ 経費の取り込みが${a.expense_stale_days}日止まっています（最後は${a.expense_last_import_on ? mdLabel(a.expense_last_import_on) : '不明'}）。止まっている間の営業利益は実際より大きく出ます。`
+    );
+  }
+  if (a.studio_provisional_months.length > 0) {
+    out.push(
+      `⚠️ スタジオ代が仮の金額のままの月: ${a.studio_provisional_months.map(monthLabel).join('・')}（請求の確定で営業利益が変わります）`
+    );
+  }
+  const lf = a.line_friends;
+  if (lf && lf.prev !== null && isLineFriendDrop(lf.now, lf.prev)) {
+    out.push(
+      `⚠️ LINE友だちが急に減っています: ${lf.prev}人（${lf.prev_on ? mdLabel(lf.prev_on) : '1週間前'}）→ ${lf.now}人（${mdLabel(lf.now_on)}）、${lf.prev - lf.now}人減。配信直後のブロックが無いか確認したい。`
+    );
+  }
+  return out;
 }
 
 function pctStr(v: number): string {
@@ -272,6 +434,19 @@ export function formatWeeklyReport(i: WeeklyReportInput): WeeklyReport {
 
   L.push(`BOOM 週次経営レポート ${period}`);
   L.push('');
+
+  // ── 冒頭3行(大事な数字) ──
+  const headline = buildHeadlineLines(i);
+  if (headline.length > 0) {
+    for (const line of headline) L.push(line);
+    L.push('');
+  }
+  const alerts = buildAlertLines(i);
+  if (alerts.length > 0) {
+    L.push('■ 見張り');
+    for (const line of alerts) L.push(`  ${line}`);
+    L.push('');
+  }
 
   // ── 会員 ──
   L.push('■ 会員');

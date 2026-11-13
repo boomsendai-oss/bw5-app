@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildAlertLines,
   buildChangeLines,
+  buildHeadlineLines,
+  isLineFriendDrop,
   buildWatchLines,
   formatWeeklyReport,
   lastFullWeek,
@@ -323,5 +326,97 @@ describe('プランの動き欄', () => {
     expect(text).toContain('受け放題 22人 / 60分4回 40人');
     expect(text).toContain('プラン変更・休会の手続き: 今週 5件（先週 1件）／当月 9件');
     expect(text).toContain('休会中: 4人');
+  });
+});
+
+describe('冒頭3行と見張り(2026-11-13)', () => {
+  const headlineInput = () =>
+    baseInput({
+      this_week: { new_signups: 2, churned: 1, trials: 4, trial_bookings: 9, line_new: 7 },
+      prev_week: { new_signups: 1, churned: 1, trials: 2, trial_bookings: 6, line_new: 5 },
+      trial_cvr: {
+        months: [
+          { month: '2026-05', trials: 12, cancelled: 2, enrolled: 4, settled: true },
+          { month: '2026-06', trials: 14, cancelled: 4, enrolled: 5, settled: true },
+          { month: '2026-07', trials: 10, cancelled: 0, enrolled: 2, settled: false },
+        ],
+      },
+      year_month: '2026-08',
+      prev_year_month: '2026-07',
+      headline: {
+        trial_bookings_month: 20,
+        trial_bookings_prev_month_to_date: 15,
+        confirmed_profit: { month: '2026-06', operating_profit: 250_000, prev_month: '2026-05', prev_operating_profit: 300_000 },
+      },
+    });
+
+  it('冒頭の3行が「体験の予約／体験→入会の率／営業利益(確定月)」の順に並ぶ', () => {
+    const lines = formatWeeklyReport(headlineInput()).text.split('\n');
+    expect(lines[2]).toBe('① 体験の予約: 今週 9件（前週 6件 ↑+3）／8月累計 20件（7月の同じ日まで 15件 ↑+5）');
+    expect(lines[3]).toBe('② 体験→入会の率: 6月 50%（確定・5月 40% ↑+10pt）／7月 20%（暫定・これから上がる）');
+    expect(lines[4]).toMatch(/^③ 営業利益（確定月）: 6月 .*250,000（5月 .*300,000 ↓−.*50,000）$/);
+  });
+
+  it('月曜1日の実行では、累計は対象週の月(前月)で数えて表示する', () => {
+    const i = headlineInput();
+    i.headline!.trial_bookings_ym = '2026-07';
+    expect(buildHeadlineLines(i)[0]).toContain('7月累計 20件（6月の同じ日まで 15件');
+  });
+
+  it('当月の暫定率は出さない(途中で極端に低く出るため)', () => {
+    const i = headlineInput();
+    i.year_month = '2026-07';
+    expect(buildHeadlineLines(i)[1]).toBe('② 体験→入会の率: 6月 50%（確定・5月 40% ↑+10pt）');
+  });
+
+  it('確定月でも仮の項目があれば注記する', () => {
+    const i = headlineInput();
+    i.headline!.confirmed_profit!.provisional = ['スタジオ料'];
+    expect(buildHeadlineLines(i)[2]).toMatch(/※スタジオ料は仮の金額$/);
+  });
+
+  it('確定月が無いときはそう書く(金額を出さない)', () => {
+    const i = headlineInput();
+    i.headline!.confirmed_profit = null;
+    expect(buildHeadlineLines(i)[2]).toContain('確定した月がありません');
+  });
+
+  it('headline が無い旧入力では冒頭3行を出さない', () => {
+    expect(buildHeadlineLines(baseInput())).toEqual([]);
+    expect(formatWeeklyReport(baseInput()).text).not.toContain('① 体験の予約');
+  });
+
+  it('経費の取り込みが7日以上止まると警告、6日なら出さない', () => {
+    const base = { expense_last_import_on: '2026-07-18', studio_provisional_months: [], line_friends: null };
+    expect(buildAlertLines(baseInput({ alerts: { ...base, expense_stale_days: 7 } }))[0]).toContain('経費の取り込みが7日止まっています');
+    expect(buildAlertLines(baseInput({ alerts: { ...base, expense_stale_days: 6 } }))).toEqual([]);
+  });
+
+  it('スタジオ代が仮の月を並べる', () => {
+    const a = buildAlertLines(
+      baseInput({ alerts: { expense_stale_days: 0, expense_last_import_on: null, studio_provisional_months: ['2026-06', '2026-07'], line_friends: null } })
+    );
+    expect(a[0]).toContain('スタジオ代が仮の金額のままの月: 6月・7月');
+  });
+
+  it('LINE友だちの急減は「5人以上かつ3%以上」で警告', () => {
+    expect(isLineFriendDrop(485, 500)).toBe(true); // 15人=3%
+    expect(isLineFriendDrop(95, 100)).toBe(true); // 小さい母数でも最低5人
+    expect(isLineFriendDrop(486, 500)).toBe(false);
+    expect(isLineFriendDrop(97, 100)).toBe(false); // 3%でも5人未満は出さない
+    expect(isLineFriendDrop(970, 1000)).toBe(true); // 30人=3%
+    expect(isLineFriendDrop(971, 1000)).toBe(false);
+    expect(isLineFriendDrop(510, 500)).toBe(false);
+    const a = buildAlertLines(
+      baseInput({
+        alerts: {
+          expense_stale_days: 0,
+          expense_last_import_on: null,
+          studio_provisional_months: [],
+          line_friends: { now: 480, now_on: '2026-07-26', prev: 500, prev_on: '2026-07-19' },
+        },
+      })
+    );
+    expect(a[0]).toContain('500人（7/19(日)）→ 480人（7/26(日)）、20人減');
   });
 });

@@ -14,6 +14,7 @@ import { todayJst } from './dateJst';
 import { getAdCost, getTrafficChannels } from './ga4';
 import { getActiveMemberCount, getMonthlyFinance, NON_CUSTOMER_TYPES_SQL } from './kpiMetrics';
 import { lastFullWeek, type WeeklyReportInput, type WindowCounts } from './weeklyReport';
+import { comparableFriendCounts, countLstepFriends } from './lstepFriendCount';
 import { STAFF_ORIGIN } from '@/lib/appOrigin';
 
 const BASE_URL = STAFF_ORIGIN;
@@ -112,6 +113,24 @@ export async function buildWeeklyReportInput(
   const prevLastDay = new Date(py, pmo, 0).getDate();
   const prevSameDay = `${pym}-${String(Math.min(dayOfMonth, prevLastDay)).padStart(2, '0')}`;
 
+  // 冒頭3行用: 体験申込の当月累計(対象週の最終日まで)と、前月の同じ日まで
+  const endDay = Number(end.slice(8, 10));
+  const endYm = ymOf(end);
+  const endPym = prevYm(endYm);
+  const [epy, epm] = endPym.split('-').map(Number);
+  const endPrevSameDay = `${endPym}-${String(Math.min(endDay, new Date(epy, epm, 0).getDate())).padStart(2, '0')}`;
+  const BOOKING_SQL = `SELECT COUNT(*) AS n FROM trial_records
+        WHERE created_at BETWEEN ? AND ? AND (status IS NULL OR status NOT LIKE '%キャンセル%')`;
+
+  const [headlineExtra, alerts] = await Promise.all([
+    Promise.all([
+      safeCount(BOOKING_SQL, [`${endYm}-01`, `${end}T23:59:59`]),
+      safeCount(BOOKING_SQL, [`${endPym}-01`, `${endPrevSameDay}T23:59:59`]),
+      findConfirmedProfit(pym),
+    ]),
+    gatherAlerts(ym, pym, now),
+  ]);
+
   const [thisWeek, prevWeek, membersNow, finance, prevFinance, prevToDateRow, trialsMonth, adCost, chThis, chPrev, seo, trialCvr, planMovement] =
     await Promise.all([
       windowCounts(start, end),
@@ -189,9 +208,121 @@ export async function buildWeeklyReportInput(
     seo,
     trial_cvr: trialCvr,
     plan_movement: planMovement,
+    headline: {
+      trial_bookings_ym: endYm,
+      trial_bookings_month: headlineExtra[0] ?? 0,
+      trial_bookings_prev_month_to_date: headlineExtra[1] ?? 0,
+      confirmed_profit: headlineExtra[2],
+    },
+    alerts,
     state,
     insights_url: `${BASE_URL}/staff/insights`,
     data_gaps: dataGaps,
+  };
+}
+
+/**
+ * 「確定月」= 締まった月のうち、4財源(売上・給与・スタジオ料・経費)が揃い、給与が確定している月。
+ * fromYm(通常は前月)から最大4か月さかのぼって探す。比較用にその前月の営業利益も返す。
+ *
+ * スタジオ代は請求runが draft のまま運用されている月がほとんどで(2026-11-13時点で全月)、
+ * 厳密に「仮を含まない月」とすると確定月が永遠に出ない。そこでスタジオ代・決済手数料の
+ * 仮は確定月の条件から外し、provisional として行に注記する(見張り欄にも出る)。
+ */
+export async function findConfirmedProfit(fromYm: string): Promise<NonNullable<WeeklyReportInput['headline']>['confirmed_profit']> {
+  const months: string[] = [fromYm];
+  for (let k = 0; k < 4; k++) months.push(prevYm(months[months.length - 1]));
+  try {
+    const fins = await Promise.all(months.map((m) => getMonthlyFinance(m)));
+    const isConfirmed = (k: number) =>
+      fins[k].profitability.profit_confirmed && !fins[k].profitability.payroll_provisional;
+    for (let k = 0; k < months.length - 1; k++) {
+      if (!isConfirmed(k)) continue;
+      return {
+        month: months[k],
+        operating_profit: fins[k].profitability.operating_profit,
+        provisional: fins[k].profitability.provisional_sources,
+        prev_month: months[k + 1],
+        prev_operating_profit: isConfirmed(k + 1) ? fins[k + 1].profitability.operating_profit : null,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** UTCの 'YYYY-MM-DD HH:MM:SS' から now までの経過日数(切り捨て)。解釈できなければ null */
+export function daysSinceUtc(utc: string, now: Date): number | null {
+  const t = Date.parse(`${utc.replace(' ', 'T')}Z`);
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.floor((now.getTime() - t) / 86400000));
+}
+
+/** 見張り: 経費の取り込み停止 / スタジオ代が仮の月 / LINE友だちの急減 */
+export async function gatherAlerts(ym: string, pym: string, now: Date): Promise<WeeklyReportInput['alerts']> {
+  // 経費: 最後に行が入った時刻(created_at は UTC の CURRENT_TIMESTAMP)
+  let expenseStale: number | null = null;
+  let expenseLastOn: string | null = null;
+  try {
+    const row = await getOne(`SELECT MAX(created_at) AS t FROM expenses`);
+    const t = row?.t ? String(row.t) : null;
+    if (t) {
+      expenseStale = daysSinceUtc(t, now);
+      const ms = Date.parse(`${t.replace(' ', 'T')}Z`);
+      expenseLastOn = Number.isFinite(ms) ? todayJst(new Date(ms)) : null;
+    }
+  } catch {
+    // テーブルが読めない時は「1件も無い」と言わないよう、止まっていない扱いにせず欄ごと省く
+    expenseStale = -1;
+  }
+
+  // スタジオ代: 前月・当月で draft しか無い月
+  const studioMonths: string[] = [];
+  for (const m of [pym, ym]) {
+    try {
+      const f = await getMonthlyFinance(m);
+      if (f.profitability.studio_provisional) studioMonths.push(m);
+    } catch {
+      /* 取れない月は省く */
+    }
+  }
+
+  // LINE友だち: 最新の取込CSVと、その7日前以前で一番新しい取込CSVを数えて比べる
+  let lineFriends: NonNullable<WeeklyReportInput['alerts']>['line_friends'] = null;
+  try {
+    const latest = await getOne(
+      `SELECT id, uploaded_at, csv_text FROM lstep_csv_snapshots ORDER BY id DESC LIMIT 1`
+    );
+    if (latest) {
+      const latestAt = String(latest.uploaded_at);
+      const prev = await getOne(
+        `SELECT id, uploaded_at, csv_text FROM lstep_csv_snapshots
+          WHERE uploaded_at <= datetime(?, '-7 days') ORDER BY uploaded_at DESC LIMIT 1`,
+        [latestAt]
+      );
+      const toJst = (utc: string) => {
+        const ms = Date.parse(`${utc.replace(' ', 'T')}Z`);
+        return Number.isFinite(ms) ? todayJst(new Date(ms)) : utc.slice(0, 10);
+      };
+      const nowCount = countLstepFriends(String(latest.csv_text));
+      const cmp = prev ? comparableFriendCounts(nowCount, countLstepFriends(String(prev.csv_text))) : null;
+      lineFriends = {
+        now: cmp ? cmp.now : nowCount.active,
+        now_on: toJst(latestAt),
+        prev: cmp ? cmp.prev : null,
+        prev_on: prev ? toJst(String(prev.uploaded_at)) : null,
+      };
+    }
+  } catch {
+    lineFriends = null;
+  }
+
+  return {
+    expense_stale_days: expenseStale === -1 ? 0 : expenseStale,
+    expense_last_import_on: expenseLastOn,
+    studio_provisional_months: studioMonths,
+    line_friends: lineFriends,
   };
 }
 
@@ -305,8 +436,8 @@ export async function gatherTrialCvr(todayIso: string): Promise<WeeklyReportInpu
               SUM(CASE WHEN status LIKE '%キャンセル%' THEN 1 ELSE 0 END) AS cancelled,
               SUM(enrolled_after) AS enrolled
          FROM trial_records
-        WHERE reserved_at >= date(?, '-4 months')
-        GROUP BY m ORDER BY m DESC LIMIT 3`,
+        WHERE reserved_at >= date(?, '-5 months')
+        GROUP BY m ORDER BY m DESC LIMIT 4`,
       [todayIso]
     );
     if (rows.length === 0) return null;
