@@ -1,0 +1,35 @@
+# Threadsのアクセス鍵(長期トークン60日)の自動延長 cron (2026-11-13〜)
+# 毎日 JST 6:43 = UTC 21:43 に1回 /api/cron/threads-token-refresh を叩く。
+# 期限の15日前を過ぎていたら refresh_access_token で60日延長する(src/lib/threadsToken.ts)。
+#
+# 背景: 延長関数がどこからも呼ばれておらず、2026-10-04に鍵が切れてThreads転載が止まった。
+# 切れた鍵は延長できない(Metaへの再ログインが要る)ので、切れる前に毎日見る。
+#
+# 赤くなる(ok:false)のは: 期限切れ / 延長失敗 / 期限まで15日未満のまま / env設定済みなのに鍵が無い。
+# 一時的な失敗なら翌日に再試行される(期限まで15日の余裕があるので数日の失敗では切れない)。
+name: threads-token-refresh
+
+on:
+  schedule:
+    # GH Actionsは0/20/40分に大遅延するため、空いている分を使う
+    - cron: '43 21 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/threads-token-refresh
+        run: |
+          set -e
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/threads-token-refresh)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE: $BODY"
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200)"; exit 1; }
+          # route は失敗時も 200 で {"ok":false,...} を返すので、本文の ok を必ず見る
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::Threadsの鍵の延長に失敗/期限切れです(reconnectUrl があれば再連携が必要): $BODY"; exit 1; }

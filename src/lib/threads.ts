@@ -20,7 +20,13 @@
 //   - 動画仕様: MP4/MOV・1GB以下・300秒以内・9:16推奨。リールは12〜65秒なので余裕。
 //
 // 認証情報は settings テーブルに保存(instagram.ts と同じ方式):
-//   threads_access_token / threads_token_issued_at / threads_user_id
+//   threads_access_token / threads_token_issued_at / threads_user_id / threads_token_expires_at
+//
+// ⚠️ トークンの延長(2026-11-13): 長期トークンは60日で切れ、**切れたら延長できない**(再ログインが要る)。
+// 以前は refreshTokenIfStale がどこからも呼ばれておらず、2026-10-04に失効してThreads転載が止まった。
+// 今は毎日の /api/cron/threads-token-refresh(GitHub Actions threads-token-refresh.yml)が
+// ensureFreshToken() を呼び、期限の15日前を過ぎたら延長する。延長できない時は ok:false で赤くなる。
+// 判定(いつ延長するか)は threadsToken.ts の純関数にある。
 //
 // 前提(TAROの一度きりの手動セットアップ):
 //   1. BOOMのThreadsアカウントを用意し、**プロアカウント**にしておく
@@ -33,10 +39,12 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getOne, execute } from './db';
+import { decideRefresh, expiresAtFrom, isTokenDeadError, type TokenDecision } from './threadsToken';
 
 const TOKEN_KEY = 'threads_access_token';
 const TOKEN_ISSUED_AT_KEY = 'threads_token_issued_at';
 const USER_ID_KEY = 'threads_user_id';
+const TOKEN_EXPIRES_AT_KEY = 'threads_token_expires_at';
 const GRAPH = 'https://graph.threads.net';
 
 // threads_basic は全エンドポイントで必須、threads_content_publish が投稿用。
@@ -142,6 +150,7 @@ export async function exchangeAndStoreToken(code: string, origin: string): Promi
   }
   const longToken = longJson.access_token as string;
   if (!longToken) throw new Error('長期アクセストークンが取得できませんでした');
+  const now = new Date();
 
   const meRes = await fetch(`${GRAPH}/v1.0/me?fields=id,username&access_token=${longToken}`);
   const meJson = await meRes.json();
@@ -150,7 +159,8 @@ export async function exchangeAndStoreToken(code: string, origin: string): Promi
 
   await Promise.all([
     upsertSetting(TOKEN_KEY, longToken),
-    upsertSetting(TOKEN_ISSUED_AT_KEY, new Date().toISOString()),
+    upsertSetting(TOKEN_ISSUED_AT_KEY, now.toISOString()),
+    upsertSetting(TOKEN_EXPIRES_AT_KEY, expiresAtFrom(now, longJson.expires_in)),
     upsertSetting(USER_ID_KEY, userId),
   ]);
   return { userId };
@@ -181,10 +191,11 @@ export function parseSignedRequest(signed: string): Record<string, unknown> | nu
 
 /** 連携情報を消す(利用者がThreads側でアプリの許可を取り消したとき) */
 export async function clearConnection(): Promise<void> {
-  await execute('DELETE FROM settings WHERE key IN (?, ?, ?)', [
+  await execute('DELETE FROM settings WHERE key IN (?, ?, ?, ?)', [
     TOKEN_KEY,
     TOKEN_ISSUED_AT_KEY,
     USER_ID_KEY,
+    TOKEN_EXPIRES_AT_KEY,
   ]);
 }
 
@@ -193,47 +204,99 @@ export async function connectionStatus(): Promise<{
   threadsUserId?: string;
   threadsTokenIssuedAt?: string;
   threadsTokenAgeDays?: number;
+  /** 期限(記録が無い古いデータは発行日+60日の推定) */
+  threadsTokenExpiresAt?: string;
+  threadsTokenDaysLeft?: number;
 }> {
-  const [tok, userId, issuedAt] = await Promise.all([
+  const [tok, userId, issuedAt, expiresAt] = await Promise.all([
     getSetting(TOKEN_KEY),
     getSetting(USER_ID_KEY),
     getSetting(TOKEN_ISSUED_AT_KEY),
+    getSetting(TOKEN_EXPIRES_AT_KEY),
   ]);
   if (!tok) return { threadsConnected: false };
   const ageDays = issuedAt
     ? Math.floor((Date.now() - new Date(issuedAt).getTime()) / 86400000)
     : undefined;
+  const decision = decideRefresh({ now: new Date(), issuedAt, expiresAt });
   return {
     threadsConnected: true,
     threadsUserId: userId,
     threadsTokenIssuedAt: issuedAt,
     threadsTokenAgeDays: ageDays,
+    ...(decision.action !== 'unknown'
+      ? { threadsTokenExpiresAt: decision.expiresAt, threadsTokenDaysLeft: decision.daysLeft }
+      : {}),
   };
 }
 
+export type EnsureFreshResult =
+  | { state: 'not_connected' }
+  | { state: 'ok'; refreshed: boolean; expiresAt: string; daysLeft: number }
+  /** 延長が要るのにできなかった。needsReconnect=true なら再連携(Metaへのログイン)しか直し方が無い */
+  | { state: 'failed'; needsReconnect: boolean; reason: string; expiresAt?: string; daysLeft?: number };
+
 /**
- * 長期トークンは60日で失効。45日を超えたら更新する(instagram.tsと同じ運用)。
- * 更新には発行から24時間以上の経過が必要なので、連携直後に呼んでも何もしない。
+ * 期限の15日前を過ぎていたら refresh_access_token で延長する(毎日の cron から呼ぶ)。
+ * 例外は投げず、結果を返す(cron側で ok:false にするかを決める)。
  */
-export async function refreshTokenIfStale(): Promise<{ refreshed: boolean; ageDays?: number }> {
-  const status = await connectionStatus();
-  if (!status.threadsConnected) return { refreshed: false };
-  if ((status.threadsTokenAgeDays ?? 0) < 45) {
-    return { refreshed: false, ageDays: status.threadsTokenAgeDays };
-  }
-  const currentToken = await getSetting(TOKEN_KEY);
-  const res = await fetch(
-    `${GRAPH}/refresh_access_token?grant_type=th_refresh_token&access_token=${currentToken}`
-  );
-  const json = await res.json();
-  if (!res.ok || json.error) throw new Error(`トークン更新失敗: ${JSON.stringify(json.error ?? json)}`);
-  const newToken = json.access_token as string;
-  if (!newToken) throw new Error('更新後トークンが取得できませんでした');
-  await Promise.all([
-    upsertSetting(TOKEN_KEY, newToken),
-    upsertSetting(TOKEN_ISSUED_AT_KEY, new Date().toISOString()),
+export async function ensureFreshToken(now: Date = new Date()): Promise<EnsureFreshResult> {
+  const [token, issuedAt, expiresAt] = await Promise.all([
+    getSetting(TOKEN_KEY),
+    getSetting(TOKEN_ISSUED_AT_KEY),
+    getSetting(TOKEN_EXPIRES_AT_KEY),
   ]);
-  return { refreshed: true, ageDays: 0 };
+  if (!token) return { state: 'not_connected' };
+
+  const decision: TokenDecision = decideRefresh({ now, issuedAt, expiresAt });
+  if (decision.action === 'none' || decision.action === 'too_young') {
+    return { state: 'ok', refreshed: false, expiresAt: decision.expiresAt, daysLeft: decision.daysLeft };
+  }
+  if (decision.action === 'expired') {
+    return {
+      state: 'failed',
+      needsReconnect: true,
+      reason: `Threadsの鍵は ${decision.expiresAt} に期限切れです(切れた鍵は延長できません)。再連携が必要です`,
+      expiresAt: decision.expiresAt,
+      daysLeft: decision.daysLeft,
+    };
+  }
+  // 'refresh' と 'unknown'(期限の記録が無い)はどちらも延長を試す。
+  // unknown のまま放っておくと、いつ切れるか分からないまま失効するため
+  try {
+    const res = await fetch(
+      `${GRAPH}/refresh_access_token?grant_type=th_refresh_token&access_token=${encodeURIComponent(token)}`
+    );
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.error || !json.access_token) {
+      const err = json.error ?? json;
+      return {
+        state: 'failed',
+        needsReconnect: isTokenDeadError(err),
+        reason: `トークン延長に失敗: HTTP ${res.status} ${JSON.stringify(err).slice(0, 300)}`,
+        ...(decision.action === 'refresh' ? { expiresAt: decision.expiresAt, daysLeft: decision.daysLeft } : {}),
+      };
+    }
+    const newExpiresAt = expiresAtFrom(now, json.expires_in);
+    await Promise.all([
+      upsertSetting(TOKEN_KEY, String(json.access_token)),
+      upsertSetting(TOKEN_ISSUED_AT_KEY, now.toISOString()),
+      upsertSetting(TOKEN_EXPIRES_AT_KEY, newExpiresAt),
+    ]);
+    const after = decideRefresh({ now, issuedAt: now.toISOString(), expiresAt: newExpiresAt });
+    return {
+      state: 'ok',
+      refreshed: true,
+      expiresAt: newExpiresAt,
+      daysLeft: after.action === 'unknown' ? 0 : after.daysLeft,
+    };
+  } catch (e) {
+    return {
+      state: 'failed',
+      needsReconnect: false,
+      reason: `トークン延長の通信に失敗: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
 }
 
 async function requireConnection(): Promise<{ token: string; userId: string }> {
