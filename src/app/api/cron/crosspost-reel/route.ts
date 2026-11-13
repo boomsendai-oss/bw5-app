@@ -24,6 +24,7 @@ import {
   CROSSPOST_PLATFORMS,
   type CrosspostRow,
 } from '@/lib/crosspost';
+import { findExpiredMention, staleReason } from '@/lib/crosspostStaleDate';
 import { notifyTaro } from '@/lib/notify';
 import { configured as ytConfigured, uploadShort, trySetThumbnail } from '@/lib/youtube';
 import { xConfigured, uploadVideo, postTweet, estimateChunkRequests } from '@/lib/xApi';
@@ -95,7 +96,34 @@ export async function POST(req: NextRequest) {
   // 2026-08-12から**Mac常駐(reel_pipeline.mjs)がブラウザで投稿**している。
   // ここでenv未設定として 'skipped' に上書きすると、常駐が書いた失敗理由が消え、
   // かつ 'skipped' は常駐の拾い対象なので延々と往復してしまう。**触らない**。
-  const rows = allRows.filter((r) => r.platform !== 'tiktok');
+  const notTiktok = allRows.filter((r) => r.platform !== 'tiktok');
+
+  // 日付切れの告知を外す(2026-11-13)。転載がInstagram公開より遅れると、
+  // 「明日11/11のお試しレッスン」のような本文が日付を過ぎてから出てしまう。
+  // 候補を選ぶ前に判定し、日付切れは 'cancelled'(どの再試行・復活経路にも拾われない)にする。
+  // 判定の中身は src/lib/crosspostStaleDate.ts(打ち止め一括再開の scripts/crosspost_revive.mjs と共通)
+  const cancelledStale: { id: number; reelId: number; platform: string; reason: string }[] = [];
+  const reelIds = [...new Set(notTiktok.map((r) => r.reel_id))];
+  if (reelIds.length > 0) {
+    const reelsForStale = (await getAll(
+      `SELECT id, caption, posted_at FROM reel_queue WHERE id IN (${reelIds.map(() => '?').join(',')})`,
+      reelIds
+    )) as { id: number; caption: string | null; posted_at: string | null }[];
+    const byId = new Map(reelsForStale.map((r) => [Number(r.id), r]));
+    for (const r of notTiktok) {
+      const reel = byId.get(Number(r.reel_id));
+      const hit = reel ? findExpiredMention(reel.caption, reel.posted_at) : null;
+      if (!hit) continue;
+      const reason = staleReason(hit);
+      await execute(
+        `UPDATE reel_crossposts SET status='cancelled', error=?, updated_at=? WHERE id=? AND status IN ('pending','failed','skipped')`,
+        [reason, now, r.id]
+      );
+      cancelledStale.push({ id: r.id, reelId: r.reel_id, platform: r.platform, reason });
+    }
+  }
+  const staleIds = new Set(cancelledStale.map((c) => c.id));
+  const rows = notTiktok.filter((r) => !staleIds.has(r.id));
 
   // 常駐が投稿に失敗した行は、このcron以外に誰も見ていない = 黙って埋もれる。
   // 気づけるように、諦めた行を1回だけTAROへ通知する(通知済みは error に印を付けて再送しない)。
@@ -178,6 +206,8 @@ export async function POST(req: NextRequest) {
     externalReasons[r.externalReason] = (externalReasons[r.externalReason] ?? 0) + 1;
   }
   const stalledInfo = {
+    /** 今回、日付切れの告知として転載をやめた行(crosspostStaleDate) */
+    ...(cancelledStale.length > 0 ? { cancelledStale } : {}),
     stalled: stalled.length,
     /** 赤くする打ち止め(外部の理由以外) */
     stalledBlocking: stalledBlocking.length,
@@ -267,7 +297,7 @@ export async function POST(req: NextRequest) {
             `エラー: ${message}`,
             '',
             '対応するまでこのリールはこの配信先へ出ません。',
-            '原因を直したら reel_crossposts の当該行を status=\'pending\', attempts=0 に戻すと再開します。',
+            '原因を直したら `node scripts/crosspost_revive.mjs --prod --platform <配信先> --apply` で再開します(日付切れの告知は自動で外れます)。',
           ].join('\n'),
         });
       } catch (e) {
