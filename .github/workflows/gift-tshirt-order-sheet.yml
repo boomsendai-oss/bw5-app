@@ -1,0 +1,31 @@
+# 入会特典Tシャツの発注表(週1回)
+# 毎週月曜 JST 9:17 = UTC 0:17。台帳の「回答済み・未発注」を 品番×色×サイズ で数え、ジョブのまとめ欄に表を出す。
+# 表を出すだけ。Amazonでの購入・台帳の「発注済み」への書き換えはしない(お金が動く操作は人のゲート)。
+name: gift-tshirt-order-sheet
+on:
+  schedule:
+    - cron: '17 0 * * 1'
+  workflow_dispatch: {}
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Call /api/cron/gift-tshirt-order-sheet
+        run: |
+          set -e
+          RESP=$(curl -s --max-time 60 -w '\n%{http_code}' \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            https://bw5-app.vercel.app/api/cron/gift-tshirt-order-sheet)
+          BODY=$(echo "$RESP" | sed '$d')
+          CODE=$(echo "$RESP" | tail -1)
+          echo "HTTP $CODE"
+          [ "$CODE" = "200" ] || { echo "::error::HTTP $CODE (期待:200): $BODY"; exit 1; }
+          echo "$BODY" | jq -e '.ok == true' >/dev/null 2>&1 \
+            || { echo "::error::発注表の作成に失敗しました: $BODY"; exit 1; }
+          if [ "$(echo "$BODY" | jq -r '.skipped // empty')" = "table_missing" ]; then
+            echo "::warning::台帳テーブル gift_tshirt_claims が本番に未作成です(マイグレーション未適用)"
+            exit 0
+          fi
+          echo "$BODY" | jq -r '.markdown' | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "$BODY" | jq -r 'if (.sheet.unreadable | length) > 0 then "::warning::色かサイズが読めない回答が \(.sheet.unreadable | length) 件あります" else empty end'
