@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exchangeAndStoreToken } from '@/lib/threads';
 import { OAUTH_STATE_COOKIE } from '@/lib/googleCalendar';
+import { isAuthorized } from '@/lib/eventAuth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 // GET /api/staff/threads/callback?code=XXX
-// Threads連携の同意後コールバック。長期トークン+ThreadsユーザーIDを保存する。
+// Threads連携の同意後コールバック。長期トークン(+期限)とThreadsユーザーIDを保存する。
 //
-// ⚠️ 公開API(認証なし)。理由: **Metaがリダイレクトで直接叩く**ため管理パスワードを要求できない。
-//   code が無ければ何もできず、stateがcookieと一致しないcodeは弾くので実害なし
-//   (Instagramのcallbackと同型)。
+// 認証: スタッフのログイン(cookie staff_events_auth)が必要(2026-11-13〜)。
+//   Metaはブラウザのリダイレクト(トップレベルのGET)でここへ戻すので、SameSite=Lax の
+//   ログインcookieはそのまま届く = 連携ボタンを押したスタッフ本人のブラウザならそのまま通る。
+//   /api/staff/* は proxy.ts でcookieの有無だけ見ているので、セッションの有効性はここで確かめる。
+//   加えて state を cookie と照合する(CSRF対策・Instagramのcallbackと同型)。
 function html(status: number, body: string) {
   return new NextResponse(
     `<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -25,6 +28,13 @@ export async function GET(req: NextRequest) {
   const error = url.searchParams.get('error_description') || url.searchParams.get('error');
   const origin = url.origin;
 
+  if (!(await isAuthorized(req))) {
+    return html(
+      401,
+      `<h1>❌ ログインが必要です</h1>
+       <p>スタッフ画面にログインしてから、<a href="${origin}/staff/instagram">連携状況ページ</a>の「Threadsを連携する」をやり直してください。</p>`
+    );
+  }
   if (error) return html(400, `<h1>❌ 連携エラー</h1><p>${error}</p>`);
   if (!code) return html(400, '<h1>❌ code がありません</h1>');
 
