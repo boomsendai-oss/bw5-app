@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getAll, getOne } from '@/lib/db';
 import { isAuthorized, unauthorized } from '@/lib/eventAuth';
-import { getActiveMemberCount, getMonthlyRevenue } from '@/lib/kpiMetrics';
+import { getActiveMemberCount, getMonthlyFinance } from '@/lib/kpiMetrics';
+import { todayJst } from '@/lib/dateJst';
+import { snapshotTargetMonths, pickSnapshotExpense } from '@/lib/kpiSnapshot';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -11,7 +13,14 @@ export const maxDuration = 30;
  * POST /api/staff/operations/snapshot-kpi
  *
  * 現時点の boom_members / lstep_friends / member_lstep_links / trial_records から
- * KPI を集計し、kpi_snapshots テーブルに UPSERT (snapshot_date は当月の月初)。
+ * KPI を集計し、kpi_snapshots テーブルに UPSERT (snapshot_date は対象月の月初)。
+ *
+ * 2026-11-13 修正:
+ *   - 経費(monthly_expense)が常に0円だった → 正準の getMonthlyFinance の経費合計
+ *     (給与・スタジオ料・経費・決済手数料)を入れ、利益も insights と同じ営業利益にする。
+ *   - 月初に走ると当月(ほぼ空)の行だけ作られ、前月の行が月末途中の値のまま固まっていた
+ *     → JSTで判定し、月の1〜10日は前月の行も取り直して締める(snapshotTargetMonths)。
+ *     月またぎで遅れて入る課金・経費・給与確定を前月に反映するため。
  *
  * kpi_snapshots は元々「手動入力ベース」の MVP テーブル。
  * 既存スキーマを壊さないため:
@@ -71,15 +80,31 @@ export async function POST(req: NextRequest) {
   if (!(await isAuthorized(req))) return unauthorized();
 
   try {
-    const now = new Date();
-    const yy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const ym = `${yy}-${mm}`;
+    const months = snapshotTargetMonths(todayJst());
+    const results: Array<{ snapshot_date: string; detail: DetailBreakdown }> = [];
+    for (const ym of months) results.push(await snapshotMonth(ym, ym === months[months.length - 1]));
+    // 互換: 従来どおり当月分を snapshot_date / detail に入れて返す
+    const current = results[results.length - 1];
+    return NextResponse.json({
+      ok: true,
+      snapshot_date: current.snapshot_date,
+      detail: current.detail,
+      months: results.map((r) => r.snapshot_date),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: `KPI集計エラー: ${msg}` }, { status: 500 });
+  }
+}
+
+async function snapshotMonth(ym: string, isCurrentMonth: boolean): Promise<{ snapshot_date: string; detail: DetailBreakdown }> {
+  {
+    const [yy, mon] = ym.split('-').map(Number);
     const snapshotDate = `${ym}-01`;
     const monthStart = `${ym}-01 00:00:00`;
     // 翌月1日
-    const next = new Date(yy, now.getMonth() + 1, 1);
-    const nextStart = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01 00:00:00`;
+    const next = new Date(Date.UTC(yy, mon, 1));
+    const nextStart = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-01 00:00:00`;
 
     // ---- 会員 ----
     type MemberRow = { status: string; plan_name: string | null; enrolled_at: string | null; withdrew_at: string | null };
@@ -115,8 +140,9 @@ export async function POST(req: NextRequest) {
       if (m.withdrew_at && m.withdrew_at >= monthStart && m.withdrew_at < nextStart) churn += 1;
     }
 
-    // 当月売上(正準: hacomono_billing_records 実集計)
-    const monthlyRevenue = await getMonthlyRevenue(ym);
+    // 売上・経費・営業利益(正準: /staff/insights の収益性と同じ関数)
+    const finance = await getMonthlyFinance(ym);
+    const monthlyRevenue = finance.profitability.revenue;
 
     // ---- Lstep 友だち ----
     type LstepRow = { blocked: number; role: string | null };
@@ -255,26 +281,27 @@ export async function POST(req: NextRequest) {
 
     // ---- UPSERT kpi_snapshots ----
     const existing = await getOne(
-      `SELECT id, monthly_revenue, monthly_expense, monthly_profit FROM kpi_snapshots WHERE snapshot_date = ?`,
+      `SELECT id, line_friends, monthly_revenue, monthly_expense, monthly_profit FROM kpi_snapshots WHERE snapshot_date = ?`,
       [snapshotDate]
     );
     const notesJson = JSON.stringify({ auto: true, generated_at: new Date().toISOString(), detail });
 
-    // monthly_expense は既存値(手動入力されている可能性)を尊重。無ければ0。
-    const monthlyExpense = Number(
-      (existing as { monthly_expense?: number } | null)?.monthly_expense ?? 0
+    // 経費は正準集計を使う。正準が0円で手入力の値があるときだけ手入力を残す。
+    const monthlyExpense = pickSnapshotExpense(
+      finance.profitability.total_expenses,
+      (existing as { monthly_expense?: number } | null)?.monthly_expense ?? null
     );
     const monthlyProfit = monthlyRevenue - monthlyExpense;
 
     if (existing) {
-      // 売上は正準ロジックで上書き(従来は0固定で保存されダッシュボード/月次が¥0になっていた)。
-      // monthly_expense は既存値を保持し、profit = revenue - expense で再計算。
+      // 売上・経費・利益は正準ロジックで上書きし、profit = revenue - expense。
       await execute(
         `UPDATE kpi_snapshots SET
           line_friends = ?,
           hacomono_members_active = ?,
           hacomono_members_retired = ?,
           monthly_revenue = ?,
+          monthly_expense = ?,
           monthly_profit = ?,
           trial_count = ?,
           new_signup_count = ?,
@@ -284,10 +311,14 @@ export async function POST(req: NextRequest) {
           updated_at = datetime('now', 'localtime')
          WHERE snapshot_date = ?`,
         [
-          lstepTotal - lstepBlocked,
+          // 前月を締め直すときのLINE友だち数は、前月中に記録した値(月末に近い)を残す
+          isCurrentMonth
+            ? lstepTotal - lstepBlocked
+            : Number((existing as { line_friends?: number }).line_friends ?? lstepTotal - lstepBlocked),
           totalActive,
           withdrewTotal,
           monthlyRevenue,
+          monthlyExpense,
           monthlyProfit,
           tReserved,
           newSignup,
@@ -322,9 +353,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ ok: true, snapshot_date: snapshotDate, detail });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: `KPI集計エラー: ${msg}` }, { status: 500 });
+    return { snapshot_date: snapshotDate, detail };
   }
 }
