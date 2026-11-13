@@ -57,6 +57,9 @@ describe('isEligible', () => {
   it('講師の家族は対象外', () => {
     expect(isEligible(cand({ isInstructorFamily: true }), TODAY)).toBe(false);
   });
+  it('TAROが恒久的に外した家族は対象外', () => {
+    expect(isEligible(cand({ excludedAt: '2026-11-13' }), TODAY)).toBe(false);
+  });
   it('LINEのつながりが無ければ対象外', () => {
     expect(isEligible(cand({ lineLinks: [] }), TODAY)).toBe(false);
   });

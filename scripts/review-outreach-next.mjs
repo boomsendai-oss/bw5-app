@@ -9,6 +9,7 @@
 //   node scripts/review-outreach-next.mjs --prod            次の5家族を表示 (読むだけ)
 //   node scripts/review-outreach-next.mjs --prod --json     同じ内容をJSONで
 //   node scripts/review-outreach-next.mjs --prod --mark 60,44   送れた家族に依頼日時(今)を記録
+//   node scripts/review-outreach-next.mjs --prod --exclude 83,82 "理由"   TAROが「送らない」と決めた家族を恒久的に外す(理由に個人名は書かない)
 //
 // 送る前の照合 (2026-11-10 の5家族で確立):
 //   1. LINE検索は「LINE登録名」で。トーク履歴に子どもの名前(漢字かひらがな)が出れば送る
@@ -26,6 +27,26 @@ async function main() {
   const argv = process.argv;
   const c = makeClient(argv);
   const query = async (sql, args = []) => (await c.execute({ sql, args })).rows;
+
+  const exIdx = argv.indexOf('--exclude');
+  if (exIdx >= 0) {
+    const keys = String(argv[exIdx + 1] ?? '')
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isInteger(n) && n > 0);
+    const reason = argv[exIdx + 2] && !argv[exIdx + 2].startsWith('--') ? argv[exIdx + 2] : 'TAROの判断';
+    if (keys.length === 0) throw new Error('--exclude の後に家族番号をカンマ区切りで');
+    const now = new Date().toISOString();
+    for (const k of keys) {
+      await c.execute({
+        sql: `INSERT INTO review_outreach (family_key, excluded_at, excluded_reason, updated_at) VALUES (?, ?, ?, datetime('now'))
+              ON CONFLICT(family_key) DO UPDATE SET excluded_at = excluded.excluded_at, excluded_reason = excluded.excluded_reason, updated_at = datetime('now')`,
+        args: [k, now, reason],
+      });
+    }
+    console.log(`恒久的に除外: ${keys.join(', ')} (${now}) 理由: ${reason}`);
+    return;
+  }
 
   const markIdx = argv.indexOf('--mark');
   if (markIdx >= 0) {

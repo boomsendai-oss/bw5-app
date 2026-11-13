@@ -36,6 +36,8 @@ export type OutreachCandidate = {
   postedAt: string | null;
   /** gbp_review_family で「確実」「たぶん」に紐付いた口コミがある */
   hasMatchedReview: boolean;
+  /** TAROが「この家族には送らない」と決めた日時(恒久的に候補から外す・2026-11-13〜) */
+  excludedAt?: string | null;
 };
 
 export function kataToHira(s: string): string {
@@ -89,6 +91,7 @@ function daysBetween(fromIso: string, toIso: string): number {
 
 export function isEligible(c: OutreachCandidate, todayIso: string): boolean {
   if (c.askedAt || c.postedAt || c.hasMatchedReview) return false;
+  if (c.excludedAt) return false;
   if (c.isInstructorFamily) return false;
   if (c.lineLinks.length === 0) return false;
   if (!c.enrolledAt || !c.enrolledAt.trim()) return false;
@@ -163,7 +166,7 @@ export async function loadOutreachCandidates(query: QueryFn): Promise<OutreachCa
      FROM member_lstep_links l LEFT JOIN lstep_friends f ON f.lstep_id = l.lstep_id
      WHERE COALESCE(f.blocked, 0) = 0`
   );
-  const outreach = await query(`SELECT family_key, asked_at, posted_at FROM review_outreach`);
+  const outreach = await query(`SELECT family_key, asked_at, posted_at, excluded_at FROM review_outreach`);
   const matched = await query(
     `SELECT DISTINCT family_key FROM gbp_review_family
      WHERE family_key IS NOT NULL AND confidence IN ('確実', 'たぶん')`
@@ -196,6 +199,7 @@ export async function loadOutreachCandidates(query: QueryFn): Promise<OutreachCa
         isInstructorFamily: false,
         askedAt: (st?.asked_at as string | null) ?? null,
         postedAt: (st?.posted_at as string | null) ?? null,
+        excludedAt: (st?.excluded_at as string | null) ?? null,
         hasMatchedReview: matchedKeys.has(key),
       };
       fams.set(famName, c);
