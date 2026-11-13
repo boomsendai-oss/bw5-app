@@ -7,7 +7,9 @@
 このリポジトリは **BOOMアプリ** (旧 BW5アプリ)。
 BOOMダンススクールの常設運営機能 + 各イベント機能を統合したNext.jsアプリ。
 
-- リポジトリ名 `bw5-app`・本番URL `bw5-app.vercel.app` は当面変更しない (お客さん影響回避)
+- 住所（2026-11-13〜）：スタッフ・通知向けの正式な住所=`https://app.boom-sendai.com`（Vercel の `NEXT_PUBLIC_BASE_URL`）／家庭・お客さん向け=`https://event.boom-sendai.com`／古い `bw5-app.vercel.app` は外の登録先のためにずっと開けておく
+- **コードに住所を直書きしない**。`src/lib/appOrigin.ts` の `STAFF_ORIGIN`・`PUBLIC_ORIGIN`・`LEGACY_ORIGIN` から読む（外のサービスに登録済みのコールバックやインスタが取りに来る素材URLは、登録先を移すまで `LEGACY_ORIGIN`）
+- リポジトリ名 `bw5-app` の変更と外の登録先（Stripe・Meta・LINE・GitHub Actions・boom-cron）の移し替えは 2026-12 後半に予定
 - 内部ドキュメント・コミットメッセージ・新規コードコメントでは「BOOMアプリ」と呼ぶ
 
 ## カスタムNext.js の注意
