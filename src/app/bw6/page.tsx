@@ -5,6 +5,8 @@ import type { ReactNode } from 'react';
 import { FiveLines } from '@/components/recital/FiveLines';
 import { fiveLines, jpDate, jpOpenLabel } from '@/lib/recitalPublic';
 import { getRecitalPublicContext } from './context';
+import { Bw6Teaser, MocchinBox } from '@/components/recital/Bw6Teaser';
+import { todayJst } from '@/lib/dateJst';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,8 +30,10 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 export default async function Bw6TopPage({ searchParams }: { searchParams: Promise<{ ev?: string; pv?: string }> }) {
   const ctx = await getRecitalPublicContext(await searchParams);
   const { event, settings: s, phase, qs } = ctx;
+  const today = todayJst();
   if (!event) {
-    return <p className="py-10 text-center text-navy-700">準備中です</p>;
+    // 本番の発表会の行が入る前（〜12/13）は予告を出す（2026-11-14 TARO）
+    return <Bw6Teaser today={today} />;
   }
 
   let entryArea: ReactNode;
@@ -85,6 +89,8 @@ export default async function Bw6TopPage({ searchParams }: { searchParams: Promi
         </Link>
         {entryArea}
       </div>
+
+      {phase === 'before' && <MocchinBox today={today} />}
 
       <FiveLines lines={fiveLines(s)} />
     </main>
