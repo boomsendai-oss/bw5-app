@@ -13,6 +13,8 @@ const { rows } = await db.execute({
         WHERE auto_posted_at >= datetime('now', ?) ORDER BY auto_posted_at`,
   args: [`-${hours} hours`],
 });
-const waiting = await db.execute(`SELECT COUNT(*) n FROM gbp_reviews WHERE status IN ('new','draft_ready') AND reply_comment IS NULL`);
-console.log(`自動で公開した返信（直近${hours}時間）: ${rows.length}件 / 人の確認待ち（★3以下など）: ${waiting.rows[0].n}件`);
+const waiting = (await db.execute(`SELECT reviewer_name, star_rating, hold_reason FROM gbp_reviews
+  WHERE status IN ('new','draft_ready') AND reply_comment IS NULL ORDER BY create_time`)).rows;
+console.log(`自動で公開した返信（直近${hours}時間）: ${rows.length}件 / 人の確認待ち: ${waiting.length}件`);
+for (const w of waiting) console.log(`- 確認待ち ★${w.star_rating} ${w.reviewer_name}：${w.hold_reason ?? (Number(w.star_rating) <= 3 ? '★3以下' : '下書き待ち')}`);
 for (const r of rows) console.log(`- ★${r.star_rating} ${r.reviewer_name}（${r.auto_posted_at} UTC）\n  ${r.reply_comment}`);

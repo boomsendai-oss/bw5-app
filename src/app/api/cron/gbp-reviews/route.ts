@@ -90,15 +90,15 @@ async function run(req: NextRequest): Promise<NextResponse> {
   } else {
     for (const p of pending) {
       try {
-        const draft = await generateReplyDraft({
+        const { text: draft, holdReason } = await generateReplyDraft({
           reviewerName: p.reviewer_name ?? '',
           starRating: p.star_rating ?? 5,
           comment: p.comment,
           styleExamples,
         });
         await execute(
-          `UPDATE gbp_reviews SET draft=?, drafted_at=datetime('now'), status='draft_ready' WHERE review_id=?`,
-          [draft, p.review_id]
+          `UPDATE gbp_reviews SET draft=?, drafted_at=datetime('now'), status='draft_ready', hold_reason=? WHERE review_id=?`,
+          [draft, holdReason, p.review_id]
         );
         drafted++;
       } catch (e) {
@@ -108,7 +108,8 @@ async function run(req: NextRequest): Promise<NextResponse> {
   }
 
   // 自動公開 (2026-11-14 TARO決定・試し運用。docs: boom-events-hub/docs/BOOM業務ルール.md)
-  // ★4以上で未返信のドラフトはそのまま公開する。★3以下は人の承認を待つ (スタッフ画面)。
+  // ★4以上で未返信のドラフトはそのまま公開する。★3以下と、下書き作成時に「確認:要」と判定したもの
+  // (hold_reason あり: 費用・特定の講師や出来事・家庭の事情など) は人の承認を待つ (スタッフ画面)。
   // 止めたいときは Vercel の環境変数 GBP_AUTO_POST=off。
   // 公開したものは auto_posted_at に記録し、朝のまとめで一覧にする。
   let autoPosted = 0;
@@ -117,7 +118,7 @@ async function run(req: NextRequest): Promise<NextResponse> {
     const ready = (await getAll(
       `SELECT review_id, draft FROM gbp_reviews
        WHERE status='draft_ready' AND reply_comment IS NULL AND star_rating >= 4
-         AND draft IS NOT NULL AND TRIM(draft) <> ''
+         AND hold_reason IS NULL AND draft IS NOT NULL AND TRIM(draft) <> ''
        ORDER BY create_time ASC LIMIT 10`
     )) as { review_id: string; draft: string }[];
     for (const r of ready) {

@@ -25,7 +25,15 @@ Googleの返信審査(2026年4月導入の事前モデレーション)を通す�
 - 「この度は嬉しいクチコミをありがとうございます」「またのお越しをお待ちしております」のような、どのお店でも使える汎用の挨拶文を避ける
 - 感嘆符を連続させない(「！！」等)。全文を強調しない
 
-出力は返信本文のみ。前置きや説明は書かない。`;
+公開前の確認の判定(2026-11-14 TARO決定):
+次のどれかに当たるクチコミは、自動で公開せずオーナーが確認する。
+- 費用・料金・お金に触れている
+- 特定の講師・スタッフ・生徒の名前や、特定の出来事(トラブル・けが・発表会の配役など)に触れている
+- 家庭の事情・体調・退会や休会・不満や要望に触れている
+- そのほか、返信の内容次第で誤解や問題になりうると思うもの
+出力の形式(厳守):
+1行目: 「確認:不要」または「確認:要｜<理由を20字以内>」
+2行目以降: 返信本文のみ。前置きや説明は書かない。`;
 
 // 最近オーナーが手直しして公開した返信(文体の手本)。cron から渡す
 export type StyleExample = { comment: string | null; reply: string };
@@ -54,7 +62,24 @@ const OPENING_ANGLES = [
   'クチコミの中の具体的なエピソードを引き取って、その場面についてこちらから一言添えるところから書き始める',
 ];
 
-export async function generateReplyDraft(input: DraftInput): Promise<string> {
+export type DraftResult = {
+  text: string;
+  /** null なら自動公開してよい。文字列なら公開前にオーナー確認(理由) */
+  holdReason: string | null;
+};
+
+// 1行目の「確認:要｜理由」「確認:不要」を読み取る。形式が崩れていたら安全側(確認待ち)に倒す
+export function parseDraftOutput(raw: string): DraftResult {
+  const lines = raw.trim().split('\n');
+  const head = lines[0]?.trim() ?? '';
+  const m = head.match(/^確認[:：]\s*(要|不要)(?:\s*[｜|]\s*(.*))?$/);
+  if (!m) return { text: raw.trim(), holdReason: '判定の形式が崩れたため' };
+  const text = lines.slice(1).join('\n').trim();
+  if (!text) throw new Error('ドラフト生成結果が空でした');
+  return { text, holdReason: m[1] === '要' ? (m[2]?.trim() || '確認が必要と判定') : null };
+}
+
+export async function generateReplyDraft(input: DraftInput): Promise<DraftResult> {
   const client = new Anthropic();
   // 英訳前置("(Translated by Google) ... (Original) ...")を除いた原文だけをAIに渡す
   const original = extractOriginalComment(input.comment);
@@ -86,5 +111,5 @@ export async function generateReplyDraft(input: DraftInput): Promise<string> {
     .join('')
     .trim();
   if (!text) throw new Error('ドラフト生成結果が空でした');
-  return text;
+  return parseDraftOutput(text);
 }
