@@ -1,5 +1,6 @@
 // クチコミ返信ドラフト生成 (T-178)
-// Claude API (claude-sonnet-4-6) で返信案を作る。投稿は必ず人間の承認後。
+// Claude API (claude-sonnet-4-6) で返信案を作る。
+// 2026-11-14 TARO決定(試し運用): ★4以上は cron がそのまま公開する。★3以下は人の承認を待つ。
 import Anthropic from '@anthropic-ai/sdk';
 import { extractOriginalComment } from './gbpText';
 
@@ -13,7 +14,7 @@ const SYSTEM_PROMPT = `あなたは仙台のキッズダンススクール「BOO
 - 価格への不満には、値下げも値上げも一切約束しない。料金の背景や透明性、誠実な姿勢で対応する
 - ネガティブな内容には真摯に受け止めて改善姿勢を示す。言い訳しない。反論しない
 - 文体は丁寧で温かく、親しみやすく。絵文字は0〜1個まで(付けない返信があってよい)
-- 長さは3〜5文程度。冗長にしない
+- 長さは3文前後(2〜4文)。冗長にしない。1文を長くしすぎない
 - 嘘や事実の捏造はしない。クチコミに書かれていない体験をでっち上げない
 - 署名や「BOOM代表」などの肩書きは不要(Googleが店舗名を自動表示するため)
 
@@ -26,11 +27,16 @@ Googleの返信審査(2026年4月導入の事前モデレーション)を通す�
 
 出力は返信本文のみ。前置きや説明は書かない。`;
 
+// 最近オーナーが手直しして公開した返信(文体の手本)。cron から渡す
+export type StyleExample = { comment: string | null; reply: string };
+
 export type DraftInput = {
   /** 受け取るが返信生成には使わない(本文に人名が入るとGoogleの返信審査で弾かれる実例があるため) */
   reviewerName: string;
   starRating: number;
   comment: string | null;
+  /** 最近公開した返信。文体(長さ・語り口)だけを合わせ、言い回しは真似しない */
+  styleExamples?: StyleExample[];
 };
 
 export function draftConfigured(): boolean {
@@ -57,6 +63,12 @@ export async function generateReplyDraft(input: DraftInput): Promise<string> {
     : 'クチコミ本文: (本文なし・星評価のみ)';
   // 投稿者名はAIに渡さない(本文に人名が入るのを防ぐ)。代わりに切り口をランダムに指定してパターンを散らす
   const angle = OPENING_ANGLES[Math.floor(Math.random() * OPENING_ANGLES.length)];
+  const examples = (input.styleExamples ?? [])
+    .map((e, i) => `【手本${i + 1}】\nクチコミ: ${extractOriginalComment(e.comment) || '(本文なし)'}\n返信: ${e.reply}`)
+    .join('\n\n');
+  const styleNote = examples
+    ? `\n\n文体の手本(最近オーナーが手直しして公開した返信)。長さ・語り口・温度感をこれに合わせること。ただし言い回しや書き出しはそのまま使わず、今回のクチコミのための文章にすること:\n${examples}`
+    : '';
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
@@ -64,7 +76,7 @@ export async function generateReplyDraft(input: DraftInput): Promise<string> {
     messages: [
       {
         role: 'user',
-        content: `以下のクチコミへの公開返信を書いてください。\n\n星評価: ${'★'.repeat(input.starRating)}${'☆'.repeat(Math.max(0, 5 - input.starRating))} (${input.starRating}/5)\n${body}\n\n今回の書き出しの方針: ${angle}\n締めの一文も、他の返信と重ならない表現を選んでください。投稿者名は本文に書かないでください。`,
+        content: `以下のクチコミへの公開返信を書いてください。\n\n星評価: ${'★'.repeat(input.starRating)}${'☆'.repeat(Math.max(0, 5 - input.starRating))} (${input.starRating}/5)\n${body}\n\n今回の書き出しの方針: ${angle}\n締めの一文も、他の返信と重ならない表現を選んでください。投稿者名は本文に書かないでください。${styleNote}`,
       },
     ],
   });

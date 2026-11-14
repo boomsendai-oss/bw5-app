@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execute, getAll } from '@/lib/db';
-import { gbpConfigured, getGbpAccessToken, listGbpReviews, STAR_TO_NUM } from '@/lib/gbp';
+import { gbpConfigured, getGbpAccessToken, listGbpReviews, putGbpReply, STAR_TO_NUM } from '@/lib/gbp';
 import { draftConfigured, generateReplyDraft } from '@/lib/gbpDraft';
 
 export const dynamic = 'force-dynamic';
@@ -74,6 +74,15 @@ async function run(req: NextRequest): Promise<NextResponse> {
      WHERE status='new' AND reply_comment IS NULL ORDER BY create_time ASC LIMIT 10`
   )) as { review_id: string; reviewer_name: string | null; star_rating: number | null; comment: string | null }[];
 
+  // 文体の手本: 最近公開した返信3件 (TARO が手直ししたものを含む)
+  const styleExamples = pending.length
+    ? ((await getAll(
+        `SELECT comment, reply_comment AS reply FROM gbp_reviews
+         WHERE reply_comment IS NOT NULL AND comment IS NOT NULL
+         ORDER BY COALESCE(reply_time, posted_at) DESC LIMIT 3`
+      )) as { comment: string | null; reply: string }[])
+    : [];
+
   let drafted = 0;
   const draftErrors: string[] = [];
   if (pending.length > 0 && !draftConfigured()) {
@@ -85,6 +94,7 @@ async function run(req: NextRequest): Promise<NextResponse> {
           reviewerName: p.reviewer_name ?? '',
           starRating: p.star_rating ?? 5,
           comment: p.comment,
+          styleExamples,
         });
         await execute(
           `UPDATE gbp_reviews SET draft=?, drafted_at=datetime('now'), status='draft_ready' WHERE review_id=?`,
@@ -97,6 +107,34 @@ async function run(req: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // 自動公開 (2026-11-14 TARO決定・試し運用。docs: boom-events-hub/docs/BOOM業務ルール.md)
+  // ★4以上で未返信のドラフトはそのまま公開する。★3以下は人の承認を待つ (スタッフ画面)。
+  // 止めたいときは Vercel の環境変数 GBP_AUTO_POST=off。
+  // 公開したものは auto_posted_at に記録し、朝のまとめで一覧にする。
+  let autoPosted = 0;
+  const postErrors: string[] = [];
+  if (process.env.GBP_AUTO_POST !== 'off') {
+    const ready = (await getAll(
+      `SELECT review_id, draft FROM gbp_reviews
+       WHERE status='draft_ready' AND reply_comment IS NULL AND star_rating >= 4
+         AND draft IS NOT NULL AND TRIM(draft) <> ''
+       ORDER BY create_time ASC LIMIT 10`
+    )) as { review_id: string; draft: string }[];
+    for (const r of ready) {
+      try {
+        await putGbpReply(token, r.review_id, r.draft.trim());
+        await execute(
+          `UPDATE gbp_reviews SET status='posted', reply_comment=?, posted_at=datetime('now'),
+             auto_posted_at=datetime('now') WHERE review_id=?`,
+          [r.draft.trim(), r.review_id]
+        );
+        autoPosted++;
+      } catch (e) {
+        postErrors.push(`${r.review_id}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     configured: true,
@@ -104,6 +142,8 @@ async function run(req: NextRequest): Promise<NextResponse> {
     upserted,
     drafted,
     draft_errors: draftErrors,
+    auto_posted: autoPosted,
+    post_errors: postErrors,
   });
 }
 
