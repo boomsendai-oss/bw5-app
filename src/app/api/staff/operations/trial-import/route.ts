@@ -6,6 +6,7 @@ import { planAbsentCancellations, inferWindowFromRows, trialKey } from '@/lib/tr
 import { runAutoLink, type AutoLinkSummary } from '@/lib/autoLinkDb';
 import { syncTrialCalendar, type TrialCalendarSummary } from '@/lib/trialCalendar';
 import { pickReferrerKana } from '@/lib/referral';
+import { trialDedupKey, TRIAL_CONFLICT_TARGET } from '@/lib/trialDedup';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -245,6 +246,7 @@ async function handleImport(req: NextRequest) {
     id: number;
     lstep_id: string | null;
     reserved_at: string;
+    applicant_name: string | null;
     status: string | null;
     status_updated_at: string | null;
   };
@@ -252,14 +254,14 @@ async function handleImport(req: NextRequest) {
   if (lstepIds.length > 0) {
     const placeholders = lstepIds.map(() => '?').join(',');
     existing = (await getAll(
-      `SELECT id, lstep_id, reserved_at, status, status_updated_at
+      `SELECT id, lstep_id, reserved_at, applicant_name, status, status_updated_at
          FROM trial_records WHERE lstep_id IN (${placeholders})`,
       lstepIds
     )) as ExRow[];
   }
   const existingMap = new Map<string, ExRow>();
   for (const e of existing) {
-    existingMap.set(`${e.lstep_id ?? ''}|${e.reserved_at}`, e);
+    existingMap.set(trialDedupKey(e.lstep_id, e.reserved_at, e.applicant_name), e);
   }
 
   const stmts: { sql: string; args: (string | number | null)[] }[] = [];
@@ -267,7 +269,7 @@ async function handleImport(req: NextRequest) {
     if (p.status === 'キャンセル') canceledCount += 1;
     if (p.status === '来店確認済') attendedCount += 1;
 
-    const key = `${p.lstep_id ?? ''}|${p.reserved_at}`;
+    const key = trialDedupKey(p.lstep_id, p.reserved_at, p.applicant_name);
     const ex = p.lstep_id ? existingMap.get(key) : undefined;
     if (ex) {
       // 既存: status_updated_at が新しい (=今回の取込) 場合のみ更新
@@ -322,7 +324,7 @@ async function handleImport(req: NextRequest) {
                  applicant_name, applicant_name_kana, applicant_age,
                  course_type, dance_experience, referral_source, referrer_kana)
               VALUES (?, ?, ?, ?, ?, 'lstep_calendar_csv', ?, ?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT(lstep_id, reserved_at) DO UPDATE SET
+              ON CONFLICT(${TRIAL_CONFLICT_TARGET}) DO UPDATE SET
                 lesson_name = COALESCE(excluded.lesson_name, trial_records.lesson_name),
                 status = excluded.status,
                 status_source = excluded.status_source,
