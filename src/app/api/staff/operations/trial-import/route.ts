@@ -7,6 +7,7 @@ import { runAutoLink, type AutoLinkSummary } from '@/lib/autoLinkDb';
 import { syncTrialCalendar, type TrialCalendarSummary } from '@/lib/trialCalendar';
 import { pickReferrerKana } from '@/lib/referral';
 import { trialDedupKey, TRIAL_CONFLICT_TARGET } from '@/lib/trialDedup';
+import { detectFriendCobookings } from '@/lib/trialFriendInvite';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -424,6 +425,32 @@ async function handleImport(req: NextRequest) {
     trialCalendar = { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 
+  // --- お友だち相乗りの検出・記録 (2026-11-15・業務ルール§7) ---
+  // 同じ友だちID×同じ枠に名字の違う申込者がいる予約を検出し、未送信キュー
+  // (trial_friend_invites) に積む。重複は (lstep_id, reserved_at) の UNIQUE で弾く。
+  // 実際の個別メッセージ送信は Mac常駐(M1)の daily_sync が Lステップ経由で行う(本番初回は保留)。
+  // ここで失敗しても取込自体は成功扱いにする。
+  let friendInvitesDetected = 0;
+  try {
+    const cobookings = detectFriendCobookings(parsedRows);
+    if (cobookings.length > 0) {
+      const invStmts = cobookings.map((c) => ({
+        sql: `INSERT OR IGNORE INTO trial_friend_invites
+                (lstep_id, reserved_at, lesson_name, applicants_json, status, detected_at)
+              VALUES (?, ?, ?, ?, 'pending', ?)`,
+        args: [c.lstep_id, c.reserved_at, c.lesson_name, JSON.stringify(c.applicants), nowIso] as (
+          | string
+          | number
+          | null
+        )[],
+      }));
+      for (let i = 0; i < invStmts.length; i += 50) await batch(invStmts.slice(i, i + 50));
+      friendInvitesDetected = cobookings.length;
+    }
+  } catch (e) {
+    console.error('friend-invite detect failed', e);
+  }
+
   // 当月サマリ
   const now = new Date();
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -461,6 +488,7 @@ async function handleImport(req: NextRequest) {
       month_canceled: Number(monthAgg?.canceled ?? 0),
       auto_link: autoLink,
       trial_calendar: trialCalendar,
+      friend_invites_detected: friendInvitesDetected,
     },
   });
 }
