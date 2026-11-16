@@ -1,8 +1,25 @@
 // scripts/fixed_qr/hacomono.mjs
 // HACOMONO管理へのログインとML001 CSV直エクスポート (daily_sync.pyで実証済みの方式の移植)
 import { chromium } from 'playwright';
+import { execFileSync } from 'node:child_process';
 
 const LOGIN_URL = 'https://boom-admin.hacomono.jp/';
+
+// ログインの止め具（2026-11-16・HACOMONOメイン管理者ロック事故）：ログインに1回失敗したら、
+// このワークフロー自身を無効にして、15分おきの定時実行で古いパスワードを入れ続けないようにする。
+// 再開は、パスワードをそろえたあと boom-events-hub の scripts/auth_guard/reset_password.py hacomono が有効に戻す。
+function stopThisWorkflow() {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const ref = process.env.GITHUB_WORKFLOW_REF || '';
+  if (!process.env.GITHUB_ACTIONS || !repo || !ref.includes('.github/workflows/')) return;
+  const wf = ref.split('.github/workflows/')[1].split('@')[0];
+  try {
+    execFileSync('gh', ['workflow', 'disable', wf, '-R', repo], { stdio: 'inherit', timeout: 60_000 });
+    console.log(`::error::HACOMONOのログインに失敗したため、${wf} を止めました（自動では二度と試しません）`);
+  } catch (e) {
+    console.log(`::error::HACOMONOのログインに失敗。ワークフローを止められませんでした: ${e.message}`);
+  }
+}
 
 export async function launchAndLogin() {
   if (!process.env.HACOMONO_USERNAME || !process.env.HACOMONO_PASSWORD) {
@@ -24,6 +41,7 @@ export async function launchAndLogin() {
     await page.waitForTimeout(5000);
   }
   if (page.url().includes('login') || (await page.locator('input[type="password"]').count()) > 0) {
+    stopThisWorkflow();
     throw new Error('HACOMONO login failed (still on login form)');
   }
   return { browser, context, page };
