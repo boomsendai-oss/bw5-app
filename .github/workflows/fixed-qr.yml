@@ -12,6 +12,9 @@ on:
     # 15分おき (UTC指定だが間隔なのでJSTでも同じ15分刻み)
     - cron: '*/15 * * * *'
   workflow_dispatch:
+permissions:
+  contents: read
+  actions: write   # ログイン失敗時に自分を止める（scripts/fixed_qr/hacomono.mjs の stopThisWorkflow）
 concurrency:
   group: fixed-qr
   cancel-in-progress: false
@@ -35,4 +38,5 @@ jobs:
           HACOMONO_USERNAME: ${{ secrets.HACOMONO_USERNAME }}
           HACOMONO_PASSWORD: ${{ secrets.HACOMONO_PASSWORD }}
           APP_ADMIN_PASSWORD: ${{ secrets.APP_ADMIN_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
         run: node issue_qr.mjs
