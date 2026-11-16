@@ -146,8 +146,9 @@ export async function POST(req: NextRequest) {
     );
     if (!couponExists) {
       await execute(
-        `INSERT INTO homecoming_coupons (member_id, trigger, delivered_channel, issued_at)
-         VALUES (?, 'auto_withdrawal', ?, ?)`,
+        // 表の既定値は旧ルール(半額・永年)のままなので、今のルール(会員ルールv2・2026-11-11)を明示する
+        `INSERT INTO homecoming_coupons (member_id, trigger, coupon_label, delivered_channel, issued_at)
+         VALUES (?, 'auto_withdrawal', '入会金0円・付けた日から1年', ?, ?)`,
         [memberId, body.channel ?? null, now]
       );
     }
