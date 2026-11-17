@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     }
     await ensureLessonCalendar();
     const result = await syncLessons(3);
-    // BF7 HIRO WS の申込URLを、告知(11/17 20:00)のあとに公開カレンダーへ戻す(1回限り・失敗しても同期は止めない)
+    // BF7 HIRO WS の申込URLを、告知(11/18 20:00)のあとに公開カレンダーへ戻す(1回限り・失敗しても同期は止めない)
     let bf7WsUrl = '';
     try {
       bf7WsUrl = await restoreBf7WsCalendarUrl();

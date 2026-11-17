@@ -415,12 +415,12 @@ export async function listPrimaryLessonEvents(
 
 /**
  * BF7 HIRO WS の 1/31 の予定(boom.sendai の公開カレンダー)の備考に、申込URLを戻す(1回限り)。
- * 背景(2026-11-06・TARO): 生徒も見るカレンダーなので、インスタの告知(11/17 20:00)より前に申込ページへたどり着けないよう
- * URLを外してあった。告知のあとの最初の毎朝の同期(11/18 05:00)で戻す。すでに入っていれば何もしない。
+ * 背景(2026-11-06・TARO): 生徒も見るカレンダーなので、インスタの告知(11/18 20:00・当初11/17から延期)より前に申込ページへたどり着けないよう
+ * URLを外してあった。告知のあとの最初の毎朝の同期(11/19 05:00)で戻す。すでに入っていれば何もしない。
  */
 export const BF7_WS_CALENDAR_EVENT_ID = 'cvptli2mv59v0hv8010bv6rgoo';
 export const BF7_WS_FORM_URL = 'https://boomersfight.vercel.app/bf7/workshop';
-const BF7_WS_URL_FROM = '2026-11-17T20:00:00+09:00';
+const BF7_WS_URL_FROM = '2026-11-18T20:00:00+09:00';
 
 /** 備考の末尾にURLの行を足した文を返す(すでにあれば null) */
 export function addBf7WsUrlToDescription(description: string): string | null {
