@@ -628,7 +628,7 @@ function LessonPicker({ value, onChange, lessons }:
         {lessons.map((l) => <option key={l.id} value={l.id}>{lessonLabel(l)}</option>)}
       </select>
       <span className="text-[10px] text-navy-400">
-        {cur ? `キャプションに「${WD_JA[cur.dw]}曜 ${String(cur.st).slice(0, 5)}〜${cur.et ? String(cur.et).slice(0, 5) : ''}」が入ります`
+        {cur ? `キャプションに「${WD_JA[cur.dw]}曜 ${String(cur.st).slice(0, 5)}」が入ります`
              : '紐づけると曜日・時間が自動で入ります'}
       </span>
     </label>

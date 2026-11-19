@@ -39,7 +39,7 @@ const KF_RE = /^\d+(\.\d+)?=(0(\.\d+)?|1(\.0+)?)(,\d+(\.\d+)?=(0(\.\d+)?|1(\.0+)
  */
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 
-/** 紐づけたクラスの「曜日 開始〜終了」を返す。未紐づけ/時間未設定なら null */
+/** 紐づけたクラスの「曜日 開始時刻」を返す（終わりの時間は載せない・TARO 2026-11-19 表記統一）。未紐づけ/時間未設定なら null */
 async function lessonSlotText(lessonMasterId: unknown): Promise<string | null> {
   const id = Number(lessonMasterId);
   if (!Number.isFinite(id)) return null;
@@ -49,7 +49,7 @@ async function lessonSlotText(lessonMasterId: unknown): Promise<string | null> {
   );
   if (!m || m.dw == null || !m.st) return null;
   const hhmm = (v: unknown) => String(v).slice(0, 5);
-  return `${WD[Number(m.dw)]}曜 ${hhmm(m.st)}〜${m.et ? hhmm(m.et) : ''}`.trim();
+  return `${WD[Number(m.dw)]}曜 ${hhmm(m.st)}`;
 }
 
 /** どのクラスでも必ず付ける共通タグ */
