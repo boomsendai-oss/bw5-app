@@ -116,7 +116,7 @@ export async function createBattleEventFrom(srcKey: string, newDate: string): Pr
       src.venue, src.venueAddress, src.moveSeconds, JSON.stringify(src.divisions), src.entryFee, src.entryFeeLate, deadline,
       src.spectatorFee, src.spectatorNote, deadline, src.rules, src.cancelPolicy,
       // 出演者は毎回変わるので、役割だけ引き継いで名前は空・未発表にする
-      JSON.stringify(src.cast.map((c) => ({ role: c.role, name: '', note: '', instagram: '', announced: false }))),
+      JSON.stringify(src.cast.map((c) => ({ role: c.role, mark: c.mark, name: '', note: '', instagram: '', announced: false }))),
       now, now,
     ]
   );

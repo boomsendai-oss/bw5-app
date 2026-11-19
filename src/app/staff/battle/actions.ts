@@ -44,6 +44,7 @@ export async function saveBattleEventSettings(fd: FormData): Promise<void> {
     if (!role) continue;
     cast.push({
       role,
+      mark: str(fd, `cast_mark_${i}`, 2),
       name: str(fd, `cast_name_${i}`, 60),
       note: str(fd, `cast_note_${i}`, 100),
       instagram: str(fd, `cast_ig_${i}`, 60).replace(/^@/, ''),

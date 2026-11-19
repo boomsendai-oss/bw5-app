@@ -18,6 +18,8 @@ export interface BattleDivision {
 /** 出演者(ジャッジ・DJ・MC)。announced=false の間は公開ページで「近日発表」と出す。 */
 export interface BattleCast {
   role: string;
+  /** 木札に大きく入れる役職の漢字1文字(審判=裁・DJ=音 など) */
+  mark: string;
   name: string;
   note: string;
   instagram: string;
@@ -32,6 +34,7 @@ export function parseBattleCast(raw: unknown): BattleCast[] {
       .filter((c) => c && typeof c.role === 'string' && c.role)
       .map((c) => ({
         role: String(c.role),
+        mark: String(c.mark ?? '').slice(0, 2),
         name: String(c.name ?? ''),
         note: String(c.note ?? ''),
         instagram: String(c.instagram ?? '').replace(/^@/, ''),

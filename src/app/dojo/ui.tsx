@@ -152,7 +152,7 @@ export function Hanko({ children }: { children: ReactNode }) {
  * 出演者(ジャッジ・DJ・MC)を道場の木札(名札)の形で並べる。
  * announced=false の人は名前を出さず「近日発表」(出演が決まる前に名前を公開しないため)。
  */
-export function DojoCast({ cast, numbering }: { numbering?: string; cast: { role: string; name: string; note: string; instagram: string; announced: boolean }[] }) {
+export function DojoCast({ cast, numbering }: { numbering?: string; cast: { role: string; mark: string; name: string; note: string; instagram: string; announced: boolean }[] }) {
   if (cast.length === 0) return null;
   return (
     <section>
@@ -164,26 +164,32 @@ export function DojoCast({ cast, numbering }: { numbering?: string; cast: { role
         {cast.map((c, i) => {
           const shown = c.announced && c.name;
           return (
+            // 木札の画像(生成素材)の上に、役職の漢字・役割・名前を重ねる。位置は画像に対する割合で決める
             <div
               key={i}
-              className="relative flex flex-col items-center rounded-t-[10px] rounded-b-[3px] border-2 border-[#2a1a0c] px-1.5 pb-3 pt-2.5 shadow-[0_6px_16px_rgba(0,0,0,0.6)]"
-              style={{
-                background:
-                  'repeating-linear-gradient(90deg, rgba(0,0,0,0.05) 0 2px, transparent 2px 7px), linear-gradient(180deg, #c9a06a 0%, #a97c45 55%, #8a5f30 100%)',
-              }}
+              className="relative w-full bg-contain bg-center bg-no-repeat drop-shadow-[0_6px_10px_rgba(0,0,0,0.7)] [container-type:inline-size]"
+              style={{ aspectRatio: '380 / 967', backgroundImage: 'url(/dojo/plaque.webp)' }}
             >
-              <span aria-hidden className="absolute left-1/2 top-1.5 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[#2a1a0c]/70" />
-              <p className="mt-2 whitespace-nowrap text-[11px] font-black tracking-[0.12em] text-[#7a1f14]">{c.role}</p>
-              <p
-                className={`f-brush mt-2 flex min-h-[7.5rem] items-start justify-center leading-none text-[#1b120b] [writing-mode:vertical-rl] [text-orientation:upright] tracking-[0.05em] ${shown ? 'text-[26px]' : 'text-[17px] text-[#1b120b]/55'}`}
-              >
-                {shown ? c.name : '近日発表'}
-              </p>
-              {shown && c.note && <p className="mt-2 text-center text-[10px] font-bold text-[#2a1a0c]/80">{c.note}</p>}
-              {shown && c.instagram && (
-                <a href={`https://www.instagram.com/${c.instagram}/`} target="_blank" rel="noopener noreferrer" className="mt-1 text-[10px] text-[#2a1a0c] underline">
-                  @{c.instagram}
-                </a>
+              <div className="absolute inset-x-0 top-[11%] flex flex-col items-center">
+                {c.mark && <span className="f-brush text-[44cqw] leading-none text-[#1b120b] [text-shadow:0_1px_0_rgba(255,230,190,0.35)]">{c.mark}</span>}
+                <span className="mt-[3cqw] whitespace-nowrap text-[8.5cqw] font-black tracking-[0.1em] text-[#6e1a10]">{c.role}</span>
+              </div>
+              <div className="absolute inset-x-0 top-[44%] flex justify-center">
+                <span
+                  className={`f-brush leading-none [writing-mode:vertical-rl] [text-orientation:upright] ${shown ? 'text-[19cqw] tracking-[0.04em] text-[#1b120b]' : 'text-[13cqw] text-[#1b120b]/55'}`}
+                >
+                  {shown ? c.name : '近日発表'}
+                </span>
+              </div>
+              {shown && (c.note || c.instagram) && (
+                <div className="absolute inset-x-0 bottom-[5%] text-center text-[7.5cqw] font-bold leading-tight text-[#2a1a0c]">
+                  {c.note && <p>{c.note}</p>}
+                  {c.instagram && (
+                    <a href={`https://www.instagram.com/${c.instagram}/`} target="_blank" rel="noopener noreferrer" className="underline">
+                      @{c.instagram}
+                    </a>
+                  )}
+                </div>
               )}
             </div>
           );
