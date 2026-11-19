@@ -9,7 +9,8 @@
 // ルール:
 //   1. 1スレッド(=送信者)につき同じ種類の自動返信は1回だけ。
 //   2. 1スレッドにつき自動返信は24時間で最大 MAX_AUTO_PER_DAY 通。
-//   3. 本文なし(スタンプ・画像だけ)には返さない。
+//   3. 本文なし(スタンプ・画像だけ)・絵文字だけ(😍🔥など。ストーリーへの反応)には返さない。
+//      絵文字だけは「返事が来る」と思わせないよう、返信待ちにもしない(2026-11-19・お客さま窓口部の指摘)。
 //   4. どの種類にも当たらない初回メッセージには「受け取りました」だけ返す(greeting)。
 //   5. 2通目以降で種類が当たらなければ自動返信なし→返信待ち。
 
@@ -151,6 +152,13 @@ const TRIAL_EVENT_KEYWORDS = ['体験会', 'お試し', '超入門', '入門'];
 const TRIAL_KEYWORDS = ['体験', '見学', '入会', '料金', '月謝', 'レッスン', 'クラス', 'スケジュール', '何歳', '初心者', '通い'];
 const APPLY_KEYWORDS = ['申込', '申し込', '参加希望', '参加したい', '参加します', '予約', '行きたい', '行きます', '出たい'];
 
+/** 絵文字だけ(😍・🔥・❤️・👏🏻 など。記号や空白が混ざってもよい)。数字や文字が1つでもあれば false。 */
+export function isEmojiOnly(text: string): boolean {
+  const t = (text || '').replace(/[\s！!。、．・♪〜~ー\u200d\ufe0f\u20e3]/g, '');
+  if (!t) return false;
+  return /^(?:\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}]|[\u{1F1E6}-\u{1F1FF}])+$/u.test(t);
+}
+
 function includesAny(text: string, words: string[]): boolean {
   const t = text.toLowerCase();
   return words.some((w) => t.includes(w.toLowerCase()));
@@ -203,6 +211,7 @@ export type Decision = { kind: DmKind; text: string } | { kind: null; reason: st
 export function decideAutoReply(text: string, ctx: ThreadContext): Decision {
   const t = (text || '').trim();
   if (!t) return { kind: null, reason: '本文なし(スタンプ/画像)' };
+  if (isEmojiOnly(t)) return { kind: null, reason: '絵文字だけ(反応)' };
   if (ctx.autoRepliesLast24h >= MAX_AUTO_PER_DAY) return { kind: null, reason: '24時間の自動返信上限' };
 
   // 一度「スタッフに引き継ぐ」と言ったスレッドでは、以後いっさい自動で返さない(人が返す)

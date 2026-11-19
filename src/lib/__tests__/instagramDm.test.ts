@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { verifySignature, parseWebhookEvents, withinReplyWindow } from '../instagramDm';
-import { decideAutoReply, classify, looksLikeApplication, statusAfter, MAX_AUTO_PER_DAY, WS_INFO, AUTO_NOTE, renderTemplate, TEMPLATES, trialTemplate } from '../instagramDmRules';
+import { decideAutoReply, isEmojiOnly, classify, looksLikeApplication, statusAfter, MAX_AUTO_PER_DAY, WS_INFO, AUTO_NOTE, renderTemplate, TEMPLATES, trialTemplate } from '../instagramDmRules';
 
 const NOW = '2026-10-07T12:00:00+09:00';
 const AFTER_WS = '2026-10-26T12:00:00+09:00';
@@ -181,5 +181,20 @@ describe('statusAfter / withinReplyWindow', () => {
     const now = Date.parse('2026-10-07T12:00:00Z');
     expect(withinReplyWindow('2026-10-07T00:00:00Z', now)).toBe(true);
     expect(withinReplyWindow('2026-10-06T11:59:00Z', now)).toBe(false);
+  });
+});
+
+describe('絵文字だけ(ストーリーへの反応)には返さない(2026-11-19)', () => {
+  const ctx = { autoReplyKinds: [], autoRepliesLast24h: 0, inboundCountBefore: 0, now: '2026-11-19T12:00:00+09:00' };
+  it('絵文字だけは自動返信なし', () => {
+    for (const t of ['😍', '🔥🔥', '😮', '❤️', '👏🏻👏🏻', '😍！', '🇯🇵']) {
+      expect(isEmojiOnly(t)).toBe(true);
+      expect(decideAutoReply(t, { ...ctx, inboundCountBefore: 2 }).kind).toBeNull();
+      expect(decideAutoReply(t, ctx).kind).toBeNull();
+    }
+  });
+  it('文字や数字が混ざれば絵文字だけではない', () => {
+    for (const t of ['体験したいです😍', 'かわいい🔥', '3', '#', '', '   ', 'ok👍']) expect(isEmojiOnly(t)).toBe(false);
+    expect(decideAutoReply('体験したいです😍', ctx).kind).toBe('trial');
   });
 });

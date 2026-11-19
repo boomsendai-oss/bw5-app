@@ -13,7 +13,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { execute, getAll, getOne } from './db';
 import { getInstagramAuth, GRAPH_BASE } from './instagram';
 import { notifyTaro } from './notify';
-import { decideAutoReply, statusAfter, type DmKind } from './instagramDmRules';
+import { decideAutoReply, isEmojiOnly, statusAfter, type DmKind } from './instagramDmRules';
 import { STAFF_ORIGIN } from '@/lib/appOrigin';
 
 export type InboundEvent = {
@@ -250,7 +250,8 @@ export async function handleInboundMessage(ev: InboundEvent): Promise<{ stored: 
 
   // スレッド状態: 自動で案内できたものは auto_replied、申込・判定不能・送信失敗は needs_reply(人が見る)。
   // 本文なし(ストーリーのメンション・投稿のシェア・スタンプ・画像だけ)は「返信待ち」にしない=通知だけ残して new のまま。
-  const hasText = !!(ev.text || '').trim();
+  // 絵文字だけ(ストーリーへの反応など)も本文なしと同じ扱い(自動返信も返信待ちもしない)。
+  const hasText = !!(ev.text || '').trim() && !isEmojiOnly(ev.text || '');
   const status = sendError ? 'needs_reply' : !hasText ? 'new' : statusAfter(autoKind);
   // いったん done にした相手からまた来たら、また人の目に戻す
   await execute('UPDATE ig_dm_threads SET status = ?, auto_reply_kinds = ?, updated_at = ? WHERE sender_id = ?', [
