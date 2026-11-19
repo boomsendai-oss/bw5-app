@@ -75,6 +75,15 @@ export function DojoHero({
         <span className="pt-[1.5cqw] text-[2.7cqw] tracking-[0.12em] [writing-mode:vertical-rl]"><span className="[text-combine-upright:all]">7</span>転び<span className="[text-combine-upright:all]">8</span>ムーヴ</span>
       </div>
 
+      {/* 道着(ノースリーブ・白帯)のBOOMくん。ラジカセと反対側の床に立たせる(TARO 11/19) */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- 位置を％で合わせる静的画像 */}
+      <img
+        src="/dojo/boomkun_dogi.webp"
+        alt=""
+        aria-hidden
+        className="absolute left-[71%] top-[54.6%] w-[25%] [filter:drop-shadow(0_6px_10px_rgba(0,0,0,0.7))]"
+      />
+
       <div className="absolute left-0 right-0 top-[67.8%] px-[4cqw] text-center">
         <p className="f-num text-[11.28cqw] font-bold leading-tight tracking-[0.04em] text-[#f3eadb] [text-shadow:0_2px_12px_#000]">
           {formatDojoDate(dateYmd)}
