@@ -152,11 +152,14 @@ export function Hanko({ children }: { children: ReactNode }) {
  * 出演者(ジャッジ・DJ・MC)を道場の木札(名札)の形で並べる。
  * announced=false の人は名前を出さず「近日発表」(出演が決まる前に名前を公開しないため)。
  */
-export function DojoCast({ cast }: { cast: { role: string; name: string; note: string; instagram: string; announced: boolean }[] }) {
+export function DojoCast({ cast, numbering }: { numbering?: string; cast: { role: string; name: string; note: string; instagram: string; announced: boolean }[] }) {
   if (cast.length === 0) return null;
   return (
     <section>
-      <h2 className="f-brush mb-3 text-center text-2xl text-[#f3eadb]">本日の師範</h2>
+      <h2 className="f-brush mb-3 flex items-center justify-center gap-2 text-2xl text-[#f3eadb]">
+        {numbering && <span className="rounded-[3px] border-2 border-[#c8352a] px-1.5 py-0.5 text-base leading-none text-[#e04a3c]">{numbering}</span>}
+        立会人
+      </h2>
       <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(cast.length, 3)}, minmax(0, 1fr))` }}>
         {cast.map((c, i) => {
           const shown = c.announced && c.name;

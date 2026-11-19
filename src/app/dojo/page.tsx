@@ -85,7 +85,7 @@ export default async function BattlePage({ searchParams }: Props) {
           {ev.entryDeadline && <DojoRow k="申込締切">{formatJpDateTime(ev.entryDeadline)}</DojoRow>}
         </BattleCard>
 
-        <DojoCast cast={ev.cast} />
+        <DojoCast cast={ev.cast} numbering={ev.title.replace(/^BOOM DOJO\s*/i, '').trim() || undefined} />
 
         <BattleCard title="部門">
           <div className="space-y-2.5">
