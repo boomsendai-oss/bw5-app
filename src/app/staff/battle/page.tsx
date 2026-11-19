@@ -40,7 +40,7 @@ export default async function StaffBattlePage({
   const preschool = paid.reduce((s, x) => s + x.spectatorsPreschool, 0);
   const divName = (k: string) => ev.divisions.find((d) => d.key === k)?.name ?? k;
   const divRows = [...ev.divisions, { key: '', name: '', note: '', capacity: 16, maxAge: null }];
-  const castRows = [...ev.cast, { role: '', mark: '', name: '', note: '', instagram: '', announced: false }];
+  const castRows = [...ev.cast, { role: '', mark: '', name: '', photo: '', note: '', instagram: '', announced: false }];
 
   return (
     <div>
@@ -191,10 +191,11 @@ export default async function StaffBattlePage({
               <p className="mb-1 text-xs font-bold text-neutral-600">出演者(ジャッジ・DJ・MC)</p>
               <div className="space-y-1">
                 {castRows.map((c, i) => (
-                  <div key={i} className="grid grid-cols-[7rem_3rem_1fr_1fr_1fr_5.5rem] items-center gap-1">
+                  <div key={i} className="grid grid-cols-[7rem_3rem_1fr_1fr_1fr_1fr_5.5rem] items-center gap-1">
                     <input name={`cast_role_${i}`} defaultValue={c.role} placeholder="役割(JUDGE)" className={inputCls} />
                     <input name={`cast_mark_${i}`} defaultValue={c.mark} placeholder="字" title="木札に大きく入れる漢字1文字" maxLength={2} className={inputCls} />
                     <input name={`cast_name_${i}`} defaultValue={c.name} placeholder="名前" className={inputCls} />
+                    <input name={`cast_photo_${i}`} defaultValue={c.photo} placeholder="写真のURL" className={inputCls} />
                     <input name={`cast_note_${i}`} defaultValue={c.note} placeholder="ジャンル・所属など" className={inputCls} />
                     <input name={`cast_ig_${i}`} defaultValue={c.instagram} placeholder="Instagram(@なし)" className={inputCls} />
                     <label className="flex items-center gap-1 text-xs"><input type="checkbox" name={`cast_on_${i}`} value="1" defaultChecked={c.announced} />公開する</label>

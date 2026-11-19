@@ -46,6 +46,7 @@ export async function saveBattleEventSettings(fd: FormData): Promise<void> {
       role,
       mark: str(fd, `cast_mark_${i}`, 2),
       name: str(fd, `cast_name_${i}`, 60),
+      photo: str(fd, `cast_photo_${i}`, 500),
       note: str(fd, `cast_note_${i}`, 100),
       instagram: str(fd, `cast_ig_${i}`, 60).replace(/^@/, ''),
       announced: fd.get(`cast_on_${i}`) === '1',

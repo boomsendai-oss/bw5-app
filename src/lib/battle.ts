@@ -21,6 +21,8 @@ export interface BattleCast {
   /** 木札に大きく入れる役職の漢字1文字(審判=裁・DJ=音 など) */
   mark: string;
   name: string;
+  /** アーティスト写真のURL(空なら写真の枠だけ出す) */
+  photo: string;
   note: string;
   instagram: string;
   announced: boolean;
@@ -36,6 +38,7 @@ export function parseBattleCast(raw: unknown): BattleCast[] {
         role: String(c.role),
         mark: String(c.mark ?? '').slice(0, 2),
         name: String(c.name ?? ''),
+        photo: String(c.photo ?? ''),
         note: String(c.note ?? ''),
         instagram: String(c.instagram ?? '').replace(/^@/, ''),
         announced: Boolean(c.announced),
