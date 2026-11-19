@@ -164,33 +164,38 @@ export function DojoCast({ cast, numbering }: { numbering?: string; cast: { role
         {cast.map((c, i) => {
           const shown = c.announced && c.name;
           return (
-            // 木札の画像(生成素材)の上に、役職の漢字・役割・名前を重ねる。位置は画像に対する割合で決める
-            <div
-              key={i}
-              className="relative w-full bg-contain bg-center bg-no-repeat drop-shadow-[0_6px_10px_rgba(0,0,0,0.7)] [container-type:inline-size]"
-              style={{ aspectRatio: '380 / 967', backgroundImage: 'url(/dojo/plaque.webp)' }}
-            >
-              <div className="absolute inset-x-0 top-[11%] flex flex-col items-center">
-                {c.mark && <span className="f-brush text-[44cqw] leading-none text-[#1b120b] [text-shadow:0_1px_0_rgba(255,230,190,0.35)]">{c.mark}</span>}
-                <span className="mt-[3cqw] whitespace-nowrap text-[8.5cqw] font-black tracking-[0.1em] text-[#6e1a10]">{c.role}</span>
-              </div>
-              <div className="absolute inset-x-0 top-[44%] flex justify-center">
-                <span
-                  className={`f-brush leading-none [writing-mode:vertical-rl] [text-orientation:upright] ${shown ? 'text-[19cqw] tracking-[0.04em] text-[#1b120b]' : 'text-[13cqw] text-[#1b120b]/55'}`}
-                >
-                  {shown ? c.name : '近日発表'}
-                </span>
-              </div>
-              {shown && (c.note || c.instagram) && (
-                <div className="absolute inset-x-0 bottom-[5%] text-center text-[7.5cqw] font-bold leading-tight text-[#2a1a0c]">
-                  {c.note && <p>{c.note}</p>}
-                  {c.instagram && (
-                    <a href={`https://www.instagram.com/${c.instagram}/`} target="_blank" rel="noopener noreferrer" className="underline">
-                      @{c.instagram}
-                    </a>
-                  )}
+            // 役割(JUDGE・DJ・MC)を札の上に大きく。札には役職の漢字を習字のように墨で書き、その下に名前(TARO 11/19)
+            <div key={i} className="flex flex-col items-center [container-type:inline-size]">
+              <p className="f-num mb-[3cqw] whitespace-nowrap text-[17cqw] font-bold leading-none tracking-[0.06em] text-[#f3eadb]">
+                {c.role}
+              </p>
+              <div
+                className="relative w-full bg-contain bg-center bg-no-repeat drop-shadow-[0_6px_10px_rgba(0,0,0,0.7)]"
+                style={{ aspectRatio: '380 / 967', backgroundImage: 'url(/dojo/plaque.webp)' }}
+              >
+                {c.mark && (
+                  <span className="f-sho absolute inset-x-0 top-[12%] rotate-[-2deg] text-center text-[66cqw] leading-none text-[#120c06]/90 mix-blend-multiply">
+                    {c.mark}
+                  </span>
+                )}
+                <div className="absolute inset-x-0 top-[50%] flex justify-center">
+                  <span
+                    className={`f-brush leading-none [writing-mode:vertical-rl] [text-orientation:upright] ${shown ? 'text-[16cqw] tracking-[0.04em] text-[#1b120b]' : 'text-[11cqw] text-[#1b120b]/55'}`}
+                  >
+                    {shown ? c.name : '近日発表'}
+                  </span>
                 </div>
-              )}
+                {shown && (c.note || c.instagram) && (
+                  <div className="absolute inset-x-0 bottom-[5%] text-center text-[7.5cqw] font-bold leading-tight text-[#2a1a0c]">
+                    {c.note && <p>{c.note}</p>}
+                    {c.instagram && (
+                      <a href={`https://www.instagram.com/${c.instagram}/`} target="_blank" rel="noopener noreferrer" className="underline">
+                        @{c.instagram}
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}

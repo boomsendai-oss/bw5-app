@@ -192,7 +192,7 @@ export default async function StaffBattlePage({
               <div className="space-y-1">
                 {castRows.map((c, i) => (
                   <div key={i} className="grid grid-cols-[7rem_3rem_1fr_1fr_1fr_5.5rem] items-center gap-1">
-                    <input name={`cast_role_${i}`} defaultValue={c.role} placeholder="役割(審判 JUDGE)" className={inputCls} />
+                    <input name={`cast_role_${i}`} defaultValue={c.role} placeholder="役割(JUDGE)" className={inputCls} />
                     <input name={`cast_mark_${i}`} defaultValue={c.mark} placeholder="字" title="木札に大きく入れる漢字1文字" maxLength={2} className={inputCls} />
                     <input name={`cast_name_${i}`} defaultValue={c.name} placeholder="名前" className={inputCls} />
                     <input name={`cast_note_${i}`} defaultValue={c.note} placeholder="ジャンル・所属など" className={inputCls} />
