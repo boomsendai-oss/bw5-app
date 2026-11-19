@@ -451,6 +451,9 @@ export function getSchemaStatements(): InStatement[] {
       matched_by TEXT,                            -- 突合根拠: kana_auto / lstep_link / manual
       matched_at TEXT,                            -- 突合処理が最後にこの行を触った時刻 (UTC ISO)。解除時も更新する。現在の突合有無は enrolled_member_id で判定すること
       attendance_override TEXT,                   -- 来店判定の人手訂正: 'noshow' のみ。未訂正は NULL
+      attendance_auto TEXT,                       -- 来店の自動判定(trial_followup): attended/noshow/unsure/self_cancel。台帳 20261119_trial_attendance_auto.sql
+      attendance_auto_why TEXT,
+      attendance_auto_at TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`,
       args: [],
