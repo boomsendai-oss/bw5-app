@@ -40,6 +40,7 @@ export default async function StaffBattlePage({
   const preschool = paid.reduce((s, x) => s + x.spectatorsPreschool, 0);
   const divName = (k: string) => ev.divisions.find((d) => d.key === k)?.name ?? k;
   const divRows = [...ev.divisions, { key: '', name: '', note: '', capacity: 16, maxAge: null }];
+  const castRows = [...ev.cast, { role: '', name: '', note: '', instagram: '', announced: false }];
 
   return (
     <div>
@@ -51,10 +52,10 @@ export default async function StaffBattlePage({
             <a href={`/api/staff/battle/csv?e=${encodeURIComponent(ev.eventKey)}`} className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-700">
               CSV書き出し
             </a>
-            <Link href={`/battle?e=${encodeURIComponent(ev.eventKey)}`} target="_blank" className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs font-bold text-navy-700 hover:bg-sand-50">
+            <Link href={`/dojo?e=${encodeURIComponent(ev.eventKey)}`} target="_blank" className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs font-bold text-navy-700 hover:bg-sand-50">
               申込ページ ↗
             </Link>
-            <Link href={`/battle/entries?e=${encodeURIComponent(ev.eventKey)}`} target="_blank" className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs font-bold text-navy-700 hover:bg-sand-50">
+            <Link href={`/dojo/entries?e=${encodeURIComponent(ev.eventKey)}`} target="_blank" className="rounded-lg border border-sand-300 px-3 py-1.5 text-xs font-bold text-navy-700 hover:bg-sand-50">
               エントリー一覧 ↗
             </Link>
           </div>
@@ -185,6 +186,21 @@ export default async function StaffBattlePage({
                 ))}
               </div>
               <p className="mt-1 text-xs text-neutral-500">右の2つ = 定員 / 開催日の満年齢の上限(空なら制限なし)</p>
+            </div>
+            <div>
+              <p className="mb-1 text-xs font-bold text-neutral-600">出演者(ジャッジ・DJ・MC)</p>
+              <div className="space-y-1">
+                {castRows.map((c, i) => (
+                  <div key={i} className="grid grid-cols-[7rem_1fr_1fr_1fr_5.5rem] items-center gap-1">
+                    <input name={`cast_role_${i}`} defaultValue={c.role} placeholder="役割(審判 JUDGE)" className={inputCls} />
+                    <input name={`cast_name_${i}`} defaultValue={c.name} placeholder="名前" className={inputCls} />
+                    <input name={`cast_note_${i}`} defaultValue={c.note} placeholder="ジャンル・所属など" className={inputCls} />
+                    <input name={`cast_ig_${i}`} defaultValue={c.instagram} placeholder="Instagram(@なし)" className={inputCls} />
+                    <label className="flex items-center gap-1 text-xs"><input type="checkbox" name={`cast_on_${i}`} value="1" defaultChecked={c.announced} />公開する</label>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-neutral-500">「公開する」にチェックが無い人は、申込ページで「近日発表」と出ます。役割を空にすると消えます。</p>
             </div>
             <Grid>
               <F label="エントリー料(1部門)"><input type="number" name="entry_fee" defaultValue={ev.entryFee} className={inputCls} /></F>

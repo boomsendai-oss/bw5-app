@@ -13,6 +13,13 @@ const nextConfig: NextConfig = {
   // (LAN, hotspot, venue Wi-Fi) can hit the dev server. Production
   // (bw5-app.vercel.app) is unaffected by this setting.
   allowedDevOrigins: ["*"],
+  // BOOM DOJO の申込ページは /battle → /dojo に引っ越し(TARO 2026-11-19)。古い住所からも飛べるようにする。
+  async redirects() {
+    return [
+      { source: "/battle", destination: "/dojo", permanent: true },
+      { source: "/battle/:path*", destination: "/dojo/:path*", permanent: true },
+    ];
+  },
   images: {
     // Vercel Blob 上の舞台裏フォトを Next/Image で最適化（WebP化・リサイズ）して配信する。
     // Blob からの直接転送ではなく Vercel の最適化キャッシュ経由になり、転送量を大幅削減。

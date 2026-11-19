@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { formatJpDateLong, formatJpDateTime, isBattleAccepting, nowJstMinute, yen } from '@/lib/battle';
 import { getBattleEvent, getBattleRemaining, getCurrentBattleEvent } from '@/lib/battleDb';
 import { isAuthorizedServer } from '@/lib/eventAuth';
-import { BattleCard, BattlePreviewBanner, BattleShell, BattleHero, DojoHero, DojoRow, MultiLine, WhiteBelt } from './ui';
+import { BattleCard, BattlePreviewBanner, BattleShell, BattleHero, DojoCast, DojoHero, DojoRow, MultiLine, WhiteBelt } from './ui';
 import BattleForm from './BattleForm';
 
 export const dynamic = 'force-dynamic';
@@ -85,6 +85,8 @@ export default async function BattlePage({ searchParams }: Props) {
           {ev.entryDeadline && <DojoRow k="申込締切">{formatJpDateTime(ev.entryDeadline)}</DojoRow>}
         </BattleCard>
 
+        <DojoCast cast={ev.cast} />
+
         <BattleCard title="部門">
           <div className="space-y-2.5">
             {ev.divisions.map((d) => (
@@ -120,7 +122,7 @@ export default async function BattlePage({ searchParams }: Props) {
         )}
 
         <p className="pt-2 text-center text-xs text-[#f3eadb]/70">
-          <Link href={`/battle/entries?e=${encodeURIComponent(ev.eventKey)}`} className="underline">エントリー一覧を見る</Link>
+          <Link href={`/dojo/entries?e=${encodeURIComponent(ev.eventKey)}`} className="underline">エントリー一覧を見る</Link>
         </p>
       </div>
     </BattleShell>

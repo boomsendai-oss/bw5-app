@@ -1,4 +1,4 @@
-// 月1回の校内プチバトル(/battle)のStripe Checkout。仕組みはBF7(bf7Stripe.ts)と同じ。
+// 月1回の校内プチバトル(/dojo)のStripe Checkout。仕組みはBF7(bf7Stripe.ts)と同じ。
 //
 // ⚠️ 決済完了の通知(Webhook)はBF6/BF7と同じ受け口(/api/bf6/stripe-webhook)に届く。
 //    ほかの注文と取り違えないよう、metadata は battle_entry_id に入れる(Stripe側の設定追加は不要)。

@@ -1,4 +1,4 @@
-// 月1回の校内プチバトル(/battle)の共通ロジック(純関数・vitest対象)。
+// 月1回の校内プチバトル(/dojo)の共通ロジック(純関数・vitest対象)。
 //
 // - 回ごとの設定(名前・説明・日付・部門・料金・定員・締切)は battle_events に持つ。ここに直書きしない
 // - 会員・外部の区別なし(料金も同じ)。会員確認はしない
@@ -13,6 +13,33 @@ export interface BattleDivision {
   capacity: number;
   /** 開催日時点の満年齢の上限(U12なら12)。null=年齢制限なし */
   maxAge: number | null;
+}
+
+/** 出演者(ジャッジ・DJ・MC)。announced=false の間は公開ページで「近日発表」と出す。 */
+export interface BattleCast {
+  role: string;
+  name: string;
+  note: string;
+  instagram: string;
+  announced: boolean;
+}
+
+export function parseBattleCast(raw: unknown): BattleCast[] {
+  try {
+    const arr = JSON.parse(String(raw ?? '[]'));
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((c) => c && typeof c.role === 'string' && c.role)
+      .map((c) => ({
+        role: String(c.role),
+        name: String(c.name ?? ''),
+        note: String(c.note ?? ''),
+        instagram: String(c.instagram ?? '').replace(/^@/, ''),
+        announced: Boolean(c.announced),
+      }));
+  } catch {
+    return [];
+  }
 }
 
 export interface BattleEvent {
@@ -40,6 +67,7 @@ export interface BattleEvent {
   entryOpen: boolean;
   rules: string;
   cancelPolicy: string;
+  cast: BattleCast[];
 }
 
 export type BattlePaymentStatus = 'pending' | 'paid' | 'expired' | 'canceled' | 'refunded' | 'test';

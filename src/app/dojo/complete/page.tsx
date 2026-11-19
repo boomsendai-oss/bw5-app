@@ -20,7 +20,7 @@ export default async function BattleCompletePage({ searchParams }: { searchParam
         <BattleHero eventTitle="BOOM DOJO" title="申込が見つかりません" />
         <div className="space-y-4 px-[18px]">
           <BattleCard><p>URLが正しいかご確認ください。30分以内に決済されなかった申込は無効になります。</p></BattleCard>
-          <Link href="/battle" className={`block w-full rounded py-4 text-center text-lg font-black ${btnPrimaryCls}`}>エントリーページへ</Link>
+          <Link href="/dojo" className={`block w-full rounded py-4 text-center text-lg font-black ${btnPrimaryCls}`}>エントリーページへ</Link>
         </div>
       </BattleShell>
     );
@@ -59,7 +59,7 @@ export default async function BattleCompletePage({ searchParams }: { searchParam
         {st === 'expired' && (
           <>
             <BattleCard><p>30分以内に決済が完了しなかったため、枠を解放しました。お手数ですがもう一度お申し込みください。</p></BattleCard>
-            <Link href={`/battle?e=${encodeURIComponent(ev.eventKey)}`} className={`block w-full rounded py-4 text-center text-lg font-black ${btnPrimaryCls}`}>もう一度挑戦する</Link>
+            <Link href={`/dojo?e=${encodeURIComponent(ev.eventKey)}`} className={`block w-full rounded py-4 text-center text-lg font-black ${btnPrimaryCls}`}>もう一度挑戦する</Link>
           </>
         )}
 
@@ -82,7 +82,7 @@ export default async function BattleCompletePage({ searchParams }: { searchParam
         <p className="text-center text-xs text-[#f3eadb]/70">
           内容の変更・キャンセルはBOOM公式LINEまでご連絡ください。
           <br />
-          <Link href={`/battle/entries?e=${encodeURIComponent(ev.eventKey)}`} className="underline">エントリー一覧</Link>
+          <Link href={`/dojo/entries?e=${encodeURIComponent(ev.eventKey)}`} className="underline">エントリー一覧</Link>
         </p>
       </div>
     </BattleShell>

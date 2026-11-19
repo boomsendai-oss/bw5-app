@@ -9,8 +9,8 @@ import type { BattleEntryRow } from '@/lib/battleDb';
 export async function sendBattleConfirmEmail(entry: BattleEntryRow, editToken: string, ev: BattleEvent): Promise<void> {
   try {
     const mail = buildBattleConfirmEmail(entry, ev, {
-      completeUrl: `${PUBLIC_ORIGIN}/battle/complete?t=${editToken}`,
-      entriesUrl: `${PUBLIC_ORIGIN}/battle/entries?e=${encodeURIComponent(ev.eventKey)}`,
+      completeUrl: `${PUBLIC_ORIGIN}/dojo/complete?t=${editToken}`,
+      entriesUrl: `${PUBLIC_ORIGIN}/dojo/entries?e=${encodeURIComponent(ev.eventKey)}`,
     });
     await sendEmail({ to: entry.email, subject: mail.subject, text: mail.text });
   } catch (e) {

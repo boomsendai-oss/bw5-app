@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { isAuthorizedServer } from '@/lib/eventAuth';
 import { isIsoDate } from '@/lib/dateJst';
-import type { BattleDivision } from '@/lib/battle';
+import type { BattleCast, BattleDivision } from '@/lib/battle';
 import { createBattleEventFrom, getBattleEvent, updateBattleEvent } from '@/lib/battleDb';
 
 async function requireStaff(): Promise<void> {
@@ -38,6 +38,18 @@ export async function saveBattleEventSettings(fd: FormData): Promise<void> {
       maxAge: maxAgeRaw === '' ? null : Math.max(0, Math.floor(Number(maxAgeRaw)) || 0),
     });
   }
+  const cast: BattleCast[] = [];
+  for (let i = 0; i < 8; i++) {
+    const role = str(fd, `cast_role_${i}`, 40);
+    if (!role) continue;
+    cast.push({
+      role,
+      name: str(fd, `cast_name_${i}`, 60),
+      note: str(fd, `cast_note_${i}`, 100),
+      instagram: str(fd, `cast_ig_${i}`, 60).replace(/^@/, ''),
+      announced: fd.get(`cast_on_${i}`) === '1',
+    });
+  }
   const eventDate = str(fd, 'event_date', 10);
   const lateFeeFrom = str(fd, 'late_fee_from', 16);
   const entryDeadline = str(fd, 'entry_deadline', 16);
@@ -63,6 +75,7 @@ export async function saveBattleEventSettings(fd: FormData): Promise<void> {
     entryOpen: fd.get('entry_open') === '1',
     rules: str(fd, 'rules'),
     cancelPolicy: str(fd, 'cancel_policy'),
+    cast,
   });
   revalidatePath('/staff/battle');
   redirect(`/staff/battle?e=${encodeURIComponent(eventKey)}&saved=1`);

@@ -1,4 +1,4 @@
-// BOOM DOJO(/battle)の共通パーツ。夜の道場の背景・和紙のカード・墨の見出し・朱のはんこ(デザイン案A)。
+// BOOM DOJO(/dojo)の共通パーツ。夜の道場の背景・和紙のカード・墨の見出し・朱のはんこ(デザイン案A)。
 // イベント名・日付・会場などの文字は必ず設定(DB)から受け取る。ここに直書きしない。
 import type { ReactNode } from 'react';
 
@@ -45,7 +45,7 @@ export function DojoHero({
   return (
     <header
       className="relative w-full overflow-hidden bg-[#0d0906] bg-cover bg-top [container-type:inline-size]"
-      style={{ aspectRatio: '941 / 1672', backgroundImage: 'url(/battle/bg_dojo.webp)' }}
+      style={{ aspectRatio: '941 / 1672', backgroundImage: 'url(/dojo/bg_dojo.webp)' }}
     >
       <a
         href="https://boom-sendai.com/"
@@ -57,7 +57,7 @@ export function DojoHero({
       </a>
       {/* 筆文字ロゴ(黒を透過済み・余白を切り落としたもの)。見本の 370px 幅のロゴの文字部分の位置に合わせる */}
       {/* eslint-disable-next-line @next/next/no-img-element -- 位置を％で合わせる静的画像 */}
-      <img src="/battle/logo_dojo.webp" alt="BOOM DOJO ROAD TO BLACK BELT" className="absolute left-[4.67%] top-[17.66%] w-[89.4%]" />
+      <img src="/dojo/logo_dojo.webp" alt="BOOM DOJO ROAD TO BLACK BELT" className="absolute left-[4.67%] top-[17.66%] w-[89.4%]" />
 
       {/* 回の呼び方(其の一・其の二…)。イベント名「BOOM DOJO 其の一」の後ろ半分を朱のはんこ風に出す */}
       {numbering && (
@@ -104,7 +104,7 @@ export function BattleHero({ eventTitle, title, subtitle }: { eventTitle: string
       <div
         aria-hidden
         className="absolute inset-0 bg-cover bg-[center_62%] opacity-35"
-        style={{ backgroundImage: 'url(/battle/bg_dojo.webp)' }}
+        style={{ backgroundImage: 'url(/dojo/bg_dojo.webp)' }}
       />
       <div className="relative">
         <a
@@ -115,9 +115,9 @@ export function BattleHero({ eventTitle, title, subtitle }: { eventTitle: string
         >
           BOOM DANCE SCHOOL PRESENTS
         </a>
-        <a href="/battle" className="mt-3 block w-56">
+        <a href="/dojo" className="mt-3 block w-56">
           {/* eslint-disable-next-line @next/next/no-img-element -- 静的なロゴ画像 */}
-          <img src="/battle/logo_dojo.webp" alt={eventTitle} className="w-full" />
+          <img src="/dojo/logo_dojo.webp" alt={eventTitle} className="w-full" />
         </a>
         <h1 className="f-brush mt-5 text-3xl text-[#f3eadb]">{title}</h1>
         {subtitle && <p className="mt-1 text-sm font-bold text-[#f3eadb]/80">{subtitle}</p>}
@@ -145,6 +145,48 @@ export function Hanko({ children }: { children: ReactNode }) {
     <div className="f-brush absolute right-3.5 top-3 flex h-[46px] w-[46px] rotate-[-8deg] items-center justify-center rounded border-[3px] border-[#b8261c] text-center text-[13px] leading-[1.1] text-[#b8261c]">
       {children}
     </div>
+  );
+}
+
+/**
+ * 出演者(ジャッジ・DJ・MC)を道場の木札(名札)の形で並べる。
+ * announced=false の人は名前を出さず「近日発表」(出演が決まる前に名前を公開しないため)。
+ */
+export function DojoCast({ cast }: { cast: { role: string; name: string; note: string; instagram: string; announced: boolean }[] }) {
+  if (cast.length === 0) return null;
+  return (
+    <section>
+      <h2 className="f-brush mb-3 text-center text-2xl text-[#f3eadb]">本日の師範</h2>
+      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(cast.length, 3)}, minmax(0, 1fr))` }}>
+        {cast.map((c, i) => {
+          const shown = c.announced && c.name;
+          return (
+            <div
+              key={i}
+              className="relative flex flex-col items-center rounded-t-[10px] rounded-b-[3px] border-2 border-[#2a1a0c] px-1.5 pb-3 pt-2.5 shadow-[0_6px_16px_rgba(0,0,0,0.6)]"
+              style={{
+                background:
+                  'repeating-linear-gradient(90deg, rgba(0,0,0,0.05) 0 2px, transparent 2px 7px), linear-gradient(180deg, #c9a06a 0%, #a97c45 55%, #8a5f30 100%)',
+              }}
+            >
+              <span aria-hidden className="absolute left-1/2 top-1.5 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[#2a1a0c]/70" />
+              <p className="mt-2 whitespace-nowrap text-[11px] font-black tracking-[0.12em] text-[#7a1f14]">{c.role}</p>
+              <p
+                className={`f-brush mt-2 flex min-h-[7.5rem] items-start justify-center leading-none text-[#1b120b] [writing-mode:vertical-rl] [text-orientation:upright] tracking-[0.05em] ${shown ? 'text-[26px]' : 'text-[17px] text-[#1b120b]/55'}`}
+              >
+                {shown ? c.name : '近日発表'}
+              </p>
+              {shown && c.note && <p className="mt-2 text-center text-[10px] font-bold text-[#2a1a0c]/80">{c.note}</p>}
+              {shown && c.instagram && (
+                <a href={`https://www.instagram.com/${c.instagram}/`} target="_blank" rel="noopener noreferrer" className="mt-1 text-[10px] text-[#2a1a0c] underline">
+                  @{c.instagram}
+                </a>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

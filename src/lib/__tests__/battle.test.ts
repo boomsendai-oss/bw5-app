@@ -29,8 +29,10 @@ beforeAll(async () => {
   db = await import('../battleDb');
   await core.initDb();
   // rate_limits など他の表は要らない。この機能のマイグレーションだけ流す(migrate.mjs と同じ分け方)
-  const sql = readFileSync('scripts/migrations/20261119_battle_tables.sql', 'utf8');
-  for (const stmt of sql.split(/;\s*$/m).map((s) => s.trim()).filter(Boolean)) await core.execute(stmt);
+  for (const f of ['20261119_battle_tables.sql', '20261119_battle_tables_2_cast.sql']) {
+    const sql = readFileSync(`scripts/migrations/${f}`, 'utf8');
+    for (const stmt of sql.split(/;\s*$/m).map((s) => s.trim()).filter(Boolean)) await core.execute(stmt);
+  }
 });
 
 const U12 = { key: 'u12', name: 'U12', note: '', capacity: 2, maxAge: 12 };
@@ -39,7 +41,7 @@ const EV: BattleEvent = {
   eventKey: '2026-12-26', title: 'テスト', subtitle: '', description: '', eventDate: '2026-12-26',
   openTime: '14:00', startTime: '14:40', endTime: '18:00', venue: 'V', venueAddress: '', moveSeconds: 45,
   divisions: [U12, OPEN], entryFee: 2000, entryFeeLate: 2500, lateFeeFrom: '2026-12-25T18:00',
-  spectatorFee: 1000, spectatorNote: '', entryDeadline: '2026-12-25T18:00', entryOpen: true, rules: '', cancelPolicy: '',
+  spectatorFee: 1000, spectatorNote: '', entryDeadline: '2026-12-25T18:00', entryOpen: true, rules: '', cancelPolicy: '', cast: [],
 };
 
 const input = (over: Record<string, unknown> = {}) => ({

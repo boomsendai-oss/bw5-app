@@ -1,4 +1,4 @@
-// 月1回の校内プチバトル(/battle)のDBアクセス層。src/lib/db.ts 経由のみ。
+// 月1回の校内プチバトル(/dojo)のDBアクセス層。src/lib/db.ts 経由のみ。
 //
 // BF7(src/lib/bf7EntryDb.ts)と同じ考え方:
 //   - 枠を消費する = payment_status 'paid' + 決済待ち'pending'(30分の仮押さえ)
@@ -13,6 +13,7 @@ import { generateEditToken } from '@/lib/eventSignup';
 import {
   BATTLE_HOLD_MINUTES,
   calcBattleAmount,
+  parseBattleCast,
   parseBattleDivisions,
   parseDivisionKeys,
   type BattleDivision,
@@ -48,6 +49,7 @@ function rowToEvent(r: any): BattleEvent {
     entryOpen: Number(r.entry_open) === 1,
     rules: String(r.rules ?? ''),
     cancelPolicy: String(r.cancel_policy ?? ''),
+    cast: parseBattleCast(r.cast_json),
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -77,12 +79,12 @@ export async function updateBattleEvent(eventKey: string, ev: Omit<BattleEvent, 
   await execute(
     `UPDATE battle_events SET title = ?, subtitle = ?, description = ?, event_date = ?, open_time = ?, start_time = ?, end_time = ?,
        venue = ?, venue_address = ?, move_seconds = ?, divisions = ?, entry_fee = ?, entry_fee_late = ?, late_fee_from = ?,
-       spectator_fee = ?, spectator_note = ?, entry_deadline = ?, entry_open = ?, rules = ?, cancel_policy = ?, updated_at = ?
+       spectator_fee = ?, spectator_note = ?, entry_deadline = ?, entry_open = ?, rules = ?, cancel_policy = ?, cast_json = ?, updated_at = ?
      WHERE event_key = ?`,
     [
       ev.title, ev.subtitle, ev.description, ev.eventDate, ev.openTime, ev.startTime, ev.endTime,
       ev.venue, ev.venueAddress, ev.moveSeconds, JSON.stringify(ev.divisions), ev.entryFee, ev.entryFeeLate, ev.lateFeeFrom,
-      ev.spectatorFee, ev.spectatorNote, ev.entryDeadline, ev.entryOpen ? 1 : 0, ev.rules, ev.cancelPolicy, nowIso(), eventKey,
+      ev.spectatorFee, ev.spectatorNote, ev.entryDeadline, ev.entryOpen ? 1 : 0, ev.rules, ev.cancelPolicy, JSON.stringify(ev.cast), nowIso(), eventKey,
     ]
   );
 }
@@ -107,12 +109,15 @@ export async function createBattleEventFrom(srcKey: string, newDate: string): Pr
   const r = await execute(
     `INSERT OR IGNORE INTO battle_events (event_key, title, subtitle, description, event_date, open_time, start_time, end_time,
        venue, venue_address, move_seconds, divisions, entry_fee, entry_fee_late, late_fee_from, spectator_fee, spectator_note,
-       entry_deadline, entry_open, rules, cancel_policy, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+       entry_deadline, entry_open, rules, cancel_policy, cast_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
     [
       newDate, src.title, src.subtitle, src.description, newDate, src.openTime, src.startTime, src.endTime,
       src.venue, src.venueAddress, src.moveSeconds, JSON.stringify(src.divisions), src.entryFee, src.entryFeeLate, deadline,
-      src.spectatorFee, src.spectatorNote, deadline, src.rules, src.cancelPolicy, now, now,
+      src.spectatorFee, src.spectatorNote, deadline, src.rules, src.cancelPolicy,
+      // 出演者は毎回変わるので、役割だけ引き継いで名前は空・未発表にする
+      JSON.stringify(src.cast.map((c) => ({ role: c.role, name: '', note: '', instagram: '', announced: false }))),
+      now, now,
     ]
   );
   return Number(r.rowsAffected ?? 0) > 0;

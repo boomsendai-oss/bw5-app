@@ -71,7 +71,7 @@ export default async function BattleEntriesPage({ searchParams }: Props) {
         })}
         <p className="text-center text-xs text-[#f3eadb]/60">決済が完了したエントリーだけを載せています</p>
         {accepting && (
-          <Link href={`/battle?e=${encodeURIComponent(ev.eventKey)}#entry-form`} className={`block w-full rounded py-4 text-center text-lg font-black ${btnPrimaryCls}`}>
+          <Link href={`/dojo?e=${encodeURIComponent(ev.eventKey)}#entry-form`} className={`block w-full rounded py-4 text-center text-lg font-black ${btnPrimaryCls}`}>
             挑戦する　ENTRY
           </Link>
         )}

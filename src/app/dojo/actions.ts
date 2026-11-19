@@ -1,7 +1,7 @@
 'use server';
 
 // ⚠️ 公開Server Actions(認証なし)。理由: 月1回の校内プチバトルは会員以外も申し込める公開イベントで、
-// /battle の公開フォームが叩くため(BF7の order-actions.ts と同じ)。
+// /dojo の公開フォームが叩くため(BF7の order-actions.ts と同じ)。
 // - 送信はIP単位のレート制限。金額は必ずサーバ側で再計算する(クライアント申告額は使わない)
 // - 本名・電話・メール・生年月日を返す公開経路は作らない。個別閲覧は edit_token 完全一致の1件のみ
 // - 確認用モード: 受付していない間でも、スタッフのログイン中(isAuthorizedServer=サーバ側で検証)なら
@@ -77,7 +77,7 @@ export async function startBattleCheckout(token: string): Promise<BattleCheckout
   const h = await headers();
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? FALLBACK_HOST;
   const proto = h.get('x-forwarded-proto') ?? 'https';
-  const completeUrl = `${proto}://${host}/battle/complete?t=${token}`;
+  const completeUrl = `${proto}://${host}/dojo/complete?t=${token}`;
 
   try {
     const params = buildBattleCheckoutFormParams({

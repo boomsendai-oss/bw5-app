@@ -96,7 +96,7 @@ export default function BattleForm({
       if (co.ok) { window.location.href = co.url; return; }
       // 決済ページを作れなかったときは完了画面(決済ボタンつき)へ。30分以内ならそこから払える
     }
-    window.location.href = `/battle/complete?t=${res.token}`;
+    window.location.href = `/dojo/complete?t=${res.token}`;
   }
 
   const scrollToForm = () => setTimeout(() => document.getElementById('entry-form')?.scrollIntoView(), 0);
