@@ -67,7 +67,7 @@ export default function BattleForm({
     if (!f.realName.trim()) return '本名を入力してください';
     if (age == null) return '生年月日を入力してください';
     if (!f.rep.trim()) return '所属(レペゼン)を入力してください';
-    if (!f.genre.trim()) return 'メインジャンルを入力してください';
+    if (!f.genre.trim()) return 'ジャンルを入力してください';
     if (!f.phone.trim()) return '電話番号を入力してください';
     if (divisions.length === 0) return '出る部門を1つ以上選んでください';
     for (const k of divisions) if (disabledReason(k) && disabledReason(k) !== '満員') return `選んだ部門に出られません(${disabledReason(k)})`;
@@ -168,7 +168,7 @@ export default function BattleForm({
           <BattleField label="所属(レペゼン)" required hint="チーム名・スクール名・地域など自由に。エントリー一覧に載ります">
             <input value={f.rep} onChange={set('rep')} placeholder="例: 仙台" className={inputCls} />
           </BattleField>
-          <BattleField label="メインジャンル" required hint="エントリー一覧に載ります">
+          <BattleField label="ジャンル" required hint="エントリー一覧に載ります">
             <input value={f.genre} onChange={set('genre')} placeholder="例: HIPHOP" className={inputCls} />
           </BattleField>
           <BattleField label="電話番号" required hint="当日連絡が取れる番号">

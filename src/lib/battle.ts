@@ -216,7 +216,7 @@ export function validateBattleEntry(raw: Partial<BattleEntryInput>, ev: BattleEv
   const age = ageOn(v.birthdate, today)!;
   if (age < 3 || age > 100) return '生年月日を正しく入力してください';
   if (!v.rep) return '所属(レペゼン)を入力してください';
-  if (!v.genre) return 'メインジャンルを入力してください';
+  if (!v.genre) return 'ジャンルを入力してください';
   if (!v.phone || !isValidBf6Phone(v.phone)) return '電話番号は数字10〜11桁で入力してください';
   if (v.divisions.length === 0) return '出る部門を1つ以上選んでください';
   for (const key of v.divisions) {
