@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { formatJpDateLong, formatJpDateTime, isBattleAccepting, nowJstMinute, yen } from '@/lib/battle';
 import { getBattleEvent, getBattleRemaining, getCurrentBattleEvent } from '@/lib/battleDb';
 import { isAuthorizedServer } from '@/lib/eventAuth';
-import { BattleCard, BattlePreviewBanner, BattleShell, BattleHero, DojoCast, DojoHero, DojoRow, MultiLine, WhiteBelt } from './ui';
+import { BattleCard, BattlePreviewBanner, BattleShell, BattleHero, DojoCast, DojoHero, DojoKun, DojoRow, MultiLine, WhiteBelt } from './ui';
 import BattleForm from './BattleForm';
 
 export const dynamic = 'force-dynamic';
@@ -63,6 +63,8 @@ export default async function BattlePage({ searchParams }: Props) {
             <MultiLine text={ev.description} className="text-sm leading-relaxed" />
           </BattleCard>
         )}
+
+        <DojoKun />
 
         <BattleCard title="道場の掟" hanko={<>白帯<br />限定</>}>
           <DojoRow k="日時">
