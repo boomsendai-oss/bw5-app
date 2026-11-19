@@ -172,6 +172,25 @@ export async function sendDm(
 }
 
 /** 受信1件の処理: 保存 → 判定 → 自動返信 → スレッド状態更新 → TAROへ通知。 */
+/**
+ * 相手のメッセージにリアクション(ハートなど)を付ける(2026-11-19 TARO「絵文字だけのDMにハートを自動で返す」)。
+ * 送信API: POST /{ig-user-id}/messages {recipient:{id}, sender_action:'react', payload:{message_id, reaction}}。
+ * 24時間ルールの内側(受信直後)でだけ呼ぶ。台帳には sent_by='auto_react' で残す(自動返信の回数には数えない・last_out_at も動かさない)。
+ */
+export async function sendReaction(senderId: string, mid: string, reaction: 'love' = 'love'): Promise<void> {
+  const { token, igUserId } = await getInstagramAuth();
+  const res = await fetch(`${GRAPH_BASE}/${igUserId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ recipient: { id: senderId }, sender_action: 'react', payload: { message_id: mid, reaction } }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.error) {
+    throw new Error(`リアクション失敗: ${JSON.stringify(json.error ?? json)}`);
+  }
+  await insertMessage({ mid: null, senderId, direction: 'out', text: `[reaction:${reaction}]`, kind: 'reaction', sentBy: 'auto_react' });
+}
+
 export async function handleInboundMessage(ev: InboundEvent): Promise<{ stored: boolean; autoKind: DmKind | null; reason?: string }> {
   // 自分が送った分(is_echo)は台帳に残すだけ(手動返信をアプリ外=インスタアプリから送った場合の記録になる)
   if (ev.isEcho) {
@@ -248,6 +267,16 @@ export async function handleInboundMessage(ev: InboundEvent): Promise<{ stored: 
     }
   }
 
+  // 絵文字だけ(😍🔥など)には文で返さず、ハートのリアクションだけ自動で付ける(TARO 2026-11-19)。失敗しても状態は変えない
+  let reactError: string | null = null;
+  if (ev.mid && isEmojiOnly(ev.text || '')) {
+    try {
+      await sendReaction(ev.senderId, ev.mid, 'love');
+    } catch (e) {
+      reactError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
   // スレッド状態: 自動で案内できたものは auto_replied、申込・判定不能・送信失敗は needs_reply(人が見る)。
   // 本文なし(ストーリーのメンション・投稿のシェア・スタンプ・画像だけ)は「返信待ち」にしない=通知だけ残して new のまま。
   // 絵文字だけ(ストーリーへの反応など)も本文なしと同じ扱い(自動返信も返信待ちもしない)。
@@ -269,6 +298,7 @@ export async function handleInboundMessage(ev: InboundEvent): Promise<{ stored: 
     `本文: ${ev.text || (ev.attachments.length ? `[${ev.attachments.map((a) => a.type).join(',')}]` : '(本文なし)')}`,
     '',
     autoKind ? `自動返信: ${autoKind} を送信しました` : `自動返信: なし(${decision.kind ? sendError : (decision as { reason: string }).reason})`,
+    ...(ev.mid && isEmojiOnly(ev.text || '') ? [reactError ? `ハートのリアクション: 失敗(${reactError})` : 'ハートのリアクション: 付けました'] : []),
     `状態: ${status === 'needs_reply' ? '返信待ち(TAROの返信が必要)' : status === 'new' ? '本文なし(メンション/シェア/画像のみ・自動返信なし)' : '自動案内済み'}`,
     '',
     `台帳・返信: ${STAFF_ORIGIN}/staff/instagram/dm`,
