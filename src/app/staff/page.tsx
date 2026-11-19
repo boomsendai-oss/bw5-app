@@ -190,6 +190,12 @@ const CARDS: CardDef[] = [
     description: '参加申込・出演エントリー・名簿・精算(12/19開催)',
   },
   {
+    href: '/staff/battle',
+    icon: Flame,
+    title: '月1プチバトル 申込',
+    description: '回ごとの申込一覧・支払い状態・CSV・イベント設定(名前・料金・定員)',
+  },
+  {
     href: '/staff/mellojoy',
     icon: Bell,
     title: 'メロジョイ 在庫見張り',

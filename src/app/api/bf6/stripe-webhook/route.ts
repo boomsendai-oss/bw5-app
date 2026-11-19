@@ -25,6 +25,9 @@ import { applyMocchinWebhookEvent } from '@/lib/mocchinEntryDb';
 import { markMocchinPlanInvited } from '@/lib/mocchinPlanInvite';
 import { parseMocchinWebhookEvent } from '@/lib/mocchinStripe';
 import { handleRecitalWebhook } from '@/lib/recitalPayDb';
+import { parseBattleWebhookEvent } from '@/lib/battleStripe';
+import { applyBattleWebhookEvent, getBattleEvent } from '@/lib/battleDb';
+import { sendBattleConfirmEmail } from '@/lib/battleEmail';
 
 export const dynamic = 'force-dynamic';
 
@@ -111,6 +114,28 @@ export async function POST(req: NextRequest) {
   // カード決済の PaymentIntent には印(metadata)が無く、ほかの注文の処理(BF6など)に流すと誤って記録されるので、ここで受領だけ返す
   if (typeof (event as { type?: unknown })?.type === 'string' && String((event as { type: string }).type).startsWith('payment_intent.')) {
     return NextResponse.json({ received: true, result: 'payment_intent_ignored' });
+  }
+
+  // 月1回の校内プチバトル(metadata.battle_entry_id)も同じ相乗り方式。
+  const battleEv = parseBattleWebhookEvent(event);
+  if (battleEv) {
+    try {
+      const r = await applyBattleWebhookEvent(battleEv, payload);
+      if (r.status === 'paid') {
+        if (r.amountMismatch) console.error('[battle] amount mismatch on entry', battleEv.entryId, 'stripe:', battleEv.amountTotal);
+        const ev = await getBattleEvent(r.entry.eventKey);
+        if (ev) await sendBattleConfirmEmail(r.entry, r.editToken, ev);
+      } else if (r.status === 'entry_not_found') {
+        console.error('[battle] webhook entry not found. entry:', battleEv.entryId);
+      } else if (r.status === 'not_updated' && battleEv.type === 'checkout.session.completed') {
+        console.error('[battle] payment completed for non-pending entry (refund check). entry:', battleEv.entryId);
+      }
+      return NextResponse.json({ received: true, result: `battle_${r.status}` });
+    } catch (e) {
+      // 500でStripeが自動リトライ(冪等なので再適用は安全)
+      console.error('[battle] webhook apply failed', e instanceof Error ? e.message : e);
+      return NextResponse.json({ error: 'apply failed' }, { status: 500 });
+    }
   }
 
   // BOOMER'S FIGHT!!! vol.7(metadata.bf7_order_id)も同じ相乗り方式。
