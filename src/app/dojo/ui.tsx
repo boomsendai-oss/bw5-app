@@ -66,13 +66,13 @@ export function DojoHero({
         </span>
       )}
 
-      {/* 掛け軸の白い紙: 右に大きく「押忍」、左に小さく「七転び八ムーブ」(縦書き・TARO 11/19) */}
+      {/* 掛け軸の白い紙: 右に大きく「押忍」、左に小さく「七転び八MOVE」(縦書き・TARO 11/19) */}
       <div
         aria-hidden
         className="f-brush absolute left-[39.23%] top-[40.12%] flex h-[19.91%] w-[22.05%] flex-row-reverse items-start justify-center gap-[1cqw] pt-[2.6cqw] text-[#1b120b]"
       >
         <span className="text-[10.26cqw] leading-none [writing-mode:vertical-rl]">押忍</span>
-        <span className="pt-[1.5cqw] text-[2.7cqw] tracking-[0.12em] [writing-mode:vertical-rl]">七転び八ムーブ</span>
+        <span className="pt-[1.5cqw] text-[2.7cqw] tracking-[0.12em] [writing-mode:vertical-rl]">七転び八<span className="[text-orientation:upright] tracking-normal">MOVE</span></span>
       </div>
 
       <div className="absolute left-0 right-0 top-[67.8%] px-[4cqw] text-center">
@@ -212,7 +212,7 @@ export function DojoCast({ cast, numbering }: { numbering?: string; cast: { role
 
 /** 道場訓(格言をダンスに寄せたパロディ・TARO 11/19)。 */
 export const DOJO_KUN: { word: string; note: string }[] = [
-  { word: '七転び八ムーブ', note: '負けても、何度でも次のムーブへ。' },
+  { word: '七転び八MOVE', note: '負けても、何度でも次のムーブへ。' },
   { word: '踊武両道', note: '踊りも、礼も。どちらも磨く。' },
   { word: '心・技・ノリ', note: '気持ちと技とノリ、三つそろって一人前。' },
 ];
