@@ -50,6 +50,7 @@ export default async function BattlePage({ searchParams }: Props) {
     <BattleShell>
       {preview && <BattlePreviewBanner />}
       <DojoHero
+        numbering={ev.title.replace(/^BOOM DOJO\s*/i, '').trim() || undefined}
         dateYmd={ev.eventDate}
         venue={ev.venue}
         startTime={ev.startTime}

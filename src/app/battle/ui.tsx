@@ -33,7 +33,9 @@ export function DojoHero({
   startTime,
   ctaHref,
   ctaLabel,
+  numbering,
 }: {
+  numbering?: string;
   dateYmd: string;
   venue: string;
   startTime: string;
@@ -56,6 +58,13 @@ export function DojoHero({
       {/* 筆文字ロゴ(黒を透過済み・余白を切り落としたもの)。見本の 370px 幅のロゴの文字部分の位置に合わせる */}
       {/* eslint-disable-next-line @next/next/no-img-element -- 位置を％で合わせる静的画像 */}
       <img src="/battle/logo_dojo.webp" alt="BOOM DOJO ROAD TO BLACK BELT" className="absolute left-[4.67%] top-[17.66%] w-[89.4%]" />
+
+      {/* 回の呼び方(其の一・其の二…)。イベント名「BOOM DOJO 其の一」の後ろ半分を朱のはんこ風に出す */}
+      {numbering && (
+        <span className="f-brush absolute right-[4%] top-[6.5%] rotate-[6deg] rounded-[0.8cqw] border-[0.8cqw] border-[#c8352a] bg-[#0d0906]/40 px-[1.2cqw] py-[1.5cqw] text-[4.6cqw] leading-none text-[#e04a3c] [writing-mode:vertical-rl]">
+          {numbering}
+        </span>
+      )}
 
       {/* 掛け軸の白い紙: 右に大きく「押忍」、左に小さく「初めての一勝を」(縦書き) */}
       <div

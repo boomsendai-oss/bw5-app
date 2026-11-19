@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS battle_payments (
 
 CREATE INDEX IF NOT EXISTS idx_battle_payments_session ON battle_payments (stripe_session_id);
 
--- 第1回(2026-12-26)。イベント名=BOOM DOJO -ROAD TO BLACK BELT-(TARO 2026-11-19決定)。受付は「閉」で入れ、スタッフ画面で開ける。
+-- 第1回(2026-12-26)。イベント名=BOOM DOJO 其の一 -ROAD TO BLACK BELT-(TARO 2026-11-19決定・回は其の一/其の二…)。受付は「閉」で入れ、スタッフ画面で開ける。
 -- 料金は仮(TARO 2026-11-19)。決まったら /staff/battle の設定で直す。
 INSERT OR IGNORE INTO battle_events (
   event_key, title, subtitle, description, event_date, open_time, start_time, end_time,
@@ -85,7 +85,7 @@ INSERT OR IGNORE INTO battle_events (
   spectator_fee, spectator_note, entry_deadline, entry_open, rules, cancel_policy, created_at, updated_at
 ) VALUES (
   '2026-12-26',
-  'BOOM DOJO',
+  'BOOM DOJO 其の一',
   'ROAD TO BLACK BELT ─ 優勝未経験者限定 1on1 バトル',
   'BOOMダンススクールが毎月ひらく、優勝未経験のダンサーのための道場（バトル）です。
 はじめてのバトルにも、次の一歩にも。会員・会員以外どなたでも参加できます。',
