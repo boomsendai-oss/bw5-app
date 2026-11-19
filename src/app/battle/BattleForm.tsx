@@ -1,6 +1,7 @@
 'use client';
 
-// 月1回の校内プチバトルの申込フォーム。部門・料金・定員は親(サーバ)から受け取った設定だけを使う。
+// 月1回の校内プチバトル(BOOM DOJO)の申込フォーム。見た目は和紙カード・墨の見出し・朱のボタン。
+// 部門・料金・定員は親(サーバ)から受け取った設定だけを使う。
 // 金額の表示はサーバと同じ calcBattleAmount で計算する(請求額はサーバ側で再計算)。
 import { useMemo, useState } from 'react';
 import {
@@ -12,7 +13,7 @@ import {
   type BattleEvent,
 } from '@/lib/battle';
 import { submitBattleEntry, startBattleCheckout } from './actions';
-import { BattleCard, BattleField, MultiLine, btnDarkCls, btnPrimaryCls, inputCls } from './ui';
+import { BattleCard, BattleField, DojoError, DojoHeading, MultiLine, WhiteBelt, btnOnDarkCls, btnPrimaryCls, inputCls } from './ui';
 
 const TOKEN_KEY = 'battle_entry_token';
 
@@ -98,19 +99,22 @@ export default function BattleForm({
     window.location.href = `/battle/complete?t=${res.token}`;
   }
 
+  const scrollToForm = () => setTimeout(() => document.getElementById('entry-form')?.scrollIntoView(), 0);
+  const check = 'mt-0.5 h-5 w-5 shrink-0 accent-[#b8261c]';
+
   if (step === 'confirm') {
     return (
-      <section id="entry-form" className="space-y-4">
-        <h2 className="pt-4 text-lg font-black text-white">入力内容の確認</h2>
+      <section id="entry-form" className="scroll-mt-4 space-y-4">
+        <DojoHeading>入力内容の確認</DojoHeading>
         <BattleCard label="出場者">
-          <p className="text-xl font-black text-white">{f.dancerName} <span className="text-sm text-neutral-400">{f.dancerKana}</span></p>
-          <p className="mt-1 text-sm text-neutral-300">{f.realName} / {f.birthdate}(開催日に{ageOn(f.birthdate, ev.eventDate)}歳)</p>
-          <p className="text-sm text-neutral-300">{f.genre} / {f.rep}</p>
-          <p className="text-sm text-neutral-400">{f.email} / {f.phone}{f.instagram && ` / ${f.instagram}`}</p>
-          {guardian && <p className="text-sm text-neutral-400">保護者: {f.guardianName}(同意済み)</p>}
+          <p className="text-xl font-black">{f.dancerName} <span className="text-sm font-bold text-[#6b5a44]">{f.dancerKana}</span></p>
+          <p className="mt-1 text-sm">{f.realName} / {f.birthdate}(開催日に{ageOn(f.birthdate, ev.eventDate)}歳)</p>
+          <p className="text-sm">{f.genre} / {f.rep}</p>
+          <p className="text-sm text-[#6b5a44]">{f.email} / {f.phone}{f.instagram && ` / ${f.instagram}`}</p>
+          {guardian && <p className="text-sm text-[#6b5a44]">保護者: {f.guardianName}(同意済み)</p>}
         </BattleCard>
         <BattleCard label="お支払い">
-          <ul className="space-y-1 text-sm text-neutral-200">
+          <ul className="space-y-1 text-sm">
             {divisions.map((k) => (
               <li key={k} className="flex justify-between gap-2">
                 <span>{ev.divisions.find((d) => d.key === k)?.name}</span><span className="font-bold">{yen(amount.entryUnit)}</span>
@@ -121,17 +125,17 @@ export default function BattleForm({
             )}
             {preschool > 0 && <li className="flex justify-between gap-2"><span>観覧(未就学児) × {preschool}名</span><span className="font-bold">無料</span></li>}
           </ul>
-          <p className="mt-3 border-t border-neutral-700 pt-3 text-center text-3xl font-black text-white">{yen(amount.total)}</p>
-          <p className="text-center text-xs text-neutral-400">カード決済(Stripe)</p>
+          <p className="f-num mt-3 border-t-2 border-[#1d140c] pt-3 text-center text-4xl font-bold">{yen(amount.total)}</p>
+          <p className="text-center text-xs text-[#6b5a44]">カード決済(Stripe)</p>
         </BattleCard>
-        {error && <p className="rounded-xl bg-red-950/50 p-3 text-sm font-bold text-red-300">{error}</p>}
-        <button onClick={submit} disabled={busy} className={`w-full rounded-2xl py-4 text-lg font-black ${btnPrimaryCls}`}>
-          {busy ? '接続中…' : preview ? 'テストとして送信する(決済なし)' : `申し込んで決済に進む(${yen(amount.total)})`}
+        {error && <DojoError>{error}</DojoError>}
+        <button onClick={submit} disabled={busy} className={`w-full rounded py-4 text-lg font-black ${btnPrimaryCls}`}>
+          {busy ? '接続中…' : preview ? 'テストとして送信する(決済なし)' : `挑戦する(${yen(amount.total)}・決済へ)`}
         </button>
         {!preview && (
-          <p className="text-center text-xs text-neutral-400">※ このあとカード決済画面に移動します。30分以内に決済が完了するとエントリー確定です</p>
+          <p className="text-center text-xs text-[#f3eadb]/70">※ このあとカード決済画面に移動します。30分以内に決済が完了するとエントリー確定です</p>
         )}
-        <button onClick={() => { setStep('input'); setTimeout(() => document.getElementById('entry-form')?.scrollIntoView(), 0); }} disabled={busy} className={`w-full rounded-2xl py-3.5 font-bold ${btnDarkCls}`}>
+        <button onClick={() => { setStep('input'); scrollToForm(); }} disabled={busy} className={`w-full rounded py-3.5 font-bold ${btnOnDarkCls}`}>
           入力に戻る
         </button>
       </section>
@@ -139,9 +143,9 @@ export default function BattleForm({
   }
 
   return (
-    <section id="entry-form" className="space-y-4">
-      <h2 className="pt-4 text-lg font-black text-white">エントリーフォーム</h2>
-      <BattleCard>
+    <section id="entry-form" className="scroll-mt-4 space-y-4">
+      <DojoHeading>エントリー</DojoHeading>
+      <BattleCard title="出場者">
         <div className="space-y-4">
           <BattleField label="メールアドレス" required hint="エントリー確定のメールが届きます">
             <input type="email" value={f.email} onChange={set('email')} className={inputCls} autoComplete="email" />
@@ -159,7 +163,7 @@ export default function BattleForm({
             <input type="date" value={f.birthdate} onChange={set('birthdate')} className={inputCls} max={today} />
           </BattleField>
           {f.birthdate && age != null && (
-            <p className="-mt-2 text-xs text-neutral-400">開催日({ev.eventDate})に {ageOn(f.birthdate, ev.eventDate)}歳</p>
+            <p className="-mt-2 text-xs text-[#6b5a44]">開催日({ev.eventDate})に {ageOn(f.birthdate, ev.eventDate)}歳</p>
           )}
           <BattleField label="所属(レペゼン)" required hint="チーム名・スクール名・地域など自由に。エントリー一覧に載ります">
             <input value={f.rep} onChange={set('rep')} placeholder="例: 仙台" className={inputCls} />
@@ -170,14 +174,15 @@ export default function BattleForm({
           <BattleField label="電話番号" required hint="当日連絡が取れる番号">
             <input type="tel" value={f.phone} onChange={set('phone')} placeholder="090-1234-5678" className={inputCls} autoComplete="tel" />
           </BattleField>
-          <BattleField label="Instagram" hint="結果発表などでタグ付けします">
+          <BattleField label="Instagram" optional hint="結果発表などでタグ付けします">
             <input value={f.instagram} onChange={set('instagram')} placeholder="@boom_dance_school" className={inputCls} />
           </BattleField>
         </div>
       </BattleCard>
 
-      <BattleCard label="出る部門(複数選択できます)">
-        <div className="space-y-2">
+      <BattleCard title="出る部門" hanko={<>白帯<br />限定</>}>
+        <p className="-mt-1 mb-2 text-xs text-[#6b5a44]">複数選べます(エントリー料は部門ごと)</p>
+        <div className="space-y-2.5">
           {ev.divisions.map((d) => {
             const reason = disabledReason(d.key);
             const checked = divisions.includes(d.key);
@@ -185,34 +190,34 @@ export default function BattleForm({
             return (
               <label
                 key={d.key}
-                className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3.5 ${checked ? 'border-teal-400 bg-teal-950/40' : 'border-neutral-700 bg-neutral-900'} ${reason && !checked ? 'opacity-50' : ''}`}
+                className={`flex cursor-pointer items-center gap-2.5 rounded-md border-2 p-2.5 ${checked ? 'border-[#b8261c] bg-[#fff1ec]' : 'border-[#d8c8aa] bg-[#fff8ec]'} ${reason && !checked ? 'opacity-50' : ''}`}
               >
-                <input type="checkbox" checked={checked} disabled={Boolean(reason) && !checked} onChange={() => toggle(d.key)} className="h-5 w-5 accent-teal-400" />
-                <span className="flex-1">
-                  <span className="block font-black text-white">{d.name}</span>
-                  <span className="block text-xs text-neutral-400">
-                    {d.capacity}名限定{d.note ? ` / ${d.note}` : ''}
+                <input type="checkbox" checked={checked} disabled={Boolean(reason) && !checked} onChange={() => toggle(d.key)} className="h-5 w-5 shrink-0 accent-[#b8261c]" />
+                <WhiteBelt />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-black leading-snug">{d.name}</span>
+                  <span className="block text-xs text-[#6b5a44]">
+                    {[d.note, `${d.capacity}名限定`].filter(Boolean).join('・')}・
+                    <b className={left > 0 ? 'text-[#1d140c]' : 'text-[#b8261c]'}>{left > 0 ? `残り${left}枠` : '満員'}</b>
                   </span>
-                  <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-bold ${left > 0 ? 'bg-neutral-800 text-teal-200' : 'bg-yellow-200 text-yellow-900'}`}>
-                    {left > 0 ? `残り${left}枠` : '満員'}
+                  <span className="block text-sm font-bold">エントリー料 <span className="f-num">{yen(amount.entryUnit)}</span>
                   </span>
-                  {reason && reason !== '満員' && <span className="block text-xs font-bold text-red-400">{reason}</span>}
+                  {reason && reason !== '満員' && <span className="block text-xs font-bold text-[#b8261c]">{reason}</span>}
                 </span>
-                <span className="text-sm font-bold text-white">{yen(amount.entryUnit)}</span>
               </label>
             );
           })}
         </div>
-        <label className="mt-4 flex cursor-pointer items-start gap-2 text-sm text-neutral-200">
-          <input type="checkbox" checked={noWin} onChange={(e) => setNoWin(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-teal-400" />
+        <label className="mt-4 flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" checked={noWin} onChange={(e) => setNoWin(e.target.checked)} className={check} />
           <span>
             <span className="font-bold">優勝未経験です</span>
-            <span className="block text-xs text-neutral-400">エントリーするジャンルで、過去にソロバトルで優勝したことはありません(ほかのジャンルでの優勝はOK)</span>
+            <span className="block text-xs text-[#6b5a44]">エントリーするジャンルで、過去にソロバトルで優勝したことはありません(ほかのジャンルでの優勝はOK)</span>
           </span>
         </label>
       </BattleCard>
 
-      <BattleCard label="一緒に来る観覧の方">
+      <BattleCard title="一緒に来る観覧の方">
         <div className="grid grid-cols-2 gap-3">
           <BattleField label={`小学生以上 ${yen(ev.spectatorFee)}/人`}>
             <CountSelect value={spectators} onChange={setSpectators} />
@@ -221,54 +226,55 @@ export default function BattleForm({
             <CountSelect value={preschool} onChange={setPreschool} />
           </BattleField>
         </div>
-        <p className="mt-2 text-xs text-neutral-400">出場するご本人の観覧料はかかりません</p>
+        <p className="mt-2 text-xs text-[#6b5a44]">出場するご本人の観覧料はかかりません</p>
       </BattleCard>
 
       {guardian && (
-        <BattleCard label="保護者の方へ(18歳未満の方)">
+        <BattleCard title="保護者の方へ" label="18歳未満の方">
           <div className="space-y-3">
             <BattleField label="保護者の方のお名前" required>
               <input value={f.guardianName} onChange={set('guardianName')} className={inputCls} />
             </BattleField>
-            <label className="flex cursor-pointer items-start gap-2 text-sm text-neutral-200">
-              <input type="checkbox" checked={guardianConsent} onChange={(e) => setGuardianConsent(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-teal-400" />
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input type="checkbox" checked={guardianConsent} onChange={(e) => setGuardianConsent(e.target.checked)} className={check} />
               <span>保護者として、このバトルへの参加に同意します</span>
             </label>
           </div>
         </BattleCard>
       )}
 
-      <BattleCard label="キャンセル規定・個人情報の取り扱い">
-        {ev.cancelPolicy && <MultiLine text={ev.cancelPolicy} className="text-xs leading-relaxed text-neutral-300" />}
-        <p className="mt-2 text-xs leading-relaxed text-neutral-300">
+      <BattleCard title="キャンセル規定・個人情報">
+        {ev.cancelPolicy && <MultiLine text={ev.cancelPolicy} className="text-xs leading-relaxed" />}
+        <p className="mt-2 text-xs leading-relaxed">
           ご入力いただいた個人情報は、このイベントの運営(受付・連絡・結果の発表)にのみ使います。
           エントリー一覧に載るのはダンサー名・所属・ジャンルだけで、本名・連絡先・生年月日は公開しません。
           当日の写真・動画をBOOMのSNS等に載せることがあります。
         </p>
-        <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-neutral-200">
-          <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-teal-400" />
+        <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className={check} />
           <span className="font-bold">キャンセル規定と個人情報の取り扱いに同意します</span>
         </label>
       </BattleCard>
 
-      <div className="rounded-2xl bg-black p-4 text-center ring-1 ring-neutral-800">
-        <p className="text-xs font-bold tracking-widest text-neutral-400">合計金額</p>
-        <p className="mt-1 text-4xl font-black text-white">{yen(amount.total)}</p>
+      <div className="rounded-md border border-[#f3eadb]/20 bg-black/60 p-4 text-center">
+        <p className="text-xs font-bold tracking-widest text-[#f3eadb]/70">合計金額</p>
+        <p className="f-num mt-1 text-5xl font-bold text-[#f3eadb]">{yen(amount.total)}</p>
       </div>
 
-      {error && <p className="rounded-xl bg-red-950/50 p-3 text-sm font-bold text-red-300">{error}</p>}
+      {error && <DojoError>{error}</DojoError>}
       <button
         onClick={() => {
           const e = localCheck();
           if (e) { setError(e); return; }
           setError('');
           setStep('confirm');
-          document.getElementById('entry-form')?.scrollIntoView();
+          scrollToForm();
         }}
-        className={`w-full rounded-2xl py-4 text-lg font-black ${btnPrimaryCls}`}
+        className={`w-full rounded py-4 text-lg font-black ${btnPrimaryCls}`}
       >
-        入力内容を確認する
+        挑戦する　ENTRY
       </button>
+      <p className="text-center text-xs text-[#f3eadb]/60">次の画面で入力内容を確認します</p>
     </section>
   );
 }
