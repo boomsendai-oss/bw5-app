@@ -24,7 +24,7 @@ vi.mock('@/lib/db', () => ({
   }),
 }));
 
-import { verifySignature, requestText, handleEvent, ACK_TEXT, PENDING_TEXT, NOT_APPROVED_TEXT } from '@/lib/lineAi';
+import { verifySignature, requestText, handleEvent, isSmallTalk, ACK_TEXT, PENDING_TEXT, NOT_APPROVED_TEXT, THANKS_TEXT } from '@/lib/lineAi';
 
 const g = (id = 'G1') => ({ type: 'group' as const, groupId: id, userId: 'U1' });
 const msg = (text: string, mentionees: object[] = [], id = 'e1') => ({
@@ -70,6 +70,17 @@ describe('lineAi', () => {
     expect(await handleEvent(f as never, async () => {})).toBe('skip:未承認のファイル');
     groups.set('G2', 'approved');
     expect(await handleEvent(f as never, async () => {})).toBe('file');
+  });
+
+  it('お礼・あいづちには返事だけして作業しない', async () => {
+    for (const t of ['OKありがとう', 'ありがとうございます！', '了解です', '👍', '助かる〜', 'お疲れさま']) expect(isSmallTalk(t)).toBe(true);
+    for (const t of ['OK、次は12月の時間割を作って', 'ありがとう、ついでに赤にして送り直して', 'チラシを作って']) expect(isSmallTalk(t)).toBe(false);
+    groups.set('G1', 'approved');
+    const replies: string[] = [];
+    const m = msg('@BOOM AI OKありがとう', [{ index: 0, length: 8, isSelf: true }], 'e7');
+    expect(await handleEvent(m as never, async (_t, s) => { replies.push(s); })).toBe('thanks');
+    expect(replies).toEqual([THANKS_TEXT]);
+    expect(jobs.length).toBe(0);
   });
 
   it('1対1は何もしない', async () => {

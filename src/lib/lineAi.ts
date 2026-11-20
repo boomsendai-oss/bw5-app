@@ -30,6 +30,17 @@ export const PENDING_TEXT =
   'BOOM AIです🤖 このグループで使うには、BOOMの承認が要ります。承認されるまでは依頼を受け付けません（承認されないまま24時間たつと、自動で退出します）。';
 export const NOT_APPROVED_TEXT = 'このグループはまだ承認されていないので、依頼を受け付けられません。';
 export const MAX_TEXT = 2000;
+export const THANKS_TEXT = 'どういたしまして🤖';
+
+/** 「OK」「ありがとう」などの短いお礼・あいづち（依頼ではない）。返事だけして作業はしない */
+export function isSmallTalk(text: string): boolean {
+  const t = text.replace(/[\s。、！!？?〜ー～…・]/g, '');
+  if (!t) return true;
+  if (t.length > 15) return false;
+  if (/(して|作|送|直|調べ|教え|出し|下さい|ください|頼|欲し|ほし|変え|入れ|見せ|探|まとめ|考え)/.test(t)) return false;
+  if (/^[\p{Extended_Pictographic}\u200d\ufe0f]+$/u.test(t)) return true;
+  return /^(ok|ｏｋ|おけ|おk|オッケ|了解|りょうかい|承知|ありがと|有難|サンキュ|さんきゅ|thanks|thx|助かり|助かる|たすかる|いいね|最高|ばっちり|バッチリ|完璧|かんぺき|おつかれ|お疲れ|よろしく)/i.test(t);
+}
 
 export function verifySignature(rawBody: string, signature: string | null, secret: string): boolean {
   if (!signature || !secret) return false;
@@ -148,6 +159,10 @@ export async function handleEvent(ev: LineEvent, replyFn = reply): Promise<strin
     }
     if (ev.replyToken) await replyFn(ev.replyToken, NOT_APPROVED_TEXT);
     return 'reject:未承認';
+  }
+  if (isSmallTalk(text)) {
+    if (ev.replyToken) await replyFn(ev.replyToken, THANKS_TEXT);
+    return 'thanks';
   }
   const r = await execute(
     `INSERT OR IGNORE INTO line_ai_jobs (event_id, group_id, user_id, text, status, created_at) VALUES (?, ?, ?, ?, 'queued', ?)`,
