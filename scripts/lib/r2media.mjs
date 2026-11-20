@@ -18,6 +18,17 @@ import { promisify } from 'node:util';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// 置き場専用の鍵（2026-11-20・TAROのOK）。wrangler の OAuth ログインは M5/M1 で同じ情報を使い回すと
+// 片方の更新でもう片方が無効になり、11/20 に両方で切れた。期限なしの R2 専用 API トークンを
+// ~/.config/boom-r2/env.json（600・git外・M5 と M1 の両方）に置き、環境変数が無ければここで読む。
+try {
+  const envFile = path.join(process.env.HOME || '', '.config', 'boom-r2', 'env.json');
+  if (!process.env.CLOUDFLARE_API_TOKEN && fs.existsSync(envFile)) {
+    const e = JSON.parse(fs.readFileSync(envFile, 'utf8'));
+    for (const k of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) if (e[k] && !process.env[k]) process.env[k] = e[k];
+  }
+} catch { /* 読めなければ従来どおり wrangler のログインを使う */ }
+
 export const BUCKET = process.env.R2_MEDIA_BUCKET || 'boom-reels';
 export const MEDIA_BASE_URL = (process.env.MEDIA_BASE_URL || 'https://media.boom-sendai.com').replace(/\/$/, '');
 
