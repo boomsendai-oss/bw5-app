@@ -11,6 +11,7 @@ vi.mock('@/lib/db', () => ({
       return { rowsAffected: 1 };
     }
     if (sql.includes("status = 'left'")) { groups.set(String(args[1]), 'left'); return { rowsAffected: 1 }; }
+    if (sql.includes('line_ai_files')) { jobs.push(['file', ...args]); return { rowsAffected: 1 }; }
     if (sql.includes('line_ai_jobs')) {
       if (jobs.some((j) => j[0] && j[0] === args[0])) return { rowsAffected: 0 };
       jobs.push(args); return { rowsAffected: 1 };
@@ -62,6 +63,13 @@ describe('lineAi', () => {
     expect(replies.pop()).toBe(ACK_TEXT);
     expect(await handleEvent(m as never, rf)).toBe('dup');
     expect(jobs.length).toBe(1);
+  });
+
+  it('承認済みのグループに貼られたファイルだけ記録する', async () => {
+    const f = { type: 'message', source: g('G2'), message: { id: 'm9', type: 'image' } };
+    expect(await handleEvent(f as never, async () => {})).toBe('skip:未承認のファイル');
+    groups.set('G2', 'approved');
+    expect(await handleEvent(f as never, async () => {})).toBe('file');
   });
 
   it('1対1は何もしない', async () => {

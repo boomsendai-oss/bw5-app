@@ -17,8 +17,10 @@ export type LineEvent = {
   replyToken?: string;
   source?: LineSource;
   message?: {
+    id?: string;
     type: string;
     text?: string;
+    fileName?: string;
     mention?: { mentionees?: { index: number; length: number; isSelf?: boolean; type?: string }[] };
   };
 };
@@ -123,6 +125,17 @@ export async function handleEvent(ev: LineEvent, replyFn = reply): Promise<strin
     return 'leave';
   }
   if (ev.type !== 'message') return 'skip:種類';
+  const mt = ev.message?.type;
+  if ((mt === 'image' || mt === 'file') && ev.message?.id) {
+    // 貼られた画像・ファイルは、承認済みのグループだけ記録する（返事はしない）。後の「@BOOM AI これを…」で使う
+    const gs = await getAll('SELECT status FROM line_ai_groups WHERE group_id = ?', [chat.id]);
+    if (gs[0]?.status !== 'approved') return 'skip:未承認のファイル';
+    await execute(
+      'INSERT OR IGNORE INTO line_ai_files (message_id, group_id, user_id, type, file_name, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [ev.message.id, chat.id, ev.source?.userId || null, mt, ev.message.fileName || null, nowIso()],
+    );
+    return 'file';
+  }
   const text = requestText(ev);
   if (!text) return 'skip:メンションなし';
   const g = await getAll('SELECT status FROM line_ai_groups WHERE group_id = ?', [chat.id]);
