@@ -47,6 +47,20 @@ export function DojoHero({
       className="relative w-full overflow-hidden bg-[#0d0906] bg-cover bg-top [container-type:inline-size]"
       style={{ aspectRatio: '941 / 1672', backgroundImage: 'url(/dojo/bg_dojo.webp)' }}
     >
+      {/* 天井の電球のちらつき(TARO 11/20)。光の輪を明滅させ、ときどき全体が一瞬暗くなる。動きを減らす設定の端末では止める */}
+      <style>{`
+        @keyframes dojoLamp{0%,100%{opacity:1}4%{opacity:.55}6%{opacity:1}8%{opacity:.7}10%{opacity:1}47%{opacity:.95}49%{opacity:.4}50%{opacity:.9}52%{opacity:1}78%{opacity:1}79%{opacity:.6}81%{opacity:1}}
+        @keyframes dojoDim{0%,100%{opacity:0}4%{opacity:.35}6%{opacity:0}8%{opacity:.2}10%{opacity:0}49%{opacity:.45}50%{opacity:.08}52%{opacity:0}79%{opacity:.25}81%{opacity:0}}
+        .dojo-lamp{animation:dojoLamp 7s infinite}
+        .dojo-dim{animation:dojoDim 7s infinite}
+        @media (prefers-reduced-motion: reduce){.dojo-lamp,.dojo-dim{animation:none}.dojo-dim{opacity:0}}
+      `}</style>
+      <div aria-hidden className="dojo-dim pointer-events-none absolute inset-0 bg-black" />
+      <div
+        aria-hidden
+        className="dojo-lamp pointer-events-none absolute inset-0 mix-blend-screen"
+        style={{ background: 'radial-gradient(ellipse 30% 9% at 50% 5.6%, rgba(255,214,150,0.55), rgba(255,190,110,0.18) 55%, transparent 100%), radial-gradient(ellipse 34% 26% at 50% 14%, rgba(255,200,130,0.16), transparent 70%)' }}
+      />
       <a
         href="https://boom-sendai.com/"
         target="_blank"
@@ -343,18 +357,24 @@ export function Marked({ children }: { children: ReactNode }) {
 }
 
 /**
- * 部門名の表示。先頭の「優勝未経験」は小さな朱の札にして、残り(U12 ALL STYLE 1on1 など)を
- * 1行で読めるようにする(長い1行が変な所で折れて読みにくかった・TARO 11/20)。
+ * 部門の見出し。「優勝未経験」と「出られる年齢」を主役にする(TARO 11/20)。
+ * 名前「優勝未経験 U12 ALL STYLE 1on1」から年齢の部分(U12 / ALL AGE)を大きく、残りを小さく出す。
  */
-export function DivisionName({ name }: { name: string }) {
-  const m = /^優勝未経験\s*(.*)$/.exec(name);
-  const rest = m ? m[1] : name;
+export function DivisionName({ name, note }: { name: string; note?: string }) {
+  const rest = name.replace(/^優勝未経験\s*/, '');
+  const m = /^(U\d+|ALL AGE)\s*(.*)$/i.exec(rest);
+  const age = m ? m[1] : '';
+  const style = m ? m[2] : rest;
   return (
     <span className="block">
-      {m && (
-        <span className="mb-0.5 inline-block rounded-sm bg-[#b8261c] px-1.5 py-[1px] text-[10px] font-black tracking-wider text-white">優勝未経験</span>
-      )}
-      <span className="block text-[15px] font-black leading-snug [word-break:keep-all]">{rest}</span>
+      <span className="flex flex-wrap items-center gap-1.5">
+        <span className="rounded-sm bg-[#b8261c] px-1.5 py-[2px] text-[12px] font-black tracking-wider text-white">優勝未経験</span>
+        {note && <span className="rounded-sm border-2 border-[#1d140c] px-1.5 py-[1px] text-[12px] font-black text-[#1d140c]">{note}</span>}
+      </span>
+      <span className="mt-1 flex items-baseline gap-2 [word-break:keep-all]">
+        {age && <span className="f-num text-[26px] font-black leading-none">{age}</span>}
+        <span className="text-[13px] font-bold leading-snug text-[#3d2e1e]">{style}</span>
+      </span>
     </span>
   );
 }

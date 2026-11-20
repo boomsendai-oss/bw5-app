@@ -65,7 +65,7 @@ export default async function BattlePage({ searchParams }: Props) {
         )}
 
 
-        <BattleCard title="果たし状" hanko={<>白帯<br />限定</>}>
+        <BattleCard title="道場案内" hanko={<>白帯<br />限定</>}>
           <DojoRow k="日時">
             {md ? `${Number(md[1])}月${Number(md[2])}日` : ev.eventDate}{formatJpDateLong(ev.eventDate).replace(/^.*日/, '')}{' '}
             {ev.openTime && `${ev.openTime}受付`}{ev.openTime && ev.startTime && ' / '}{ev.startTime && `${ev.startTime}開始`}
@@ -94,9 +94,9 @@ export default async function BattlePage({ searchParams }: Props) {
               <div key={d.key} className="flex items-center gap-2.5 rounded-md border border-[#d8c8aa] bg-[#fff8ec] p-2.5">
                 <WhiteBelt />
                 <div className="min-w-0">
-                  <DivisionName name={d.name} />
+                  <DivisionName name={d.name} note={d.note} />
                   <p className="text-xs text-[#6b5a44]">
-                    {[d.note, `${d.capacity}名限定`, (remaining[d.key] ?? 0) > 0 ? `残り${remaining[d.key]}枠` : '満員'].filter(Boolean).join('・')}
+                    {[`${d.capacity}名限定`, (remaining[d.key] ?? 0) > 0 ? `残り${remaining[d.key]}枠` : '満員'].filter(Boolean).join('・')}
                   </p>
                 </div>
               </div>

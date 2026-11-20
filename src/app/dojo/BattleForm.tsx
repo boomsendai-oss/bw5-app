@@ -195,9 +195,9 @@ export default function BattleForm({
                 <input type="checkbox" checked={checked} disabled={Boolean(reason) && !checked} onChange={() => toggle(d.key)} className="h-5 w-5 shrink-0 accent-[#b8261c]" />
                 <WhiteBelt />
                 <span className="min-w-0 flex-1">
-                  <DivisionName name={d.name} />
+                  <DivisionName name={d.name} note={d.note} />
                   <span className="block text-xs text-[#6b5a44]">
-                    {[d.note, `${d.capacity}名限定`].filter(Boolean).join('・')}・
+                    {`${d.capacity}名限定`}・
                     <b className={left > 0 ? 'text-[#1d140c]' : 'text-[#b8261c]'}>{left > 0 ? `残り${left}枠` : '満員'}</b>
                   </span>
                   <span className="block text-sm font-bold">エントリー料 <span className="f-num">{yen(amount.entryUnit)}</span>
