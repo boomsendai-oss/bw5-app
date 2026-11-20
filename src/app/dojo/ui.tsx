@@ -72,7 +72,7 @@ export function DojoHero({
         className="f-brush absolute left-[39.23%] top-[40.12%] flex h-[19.91%] w-[22.05%] flex-row-reverse items-start justify-center gap-[1cqw] pt-[2.6cqw] text-[#1b120b]"
       >
         <span className="text-[10.26cqw] leading-none [writing-mode:vertical-rl]">押忍</span>
-        <span className="pt-[1.5cqw] text-[2.7cqw] tracking-[0.12em] [writing-mode:vertical-rl]"><span className="[text-combine-upright:all]">7</span>転び<span className="[text-combine-upright:all]">8</span>ムーヴ</span>
+        <span className="pt-[1.5cqw] text-[2.7cqw] tracking-[0.12em] [writing-mode:vertical-rl]">７転び８ムーヴ{/* 全角数字で縦書きの中心に揃える(TARO 11/20) */}</span>
       </div>
 
       {/* 道着(ノースリーブ・白帯)のBOOMくん。ラジカセと反対側の床に立たせる(TARO 11/19) */}
