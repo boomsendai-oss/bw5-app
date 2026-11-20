@@ -66,12 +66,13 @@ export function DojoHero({
         </span>
       )}
 
-      {/* 掛け軸の白い紙: 「押忍」だけを中央に(縦書き・TARO 11/20) */}
+      {/* 掛け軸の白い紙: 右に大きく「押忍」、左に小さく「踊武両道」(縦書き・TARO 11/20) */}
       <div
         aria-hidden
         className="f-brush absolute left-[39.23%] top-[40.12%] flex h-[19.91%] w-[22.05%] flex-row-reverse items-start justify-center gap-[1cqw] pt-[2.6cqw] text-[#1b120b]"
       >
         <span className="text-[10.26cqw] leading-none [writing-mode:vertical-rl]">押忍</span>
+        <span className="pt-[1.5cqw] text-[2.7cqw] tracking-[0.12em] [writing-mode:vertical-rl]">踊武両道</span>
       </div>
 
       {/* 道着(ノースリーブ・白帯)のBOOMくん。ラジカセと反対側の床に立たせる(TARO 11/19) */}
