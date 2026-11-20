@@ -13,7 +13,7 @@ import {
   type BattleEvent,
 } from '@/lib/battle';
 import { submitBattleEntry, startBattleCheckout } from './actions';
-import { BattleCard, BattleField, DojoError, DojoHeading, MultiLine, WhiteBelt, btnOnDarkCls, btnPrimaryCls, inputCls } from './ui';
+import { BattleCard, BattleField, DivisionName, DojoError, DojoHeading, Marked, MultiLine, WhiteBelt, btnOnDarkCls, btnPrimaryCls, inputCls } from './ui';
 
 const TOKEN_KEY = 'battle_entry_token';
 
@@ -160,7 +160,7 @@ export default function BattleForm({
             <input value={f.realName} onChange={set('realName')} placeholder="例: 山田 太郎" className={inputCls} autoComplete="name" />
           </BattleField>
           <BattleField label="生年月日" required hint="年齢で出られる部門が決まります(開催日の年齢で判定)">
-            <input type="date" value={f.birthdate} onChange={set('birthdate')} className={inputCls} max={today} />
+            <input type="date" value={f.birthdate} onChange={set('birthdate')} className={`${inputCls} block min-w-0 max-w-full appearance-none [&::-webkit-date-and-time-value]:text-left`} max={today} />
           </BattleField>
           {f.birthdate && age != null && (
             <p className="-mt-2 text-xs text-[#6b5a44]">開催日({ev.eventDate})に {ageOn(f.birthdate, ev.eventDate)}歳</p>
@@ -195,7 +195,7 @@ export default function BattleForm({
                 <input type="checkbox" checked={checked} disabled={Boolean(reason) && !checked} onChange={() => toggle(d.key)} className="h-5 w-5 shrink-0 accent-[#b8261c]" />
                 <WhiteBelt />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-black leading-snug">{d.name}</span>
+                  <DivisionName name={d.name} />
                   <span className="block text-xs text-[#6b5a44]">
                     {[d.note, `${d.capacity}名限定`].filter(Boolean).join('・')}・
                     <b className={left > 0 ? 'text-[#1d140c]' : 'text-[#b8261c]'}>{left > 0 ? `残り${left}枠` : '満員'}</b>
@@ -211,7 +211,7 @@ export default function BattleForm({
         <label className="mt-4 flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" checked={noWin} onChange={(e) => setNoWin(e.target.checked)} className={check} />
           <span>
-            <span className="font-bold">優勝未経験です</span>
+            <span className="font-bold"><Marked>優勝未経験</Marked>です</span>
             <span className="block text-xs text-[#6b5a44]">エントリーするジャンルで、過去にソロバトルで優勝したことはありません(ほかのジャンルでの優勝はOK)</span>
           </span>
         </label>

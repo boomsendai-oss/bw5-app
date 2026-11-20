@@ -320,8 +320,43 @@ export function BattlePreviewBanner() {
 }
 
 /** 改行入りの設定文をそのまま段落で出す。 */
-export function MultiLine({ text, className = '' }: { text: string; className?: string }) {
-  return <p className={`whitespace-pre-line ${className}`}>{text}</p>;
+export function MultiLine({ text, className = '', mark }: { text: string; className?: string; mark?: string }) {
+  if (!mark || !text.includes(mark)) return <p className={`whitespace-pre-line ${className}`}>{text}</p>;
+  const parts = text.split(mark);
+  return (
+    <p className={`whitespace-pre-line ${className}`}>
+      {parts.map((t, i) => (
+        <span key={i}>
+          {t}
+          {i < parts.length - 1 && <Marked>{mark}</Marked>}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/** 大事な言葉(優勝未経験 など)を赤の太字＋下にマーカーで目立たせる(TARO 11/20)。 */
+export function Marked({ children }: { children: ReactNode }) {
+  return (
+    <b className="bg-[linear-gradient(transparent_55%,#f6c9a8_55%)] px-0.5 font-black text-[#b8261c]">{children}</b>
+  );
+}
+
+/**
+ * 部門名の表示。先頭の「優勝未経験」は小さな朱の札にして、残り(U12 ALL STYLE 1on1 など)を
+ * 1行で読めるようにする(長い1行が変な所で折れて読みにくかった・TARO 11/20)。
+ */
+export function DivisionName({ name }: { name: string }) {
+  const m = /^優勝未経験\s*(.*)$/.exec(name);
+  const rest = m ? m[1] : name;
+  return (
+    <span className="block">
+      {m && (
+        <span className="mb-0.5 inline-block rounded-sm bg-[#b8261c] px-1.5 py-[1px] text-[10px] font-black tracking-wider text-white">優勝未経験</span>
+      )}
+      <span className="block text-[15px] font-black leading-snug [word-break:keep-all]">{rest}</span>
+    </span>
+  );
 }
 
 /** エラー表示(和紙の上でも黒地の上でも読める色)。 */
