@@ -69,7 +69,7 @@ export function DojoHero({
       {/* 掛け軸の白い紙: 右に大きく「押忍」、左に小さく「心・技・ノリ」(縦書き・TARO 11/20) */}
       <div
         aria-hidden
-        className="f-brush absolute left-[40.16%] top-[40.12%] flex h-[26%] w-[22.05%] flex-row-reverse items-start justify-center gap-[0.8cqw] pt-[2cqw] text-[#1b120b]"
+        className="f-brush absolute left-[38.3%] top-[40.12%] flex h-[26%] w-[22.05%] flex-row-reverse items-start justify-center gap-[0.8cqw] pt-[2cqw] text-[#1b120b]"
       >
         <span className="text-[15.4cqw] leading-none [writing-mode:vertical-rl]">押忍</span>
         <span className="pt-[2cqw] text-[3.1cqw] tracking-[0.14em] [writing-mode:vertical-rl]">心・技・ノリ</span>
