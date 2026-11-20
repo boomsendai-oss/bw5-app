@@ -133,7 +133,7 @@ export async function sweepExpiredBattleEntries(): Promise<number> {
   return Number(r.rowsAffected ?? 0);
 }
 
-const USAGE_SQL = "SELECT divisions FROM battle_entries WHERE event_key = ? AND payment_status IN ('paid','pending')";
+const USAGE_SQL = "SELECT divisions FROM battle_entries WHERE event_key = ? AND payment_status IN ('paid','onsite','pending')";
 
 function countUsage(rows: { divisions: unknown }[]): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -155,7 +155,7 @@ export async function getBattleRemaining(ev: BattleEvent): Promise<Record<string
 }
 
 export type CreateBattleEntryResult =
-  | { ok: true; entryId: number; editToken: string; amountTotal: number; status: 'pending' | 'paid' | 'test' }
+  | { ok: true; entryId: number; editToken: string; amountTotal: number; status: 'pending' | 'paid' | 'onsite' | 'test' }
   | { ok: false; error: string };
 
 /**
@@ -173,7 +173,7 @@ export async function createBattleEntry(
   const amount = calcBattleAmount(ev, v.divisions.length, v.spectators, nowJst);
   const editToken = generateEditToken();
   const now = nowIso();
-  const status: 'pending' | 'paid' | 'test' = opts.test ? 'test' : amount.total === 0 ? 'paid' : 'pending';
+  const status: 'pending' | 'paid' | 'onsite' | 'test' = opts.test ? 'test' : amount.total === 0 ? 'paid' : v.payMethod === 'onsite' ? 'onsite' : 'pending';
   const expiresAt = status === 'pending' ? new Date(Date.now() + BATTLE_HOLD_MINUTES * 60 * 1000).toISOString() : '';
 
   try {
@@ -196,7 +196,8 @@ export async function createBattleEntry(
         args: [
           ev.eventKey, v.email, v.dancerName, v.dancerKana, v.realName, v.birthdate, v.rep, v.genre, v.phone, v.instagram,
           JSON.stringify(v.divisions), v.noWinConfirmed ? 1 : 0, v.spectators, v.spectatorsPreschool, v.guardianName, v.guardianConsent ? 1 : 0,
-          amount.entryUnit, amount.spectatorUnit, amount.total, status, editToken, expiresAt, opts.test ? 'スタッフ確認用テスト' : '', now, now,
+          amount.entryUnit, amount.spectatorUnit, amount.total, status, editToken, expiresAt,
+          opts.test ? 'スタッフ確認用テスト' : v.payMethod === 'onsite' ? '当日払い(キャンセル料に同意済み)' : 'カード(キャンセル料に同意済み)', now, now,
         ],
       });
       return Number(r.lastInsertRowid);
@@ -287,13 +288,13 @@ export interface PublicBattleEntry {
 }
 
 /**
- * 公開エントリー一覧。確定分(paid)のみ・公開列(ダンサー名/所属/ジャンル/部門)のみ。
+ * 公開エントリー一覧。確定分(paid・当日払いのonsite)のみ・公開列(ダンサー名/所属/ジャンル/部門)のみ。
  * 本名・連絡先・生年月日・IGなど他の列をこの関数から返してはならない。
  */
 export async function getPublicBattleEntries(eventKey: string): Promise<PublicBattleEntry[]> {
   await sweepExpiredBattleEntries();
   const rows = await getAll(
-    "SELECT dancer_name, rep, genre, divisions FROM battle_entries WHERE event_key = ? AND payment_status = 'paid' ORDER BY id ASC",
+    "SELECT dancer_name, rep, genre, divisions FROM battle_entries WHERE event_key = ? AND payment_status IN ('paid','onsite') ORDER BY id ASC",
     [eventKey]
   );
   return rows.map((r) => ({
@@ -354,4 +355,13 @@ export async function listBattleEntriesStaff(eventKey: string): Promise<StaffBat
   const piByEntry = new Map<number, string>();
   for (const p of pays) if (p.entry_id != null) piByEntry.set(Number(p.entry_id), String(p.payment_intent_id));
   return rows.map((r) => ({ ...rowToEntry(r), paymentIntentId: piByEntry.get(Number(r.id)) ?? '' }));
+}
+
+/** 当日払いの受け取り(受付で現金を受け取ったら onsite → paid)。スタッフ画面(認証済み)からのみ呼ぶ。 */
+export async function markBattleOnsitePaid(entryId: number): Promise<boolean> {
+  const r = await execute(
+    "UPDATE battle_entries SET payment_status = 'paid', note = CASE WHEN note = '' THEN '当日現金で受領' ELSE note || ' / 当日現金で受領' END, updated_at = ? WHERE id = ? AND payment_status = 'onsite'",
+    [nowIso(), entryId]
+  );
+  return Number(r.rowsAffected ?? 0) > 0;
 }

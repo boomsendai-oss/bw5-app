@@ -25,7 +25,7 @@ async function clientIp(): Promise<string> {
 }
 
 export type BattleSubmitResult =
-  | { ok: true; token: string; status: 'pending' | 'paid' | 'test'; amountTotal: number }
+  | { ok: true; token: string; status: 'pending' | 'paid' | 'onsite' | 'test'; amountTotal: number }
   | { ok: false; error: string };
 
 export async function submitBattleEntry(eventKey: string, input: Partial<BattleEntryInput>): Promise<BattleSubmitResult> {
@@ -45,8 +45,8 @@ export async function submitBattleEntry(eventKey: string, input: Partial<BattleE
 
   const created = await createBattleEntry(ev, v, now, { test: staffTest });
   if (!created.ok) return { ok: false, error: created.error };
-  if (created.status === 'paid') {
-    // 0円の申込は決済なしで確定=ここで確定メールを送る(カードはWebhookで決済確定時)
+  if (created.status === 'paid' || created.status === 'onsite') {
+    // 0円・当日払いの申込は決済なしで確定=ここで確定メールを送る(カードはWebhookで決済確定時)
     const entry = await loadBattleEntryByToken(created.editToken);
     if (entry) await sendBattleConfirmEmail(entry, created.editToken, ev);
   }

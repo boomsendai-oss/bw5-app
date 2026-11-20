@@ -7,7 +7,7 @@ import { redirect } from 'next/navigation';
 import { isAuthorizedServer } from '@/lib/eventAuth';
 import { isIsoDate } from '@/lib/dateJst';
 import type { BattleCast, BattleDivision } from '@/lib/battle';
-import { createBattleEventFrom, getBattleEvent, updateBattleEvent } from '@/lib/battleDb';
+import { createBattleEventFrom, getBattleEvent, markBattleOnsitePaid, updateBattleEvent } from '@/lib/battleDb';
 
 async function requireStaff(): Promise<void> {
   if (!(await isAuthorizedServer())) throw new Error('Unauthorized');
@@ -92,4 +92,12 @@ export async function createNextBattleEvent(fd: FormData): Promise<void> {
   const ok = await createBattleEventFrom(src, newDate);
   revalidatePath('/staff/battle');
   redirect(`/staff/battle?e=${encodeURIComponent(ok ? newDate : src)}${ok ? '&created=1' : '&err=exists'}`);
+}
+
+/** 当日払いの人から受付で現金を受け取ったら「支払済」にする。 */
+export async function markOnsitePaid(fd: FormData): Promise<void> {
+  await requireStaff();
+  const entryId = int(fd, 'entryId');
+  if (entryId > 0) await markBattleOnsitePaid(entryId);
+  revalidatePath('/staff/battle');
 }
