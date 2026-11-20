@@ -110,8 +110,9 @@ export default async function BattlePage({ searchParams }: Props) {
           </BattleCard>
         )}
 
+        {/* 立会人は未発表の名前を含むので、ブラウザへ送るフォームには渡さない(TARO 11/20) */}
         {showForm ? (
-          <BattleForm ev={ev} remaining={remaining} now={now} preview={preview} />
+          <BattleForm ev={{ ...ev, cast: [] }} remaining={remaining} now={now} preview={preview} />
         ) : (
           <BattleCard>
             <p className="font-bold">
