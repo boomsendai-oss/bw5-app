@@ -14,12 +14,12 @@ export const GET = withAuth(async (req: NextRequest) => {
   const entries = await listBattleEntriesStaff(ev.eventKey);
   const divName = (k: string) => ev.divisions.find((d) => d.key === k)?.name ?? k;
   const rows: (string | number)[][] = [
-    ['受付番号', '状態', 'ダンサー名', 'よみがな', '本名', '開催日の年齢', '生年月日(11/21以前の申込のみ)', '所属', 'ジャンル', '部門', '観覧(小学生以上)', '観覧(未就学児)',
+    ['受付番号', '状態', 'ダンサー名', 'よみがな', '本名', '開催日の年齢', '生年月日(11/21以前の申込のみ)', '所属', 'ジャンル', '部門', '観覧(小学生以上)',
       '保護者', '保護者同意', '優勝未経験', 'メール', '電話', 'Instagram', '金額', 'Stripe PaymentIntent', '申込日時(UTC)', 'メモ'],
     ...entries.map((x) => [
       formatBattleReceiptNo(x, ev.roundNo), BATTLE_STATUS_LABEL[x.paymentStatus] ?? x.paymentStatus,
       x.dancerName, x.dancerKana, x.realName, entryAge(x, ev.eventDate) ?? '', x.birthdate, x.rep, x.genre,
-      x.divisions.map(divName).join(' / '), x.spectators, x.spectatorsPreschool,
+      x.divisions.map(divName).join(' / '), x.spectators,
       x.guardianName, x.guardianConsent ? '同意' : '', x.noWinConfirmed ? 'はい' : '', x.email, x.phone, x.instagram,
       x.amountTotal, x.paymentIntentId, x.createdAt, x.note,
     ]),

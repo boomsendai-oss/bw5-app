@@ -182,10 +182,33 @@ describe('Stripe・メール', () => {
     expect(m.subject).toContain('BD01-003');
     expect(m.subject).not.toContain('No.');
     expect(m.text).toContain('■ バトルエントリー\n  U12  ¥2,000\n  ALL AGE  ¥2,000');
-    expect(m.text).toContain('■ 観覧チケット\n  小学生以上 2名  ¥1,000 × 2 = ¥2,000\n  未就学児 1名  無料');
+    // 未就学児は申込不要なので、観覧チケットは小学生以上だけ(古い行に人数が残っていても出さない)
+    expect(m.text).toContain('■ 観覧チケット\n  小学生以上 2名  ¥1,000 × 2 = ¥2,000\n━');
+    expect(m.text).not.toContain('未就学児');
     expect(m.text).toContain('■ 合計  ¥6,000');
     expect(m.text).toContain('カードでお支払い済み');
     expect(m.text).toContain('2026年12月26日(土)');
+  });
+  it('HTML版: 受付番号・見出し・合計・画像(絶対URL)が入り、入力値はエスケープする', () => {
+    const m = buildBattleConfirmEmail(
+      { receiptSeq: 3, dancerName: '<b>TARO</b>', dancerKana: 'たろー', divisions: ['u12'], spectators: 1, spectatorsPreschool: 0, entryUnit: 2000, spectatorUnit: 1000, amountTotal: 3000, paymentStatus: 'paid', stripeSessionId: 'cs_1' },
+      EV, { completeUrl: 'https://x/c?t=a&b', entriesUrl: 'https://x/e', assetOrigin: 'https://event.example.com' }
+    );
+    expect(m.html).toContain('BD01-003');
+    expect(m.html).toContain('バトルエントリー');
+    expect(m.html).toContain('観覧チケット');
+    expect(m.html).toContain('¥3,000');
+    expect(m.html).toContain('カードでお支払い済み');
+    expect(m.html).toContain('https://event.example.com/dojo/mail/boomkun_bow.png');
+    expect(m.html).toContain('https://event.example.com/dojo/mail/logo_dojo.png');
+    expect(m.html).toContain('href="https://x/c?t=a&amp;b"');
+    expect(m.html).toContain('&lt;b&gt;TARO&lt;/b&gt;');
+    expect(m.html).not.toContain('<b>TARO</b>');
+    expect(m.html).not.toMatch(/<style|display:\s*flex/);
+  });
+  it('入力では未就学児の人数を受け取らない(0にする)', () => {
+    const v = validateBattleEntry(input({ spectatorsPreschool: 3 }), EV);
+    expect(typeof v === 'object' && v.spectatorsPreschool).toBe(0);
   });
   it('観覧なしは「なし」と出る', () => {
     const m = buildBattleConfirmEmail(

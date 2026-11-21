@@ -11,8 +11,10 @@ export async function sendBattleConfirmEmail(entry: BattleEntryRow, editToken: s
     const mail = buildBattleConfirmEmail(entry, ev, {
       completeUrl: `${PUBLIC_ORIGIN}/dojo/complete?t=${editToken}`,
       entriesUrl: `${PUBLIC_ORIGIN}/dojo/entries?e=${encodeURIComponent(ev.eventKey)}`,
+      assetOrigin: PUBLIC_ORIGIN,
     });
-    await sendEmail({ to: entry.email, subject: mail.subject, text: mail.text });
+    // HTML版(道場の見た目)＋テキスト版(HTMLが見られないメールアプリ向け)の両方を送る(multipart)
+    await sendEmail({ to: entry.email, subject: mail.subject, text: mail.text, html: mail.html });
   } catch (e) {
     console.error('[battle] confirm email failed', entry.entryId, e instanceof Error ? e.message : e);
   }

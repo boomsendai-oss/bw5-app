@@ -42,7 +42,6 @@ export default function BattleForm({
   const [payMethod, setPayMethod] = useState<'card' | 'onsite'>('card');
   const [cancelFee, setCancelFee] = useState(false);
   const [spectators, setSpectators] = useState(0);
-  const [preschool, setPreschool] = useState(0);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -85,7 +84,7 @@ export default function BattleForm({
     setBusy(true);
     setError('');
     const res = await submitBattleEntry(ev.eventKey, {
-      ...f, age, divisions, noWinConfirmed: noWin, spectators, spectatorsPreschool: preschool,
+      ...f, age, divisions, noWinConfirmed: noWin, spectators, spectatorsPreschool: 0,
       guardianConsent, agreePolicy: agree, payMethod, cancelFeeAgreed: amount.total > 0 ? cancelFee : true,
     });
     if (!res.ok) {
@@ -118,7 +117,7 @@ export default function BattleForm({
         </BattleCard>
         <BattleCard label="申込内容">
           <BattleSummaryView
-            sum={buildBattleSummary({ divisions, spectators, spectatorsPreschool: preschool, entryUnit: amount.entryUnit, spectatorUnit: amount.spectatorUnit }, ev)}
+            sum={buildBattleSummary({ divisions, spectators, spectatorsPreschool: 0, entryUnit: amount.entryUnit, spectatorUnit: amount.spectatorUnit }, ev)}
             total={amount.total}
             payLabel={payMethod === 'onsite' ? '当日、受付で現金でお支払い' : 'カード決済(このあと決済画面へ)'}
           />
@@ -235,15 +234,13 @@ export default function BattleForm({
       </BattleCard>
 
       <BattleCard title="一緒に来る観覧の方">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="max-w-[12rem]">
           <BattleField label={`小学生以上 ${yen(ev.spectatorFee)}/人`}>
             <CountSelect value={spectators} onChange={setSpectators} />
           </BattleField>
-          <BattleField label="未就学児 無料">
-            <CountSelect value={preschool} onChange={setPreschool} />
-          </BattleField>
         </div>
-        <p className="mt-2 text-xs text-[#6b5a44]">出場するご本人の観覧料はかかりません</p>
+        <p className="mt-2 text-xs text-[#6b5a44]">未就学児は無料・申込は不要です</p>
+        <p className="text-xs text-[#6b5a44]">出場するご本人の観覧料はかかりません</p>
       </BattleCard>
 
       {guardian && (

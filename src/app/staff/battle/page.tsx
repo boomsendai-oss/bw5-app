@@ -40,7 +40,6 @@ export default async function StaffBattlePage({
   const onsiteTotal = onsite.reduce((s, x) => s + x.amountTotal, 0);
   const pending = entries.filter((x) => x.paymentStatus === 'pending').length;
   const spectators = paid.reduce((s, x) => s + x.spectators, 0);
-  const preschool = paid.reduce((s, x) => s + x.spectatorsPreschool, 0);
   const divName = (k: string) => ev.divisions.find((d) => d.key === k)?.name ?? k;
   const divRows = [...ev.divisions, { key: '', name: '', note: '', capacity: 16, maxAge: null }];
   const castRows = [...ev.cast, { role: '', mark: '', name: '', photo: '', note: '', instagram: '', announced: false }];
@@ -86,7 +85,7 @@ export default async function StaffBattlePage({
           <Summary label="確定" value={`${paid.length}人`} note={pending > 0 ? `決済待ち ${pending}件` : undefined} />
           <Summary label="受け取り済み" value={yen(paidTotal)} />
           <Summary label="当日払い(未収)" value={yen(onsiteTotal)} note={onsite.length > 0 ? `${onsite.length}件` : undefined} />
-          <Summary label="同行の観覧" value={`${spectators}名`} note={preschool > 0 ? `ほか未就学児 ${preschool}名` : undefined} />
+          <Summary label="同行の観覧" value={`${spectators}名`} note="小学生以上(未就学児は申込不要)" />
           <Summary label="申込(全状態)" value={`${entries.length}件`} />
         </section>
 
@@ -147,7 +146,7 @@ export default async function StaffBattlePage({
                       {x.guardianName && <p>保護者: {x.guardianName}{x.guardianConsent ? '(同意)' : ''}</p>}
                     </td>
                     <td className="px-3 py-2 text-xs text-neutral-700">{x.divisions.map(divName).map((n) => <p key={n}>{n}</p>)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{x.spectators}{x.spectatorsPreschool > 0 && <span className="text-xs text-neutral-500">+幼{x.spectatorsPreschool}</span>}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{x.spectators}</td>
                     <td className="px-3 py-2 text-right font-bold tabular-nums">{yen(x.amountTotal)}</td>
                     <td className="px-3 py-2 text-xs tabular-nums text-neutral-500">{toJst(x.createdAt)}</td>
                   </tr>

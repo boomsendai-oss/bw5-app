@@ -272,7 +272,8 @@ export function validateBattleEntry(
     divisions: Array.isArray(raw.divisions) ? [...new Set(raw.divisions.map(String))] : [],
     noWinConfirmed: raw.noWinConfirmed === true,
     spectators: toCount(raw.spectators),
-    spectatorsPreschool: toCount(raw.spectatorsPreschool),
+    // 未就学児は無料・申込不要(TARO 2026-11-21)。人数は聞かない(列は残して0)
+    spectatorsPreschool: 0,
     guardianName: clean(raw.guardianName, 60),
     guardianConsent: raw.guardianConsent === true,
     agreePolicy: raw.agreePolicy === true,
@@ -370,7 +371,7 @@ export interface BattleSummary {
   /** バトルエントリー: 出る部門ごとに1行 */
   entries: { name: string; amount: number }[];
   entryTotal: number;
-  /** 観覧チケット(小学生以上・未就学児)。どちらも0名なら空 */
+  /** 観覧チケット(小学生以上のみ。未就学児は無料・申込不要なので載せない)。0名なら空 */
   tickets: { label: string; count: number; unit: number; amount: number }[];
   ticketTotal: number;
   total: number;
@@ -387,7 +388,6 @@ export function buildBattleSummary(
   }));
   const tickets: BattleSummary['tickets'] = [];
   if (e.spectators > 0) tickets.push({ label: '小学生以上', count: e.spectators, unit: e.spectatorUnit, amount: e.spectators * e.spectatorUnit });
-  if (e.spectatorsPreschool > 0) tickets.push({ label: '未就学児', count: e.spectatorsPreschool, unit: 0, amount: 0 });
   const entryTotal = entries.reduce((a, x) => a + x.amount, 0);
   const ticketTotal = tickets.reduce((a, x) => a + x.amount, 0);
   return { entries, entryTotal, tickets, ticketTotal, total: entryTotal + ticketTotal };
@@ -426,8 +426,8 @@ export interface BattleMailEntry {
 export function buildBattleConfirmEmail(
   e: BattleMailEntry,
   ev: BattleEvent,
-  links: { completeUrl: string; entriesUrl: string }
-): { subject: string; text: string } {
+  links: { completeUrl: string; entriesUrl: string; /** 画像(ロゴ・BOOMくん)の置き場の origin。無ければ画像なし */ assetOrigin?: string }
+): { subject: string; text: string; html: string } {
   const receiptNo = formatBattleReceiptNo(e, ev.roundNo);
   const sum = buildBattleSummary(e, ev);
   const onsite = e.paymentStatus === 'onsite';
@@ -470,5 +470,177 @@ export function buildBattleConfirmEmail(
   if (onsite) lines.push('※お申し込み後のキャンセルには、当日払いの方もキャンセル料(エントリー料と同額)がかかります。');
   lines.push('');
   lines.push('BOOM DANCE SCHOOL');
-  return { subject: `【${ev.title}】エントリー確定(受付番号 ${receiptNo})`, text: lines.join('\n') };
+  return {
+    subject: `【${ev.title}】エントリー確定(受付番号 ${receiptNo})`,
+    text: lines.join('\n'),
+    html: buildBattleConfirmHtml(e, ev, links, receiptNo, sum),
+  };
+}
+
+function esc(v: unknown): string {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * 確定メールのHTML版(申込ページ /dojo と同じ世界観: 夜の道場の墨色・生成りの和紙カード・朱)。
+ * Gmail・iPhoneのメールで崩れないよう、表組み＋インラインCSSだけで組む(<style>・flex・背景画像は使わない)。
+ * 文面の構成はテキスト版と同じ。利用者の入力(ダンサー名など)は必ず esc() を通す。
+ */
+function buildBattleConfirmHtml(
+  e: BattleMailEntry,
+  ev: BattleEvent,
+  links: { completeUrl: string; entriesUrl: string; assetOrigin?: string },
+  receiptNo: string,
+  sum: BattleSummary
+): string {
+  const INK = '#1d140c';
+  const PAPER = '#efe4cf';
+  const NIGHT = '#0d0906';
+  const BOARD = '#16100b';
+  const SHU = '#b8261c';
+  const AKA = '#7a2a1c';
+  const SUB = '#6b5a44';
+  const LINE = '#d8c8aa';
+  const KINARI = '#f3eadb';
+  const MINCHO = "'Hiragino Mincho ProN','Yu Mincho','YuMincho',serif";
+  const GOTHIC = "'Hiragino Sans','Hiragino Kaku Gothic ProN','Yu Gothic','Meiryo',sans-serif";
+  const onsite = e.paymentStatus === 'onsite';
+  const img = (path: string) => (links.assetOrigin ? `${links.assetOrigin.replace(/\/$/, '')}${path}` : '');
+  const logo = img('/dojo/mail/logo_dojo.png');
+  const bow = img('/dojo/mail/boomkun_bow.png');
+  const T = 'role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"';
+
+  const heading = (t: string) =>
+    `<tr><td style="padding:18px 0 6px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>` +
+    `<td style="width:4px;background:${SHU};font-size:0;line-height:0;">&nbsp;</td>` +
+    `<td style="padding-left:8px;font-family:${GOTHIC};font-size:14px;font-weight:bold;letter-spacing:0.08em;color:${INK};">${esc(t)}</td>` +
+    `</tr></table></td></tr>`;
+  const row = (left: string, right: string) =>
+    `<tr><td style="padding:0;"><table ${T}><tr>` +
+    `<td style="padding:8px 0;border-bottom:1px solid ${LINE};font-family:${GOTHIC};font-size:15px;color:${INK};">${left}</td>` +
+    `<td align="right" style="padding:8px 0;border-bottom:1px solid ${LINE};font-family:${GOTHIC};font-size:15px;font-weight:bold;color:${INK};white-space:nowrap;">${right}</td>` +
+    `</tr></table></td></tr>`;
+  const card = (inner: string) =>
+    `<tr><td style="padding:0 16px 16px 16px;"><table ${T} style="background:${PAPER};border-radius:6px;">` +
+    `<tr><td style="padding:20px 18px;">${inner}</td></tr></table></td></tr>`;
+  const cardTitle = (t: string) =>
+    `<div style="font-family:${MINCHO};font-size:20px;font-weight:bold;color:${INK};border-bottom:2px solid ${INK};padding-bottom:6px;margin-bottom:4px;">${esc(t)}</div>`;
+  const button = (href: string, label: string, primary: boolean) =>
+    `<table ${T} style="margin-top:10px;"><tr>` +
+    `<td align="center" style="border-radius:4px;background:${primary ? SHU : BOARD};border:${primary ? `2px solid ${SHU}` : '1px solid #6b5f52'};">` +
+    `<a href="${esc(href)}" style="display:block;padding:13px 10px;font-family:${GOTHIC};font-size:15px;font-weight:bold;letter-spacing:0.1em;color:${primary ? '#ffffff' : KINARI};text-decoration:none;">${esc(label)}</a>` +
+    `</td></tr></table>`;
+
+  const entryRows = sum.entries.map((x) => row(`<b>${esc(x.name)}</b>`, esc(yen(x.amount)))).join('');
+  const ticketRows =
+    sum.tickets.length === 0
+      ? `<tr><td style="padding:8px 0;font-family:${GOTHIC};font-size:14px;color:${SUB};">なし</td></tr>`
+      : sum.tickets
+          .map((t) =>
+            row(
+              `<b>${esc(t.label)} ${t.count}名</b>${t.amount > 0 ? ` <span style="font-size:12px;color:${SUB};">${esc(yen(t.unit))} × ${t.count}</span>` : ''}`,
+              t.amount > 0 ? esc(yen(t.amount)) : '無料'
+            )
+          )
+          .join('');
+
+  const parts: string[] = [];
+  // 見出し(夜の道場): ロゴ・回の名前・BOOMくんのお辞儀
+  parts.push(
+    `<tr><td align="center" style="padding:28px 16px 4px 16px;">` +
+      `<div style="font-family:${GOTHIC};font-size:10px;letter-spacing:0.3em;color:#bfb3a2;">BOOM DANCE SCHOOL PRESENTS</div>` +
+      (logo
+        ? `<img src="${esc(logo)}" width="300" alt="BOOM DOJO ROAD TO BLACK BELT" style="display:block;width:300px;max-width:100%;height:auto;margin:14px auto 0 auto;border:0;">`
+        : `<div style="font-family:${MINCHO};font-size:30px;font-weight:bold;color:${KINARI};margin-top:12px;">BOOM DOJO</div>`) +
+      `<div style="font-family:${MINCHO};font-size:15px;color:${KINARI};margin-top:10px;">${esc(ev.title)}</div>` +
+      `</td></tr>`
+  );
+  if (bow) {
+    parts.push(
+      `<tr><td align="center" style="padding:10px 16px 0 16px;">` +
+        `<img src="${esc(bow)}" width="240" alt="BOOMくん(お辞儀)" style="display:block;width:240px;max-width:70%;height:auto;margin:0 auto;border:0;">` +
+        `</td></tr>`
+    );
+  }
+  parts.push(
+    `<tr><td align="center" style="padding:14px 16px 20px 16px;">` +
+      `<div style="font-family:${MINCHO};font-size:28px;font-weight:bold;letter-spacing:0.1em;color:${KINARI};">エントリー完了</div>` +
+      `<div style="font-family:${GOTHIC};font-size:14px;line-height:1.7;color:${KINARI};margin-top:6px;">${esc(e.dancerName)} 様<br>` +
+      `${esc(ev.title)} へのエントリーありがとうございます。<br>` +
+      `${onsite ? 'エントリーが確定しました。お支払いは当日、会場で。' : 'お支払いが完了し、エントリーが確定しました。'}押忍!</div>` +
+      `</td></tr>`
+  );
+  // 受付番号
+  parts.push(
+    card(
+      `<table ${T}><tr><td align="center">` +
+        `<div style="font-family:${GOTHIC};font-size:12px;font-weight:bold;letter-spacing:0.3em;color:${AKA};">受付番号</div>` +
+        `<div style="font-family:${GOTHIC};font-size:38px;font-weight:bold;letter-spacing:0.04em;color:${INK};margin-top:4px;">${esc(receiptNo)}</div>` +
+        `<div style="font-family:${GOTHIC};font-size:13px;color:${SUB};margin-top:6px;">当日は受付で受付番号かダンサー名をお伝えください</div>` +
+        `</td></tr></table>`
+    )
+  );
+  // 申込内容
+  parts.push(
+    card(
+      cardTitle('申込内容') +
+        `<div style="font-family:${GOTHIC};font-size:20px;font-weight:bold;color:${INK};padding-top:8px;">${esc(e.dancerName)} ` +
+        `<span style="font-size:13px;color:${SUB};">${esc(e.dancerKana)}</span></div>` +
+        `<table ${T}>` +
+        heading('バトルエントリー') +
+        entryRows +
+        heading('観覧チケット') +
+        ticketRows +
+        `<tr><td style="padding:14px 0 0 0;"><table ${T} style="border-top:2px solid ${INK};"><tr>` +
+        `<td style="padding-top:12px;font-family:${GOTHIC};font-size:14px;font-weight:bold;letter-spacing:0.2em;color:${INK};">合計</td>` +
+        `<td align="right" style="padding-top:8px;font-family:${GOTHIC};font-size:30px;font-weight:bold;color:${INK};white-space:nowrap;">${esc(yen(e.amountTotal))}</td>` +
+        `</tr></table></td></tr>` +
+        `<tr><td align="right" style="padding-top:4px;font-family:${GOTHIC};font-size:14px;font-weight:bold;color:${AKA};">${esc(battlePayLabel(e))}</td></tr>` +
+        (onsite
+          ? `<tr><td style="padding-top:8px;font-family:${GOTHIC};font-size:13px;line-height:1.6;color:${INK};">当日、受付で現金でお支払いください。おつりの出ないようご用意いただけると助かります。</td></tr>`
+          : '') +
+        `</table>`
+    )
+  );
+  // 開催
+  const timeLine = `${ev.openTime ? `${esc(ev.openTime)} 受付開始` : ''}${ev.startTime ? ` / ${esc(ev.startTime)} 開始` : ''}`;
+  const infoRow = (k: string, v: string) =>
+    `<tr><td width="56" valign="top" style="padding:6px 0;font-family:${GOTHIC};font-size:13px;font-weight:bold;color:${AKA};">${k}</td>` +
+    `<td style="padding:6px 0;font-family:${GOTHIC};font-size:14px;line-height:1.6;color:${INK};">${v}</td></tr>`;
+  parts.push(
+    card(
+      cardTitle('開催') +
+        `<table ${T} style="margin-top:6px;">` +
+        infoRow(
+          '日時',
+          `${esc(formatJpDateLong(ev.eventDate))} ${esc(ev.openTime)}〜${esc(ev.endTime)}${timeLine ? `<br><span style="font-size:12px;color:${SUB};">${timeLine}</span>` : ''}`
+        ) +
+        infoRow('会場', `${esc(ev.venue)}${ev.venueAddress ? `<br><span style="font-size:12px;color:${SUB};">${esc(ev.venueAddress)}</span>` : ''}`) +
+        `</table>`
+    )
+  );
+  // リンクと案内
+  parts.push(`<tr><td style="padding:0 16px 8px 16px;">${button(links.completeUrl, 'お申し込み内容の確認', true)}${button(links.entriesUrl, 'エントリー一覧', false)}</td></tr>`);
+  parts.push(
+    `<tr><td style="padding:12px 20px 28px 20px;font-family:${GOTHIC};font-size:12px;line-height:1.8;color:${KINARI};">` +
+      `当日は受付で受付番号かダンサー名をお伝えください。<br>内容の変更・キャンセルはBOOM公式LINEまでご連絡ください。` +
+      (onsite ? `<br>※お申し込み後のキャンセルには、当日払いの方もキャンセル料(エントリー料と同額)がかかります。` : '') +
+      `<div style="margin-top:14px;font-family:${MINCHO};font-size:13px;letter-spacing:0.2em;color:#bfb3a2;text-align:center;">BOOM DANCE SCHOOL</div>` +
+      `</td></tr>`
+  );
+
+  return (
+    `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>${esc(ev.title)}</title></head>` +
+    `<body style="margin:0;padding:0;background:${NIGHT};">` +
+    `<table ${T} style="background:${NIGHT};"><tr><td align="center" style="padding:0;">` +
+    `<table ${T} style="max-width:480px;background:${BOARD};">` +
+    parts.join('') +
+    `</table></td></tr></table></body></html>`
+  );
 }
