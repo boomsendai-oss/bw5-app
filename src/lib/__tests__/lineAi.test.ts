@@ -3,6 +3,8 @@ import { createHmac } from 'node:crypto';
 
 const groups = new Map<string, string>();
 const jobs: unknown[][] = [];
+const saved: unknown[][] = [];
+const deletes: unknown[][] = [];
 vi.mock('@/lib/db', () => ({
   execute: vi.fn(async (sql: string, args: unknown[]) => {
     if (sql.includes('INSERT') && sql.includes('line_ai_groups')) {
@@ -11,6 +13,8 @@ vi.mock('@/lib/db', () => ({
       return { rowsAffected: 1 };
     }
     if (sql.includes("status = 'left'")) { groups.set(String(args[1]), 'left'); return { rowsAffected: 1 }; }
+    if (sql.includes('INSERT') && sql.includes('line_ai_messages')) { saved.push(args); return { rowsAffected: 1 }; }
+    if (sql.includes('DELETE FROM line_ai_messages')) { deletes.push(args); return { rowsAffected: 0 }; }
     if (sql.includes('line_ai_files')) { jobs.push(['file', ...args]); return { rowsAffected: 1 }; }
     if (sql.includes('line_ai_jobs')) {
       if (jobs.some((j) => j[0] && j[0] === args[0])) return { rowsAffected: 0 };
@@ -24,7 +28,7 @@ vi.mock('@/lib/db', () => ({
   }),
 }));
 
-import { verifySignature, requestText, handleEvent, isSmallTalk, ACK_TEXT, PENDING_TEXT, NOT_APPROVED_TEXT, THANKS_TEXT } from '@/lib/lineAi';
+import { verifySignature, requestText, handleEvent, isSmallTalk, maskPersonal, KEEP_COUNT, ACK_TEXT, PENDING_TEXT, NOT_APPROVED_TEXT, THANKS_TEXT } from '@/lib/lineAi';
 
 const g = (id = 'G1') => ({ type: 'group' as const, groupId: id, userId: 'U1' });
 const msg = (text: string, mentionees: object[] = [], id = 'e1') => ({
@@ -33,7 +37,7 @@ const msg = (text: string, mentionees: object[] = [], id = 'e1') => ({
 });
 
 describe('lineAi', () => {
-  beforeEach(() => { groups.clear(); jobs.length = 0; });
+  beforeEach(() => { groups.clear(); jobs.length = 0; saved.length = 0; deletes.length = 0; });
 
   it('署名を確かめる', () => {
     const body = '{"events":[]}';
@@ -81,6 +85,30 @@ describe('lineAi', () => {
     expect(await handleEvent(m as never, async (_t, s) => { replies.push(s); })).toBe('thanks');
     expect(replies).toEqual([THANKS_TEXT]);
     expect(jobs.length).toBe(0);
+  });
+
+  it('承認済みのグループの会話だけ残し、依頼も話し手つきで残す', async () => {
+    const plain = { type: 'message', source: g('G3'), message: { id: 'm1', type: 'text', text: 'はるきです。予選は3人で' } };
+    expect(await handleEvent(plain as never, async () => {})).toBe('skip:メンションなし');
+    expect(saved.length).toBe(0);
+    groups.set('G3', 'approved');
+    expect(await handleEvent(plain as never, async () => {})).toBe('saved');
+    expect(saved[0].slice(0, 6)).toEqual(['m1', 'G3', 'U1', 'user', 'はるきです。予選は3人で', null]);
+    expect(deletes[0][0]).toBe('G3');
+    expect(deletes[0][3]).toBe(KEEP_COUNT);
+    const req = { type: 'message', webhookEventId: 'e9', replyToken: 'r', source: g('G3'),
+      message: { id: 'm2', type: 'text', text: '@BOOM AI 案2で画像を', quotedMessageId: 'm0',
+        mention: { mentionees: [{ index: 0, length: 8, isSelf: true }] } } };
+    expect(await handleEvent(req as never, async () => {})).toBe('queued');
+    expect(saved[1].slice(0, 6)).toEqual(['m2', 'G3', 'U1', 'request', '案2で画像を', 'm0']);
+    const job = jobs[jobs.length - 1];
+    expect(job.slice(-2)).toEqual(['m2', 'm0']);   // 依頼の1通と引用元
+  });
+
+  it('電話番号・メールを伏せる', () => {
+    expect(maskPersonal('連絡は090-1234-5678か taro.x+1@example.co.jp へ')).toBe('連絡は[電話番号]か [メール] へ');
+    expect(maskPersonal('022(123)4567 / 09012345678 / +81 90-1234-5678')).toBe('[電話番号] / [電話番号] / [電話番号]');
+    for (const t of ['2026-11-21 14:00', '参加費3000円', '〒980-0021', '予選は16人']) expect(maskPersonal(t)).toBe(t);
   });
 
   it('1対1は何もしない', async () => {

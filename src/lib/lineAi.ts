@@ -7,6 +7,8 @@
 //     承認は M5 の作業係（worker.py approve）だけ。承認されないまま24時間たつと作業係が退出させる。
 //   - グループでは「@BOOM AI」とメンションされた書き込みだけを依頼として受け付ける。
 //   - すぐ返す「受け付けました」は reply（通数に数えない）。結果は作業係が push（通数に数える）。
+//   - 承認済みのグループの文字メッセージは line_ai_messages に残す（2026-11-21）。依頼のたびに作業係が
+//     「最近の会話」としてAIへ渡す。グループごとに直近48時間・最大50件。電話番号・メールらしき文字は伏せる。
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { execute, getAll } from '@/lib/db';
 
@@ -21,6 +23,7 @@ export type LineEvent = {
     type: string;
     text?: string;
     fileName?: string;
+    quotedMessageId?: string;
     mention?: { mentionees?: { index: number; length: number; isSelf?: boolean; type?: string }[] };
   };
 };
@@ -31,6 +34,35 @@ export const PENDING_TEXT =
 export const NOT_APPROVED_TEXT = 'このグループはまだ承認されていないので、依頼を受け付けられません。';
 export const MAX_TEXT = 2000;
 export const THANKS_TEXT = 'どういたしまして🤖';
+export const KEEP_HOURS = 48;
+export const KEEP_COUNT = 50;
+
+/** 電話番号・メールアドレスらしき文字を伏せる（保存の前に必ず通す） */
+export function maskPersonal(text: string): string {
+  return text
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g, '[メール]')
+    .replace(/(?:\+81[-\s]?[0-9]{1,4}|(?<![0-9])0[0-9]{1,4})(?:[-()（）ー－]{0,2}[0-9]{1,4}){1,3}(?![0-9])/g, (m) => {
+      const n = m.replace(/[^0-9]/g, '').length;
+      return n >= 10 && n <= 12 ? '[電話番号]' : m;
+    });
+}
+
+/** 承認済みのグループの文字メッセージを残し、そのグループの古いもの（48時間・50件を超えた分）を消す */
+export async function saveMessage(groupId: string, ev: LineEvent, role: 'user' | 'request', text: string): Promise<void> {
+  const now = new Date();
+  await execute(
+    `INSERT OR IGNORE INTO line_ai_messages (message_id, group_id, user_id, role, text, quoted_message_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [ev.message?.id || null, groupId, ev.source?.userId || null, role, maskPersonal(text).slice(0, MAX_TEXT),
+      ev.message?.quotedMessageId || null, now.toISOString()],
+  );
+  const cutoff = new Date(now.getTime() - KEEP_HOURS * 3600_000).toISOString();
+  await execute(
+    `DELETE FROM line_ai_messages WHERE group_id = ? AND (created_at < ? OR id NOT IN
+       (SELECT id FROM line_ai_messages WHERE group_id = ? ORDER BY id DESC LIMIT ?))`,
+    [groupId, cutoff, groupId, KEEP_COUNT],
+  );
+}
 
 /** 「OK」「ありがとう」などの短いお礼・あいづち（依頼ではない）。返事だけして作業はしない */
 export function isSmallTalk(text: string): boolean {
@@ -147,9 +179,18 @@ export async function handleEvent(ev: LineEvent, replyFn = reply): Promise<strin
     );
     return 'file';
   }
+  if (mt !== 'text' || !ev.message?.text) return 'skip:種類';
   const text = requestText(ev);
-  if (!text) return 'skip:メンションなし';
   const g = await getAll('SELECT status FROM line_ai_groups WHERE group_id = ?', [chat.id]);
+  if (g[0]?.status === 'approved') {
+    // 普通の会話も依頼も「最近の会話」として残す（失敗しても依頼の受付は止めない）
+    try {
+      await saveMessage(chat.id, ev, text ? 'request' : 'user', text || ev.message.text);
+    } catch (e) {
+      console.error(`line-ai 会話の保存に失敗: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  if (!text) return g[0]?.status === 'approved' ? 'saved' : 'skip:メンションなし';
   if (g[0]?.status !== 'approved') {
     if (!g.length) {
       await execute(
@@ -165,8 +206,10 @@ export async function handleEvent(ev: LineEvent, replyFn = reply): Promise<strin
     return 'thanks';
   }
   const r = await execute(
-    `INSERT OR IGNORE INTO line_ai_jobs (event_id, group_id, user_id, text, status, created_at) VALUES (?, ?, ?, ?, 'queued', ?)`,
-    [ev.webhookEventId || null, chat.id, ev.source?.userId || null, text, nowIso()],
+    `INSERT OR IGNORE INTO line_ai_jobs (event_id, group_id, user_id, text, status, created_at, message_id, quoted_message_id)
+     VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)`,
+    [ev.webhookEventId || null, chat.id, ev.source?.userId || null, text, nowIso(),
+      ev.message?.id || null, ev.message?.quotedMessageId || null],
   );
   if (r.rowsAffected && ev.replyToken) await replyFn(ev.replyToken, ACK_TEXT);
   return r.rowsAffected ? 'queued' : 'dup';
