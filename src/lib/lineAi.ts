@@ -8,7 +8,7 @@
 //   - グループでは「@BOOM AI」とメンションされた書き込みだけを依頼として受け付ける。
 //   - すぐ返す「受け付けました」は reply（通数に数えない）。結果は作業係が push（通数に数える）。
 //   - 承認済みのグループの文字メッセージは line_ai_messages に残す（2026-11-21）。依頼のたびに作業係が
-//     「最近の会話」としてAIへ渡す。グループごとに直近48時間・最大50件。電話番号・メールらしき文字は伏せる。
+//     「最近の会話」としてAIへ渡す。グループごとに直近30日・最大1000件。電話番号・メールらしき文字は伏せる。
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { execute, getAll } from '@/lib/db';
 
@@ -34,8 +34,8 @@ export const PENDING_TEXT =
 export const NOT_APPROVED_TEXT = 'このグループはまだ承認されていないので、依頼を受け付けられません。';
 export const MAX_TEXT = 2000;
 export const THANKS_TEXT = 'どういたしまして🤖';
-export const KEEP_HOURS = 48;
-export const KEEP_COUNT = 50;
+export const KEEP_DAYS = 30;
+export const KEEP_COUNT = 1000;
 
 /** 電話番号・メールアドレスらしき文字を伏せる（保存の前に必ず通す） */
 export function maskPersonal(text: string): string {
@@ -47,7 +47,7 @@ export function maskPersonal(text: string): string {
     });
 }
 
-/** 承認済みのグループの文字メッセージを残し、そのグループの古いもの（48時間・50件を超えた分）を消す */
+/** 承認済みのグループの文字メッセージを残し、そのグループの古いもの（30日・1000件を超えた分）を消す */
 export async function saveMessage(groupId: string, ev: LineEvent, role: 'user' | 'request', text: string): Promise<void> {
   const now = new Date();
   await execute(
@@ -56,7 +56,7 @@ export async function saveMessage(groupId: string, ev: LineEvent, role: 'user' |
     [ev.message?.id || null, groupId, ev.source?.userId || null, role, maskPersonal(text).slice(0, MAX_TEXT),
       ev.message?.quotedMessageId || null, now.toISOString()],
   );
-  const cutoff = new Date(now.getTime() - KEEP_HOURS * 3600_000).toISOString();
+  const cutoff = new Date(now.getTime() - KEEP_DAYS * 86400_000).toISOString();
   await execute(
     `DELETE FROM line_ai_messages WHERE group_id = ? AND (created_at < ? OR id NOT IN
        (SELECT id FROM line_ai_messages WHERE group_id = ? ORDER BY id DESC LIMIT ?))`,
