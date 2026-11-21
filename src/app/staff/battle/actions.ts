@@ -58,6 +58,7 @@ export async function saveBattleEventSettings(fd: FormData): Promise<void> {
 
   await updateBattleEvent(eventKey, {
     title: str(fd, 'title', 100) || cur.title,
+    roundNo: fd.get('round_no') == null ? cur.roundNo : int(fd, 'round_no'),
     subtitle: str(fd, 'subtitle', 200),
     description: str(fd, 'description'),
     eventDate: isIsoDate(eventDate) ? eventDate : cur.eventDate,

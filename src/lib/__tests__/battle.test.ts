@@ -9,6 +9,8 @@ import {
   formatBattleReceiptNo,
   isAgeEligible,
   needsGuardian,
+  nextRoundTitle,
+  roundKanji,
   nowJstMinute,
   parseBattleAge,
   entryAge,
@@ -31,7 +33,7 @@ beforeAll(async () => {
   db = await import('../battleDb');
   await core.initDb();
   // rate_limits など他の表は要らない。この機能のマイグレーションだけ流す(migrate.mjs と同じ分け方)
-  for (const f of ['20261119_battle_tables.sql', '20261119_battle_tables_2_cast.sql', '20261121_battle_entries_age.sql', '20261121_battle_entries_receipt_seq.sql']) {
+  for (const f of ['20261119_battle_tables.sql', '20261119_battle_tables_2_cast.sql', '20261121_battle_entries_age.sql', '20261121_battle_entries_receipt_seq.sql', '20261121_battle_events_round_no.sql']) {
     const sql = readFileSync(`scripts/migrations/${f}`, 'utf8');
     for (const stmt of sql.split(/;\s*$/m).map((s) => s.trim()).filter(Boolean)) await core.execute(stmt);
   }
@@ -40,7 +42,7 @@ beforeAll(async () => {
 const U12 = { key: 'u12', name: 'U12', note: '', capacity: 2, maxAge: 12 };
 const OPEN = { key: 'open', name: 'ALL AGE', note: '', capacity: 16, maxAge: null };
 const EV: BattleEvent = {
-  eventKey: '2026-12-26', title: 'テスト', subtitle: '', description: '', eventDate: '2026-12-26',
+  eventKey: '2026-12-26', roundNo: 1, title: 'テスト', subtitle: '', description: '', eventDate: '2026-12-26',
   openTime: '14:00', startTime: '14:40', endTime: '18:00', venue: 'V', venueAddress: '', moveSeconds: 45,
   divisions: [U12, OPEN], entryFee: 2000, entryFeeLate: 2500, lateFeeFrom: '2026-12-25T18:00',
   spectatorFee: 1000, spectatorNote: '', entryDeadline: '2026-12-25T18:00', entryOpen: true, rules: '', cancelPolicy: '', cast: [],
@@ -156,18 +158,29 @@ describe('Stripe・メール', () => {
     expect(parseBattleWebhookEvent({ id: 'evt', type: 'checkout.session.completed', data: { object: { metadata: { order_id: '3' } } } })).toBeNull();
     expect(parseBattleWebhookEvent({ id: 'evt', type: 'checkout.session.completed', data: { object: { id: 'cs', metadata: { battle_entry_id: '3' } } } })?.entryId).toBe(3);
   });
-  it('受付番号は No.001 の形(確定前は番号なし・テストは「テスト」)', () => {
-    expect(formatBattleReceiptNo({ receiptSeq: 3 })).toBe('No.003');
-    expect(formatBattleReceiptNo({ receiptSeq: null, paymentStatus: 'pending' })).toBe('—');
-    expect(formatBattleReceiptNo({ receiptSeq: null, paymentStatus: 'test' })).toBe('テスト');
+  it('受付番号は BD01-001 の形(BD=BOOM DOJO・回・回の中の連番)。確定前は番号なし・テストは「テスト」', () => {
+    expect(formatBattleReceiptNo({ receiptSeq: 3 }, 1)).toBe('BD01-003');
+    expect(formatBattleReceiptNo({ receiptSeq: 12 }, 2)).toBe('BD02-012');
+    expect(formatBattleReceiptNo({ receiptSeq: 1 }, 0)).toBe('BD00-001');
+    expect(formatBattleReceiptNo({ receiptSeq: null, paymentStatus: 'pending' }, 1)).toBe('—');
+    expect(formatBattleReceiptNo({ receiptSeq: null, paymentStatus: 'test' }, 1)).toBe('テスト');
+  });
+  it('回の漢数字と、新しい回のタイトル', () => {
+    expect(roundKanji(1)).toBe('一');
+    expect(roundKanji(10)).toBe('十');
+    expect(roundKanji(12)).toBe('十二');
+    expect(roundKanji(21)).toBe('二十一');
+    expect(nextRoundTitle('BOOM DOJO 其の一', 2)).toBe('BOOM DOJO 其の二');
+    expect(nextRoundTitle('BOOM DOJO 其の九', 10)).toBe('BOOM DOJO 其の十');
+    expect(nextRoundTitle('【テスト】BOOM DOJO', 2)).toBe('【テスト】BOOM DOJO');
   });
   it('確定メールに受付番号・バトルエントリーと観覧チケットの見出し・合計・支払い方法が入る', () => {
     const m = buildBattleConfirmEmail(
       { receiptSeq: 3, dancerName: 'TARO', dancerKana: 'たろー', divisions: ['u12', 'open'], spectators: 2, spectatorsPreschool: 1, entryUnit: 2000, spectatorUnit: 1000, amountTotal: 6000, paymentStatus: 'paid', stripeSessionId: 'cs_1' },
       EV, { completeUrl: 'https://x/c', entriesUrl: 'https://x/e' }
     );
-    expect(m.subject).toContain('No.003');
-    expect(m.subject).not.toContain('BT');
+    expect(m.subject).toContain('BD01-003');
+    expect(m.subject).not.toContain('No.');
     expect(m.text).toContain('■ バトルエントリー\n  U12  ¥2,000\n  ALL AGE  ¥2,000');
     expect(m.text).toContain('■ 観覧チケット\n  小学生以上 2名  ¥1,000 × 2 = ¥2,000\n  未就学児 1名  無料');
     expect(m.text).toContain('■ 合計  ¥6,000');
@@ -198,6 +211,7 @@ describe('申込→決済確定(実DB)', () => {
     expect(ev?.divisions.map((d) => d.key)).toEqual(['u12', 'open']);
     expect(ev?.entryOpen).toBe(false);
     expect(ev?.entryDeadline).toBe('2026-12-25T18:00');
+    expect(ev?.roundNo).toBe(1);
   });
 
   it('仮押さえ→Webhookで確定、再送は何もしない、公開一覧に本名を出さない', async () => {
@@ -240,6 +254,9 @@ describe('申込→決済確定(実DB)', () => {
     const next = await db.getBattleEvent('2027-01-30');
     expect(next?.entryDeadline).toBe('2027-01-29T18:00');
     expect(next?.entryOpen).toBe(false);
+    // 第1回(其の一)のコピーは第2回(其の二)
+    expect(next?.roundNo).toBe(2);
+    expect(next?.title).toContain('其の二');
     expect(next?.divisions).toHaveLength(2);
     expect(await db.createBattleEventFrom('2026-12-26', '2027-01-30')).toBe(false);
   });

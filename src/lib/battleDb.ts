@@ -13,6 +13,7 @@ import { generateEditToken } from '@/lib/eventSignup';
 import {
   BATTLE_HOLD_MINUTES,
   calcBattleAmount,
+  nextRoundTitle,
   parseBattleCast,
   parseBattleDivisions,
   parseDivisionKeys,
@@ -29,6 +30,7 @@ function nowIso(): string {
 function rowToEvent(r: any): BattleEvent {
   return {
     eventKey: String(r.event_key),
+    roundNo: Number(r.round_no) || 0,
     title: String(r.title ?? ''),
     subtitle: String(r.subtitle ?? ''),
     description: String(r.description ?? ''),
@@ -79,12 +81,12 @@ export async function updateBattleEvent(eventKey: string, ev: Omit<BattleEvent, 
   await execute(
     `UPDATE battle_events SET title = ?, subtitle = ?, description = ?, event_date = ?, open_time = ?, start_time = ?, end_time = ?,
        venue = ?, venue_address = ?, move_seconds = ?, divisions = ?, entry_fee = ?, entry_fee_late = ?, late_fee_from = ?,
-       spectator_fee = ?, spectator_note = ?, entry_deadline = ?, entry_open = ?, rules = ?, cancel_policy = ?, cast_json = ?, updated_at = ?
+       spectator_fee = ?, spectator_note = ?, entry_deadline = ?, entry_open = ?, rules = ?, cancel_policy = ?, cast_json = ?, round_no = ?, updated_at = ?
      WHERE event_key = ?`,
     [
       ev.title, ev.subtitle, ev.description, ev.eventDate, ev.openTime, ev.startTime, ev.endTime,
       ev.venue, ev.venueAddress, ev.moveSeconds, JSON.stringify(ev.divisions), ev.entryFee, ev.entryFeeLate, ev.lateFeeFrom,
-      ev.spectatorFee, ev.spectatorNote, ev.entryDeadline, ev.entryOpen ? 1 : 0, ev.rules, ev.cancelPolicy, JSON.stringify(ev.cast), nowIso(), eventKey,
+      ev.spectatorFee, ev.spectatorNote, ev.entryDeadline, ev.entryOpen ? 1 : 0, ev.rules, ev.cancelPolicy, JSON.stringify(ev.cast), Math.max(0, Math.floor(ev.roundNo) || 0), nowIso(), eventKey,
     ]
   );
 }
@@ -99,6 +101,7 @@ export function previousDay1800(eventDate: string): string {
 
 /**
  * 新しい回を作る。中身は元の回をコピーし、日付・締切だけ新しい開催日に合わせる。受付は「閉」で作る。
+ * 回の番号は元の回+1(元が0=番号なしなら0のまま)。タイトルの「其の一」も次の回の漢数字に書き換える。
  * 同じ event_key が既にあれば何もしない(false)。
  */
 export async function createBattleEventFrom(srcKey: string, newDate: string): Promise<boolean> {
@@ -106,13 +109,14 @@ export async function createBattleEventFrom(srcKey: string, newDate: string): Pr
   if (!src) return false;
   const deadline = previousDay1800(newDate);
   const now = nowIso();
+  const round = src.roundNo > 0 ? src.roundNo + 1 : 0;
   const r = await execute(
-    `INSERT OR IGNORE INTO battle_events (event_key, title, subtitle, description, event_date, open_time, start_time, end_time,
+    `INSERT OR IGNORE INTO battle_events (event_key, round_no, title, subtitle, description, event_date, open_time, start_time, end_time,
        venue, venue_address, move_seconds, divisions, entry_fee, entry_fee_late, late_fee_from, spectator_fee, spectator_note,
        entry_deadline, entry_open, rules, cancel_policy, cast_json, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
     [
-      newDate, src.title, src.subtitle, src.description, newDate, src.openTime, src.startTime, src.endTime,
+      newDate, round, round > 0 ? nextRoundTitle(src.title, round) : src.title, src.subtitle, src.description, newDate, src.openTime, src.startTime, src.endTime,
       src.venue, src.venueAddress, src.moveSeconds, JSON.stringify(src.divisions), src.entryFee, src.entryFeeLate, deadline,
       src.spectatorFee, src.spectatorNote, deadline, src.rules, src.cancelPolicy,
       // 出演者は毎回変わるので、役割だけ引き継いで名前は空・未発表にする

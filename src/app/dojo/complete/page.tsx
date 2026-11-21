@@ -44,7 +44,7 @@ export default async function BattleCompletePage({ searchParams }: { searchParam
           <div className="relative rounded-md bg-[#efe4cf] p-5 text-center text-[#1d140c] shadow-[0_6px_20px_rgba(0,0,0,0.5)]">
             {(st === 'paid' || st === 'onsite') && <Hanko>確定</Hanko>}
             <p className="text-xs font-bold tracking-widest text-[#7a2a1c]">受付番号</p>
-            <p className="f-num mt-1 text-4xl font-bold">{formatBattleReceiptNo(entry)}</p>
+            <p className="f-num mt-1 text-4xl font-bold">{formatBattleReceiptNo(entry, ev.roundNo)}</p>
             {st === 'paid' && <p className="mt-2 text-sm font-bold">お支払い済み: {yen(entry.amountTotal)}</p>}
             {st === 'onsite' && (
               <p className="mt-2 text-sm font-bold">当日、受付で現金でお支払いください: {yen(entry.amountTotal)}</p>

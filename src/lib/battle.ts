@@ -53,6 +53,8 @@ export function parseBattleCast(raw: unknown): BattleCast[] {
 
 export interface BattleEvent {
   eventKey: string;
+  /** 第何回か(其の一=1・其の二=2…)。受付番号 BD01-001 の 01。0=回の番号なし(テスト回など) */
+  roundNo: number;
   title: string;
   subtitle: string;
   description: string;
@@ -307,13 +309,30 @@ export function validateBattleEntry(
 }
 
 /**
- * 受付番号の表記(例 No.003)。その回の中の連番(receipt_seq・確定した順)。
+ * 受付番号の表記(例 BD01-003)。BD=BOOM DOJO・01=第何回(battle_events.round_no)・003=その回の確定した順(receipt_seq)。
  * 確定前(決済待ち・期限切れ)は番号が無いので「—」。スタッフの確認用テストは「テスト」。
  */
-export function formatBattleReceiptNo(e: { receiptSeq: number | null; paymentStatus?: string }): string {
-  if (e.receiptSeq != null && e.receiptSeq > 0) return `No.${String(e.receiptSeq).padStart(3, '0')}`;
+export function formatBattleReceiptNo(e: { receiptSeq: number | null; paymentStatus?: string }, roundNo: number): string {
+  if (e.receiptSeq != null && e.receiptSeq > 0) {
+    return `BD${String(Math.max(0, roundNo || 0)).padStart(2, '0')}-${String(e.receiptSeq).padStart(3, '0')}`;
+  }
   if (e.paymentStatus === 'test') return 'テスト';
   return '—';
+}
+
+const KANJI_DIGITS = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+
+/** 回の番号を漢数字に(1→一・10→十・12→十二・21→二十一)。1〜99。 */
+export function roundKanji(n: number): string {
+  if (!Number.isInteger(n) || n < 1 || n > 99) return String(n);
+  const t = Math.floor(n / 10);
+  const o = n % 10;
+  return `${t === 0 ? '' : t === 1 ? '十' : `${KANJI_DIGITS[t]}十`}${KANJI_DIGITS[o]}`;
+}
+
+/** 新しい回のタイトル: 「其の一」を次の回の「其の二」に書き換える(其のN が無ければそのまま)。 */
+export function nextRoundTitle(title: string, nextRound: number): string {
+  return title.replace(/其の[一二三四五六七八九十]+/, `其の${roundKanji(nextRound)}`);
 }
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -409,7 +428,7 @@ export function buildBattleConfirmEmail(
   ev: BattleEvent,
   links: { completeUrl: string; entriesUrl: string }
 ): { subject: string; text: string } {
-  const receiptNo = formatBattleReceiptNo(e);
+  const receiptNo = formatBattleReceiptNo(e, ev.roundNo);
   const sum = buildBattleSummary(e, ev);
   const onsite = e.paymentStatus === 'onsite';
   const lines: string[] = [];

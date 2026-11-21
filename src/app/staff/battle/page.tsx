@@ -122,7 +122,7 @@ export default async function StaffBattlePage({
               <tbody>
                 {entries.map((x) => (
                   <tr key={x.entryId} className={`border-t border-sand-200 align-top text-navy-900 ${x.paymentStatus === 'paid' || x.paymentStatus === 'onsite' ? '' : 'opacity-60'}`}>
-                    <td className="px-3 py-2 font-bold tabular-nums">{formatBattleReceiptNo(x)}</td>
+                    <td className="px-3 py-2 font-bold tabular-nums">{formatBattleReceiptNo(x, ev.roundNo)}</td>
                     <td className="px-3 py-2">
                       <span className={`rounded px-1.5 py-0.5 text-xs font-bold ${x.paymentStatus === 'paid' ? 'bg-brand-100 text-brand-800' : x.paymentStatus === 'onsite' ? 'bg-red-100 text-red-800' : x.paymentStatus === 'test' ? 'bg-amber-100 text-amber-800' : 'bg-neutral-100 text-neutral-600'}`}>
                         {BATTLE_STATUS_LABEL[x.paymentStatus] ?? x.paymentStatus}
@@ -168,6 +168,7 @@ export default async function StaffBattlePage({
             <Grid>
               <F label="イベント名"><input name="title" defaultValue={ev.title} className={inputCls} /></F>
               <F label="サブタイトル"><input name="subtitle" defaultValue={ev.subtitle} className={inputCls} /></F>
+              <F label="第何回か(受付番号 BD01-001 の 01。テスト回は0)"><input type="number" min={0} name="round_no" defaultValue={ev.roundNo} className={inputCls} /></F>
             </Grid>
             <F label="説明文"><textarea name="description" defaultValue={ev.description} rows={3} className={inputCls} /></F>
             <Grid>
