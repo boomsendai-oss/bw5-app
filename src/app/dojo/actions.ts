@@ -3,7 +3,7 @@
 // ⚠️ 公開Server Actions(認証なし)。理由: 月1回の校内プチバトルは会員以外も申し込める公開イベントで、
 // /dojo の公開フォームが叩くため(BF7の order-actions.ts と同じ)。
 // - 送信はIP単位のレート制限。金額は必ずサーバ側で再計算する(クライアント申告額は使わない)
-// - 本名・電話・メール・生年月日を返す公開経路は作らない。個別閲覧は edit_token 完全一致の1件のみ
+// - 本名・電話・メール・年齢を返す公開経路は作らない。個別閲覧は edit_token 完全一致の1件のみ
 // - 確認用モード: 受付していない間でも、スタッフのログイン中(isAuthorizedServer=サーバ側で検証)なら
 //   申込を通す。ただし「テスト」として保存し、決済しない・定員と公開一覧に数えない
 import { headers } from 'next/headers';
@@ -40,7 +40,7 @@ export async function submitBattleEntry(eventKey: string, input: Partial<BattleE
   const staffTest = Boolean(gateError) && (await isAuthorizedServer());
   if (gateError && !staffTest) return { ok: false, error: gateError };
 
-  const v = validateBattleEntry(input, ev, now.slice(0, 10));
+  const v = validateBattleEntry(input, ev);
   if (typeof v === 'string') return { ok: false, error: v };
 
   const created = await createBattleEntry(ev, v, now, { test: staffTest });

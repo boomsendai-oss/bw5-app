@@ -125,7 +125,7 @@ export function parseDivisionKeys(raw: unknown): string[] {
   }
 }
 
-/** 基準日(YYYY-MM-DD)時点の満年齢。生年月日が不正なら null。 */
+/** 基準日(YYYY-MM-DD)時点の満年齢。生年月日が不正なら null。2026-11-21以前の申込(生年月日で受けていた分)の表示用。 */
 export function ageOn(birthdate: string, onDate: string): number | null {
   const b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthdate);
   const o = /^(\d{4})-(\d{2})-(\d{2})$/.exec(onDate);
@@ -138,17 +138,36 @@ export function ageOn(birthdate: string, onDate: string): number | null {
   return age;
 }
 
-/** 部門に出られる年齢か(開催日時点の満年齢で判定)。 */
-export function isAgeEligible(div: BattleDivision, birthdate: string, eventDate: string): boolean {
+export const BATTLE_MIN_AGE = 3;
+export const BATTLE_MAX_AGE = 100;
+
+/** 入力された「開催日の年齢」を整数に。空・数字でない・範囲外は null。全角数字も受ける。 */
+export function parseBattleAge(raw: unknown): number | null {
+  const s = String(raw ?? '')
+    .trim()
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/歳$/, '')
+    .trim();
+  if (!/^\d{1,3}$/.test(s)) return null;
+  const n = Number(s);
+  return n >= BATTLE_MIN_AGE && n <= BATTLE_MAX_AGE ? n : null;
+}
+
+/** 部門に出られる年齢か(開催日の年齢=申込者が入力した数字で判定)。 */
+export function isAgeEligible(div: BattleDivision, age: number | null): boolean {
   if (div.maxAge == null) return true;
-  const age = ageOn(birthdate, eventDate);
   return age != null && age >= 0 && age <= div.maxAge;
 }
 
-/** 申込時点で18歳未満か(保護者の同意が要るか)。 */
-export function needsGuardian(birthdate: string, today: string): boolean {
-  const age = ageOn(birthdate, today);
+/** 18歳未満か(保護者の同意が要るか)。開催日の年齢で判定する(TARO 2026-11-21)。 */
+export function needsGuardian(age: number | null): boolean {
   return age != null && age < 18;
+}
+
+/** 申込の「開催日の年齢」。新しい申込は age 列、2026-11-21以前の申込は生年月日から出す。 */
+export function entryAge(e: { age: number | null; birthdate: string }, eventDate: string): number | null {
+  if (e.age != null) return e.age;
+  return e.birthdate ? ageOn(e.birthdate, eventDate) : null;
 }
 
 /** その時点のエントリー料(1部門あたり)。 */
@@ -198,7 +217,8 @@ export interface BattleEntryInput {
   dancerName: string;
   dancerKana: string;
   realName: string;
-  birthdate: string;
+  /** 開催日の年齢(申込者が数字で入力)。生年月日はもう聞かない(TARO 2026-11-21) */
+  age: number | null;
   rep: string;
   genre: string;
   phone: string;
@@ -231,15 +251,18 @@ function toCount(v: unknown): number {
 
 /**
  * 入力チェック(サーバ側で必ず通す)。OKなら整えた値、NGならエラー文。
- * today=申込日(JST)。18歳未満の判定に使う。部門の年齢判定は開催日で行う。
+ * 年齢は「開催日の年齢」の数字。部門の年齢判定・保護者の同意の要否はこの数字で行う。
  */
-export function validateBattleEntry(raw: Partial<BattleEntryInput>, ev: BattleEvent, today: string): ValidatedBattleEntry | string {
+export function validateBattleEntry(
+  raw: Partial<Omit<BattleEntryInput, 'age'>> & { age?: unknown },
+  ev: BattleEvent
+): ValidatedBattleEntry | string {
   const v: BattleEntryInput = {
     email: clean(raw.email),
     dancerName: clean(raw.dancerName, 40),
     dancerKana: clean(raw.dancerKana, 60),
     realName: clean(raw.realName, 60),
-    birthdate: clean(raw.birthdate, 10),
+    age: parseBattleAge(raw.age),
     rep: clean(raw.rep, 60),
     genre: clean(raw.genre, 40),
     phone: clean(raw.phone, 20),
@@ -258,9 +281,7 @@ export function validateBattleEntry(raw: Partial<BattleEntryInput>, ev: BattleEv
   if (!v.dancerName) return 'ダンサー名を入力してください';
   if (!v.dancerKana) return 'ダンサー名のよみがなを入力してください';
   if (!v.realName) return '本名を入力してください';
-  if (ageOn(v.birthdate, today) == null) return '生年月日を正しく入力してください';
-  const age = ageOn(v.birthdate, today)!;
-  if (age < 3 || age > 100) return '生年月日を正しく入力してください';
+  if (v.age == null) return '開催日の年齢を数字で入力してください(例: 11)';
   if (!v.rep) return '所属(レペゼン)を入力してください';
   if (!v.genre) return 'ジャンルを入力してください';
   if (!v.phone || !isValidBf6Phone(v.phone)) return '電話番号は数字10〜11桁で入力してください';
@@ -268,12 +289,12 @@ export function validateBattleEntry(raw: Partial<BattleEntryInput>, ev: BattleEv
   for (const key of v.divisions) {
     const div = ev.divisions.find((d) => d.key === key);
     if (!div) return '部門の選び方が正しくありません。ページを読み込み直してください';
-    if (!isAgeEligible(div, v.birthdate, ev.eventDate)) {
+    if (!isAgeEligible(div, v.age)) {
       return `${div.name}は開催日に${div.maxAge}歳以下の方のみです`;
     }
   }
   if (!v.noWinConfirmed) return '「優勝未経験」の確認にチェックしてください';
-  if (needsGuardian(v.birthdate, today)) {
+  if (needsGuardian(v.age)) {
     if (!v.guardianName) return '18歳未満の方は保護者の方のお名前を入力してください';
     if (!v.guardianConsent) return '18歳未満の方は保護者の方の同意にチェックしてください';
   } else {
@@ -285,10 +306,14 @@ export function validateBattleEntry(raw: Partial<BattleEntryInput>, ev: BattleEv
   return v;
 }
 
-/** 受付番号の表記(例 BT1226-003)。回ごとに分かるよう開催月日を入れる。 */
-export function formatBattleReceiptNo(entryId: number, eventKey: string): string {
-  const md = eventKey.replace(/^\d{4}-(\d{2})-(\d{2}).*$/, '$1$2');
-  return `BT${md}-${String(entryId).padStart(3, '0')}`;
+/**
+ * 受付番号の表記(例 No.003)。その回の中の連番(receipt_seq・確定した順)。
+ * 確定前(決済待ち・期限切れ)は番号が無いので「—」。スタッフの確認用テストは「テスト」。
+ */
+export function formatBattleReceiptNo(e: { receiptSeq: number | null; paymentStatus?: string }): string {
+  if (e.receiptSeq != null && e.receiptSeq > 0) return `No.${String(e.receiptSeq).padStart(3, '0')}`;
+  if (e.paymentStatus === 'test') return 'テスト';
+  return '—';
 }
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -321,9 +346,50 @@ export const BATTLE_STATUS_LABEL: Record<string, string> = {
   test: 'テスト',
 };
 
+/** 申込内容の表示(完了画面・確定メール・確認画面で同じ並びにする)。 */
+export interface BattleSummary {
+  /** バトルエントリー: 出る部門ごとに1行 */
+  entries: { name: string; amount: number }[];
+  entryTotal: number;
+  /** 観覧チケット(小学生以上・未就学児)。どちらも0名なら空 */
+  tickets: { label: string; count: number; unit: number; amount: number }[];
+  ticketTotal: number;
+  total: number;
+}
+
+export function buildBattleSummary(
+  e: { divisions: string[]; spectators: number; spectatorsPreschool: number; entryUnit: number; spectatorUnit: number },
+  ev: Pick<BattleEvent, 'divisions'>
+): BattleSummary {
+  // 部門名の頭の「優勝未経験」は全部門共通なので明細では省く(例: 優勝未経験 U12 ALL STYLE 1on1 → U12 ALL STYLE 1on1)
+  const entries = e.divisions.map((k) => ({
+    name: (ev.divisions.find((d) => d.key === k)?.name ?? k).replace(/^優勝未経験\s*/, ''),
+    amount: e.entryUnit,
+  }));
+  const tickets: BattleSummary['tickets'] = [];
+  if (e.spectators > 0) tickets.push({ label: '小学生以上', count: e.spectators, unit: e.spectatorUnit, amount: e.spectators * e.spectatorUnit });
+  if (e.spectatorsPreschool > 0) tickets.push({ label: '未就学児', count: e.spectatorsPreschool, unit: 0, amount: 0 });
+  const entryTotal = entries.reduce((a, x) => a + x.amount, 0);
+  const ticketTotal = tickets.reduce((a, x) => a + x.amount, 0);
+  return { entries, entryTotal, tickets, ticketTotal, total: entryTotal + ticketTotal };
+}
+
+/** 支払い方法・状態のひとこと(完了画面・メールで使う)。 */
+export function battlePayLabel(e: { paymentStatus?: string; amountTotal: number; stripeSessionId?: string; note?: string }): string {
+  const st = e.paymentStatus ?? 'paid';
+  if (st === 'onsite') return '当日、受付で現金でお支払い(未払い)';
+  if (st === 'pending') return 'カード決済待ち';
+  if (st === 'test') return 'テスト申込(決済なし)';
+  if (st === 'paid') {
+    if (e.amountTotal === 0) return 'お支払いなし(無料)';
+    if (e.note?.includes('当日現金で受領')) return '当日現金でお支払い済み';
+    return 'カードでお支払い済み';
+  }
+  return BATTLE_STATUS_LABEL[st] ?? st;
+}
+
 export interface BattleMailEntry {
-  entryId: number;
-  eventKey: string;
+  receiptSeq: number | null;
   dancerName: string;
   dancerKana: string;
   divisions: string[];
@@ -333,31 +399,41 @@ export interface BattleMailEntry {
   spectatorUnit: number;
   amountTotal: number;
   paymentStatus?: string;
+  stripeSessionId?: string;
+  note?: string;
 }
 
-/** 確定メールの文面(Webhookで決済確定した瞬間に送る)。 */
+/** 確定メールの文面(Webhookで決済確定した瞬間・当日払いは申込直後に送る)。 */
 export function buildBattleConfirmEmail(
   e: BattleMailEntry,
   ev: BattleEvent,
   links: { completeUrl: string; entriesUrl: string }
 ): { subject: string; text: string } {
-  const receiptNo = formatBattleReceiptNo(e.entryId, e.eventKey);
-  const divNames = e.divisions.map((k) => ev.divisions.find((d) => d.key === k)?.name ?? k);
+  const receiptNo = formatBattleReceiptNo(e);
+  const sum = buildBattleSummary(e, ev);
+  const onsite = e.paymentStatus === 'onsite';
   const lines: string[] = [];
   lines.push(`${e.dancerName} 様`);
   lines.push('');
   lines.push(`${ev.title} へのエントリーありがとうございます。`);
-  const onsite = e.paymentStatus === 'onsite';
   lines.push(onsite ? 'エントリーが確定しました!(お支払いは当日会場で)' : 'お支払いが完了し、エントリーが確定しました!');
   lines.push('');
-  lines.push(`■ 受付番号: ${receiptNo}`);
-  lines.push(`■ ダンサー名: ${e.dancerName}(${e.dancerKana})`);
-  for (const n of divNames) lines.push(`■ 部門: ${n} — ${yen(e.entryUnit)}`);
-  if (e.spectators > 0) lines.push(`■ 同行の観覧 ${e.spectators}名 — ${yen(e.spectators * e.spectatorUnit)}`);
-  if (e.spectatorsPreschool > 0) lines.push(`■ 同行の観覧(未就学児) ${e.spectatorsPreschool}名 — 無料`);
-  lines.push(onsite
-    ? `■ 合計: ${yen(e.amountTotal)}(当日、受付で現金でお支払いください。おつりの出ないようご用意いただけると助かります)`
-    : `■ 合計: ${yen(e.amountTotal)}(カード決済でお支払い済み)`);
+  lines.push(`受付番号: ${receiptNo}`);
+  lines.push(`ダンサー名: ${e.dancerName}(${e.dancerKana})`);
+  lines.push('');
+  lines.push('━━━━━━━━━━━━━━');
+  lines.push('■ バトルエントリー');
+  for (const x of sum.entries) lines.push(`  ${x.name}  ${yen(x.amount)}`);
+  lines.push('');
+  lines.push('■ 観覧チケット');
+  if (sum.tickets.length === 0) lines.push('  なし');
+  for (const t of sum.tickets) {
+    lines.push(t.amount > 0 ? `  ${t.label} ${t.count}名  ${yen(t.unit)} × ${t.count} = ${yen(t.amount)}` : `  ${t.label} ${t.count}名  無料`);
+  }
+  lines.push('━━━━━━━━━━━━━━');
+  lines.push(`■ 合計  ${yen(e.amountTotal)}`);
+  lines.push(`■ お支払い  ${battlePayLabel(e)}`);
+  if (onsite) lines.push('  当日、受付で現金でお支払いください。おつりの出ないようご用意いただけると助かります。');
   lines.push('');
   lines.push(`日時: ${formatJpDateLong(ev.eventDate)} ${ev.openTime}〜${ev.endTime}`);
   if (ev.openTime) lines.push(`  ${ev.openTime} 受付開始${ev.startTime ? ` / ${ev.startTime} 開始` : ''}`);
@@ -377,4 +453,3 @@ export function buildBattleConfirmEmail(
   lines.push('BOOM DANCE SCHOOL');
   return { subject: `【${ev.title}】エントリー確定(受付番号 ${receiptNo})`, text: lines.join('\n') };
 }
-

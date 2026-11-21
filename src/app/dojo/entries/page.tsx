@@ -1,5 +1,5 @@
 // ⚠️ 公開ページ(認証なし)。理由: プチバトル(BOOM DOJO)のエントリー一覧は告知の一部として誰でも見られる。
-// 載せるのはダンサー名・所属・ジャンル・部門だけ。本名・連絡先・生年月日は getPublicBattleEntries が返さない。
+// 載せるのはダンサー名・所属・ジャンル・部門だけ。本名・連絡先・年齢は getPublicBattleEntries が返さない。
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { formatJpDateLong, isBattleAccepting, nowJstMinute } from '@/lib/battle';

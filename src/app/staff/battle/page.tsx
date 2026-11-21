@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import StaffPageHeader from '@/components/StaffPageHeader';
-import { BATTLE_STATUS_LABEL, ageOn, formatBattleReceiptNo, formatJpDateLong, formatJpDateTime, isBattleAccepting, nowJstMinute, yen } from '@/lib/battle';
+import { BATTLE_STATUS_LABEL, entryAge, formatBattleReceiptNo, formatJpDateLong, formatJpDateTime, isBattleAccepting, nowJstMinute, yen } from '@/lib/battle';
 import { getBattleRemaining, getCurrentBattleEvent, getBattleEvent, listBattleEntriesStaff, listBattleEvents } from '@/lib/battleDb';
 import { isAuthorizedServer } from '@/lib/eventAuth';
 import { createNextBattleEvent, markOnsitePaid, saveBattleEventSettings } from './actions';
@@ -122,7 +122,7 @@ export default async function StaffBattlePage({
               <tbody>
                 {entries.map((x) => (
                   <tr key={x.entryId} className={`border-t border-sand-200 align-top text-navy-900 ${x.paymentStatus === 'paid' || x.paymentStatus === 'onsite' ? '' : 'opacity-60'}`}>
-                    <td className="px-3 py-2 font-bold tabular-nums">{formatBattleReceiptNo(x.entryId, x.eventKey)}</td>
+                    <td className="px-3 py-2 font-bold tabular-nums">{formatBattleReceiptNo(x)}</td>
                     <td className="px-3 py-2">
                       <span className={`rounded px-1.5 py-0.5 text-xs font-bold ${x.paymentStatus === 'paid' ? 'bg-brand-100 text-brand-800' : x.paymentStatus === 'onsite' ? 'bg-red-100 text-red-800' : x.paymentStatus === 'test' ? 'bg-amber-100 text-amber-800' : 'bg-neutral-100 text-neutral-600'}`}>
                         {BATTLE_STATUS_LABEL[x.paymentStatus] ?? x.paymentStatus}
@@ -142,7 +142,7 @@ export default async function StaffBattlePage({
                     </td>
                     <td className="px-3 py-2 text-xs text-neutral-700">
                       <p className="text-sm font-bold text-navy-900">{x.realName}</p>
-                      <p>{x.birthdate}(開催日{ageOn(x.birthdate, ev.eventDate)}歳)</p>
+                      <p>開催日に{entryAge(x, ev.eventDate) ?? '?'}歳</p>
                       <p>{x.email} / {x.phone}</p>
                       {x.guardianName && <p>保護者: {x.guardianName}{x.guardianConsent ? '(同意)' : ''}</p>}
                     </td>

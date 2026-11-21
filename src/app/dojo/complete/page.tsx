@@ -1,9 +1,9 @@
 // ⚠️ 公開ページ(認証なし)。理由: プチバトル(BOOM DOJO)の申込完了画面。edit_token 完全一致の
 // 自分の申込1件だけを表示する(列挙不可・トークンなしでは何も出さない)。
 import Link from 'next/link';
-import { formatBattleReceiptNo, formatJpDateLong, yen } from '@/lib/battle';
+import { battlePayLabel, buildBattleSummary, formatBattleReceiptNo, formatJpDateLong, yen } from '@/lib/battle';
 import { getBattleEvent, loadBattleEntryByToken } from '@/lib/battleDb';
-import { BattleCard, BattleHero, BattleShell, Hanko, btnPrimaryCls } from '../ui';
+import { BattleCard, BattleHero, BattleShell, BattleSummaryView, Hanko, btnPrimaryCls } from '../ui';
 import CheckoutButton from './CheckoutButton';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +34,7 @@ export default async function BattleCompletePage({ searchParams }: { searchParam
         : st === 'expired' ? { title: '期限切れ', subtitle: '申込は無効になりました' }
           : st === 'test' ? { title: 'テスト申込', subtitle: 'スタッフ確認用のテスト申込です(決済なし)' }
             : { title: 'キャンセル', subtitle: 'この申込はキャンセルされています' };
-  const divNames = entry.divisions.map((k) => ev.divisions.find((d) => d.key === k)?.name ?? k);
+  const sum = buildBattleSummary(entry, ev);
 
   return (
     <BattleShell>
@@ -44,7 +44,7 @@ export default async function BattleCompletePage({ searchParams }: { searchParam
           <div className="relative rounded-md bg-[#efe4cf] p-5 text-center text-[#1d140c] shadow-[0_6px_20px_rgba(0,0,0,0.5)]">
             {(st === 'paid' || st === 'onsite') && <Hanko>確定</Hanko>}
             <p className="text-xs font-bold tracking-widest text-[#7a2a1c]">受付番号</p>
-            <p className="f-num mt-1 text-4xl font-bold">{formatBattleReceiptNo(entry.entryId, entry.eventKey)}</p>
+            <p className="f-num mt-1 text-4xl font-bold">{formatBattleReceiptNo(entry)}</p>
             {st === 'paid' && <p className="mt-2 text-sm font-bold">お支払い済み: {yen(entry.amountTotal)}</p>}
             {st === 'onsite' && (
               <p className="mt-2 text-sm font-bold">当日、受付で現金でお支払いください: {yen(entry.amountTotal)}</p>
@@ -68,13 +68,8 @@ export default async function BattleCompletePage({ searchParams }: { searchParam
         )}
 
         <BattleCard title="申込内容">
-          <p className="text-xl font-black">{entry.dancerName} <span className="text-sm font-bold text-[#6b5a44]">{entry.dancerKana}</span></p>
-          <ul className="mt-2 space-y-1 text-sm">
-            {divNames.map((n) => <li key={n}>・{n}</li>)}
-            {entry.spectators > 0 && <li>・同行の観覧 {entry.spectators}名</li>}
-            {entry.spectatorsPreschool > 0 && <li>・同行の観覧(未就学児) {entry.spectatorsPreschool}名</li>}
-          </ul>
-          <p className="mt-2 text-sm text-[#6b5a44]">合計 {yen(entry.amountTotal)}</p>
+          <p className="mb-3 text-xl font-black">{entry.dancerName} <span className="text-sm font-bold text-[#6b5a44]">{entry.dancerKana}</span></p>
+          <BattleSummaryView sum={sum} total={entry.amountTotal} payLabel={battlePayLabel(entry)} />
         </BattleCard>
 
         <BattleCard title="開催">

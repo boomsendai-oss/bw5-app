@@ -123,6 +123,9 @@ export async function createBattleEventFrom(srcKey: string, newDate: string): Pr
   return Number(r.rowsAffected ?? 0) > 0;
 }
 
+/** その回の次の受付番号(確定した順の連番)を入れるSQL。1文で MAX+1 を取るので同時確定でも重ならない。 */
+const NEXT_SEQ_SQL = '(SELECT COALESCE(MAX(receipt_seq), 0) + 1 FROM battle_entries WHERE event_key = ?)';
+
 /** 30分過ぎた決済待ちを expired 化して枠を解放する。読み取り系の入口で必ず呼ぶ。 */
 export async function sweepExpiredBattleEntries(): Promise<number> {
   const now = nowIso();
@@ -189,15 +192,19 @@ export async function createBattleEntry(
         }
       }
       const r = await tx.execute({
-        sql: `INSERT INTO battle_entries (event_key, email, dancer_name, dancer_kana, real_name, birthdate, rep, genre, phone, instagram,
+        // 生年月日はもう聞かない(birthdate は空文字)。確定(paid/onsite)なら受付番号もここでふる
+        sql: `INSERT INTO battle_entries (event_key, email, dancer_name, dancer_kana, real_name, birthdate, age, rep, genre, phone, instagram,
                 divisions, no_win_confirmed, spectators, spectators_preschool, guardian_name, guardian_consent,
-                entry_unit, spectator_unit, amount_total, payment_status, edit_token, expires_at, note, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                entry_unit, spectator_unit, amount_total, payment_status, edit_token, expires_at, note, created_at, updated_at, receipt_seq)
+              VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${
+                status === 'paid' || status === 'onsite' ? NEXT_SEQ_SQL : 'NULL'
+              })`,
         args: [
-          ev.eventKey, v.email, v.dancerName, v.dancerKana, v.realName, v.birthdate, v.rep, v.genre, v.phone, v.instagram,
+          ev.eventKey, v.email, v.dancerName, v.dancerKana, v.realName, v.age, v.rep, v.genre, v.phone, v.instagram,
           JSON.stringify(v.divisions), v.noWinConfirmed ? 1 : 0, v.spectators, v.spectatorsPreschool, v.guardianName, v.guardianConsent ? 1 : 0,
           amount.entryUnit, amount.spectatorUnit, amount.total, status, editToken, expiresAt,
           opts.test ? 'スタッフ確認用テスト' : v.payMethod === 'onsite' ? '当日払い(キャンセル料に同意済み)' : 'カード(キャンセル料に同意済み)', now, now,
+          ...(status === 'paid' || status === 'onsite' ? [ev.eventKey] : []),
         ],
       });
       return Number(r.lastInsertRowid);
@@ -215,7 +222,12 @@ export interface BattleEntryRow {
   dancerName: string;
   dancerKana: string;
   realName: string;
+  /** 2026-11-21以前の申込だけ入っている(新規は空文字)。年齢は entryAge() で読む */
   birthdate: string;
+  /** 開催日の年齢(申込者の入力)。2026-11-21以前の申込は null */
+  age: number | null;
+  /** その回の中の受付番号(確定した順)。確定前は null */
+  receiptSeq: number | null;
   rep: string;
   genre: string;
   phone: string;
@@ -246,6 +258,8 @@ function rowToEntry(r: any): BattleEntryRow {
     dancerKana: String(r.dancer_kana ?? ''),
     realName: String(r.real_name ?? ''),
     birthdate: String(r.birthdate ?? ''),
+    age: r.age == null || r.age === '' ? null : Number(r.age),
+    receiptSeq: r.receipt_seq == null || r.receipt_seq === '' ? null : Number(r.receipt_seq),
     rep: String(r.rep ?? ''),
     genre: String(r.genre ?? ''),
     phone: String(r.phone ?? ''),
@@ -289,7 +303,7 @@ export interface PublicBattleEntry {
 
 /**
  * 公開エントリー一覧。確定分(paid・当日払いのonsite)のみ・公開列(ダンサー名/所属/ジャンル/部門)のみ。
- * 本名・連絡先・生年月日・IGなど他の列をこの関数から返してはならない。
+ * 本名・連絡先・年齢・生年月日・IGなど他の列をこの関数から返してはならない。
  */
 export async function getPublicBattleEntries(eventKey: string): Promise<PublicBattleEntry[]> {
   await sweepExpiredBattleEntries();
@@ -325,14 +339,17 @@ export async function applyBattleWebhookEvent(
   if (!row) return { status: 'entry_not_found' };
 
   const updated = await execute(
-    "UPDATE battle_entries SET payment_status = 'paid', stripe_session_id = ?, updated_at = ? WHERE id = ? AND payment_status IN ('pending', 'expired')",
-    [ev.sessionId, nowIso(), Number(row.id)]
+    `UPDATE battle_entries SET payment_status = 'paid', stripe_session_id = ?, updated_at = ?,
+       receipt_seq = COALESCE(receipt_seq, ${NEXT_SEQ_SQL})
+     WHERE id = ? AND payment_status IN ('pending', 'expired')`,
+    [ev.sessionId, nowIso(), String(row.event_key), Number(row.id)]
   );
   if (Number(updated.rowsAffected ?? 0) === 0) return { status: 'not_updated' };
+  const after = (await getAll('SELECT * FROM battle_entries WHERE id = ? LIMIT 1', [Number(row.id)]))[0] ?? { ...row, payment_status: 'paid', stripe_session_id: ev.sessionId };
 
   return {
     status: 'paid',
-    entry: rowToEntry({ ...row, payment_status: 'paid', stripe_session_id: ev.sessionId }),
+    entry: rowToEntry(after),
     editToken: String(row.edit_token),
     amountMismatch: ev.amountTotal != null && ev.amountTotal !== Number(row.amount_total),
   };

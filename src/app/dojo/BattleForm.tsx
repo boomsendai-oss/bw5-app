@@ -5,15 +5,16 @@
 // 金額の表示はサーバと同じ calcBattleAmount で計算する(請求額はサーバ側で再計算)。
 import { useMemo, useState } from 'react';
 import {
-  ageOn,
+  buildBattleSummary,
   calcBattleAmount,
   isAgeEligible,
   needsGuardian,
+  parseBattleAge,
   yen,
   type BattleEvent,
 } from '@/lib/battle';
 import { submitBattleEntry, startBattleCheckout } from './actions';
-import { BattleCard, BattleField, DivisionName, DojoError, DojoHeading, Marked, MultiLine, WhiteBelt, btnOnDarkCls, btnPrimaryCls, inputCls } from './ui';
+import { BattleCard, BattleField, BattleSummaryView, DivisionName, DojoError, DojoHeading, Marked, MultiLine, WhiteBelt, btnOnDarkCls, btnPrimaryCls, inputCls } from './ui';
 
 const TOKEN_KEY = 'battle_entry_token';
 
@@ -29,10 +30,9 @@ export default function BattleForm({
   now: string;
   preview: boolean;
 }) {
-  const today = now.slice(0, 10);
   const [step, setStep] = useState<'input' | 'confirm'>('input');
   const [f, setF] = useState({
-    email: '', dancerName: '', dancerKana: '', realName: '', birthdate: '', rep: '', genre: '', phone: '', instagram: '',
+    email: '', dancerName: '', dancerKana: '', realName: '', age: '', rep: '', genre: '', phone: '', instagram: '',
     guardianName: '',
   });
   const [divisions, setDivisions] = useState<string[]>([]);
@@ -47,14 +47,14 @@ export default function BattleForm({
   const [busy, setBusy] = useState(false);
 
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
-  const age = ageOn(f.birthdate, today);
-  const guardian = needsGuardian(f.birthdate, today);
+  const age = parseBattleAge(f.age);
+  const guardian = needsGuardian(age);
   const amount = useMemo(() => calcBattleAmount(ev, divisions.length, spectators, now), [ev, divisions.length, spectators, now]);
 
   function disabledReason(key: string): string {
     const d = ev.divisions.find((x) => x.key === key)!;
     if (!divisions.includes(key) && (remaining[key] ?? 0) <= 0) return '満員';
-    if (f.birthdate && !isAgeEligible(d, f.birthdate, ev.eventDate)) return `開催日に${d.maxAge}歳以下の方のみ`;
+    if (age != null && !isAgeEligible(d, age)) return `開催日に${d.maxAge}歳以下の方のみ`;
     return '';
   }
 
@@ -67,7 +67,7 @@ export default function BattleForm({
     if (!f.dancerName.trim()) return 'ダンサー名を入力してください';
     if (!f.dancerKana.trim()) return 'ダンサー名のよみがなを入力してください';
     if (!f.realName.trim()) return '本名を入力してください';
-    if (age == null) return '生年月日を入力してください';
+    if (age == null) return '開催日の年齢を数字で入力してください(例: 11)';
     if (!f.rep.trim()) return '所属(レペゼン)を入力してください';
     if (!f.genre.trim()) return 'ジャンルを入力してください';
     if (!f.phone.trim()) return '電話番号を入力してください';
@@ -85,7 +85,7 @@ export default function BattleForm({
     setBusy(true);
     setError('');
     const res = await submitBattleEntry(ev.eventKey, {
-      ...f, divisions, noWinConfirmed: noWin, spectators, spectatorsPreschool: preschool,
+      ...f, age, divisions, noWinConfirmed: noWin, spectators, spectatorsPreschool: preschool,
       guardianConsent, agreePolicy: agree, payMethod, cancelFeeAgreed: amount.total > 0 ? cancelFee : true,
     });
     if (!res.ok) {
@@ -111,25 +111,17 @@ export default function BattleForm({
         <DojoHeading>入力内容の確認</DojoHeading>
         <BattleCard label="出場者">
           <p className="text-xl font-black">{f.dancerName} <span className="text-sm font-bold text-[#6b5a44]">{f.dancerKana}</span></p>
-          <p className="mt-1 text-sm">{f.realName} / {f.birthdate}(開催日に{ageOn(f.birthdate, ev.eventDate)}歳)</p>
+          <p className="mt-1 text-sm">{f.realName} / 開催日に{age}歳</p>
           <p className="text-sm">{f.genre} / {f.rep}</p>
           <p className="text-sm text-[#6b5a44]">{f.email} / {f.phone}{f.instagram && ` / ${f.instagram}`}</p>
           {guardian && <p className="text-sm text-[#6b5a44]">保護者: {f.guardianName}(同意済み)</p>}
         </BattleCard>
-        <BattleCard label="お支払い">
-          <ul className="space-y-1 text-sm">
-            {divisions.map((k) => (
-              <li key={k} className="flex justify-between gap-2">
-                <span>{ev.divisions.find((d) => d.key === k)?.name}</span><span className="font-bold">{yen(amount.entryUnit)}</span>
-              </li>
-            ))}
-            {spectators > 0 && (
-              <li className="flex justify-between gap-2"><span>観覧 {yen(amount.spectatorUnit)} × {spectators}名</span><span className="font-bold">{yen(amount.spectatorTotal)}</span></li>
-            )}
-            {preschool > 0 && <li className="flex justify-between gap-2"><span>観覧(未就学児) × {preschool}名</span><span className="font-bold">無料</span></li>}
-          </ul>
-          <p className="f-num mt-3 border-t-2 border-[#1d140c] pt-3 text-center text-4xl font-bold">{yen(amount.total)}</p>
-          <p className="text-center text-xs text-[#6b5a44]">{payMethod === 'onsite' ? '当日、受付で現金でお支払い' : 'カード決済(Stripe)'}</p>
+        <BattleCard label="申込内容">
+          <BattleSummaryView
+            sum={buildBattleSummary({ divisions, spectators, spectatorsPreschool: preschool, entryUnit: amount.entryUnit, spectatorUnit: amount.spectatorUnit }, ev)}
+            total={amount.total}
+            payLabel={payMethod === 'onsite' ? '当日、受付で現金でお支払い' : 'カード決済(このあと決済画面へ)'}
+          />
         </BattleCard>
         {error && <DojoError>{error}</DojoError>}
         <button onClick={submit} disabled={busy} className={`w-full rounded py-4 text-lg font-black ${btnPrimaryCls}`}>
@@ -166,11 +158,23 @@ export default function BattleForm({
           <BattleField label="本名" required hint="受付での本人確認用。公開されません">
             <input value={f.realName} onChange={set('realName')} placeholder="例: 山田 太郎" className={inputCls} autoComplete="name" />
           </BattleField>
-          <BattleField label="生年月日" required hint="年齢で出られる部門が決まります(開催日の年齢で判定)">
-            <input type="date" value={f.birthdate} onChange={set('birthdate')} className={`${inputCls} block min-w-0 max-w-full appearance-none [&::-webkit-date-and-time-value]:text-left`} max={today} />
+          <BattleField label="開催日の年齢" required hint={`${formatMd(ev.eventDate)}の開催日に何歳か、数字で入れてください。年齢で出られる部門が決まります`}>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={3}
+                value={f.age}
+                onChange={set('age')}
+                placeholder="例: 11"
+                className={`${inputCls.replace("w-full", "")} w-28`}
+              />
+              <span className="text-base font-bold">歳</span>
+            </div>
           </BattleField>
-          {f.birthdate && age != null && (
-            <p className="-mt-2 text-xs text-[#6b5a44]">開催日({ev.eventDate})に {ageOn(f.birthdate, ev.eventDate)}歳</p>
+          {f.age.trim() !== '' && age == null && (
+            <p className="-mt-2 text-xs font-bold text-[#b8261c]">年齢は数字で入れてください(例: 11)</p>
           )}
           <BattleField label="所属(レペゼン)" required hint="チーム名・スクール名・地域など自由に。エントリー一覧に載ります">
             <input value={f.rep} onChange={set('rep')} placeholder="例: 仙台" className={inputCls} />
@@ -189,12 +193,12 @@ export default function BattleForm({
 
       <BattleCard title="出る部門" hanko={<>白帯<br />限定</>}>
         <p className="-mt-1 mb-2 text-xs text-[#6b5a44]">複数選べます(エントリー料は部門ごと)</p>
-        {f.birthdate && ev.divisions.length > 1 && ev.divisions.every((d) => isAgeEligible(d, f.birthdate, ev.eventDate)) && (
+        {age != null && ev.divisions.length > 1 && ev.divisions.every((d) => isAgeEligible(d, age)) && (
           <p className="mb-2 rounded border border-[#b8261c]/40 bg-[#fff1ec] px-2.5 py-1.5 text-xs font-bold text-[#b8261c]">
             開催日の年齢で、すべての部門に出られます。ダブルエントリーもOKです
           </p>
         )}
-        {!f.birthdate && <p className="mb-2 text-xs text-[#6b5a44]">※ 先に生年月日を入れると、出られる部門がわかります</p>}
+        {age == null && <p className="mb-2 text-xs text-[#6b5a44]">※ 先に開催日の年齢を入れると、出られる部門がわかります</p>}
         <div className="space-y-2.5">
           {ev.divisions.map((d) => {
             const reason = disabledReason(d.key);
@@ -281,7 +285,7 @@ export default function BattleForm({
         {ev.cancelPolicy && <MultiLine text={ev.cancelPolicy} className="text-xs leading-relaxed" />}
         <p className="mt-2 text-xs leading-relaxed">
           ご入力いただいた個人情報は、このイベントの運営(受付・連絡・結果の発表)にのみ使います。
-          エントリー一覧に載るのはダンサー名・所属・ジャンルだけで、本名・連絡先・生年月日は公開しません。
+          エントリー一覧に載るのはダンサー名・所属・ジャンルだけで、本名・年齢・連絡先は公開しません。
           当日の写真・動画をBOOMのSNS等に載せることがあります。
         </p>
         <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
@@ -318,6 +322,12 @@ export default function BattleForm({
       <p className="text-center text-xs text-[#f3eadb]/60">次の画面で入力内容を確認します</p>
     </section>
   );
+}
+
+/** 2026-12-26 → 12/26 */
+function formatMd(ymd: string): string {
+  const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(ymd);
+  return m ? `${Number(m[1])}/${Number(m[2])}` : ymd;
 }
 
 function CountSelect({ value, onChange }: { value: number; onChange: (n: number) => void }) {

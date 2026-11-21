@@ -1,6 +1,7 @@
 // BOOM DOJO(/dojo)の共通パーツ。夜の道場の背景・和紙のカード・墨の見出し・朱のはんこ(デザイン案A)。
 // イベント名・日付・会場などの文字は必ず設定(DB)から受け取る。ここに直書きしない。
 import type { ReactNode } from 'react';
+import { yen, type BattleSummary } from '@/lib/battle';
 
 const WEEK_EN = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
@@ -382,4 +383,53 @@ export function DivisionName({ name, note }: { name: string; note?: string }) {
 /** エラー表示(和紙の上でも黒地の上でも読める色)。 */
 export function DojoError({ children }: { children: ReactNode }) {
   return <p className="rounded-md border-2 border-[#b8261c] bg-[#fff1ec] p-3 text-sm font-bold text-[#8f1b13]">{children}</p>;
+}
+
+/**
+ * 申込内容の明細(確認画面・完了画面で同じ並び)。
+ * 「バトルエントリー」(部門ごとに1行)と「観覧チケット」を見出しで分け、合計と支払い方法を大きく出す。
+ */
+export function BattleSummaryView({ sum, total, payLabel }: { sum: BattleSummary; total: number; payLabel: string }) {
+  const row = 'flex items-baseline justify-between gap-3 py-1.5 text-[15px]';
+  const head = 'mb-1 flex items-center gap-2 border-l-4 border-[#b8261c] pl-2 text-sm font-black tracking-wider text-[#1d140c]';
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className={head}>バトルエントリー</p>
+        <ul className="divide-y divide-[#d8c8aa]">
+          {sum.entries.map((x) => (
+            <li key={x.name} className={row}>
+              <span className="font-bold">{x.name}</span>
+              <span className="f-num font-bold">{yen(x.amount)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div>
+        <p className={head}>観覧チケット</p>
+        {sum.tickets.length === 0 ? (
+          <p className="py-1.5 text-sm text-[#6b5a44]">なし</p>
+        ) : (
+          <ul className="divide-y divide-[#d8c8aa]">
+            {sum.tickets.map((t) => (
+              <li key={t.label} className={row}>
+                <span>
+                  <span className="font-bold">{t.label} {t.count}名</span>
+                  {t.amount > 0 && <span className="ml-1 text-xs text-[#6b5a44]">{yen(t.unit)} × {t.count}</span>}
+                </span>
+                <span className="f-num font-bold">{t.amount > 0 ? yen(t.amount) : '無料'}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div className="border-t-2 border-[#1d140c] pt-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-sm font-black tracking-widest">合計</span>
+          <span className="f-num text-3xl font-bold">{yen(total)}</span>
+        </div>
+        <p className="mt-1 text-right text-sm font-bold text-[#7a2a1c]">{payLabel}</p>
+      </div>
+    </div>
+  );
 }

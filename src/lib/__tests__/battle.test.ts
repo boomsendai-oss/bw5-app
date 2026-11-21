@@ -10,6 +10,8 @@ import {
   isAgeEligible,
   needsGuardian,
   nowJstMinute,
+  parseBattleAge,
+  entryAge,
   validateBattleEntry,
   type BattleEvent,
 } from '../battle';
@@ -29,7 +31,7 @@ beforeAll(async () => {
   db = await import('../battleDb');
   await core.initDb();
   // rate_limits など他の表は要らない。この機能のマイグレーションだけ流す(migrate.mjs と同じ分け方)
-  for (const f of ['20261119_battle_tables.sql', '20261119_battle_tables_2_cast.sql']) {
+  for (const f of ['20261119_battle_tables.sql', '20261119_battle_tables_2_cast.sql', '20261121_battle_entries_age.sql', '20261121_battle_entries_receipt_seq.sql']) {
     const sql = readFileSync(`scripts/migrations/${f}`, 'utf8');
     for (const stmt of sql.split(/;\s*$/m).map((s) => s.trim()).filter(Boolean)) await core.execute(stmt);
   }
@@ -45,7 +47,7 @@ const EV: BattleEvent = {
 };
 
 const input = (over: Record<string, unknown> = {}) => ({
-  email: 'a@example.com', dancerName: 'TARO', dancerKana: 'たろー', realName: 'テスト 太郎', birthdate: '2010-05-01',
+  email: 'a@example.com', dancerName: 'TARO', dancerKana: 'たろー', realName: 'テスト 太郎', age: 16,
   rep: '仙台', genre: 'HIPHOP', phone: '090-1234-5678', instagram: 'taro', divisions: ['open'], noWinConfirmed: true,
   spectators: 1, spectatorsPreschool: 1, guardianName: '保護者', guardianConsent: true, agreePolicy: true, cancelFeeAgreed: true, ...over,
 });
@@ -57,14 +59,32 @@ describe('年齢と部門', () => {
     expect(ageOn('2013-12-26', '2026-12-26')).toBe(13);
     expect(ageOn('bad', '2026-12-26')).toBeNull();
   });
-  it('U12は開催日に12歳以下だけ', () => {
-    expect(isAgeEligible(U12, '2014-12-26', EV.eventDate)).toBe(true);
-    expect(isAgeEligible(U12, '2013-12-26', EV.eventDate)).toBe(false);
-    expect(isAgeEligible(OPEN, '1980-01-01', EV.eventDate)).toBe(true);
+  it('U12は開催日に12歳以下だけ(入力した年齢の数字で判定)', () => {
+    expect(isAgeEligible(U12, 12)).toBe(true);
+    expect(isAgeEligible(U12, 13)).toBe(false);
+    expect(isAgeEligible(U12, null)).toBe(false);
+    expect(isAgeEligible(OPEN, 46)).toBe(true);
   });
-  it('18歳未満は保護者が要る(申込日で判定)', () => {
-    expect(needsGuardian('2008-11-20', '2026-11-19')).toBe(true);
-    expect(needsGuardian('2008-11-19', '2026-11-19')).toBe(false);
+  it('18歳未満は保護者が要る(開催日の年齢で判定)', () => {
+    expect(needsGuardian(17)).toBe(true);
+    expect(needsGuardian(18)).toBe(false);
+    expect(needsGuardian(null)).toBe(false);
+  });
+  it('年齢の入力は数字だけ(全角・「歳」つきも可)・範囲外はNG', () => {
+    expect(parseBattleAge('11')).toBe(11);
+    expect(parseBattleAge('１１')).toBe(11);
+    expect(parseBattleAge('11歳')).toBe(11);
+    expect(parseBattleAge(11)).toBe(11);
+    expect(parseBattleAge('')).toBeNull();
+    expect(parseBattleAge('abc')).toBeNull();
+    expect(parseBattleAge('2')).toBeNull();
+    expect(parseBattleAge('101')).toBeNull();
+    expect(parseBattleAge('11.5')).toBeNull();
+  });
+  it('前の申込(生年月日だけ)は生年月日から年齢を出す', () => {
+    expect(entryAge({ age: 11, birthdate: '' }, '2026-12-26')).toBe(11);
+    expect(entryAge({ age: null, birthdate: '2014-12-26' }, '2026-12-26')).toBe(12);
+    expect(entryAge({ age: null, birthdate: '' }, '2026-12-26')).toBeNull();
   });
 });
 
@@ -89,35 +109,39 @@ describe('料金と締切', () => {
 
 describe('入力チェック', () => {
   it('OKなら整えた値を返す', () => {
-    const v = validateBattleEntry(input(), EV, '2026-11-19');
+    const v = validateBattleEntry(input(), EV);
     expect(typeof v).toBe('object');
     if (typeof v === 'string') return;
     expect(v.instagram).toBe('@taro');
   });
   it('U12に年齢オーバーは出られない', () => {
-    expect(validateBattleEntry(input({ divisions: ['u12'] }), EV, '2026-11-19')).toContain('12歳以下');
+    expect(validateBattleEntry(input({ divisions: ['u12'] }), EV)).toContain('12歳以下');
   });
   it('優勝未経験のチェックが無いとNG', () => {
-    expect(validateBattleEntry(input({ noWinConfirmed: false }), EV, '2026-11-19')).toContain('優勝未経験');
+    expect(validateBattleEntry(input({ noWinConfirmed: false }), EV)).toContain('優勝未経験');
+  });
+  it('年齢が無い・数字でないとNG', () => {
+    expect(validateBattleEntry(input({ age: '' }), EV)).toContain('年齢');
+    expect(validateBattleEntry(input({ age: 'じゅう' }), EV)).toContain('年齢');
   });
   it('18歳未満は保護者の名前と同意が要る / 18歳以上は保護者欄を捨てる', () => {
-    expect(validateBattleEntry(input({ guardianName: '' }), EV, '2026-11-19')).toContain('保護者');
-    const adult = validateBattleEntry(input({ birthdate: '1990-01-01', guardianName: 'x' }), EV, '2026-11-19');
+    expect(validateBattleEntry(input({ guardianName: '' }), EV)).toContain('保護者');
+    const adult = validateBattleEntry(input({ age: 36, guardianName: 'x' }), EV);
     expect(typeof adult === 'object' && adult.guardianName).toBe('');
   });
   it('知らない部門はNG・規定への同意が要る', () => {
-    expect(validateBattleEntry(input({ divisions: ['zzz'] }), EV, '2026-11-19')).toContain('部門');
-    expect(validateBattleEntry(input({ agreePolicy: false }), EV, '2026-11-19')).toContain('同意');
+    expect(validateBattleEntry(input({ divisions: ['zzz'] }), EV)).toContain('部門');
+    expect(validateBattleEntry(input({ agreePolicy: false }), EV)).toContain('同意');
   });
   it('キャンセル料への同意が要る・支払い方法は card か onsite(それ以外は card)', () => {
-    expect(validateBattleEntry(input({ cancelFeeAgreed: false }), EV, '2026-11-19')).toContain('キャンセル料');
-    const a = validateBattleEntry(input({ payMethod: 'onsite' }), EV, '2026-11-19');
+    expect(validateBattleEntry(input({ cancelFeeAgreed: false }), EV)).toContain('キャンセル料');
+    const a = validateBattleEntry(input({ payMethod: 'onsite' }), EV);
     expect(typeof a === 'object' && a.payMethod).toBe('onsite');
-    const b = validateBattleEntry(input({ payMethod: 'zzz' }), EV, '2026-11-19');
+    const b = validateBattleEntry(input({ payMethod: 'zzz' }), EV);
     expect(typeof b === 'object' && b.payMethod).toBe('card');
   });
   it('U12の年齢ならU12とALL AGEのダブルエントリーができる', () => {
-    const v = validateBattleEntry(input({ birthdate: '2015-01-01', divisions: ['u12', 'open'] }), EV, '2026-11-19');
+    const v = validateBattleEntry(input({ age: 11, divisions: ['u12', 'open'] }), EV);
     expect(typeof v === 'object' && v.divisions).toEqual(['u12', 'open']);
   });
 });
@@ -132,20 +156,34 @@ describe('Stripe・メール', () => {
     expect(parseBattleWebhookEvent({ id: 'evt', type: 'checkout.session.completed', data: { object: { metadata: { order_id: '3' } } } })).toBeNull();
     expect(parseBattleWebhookEvent({ id: 'evt', type: 'checkout.session.completed', data: { object: { id: 'cs', metadata: { battle_entry_id: '3' } } } })?.entryId).toBe(3);
   });
-  it('確定メールに受付番号・部門・会場が入る', () => {
+  it('受付番号は No.001 の形(確定前は番号なし・テストは「テスト」)', () => {
+    expect(formatBattleReceiptNo({ receiptSeq: 3 })).toBe('No.003');
+    expect(formatBattleReceiptNo({ receiptSeq: null, paymentStatus: 'pending' })).toBe('—');
+    expect(formatBattleReceiptNo({ receiptSeq: null, paymentStatus: 'test' })).toBe('テスト');
+  });
+  it('確定メールに受付番号・バトルエントリーと観覧チケットの見出し・合計・支払い方法が入る', () => {
     const m = buildBattleConfirmEmail(
-      { entryId: 3, eventKey: '2026-12-26', dancerName: 'TARO', dancerKana: 'たろー', divisions: ['open'], spectators: 1, spectatorsPreschool: 0, entryUnit: 2000, spectatorUnit: 1000, amountTotal: 3000 },
+      { receiptSeq: 3, dancerName: 'TARO', dancerKana: 'たろー', divisions: ['u12', 'open'], spectators: 2, spectatorsPreschool: 1, entryUnit: 2000, spectatorUnit: 1000, amountTotal: 6000, paymentStatus: 'paid', stripeSessionId: 'cs_1' },
       EV, { completeUrl: 'https://x/c', entriesUrl: 'https://x/e' }
     );
-    expect(formatBattleReceiptNo(3, '2026-12-26')).toBe('BT1226-003');
-    expect(m.subject).toContain('BT1226-003');
-    expect(m.text).toContain('ALL AGE');
+    expect(m.subject).toContain('No.003');
+    expect(m.subject).not.toContain('BT');
+    expect(m.text).toContain('■ バトルエントリー\n  U12  ¥2,000\n  ALL AGE  ¥2,000');
+    expect(m.text).toContain('■ 観覧チケット\n  小学生以上 2名  ¥1,000 × 2 = ¥2,000\n  未就学児 1名  無料');
+    expect(m.text).toContain('■ 合計  ¥6,000');
+    expect(m.text).toContain('カードでお支払い済み');
     expect(m.text).toContain('2026年12月26日(土)');
-    expect(m.text).toContain('カード決済でお支払い済み');
+  });
+  it('観覧なしは「なし」と出る', () => {
+    const m = buildBattleConfirmEmail(
+      { receiptSeq: 1, dancerName: 'TARO', dancerKana: 'たろー', divisions: ['open'], spectators: 0, spectatorsPreschool: 0, entryUnit: 2000, spectatorUnit: 1000, amountTotal: 2000, paymentStatus: 'paid' },
+      EV, { completeUrl: 'https://x/c', entriesUrl: 'https://x/e' }
+    );
+    expect(m.text).toContain('■ 観覧チケット\n  なし');
   });
   it('当日払いの確定メールは「当日、受付で現金」とキャンセル料の注意が入る', () => {
     const m = buildBattleConfirmEmail(
-      { entryId: 4, eventKey: '2026-12-26', dancerName: 'TARO', dancerKana: 'たろー', divisions: ['open'], spectators: 0, spectatorsPreschool: 0, entryUnit: 2000, spectatorUnit: 1000, amountTotal: 2000, paymentStatus: 'onsite' },
+      { receiptSeq: 4, dancerName: 'TARO', dancerKana: 'たろー', divisions: ['open'], spectators: 0, spectatorsPreschool: 0, entryUnit: 2000, spectatorUnit: 1000, amountTotal: 2000, paymentStatus: 'onsite' },
       EV, { completeUrl: 'https://x/c', entriesUrl: 'https://x/e' }
     );
     expect(m.text).toContain('当日、受付で現金');
@@ -163,7 +201,7 @@ describe('申込→決済確定(実DB)', () => {
   });
 
   it('仮押さえ→Webhookで確定、再送は何もしない、公開一覧に本名を出さない', async () => {
-    const v = validateBattleEntry(input(), EV, '2026-11-19');
+    const v = validateBattleEntry(input(), EV);
     if (typeof v === 'string') throw new Error(v);
     const r = await db.createBattleEntry(EV, v, '2026-11-19T10:00');
     if (!r.ok) throw new Error(r.error);
@@ -172,14 +210,17 @@ describe('申込→決済確定(実DB)', () => {
     expect(await db.getPublicBattleEntries(EV.eventKey)).toHaveLength(0);
 
     const wh = { eventId: 'evt_battle_1', type: 'checkout.session.completed', sessionId: 'cs_1', paymentIntentId: 'pi_1', entryId: r.entryId, amountTotal: 3000, currency: 'jpy' };
-    expect((await db.applyBattleWebhookEvent(wh, '{}')).status).toBe('paid');
+    const paid = await db.applyBattleWebhookEvent(wh, '{}');
+    expect(paid.status).toBe('paid');
+    expect(paid.status === 'paid' && paid.entry.receiptSeq).toBe(1);
+    expect(paid.status === 'paid' && paid.entry.age).toBe(16);
     expect((await db.applyBattleWebhookEvent(wh, '{}')).status).toBe('duplicate');
     const pub = await db.getPublicBattleEntries(EV.eventKey);
     expect(pub).toEqual([{ dancerName: 'TARO', rep: '仙台', genre: 'HIPHOP', divisions: ['open'] }]);
   });
 
   it('定員を超える申込は断る・テスト申込は枠を使わない', async () => {
-    const kid = validateBattleEntry(input({ birthdate: '2015-01-01', divisions: ['u12'], email: 'k@example.com' }), EV, '2026-11-19');
+    const kid = validateBattleEntry(input({ age: 11, divisions: ['u12'], email: 'k@example.com' }), EV);
     if (typeof kid === 'string') throw new Error(kid);
     expect((await db.createBattleEntry(EV, kid, '2026-11-19T10:00', { test: true })).ok).toBe(true);
     expect((await db.createBattleEntry(EV, kid, '2026-11-19T10:00')).ok).toBe(true);
@@ -208,11 +249,13 @@ describe('当日払い(実DB)', () => {
   it('当日払いは申込で確定(onsite)・枠を使い・公開一覧に載る・受け取りで paid', async () => {
     const ev2: BattleEvent = { ...EV, eventKey: '2027-01-23', eventDate: '2027-01-23', entryDeadline: '2027-01-22T18:00', lateFeeFrom: '' };
     await core.execute("INSERT OR IGNORE INTO battle_events (event_key, title, event_date, divisions, entry_fee, created_at, updated_at) VALUES (?, 't', ?, ?, 2000, '', '')", [ev2.eventKey, ev2.eventDate, JSON.stringify(ev2.divisions)]);
-    const v = validateBattleEntry(input({ payMethod: 'onsite', email: 'o@example.com', dancerName: 'ONSITE' }), ev2, '2026-11-19');
+    const v = validateBattleEntry(input({ payMethod: 'onsite', email: 'o@example.com', dancerName: 'ONSITE' }), ev2);
     if (typeof v === 'string') throw new Error(v);
     const r = await db.createBattleEntry(ev2, v, '2026-11-19T10:00');
     if (!r.ok) throw new Error(r.error);
     expect(r.status).toBe('onsite');
+    // 回ごとの連番: この回(2027-01-23)では1番
+    expect((await db.loadBattleEntryByToken(r.editToken))?.receiptSeq).toBe(1);
     expect((await db.getBattleRemaining(ev2)).open).toBe(15);
     expect((await db.getPublicBattleEntries(ev2.eventKey)).map((x) => x.dancerName)).toEqual(['ONSITE']);
     expect(await db.markBattleOnsitePaid(r.entryId)).toBe(true);
@@ -220,5 +263,29 @@ describe('当日払い(実DB)', () => {
     const after = await db.loadBattleEntryByToken(r.editToken);
     expect(after?.paymentStatus).toBe('paid');
     expect(after?.note).toContain('当日現金で受領');
+  });
+
+  it('受付番号は回ごとの連番・テスト申込と決済待ちは番号を使わない・生年月日は空で保存', async () => {
+    const ev2: BattleEvent = { ...EV, eventKey: '2027-01-23', eventDate: '2027-01-23', entryDeadline: '2027-01-22T18:00', lateFeeFrom: '' };
+    const v2 = validateBattleEntry(input({ payMethod: 'onsite', email: 'p@example.com', dancerName: 'ONSITE2', age: 9 }), ev2);
+    if (typeof v2 === 'string') throw new Error(v2);
+    const t = await db.createBattleEntry(ev2, v2, '2026-11-19T10:00', { test: true });
+    if (!t.ok) throw new Error(t.error);
+    expect((await db.loadBattleEntryByToken(t.editToken))?.receiptSeq).toBeNull();
+    const card = validateBattleEntry(input({ email: 'c@example.com' }), ev2);
+    if (typeof card === 'string') throw new Error(card);
+    const pend = await db.createBattleEntry(ev2, card, '2026-11-19T10:00');
+    if (!pend.ok) throw new Error(pend.error);
+    expect((await db.loadBattleEntryByToken(pend.editToken))?.receiptSeq).toBeNull();
+    const r2 = await db.createBattleEntry(ev2, v2, '2026-11-19T10:00');
+    if (!r2.ok) throw new Error(r2.error);
+    const row = await db.loadBattleEntryByToken(r2.editToken);
+    expect(row?.receiptSeq).toBe(2);
+    expect(row?.age).toBe(9);
+    expect(row?.birthdate).toBe('');
+    // 決済待ちが後から確定すると次の番号
+    const wh = { eventId: 'evt_battle_seq', type: 'checkout.session.completed', sessionId: 'cs_seq', paymentIntentId: 'pi_seq', entryId: pend.entryId, amountTotal: 3000, currency: 'jpy' };
+    const paid = await db.applyBattleWebhookEvent(wh, '{}');
+    expect(paid.status === 'paid' && paid.entry.receiptSeq).toBe(3);
   });
 });
