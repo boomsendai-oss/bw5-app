@@ -572,7 +572,7 @@ function buildBattleConfirmHtml(
       `<div style="font-family:${MINCHO};font-size:28px;font-weight:bold;letter-spacing:0.1em;color:${KINARI};">エントリー完了</div>` +
       `<div style="font-family:${GOTHIC};font-size:14px;line-height:1.7;color:${KINARI};margin-top:6px;">${esc(e.dancerName)} 様<br>` +
       `${esc(ev.title)} へのエントリーありがとうございます。<br>` +
-      `${onsite ? 'エントリーが確定しました。お支払いは当日、会場で。' : 'お支払いが完了し、エントリーが確定しました。'}押忍!</div>` +
+      `${onsite ? 'エントリーが確定しました。お支払いは当日、会場で。' : 'お支払いが完了し、エントリーが確定しました。'}</div>` +
       `</td></tr>`
   );
   // 受付番号

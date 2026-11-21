@@ -28,8 +28,8 @@ export default async function BattleCompletePage({ searchParams }: { searchParam
 
   const st = entry.paymentStatus;
   const hero =
-    st === 'paid' ? { title: 'エントリー完了', subtitle: 'エントリーが確定しました。押忍!' }
-      : st === 'onsite' ? { title: 'エントリー完了', subtitle: 'エントリーが確定しました。お支払いは当日、会場で。押忍!' }
+    st === 'paid' ? { title: 'エントリー完了', subtitle: 'エントリーが確定しました。' }
+      : st === 'onsite' ? { title: 'エントリー完了', subtitle: 'エントリーが確定しました。お支払いは当日、会場で。' }
       : st === 'pending' ? { title: 'あと一歩', subtitle: '決済待ちです' }
         : st === 'expired' ? { title: '期限切れ', subtitle: '申込は無効になりました' }
           : st === 'test' ? { title: 'テスト申込', subtitle: 'スタッフ確認用のテスト申込です(決済なし)' }
