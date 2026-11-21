@@ -47,7 +47,7 @@ const EV: BattleEvent = {
 const input = (over: Record<string, unknown> = {}) => ({
   email: 'a@example.com', dancerName: 'TARO', dancerKana: 'たろー', realName: 'テスト 太郎', birthdate: '2010-05-01',
   rep: '仙台', genre: 'HIPHOP', phone: '090-1234-5678', instagram: 'taro', divisions: ['open'], noWinConfirmed: true,
-  spectators: 1, spectatorsPreschool: 1, guardianName: '保護者', guardianConsent: true, agreePolicy: true, ...over,
+  spectators: 1, spectatorsPreschool: 1, guardianName: '保護者', guardianConsent: true, agreePolicy: true, cancelFeeAgreed: true, ...over,
 });
 
 describe('年齢と部門', () => {
@@ -109,6 +109,17 @@ describe('入力チェック', () => {
     expect(validateBattleEntry(input({ divisions: ['zzz'] }), EV, '2026-11-19')).toContain('部門');
     expect(validateBattleEntry(input({ agreePolicy: false }), EV, '2026-11-19')).toContain('同意');
   });
+  it('キャンセル料への同意が要る・支払い方法は card か onsite(それ以外は card)', () => {
+    expect(validateBattleEntry(input({ cancelFeeAgreed: false }), EV, '2026-11-19')).toContain('キャンセル料');
+    const a = validateBattleEntry(input({ payMethod: 'onsite' }), EV, '2026-11-19');
+    expect(typeof a === 'object' && a.payMethod).toBe('onsite');
+    const b = validateBattleEntry(input({ payMethod: 'zzz' }), EV, '2026-11-19');
+    expect(typeof b === 'object' && b.payMethod).toBe('card');
+  });
+  it('U12の年齢ならU12とALL AGEのダブルエントリーができる', () => {
+    const v = validateBattleEntry(input({ birthdate: '2015-01-01', divisions: ['u12', 'open'] }), EV, '2026-11-19');
+    expect(typeof v === 'object' && v.divisions).toEqual(['u12', 'open']);
+  });
 });
 
 describe('Stripe・メール', () => {
@@ -130,6 +141,16 @@ describe('Stripe・メール', () => {
     expect(m.subject).toContain('BT1226-003');
     expect(m.text).toContain('ALL AGE');
     expect(m.text).toContain('2026年12月26日(土)');
+    expect(m.text).toContain('カード決済でお支払い済み');
+  });
+  it('当日払いの確定メールは「当日、受付で現金」とキャンセル料の注意が入る', () => {
+    const m = buildBattleConfirmEmail(
+      { entryId: 4, eventKey: '2026-12-26', dancerName: 'TARO', dancerKana: 'たろー', divisions: ['open'], spectators: 0, spectatorsPreschool: 0, entryUnit: 2000, spectatorUnit: 1000, amountTotal: 2000, paymentStatus: 'onsite' },
+      EV, { completeUrl: 'https://x/c', entriesUrl: 'https://x/e' }
+    );
+    expect(m.text).toContain('当日、受付で現金');
+    expect(m.text).toContain('キャンセル料');
+    expect(m.text).not.toContain('お支払い済み');
   });
 });
 
@@ -180,5 +201,24 @@ describe('申込→決済確定(実DB)', () => {
     expect(next?.entryOpen).toBe(false);
     expect(next?.divisions).toHaveLength(2);
     expect(await db.createBattleEventFrom('2026-12-26', '2027-01-30')).toBe(false);
+  });
+});
+
+describe('当日払い(実DB)', () => {
+  it('当日払いは申込で確定(onsite)・枠を使い・公開一覧に載る・受け取りで paid', async () => {
+    const ev2: BattleEvent = { ...EV, eventKey: '2027-01-23', eventDate: '2027-01-23', entryDeadline: '2027-01-22T18:00', lateFeeFrom: '' };
+    await core.execute("INSERT OR IGNORE INTO battle_events (event_key, title, event_date, divisions, entry_fee, created_at, updated_at) VALUES (?, 't', ?, ?, 2000, '', '')", [ev2.eventKey, ev2.eventDate, JSON.stringify(ev2.divisions)]);
+    const v = validateBattleEntry(input({ payMethod: 'onsite', email: 'o@example.com', dancerName: 'ONSITE' }), ev2, '2026-11-19');
+    if (typeof v === 'string') throw new Error(v);
+    const r = await db.createBattleEntry(ev2, v, '2026-11-19T10:00');
+    if (!r.ok) throw new Error(r.error);
+    expect(r.status).toBe('onsite');
+    expect((await db.getBattleRemaining(ev2)).open).toBe(15);
+    expect((await db.getPublicBattleEntries(ev2.eventKey)).map((x) => x.dancerName)).toEqual(['ONSITE']);
+    expect(await db.markBattleOnsitePaid(r.entryId)).toBe(true);
+    expect(await db.markBattleOnsitePaid(r.entryId)).toBe(false);
+    const after = await db.loadBattleEntryByToken(r.editToken);
+    expect(after?.paymentStatus).toBe('paid');
+    expect(after?.note).toContain('当日現金で受領');
   });
 });

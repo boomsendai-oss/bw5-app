@@ -2,7 +2,10 @@
 //
 // - 回ごとの設定(名前・説明・日付・部門・料金・定員・締切)は battle_events に持つ。ここに直書きしない
 // - 会員・外部の区別なし(料金も同じ)。会員確認はしない
-// - 決済はBF7と同じ: カード事前決済のみ・30分の仮押さえ・確定はStripeのWebhookが正本
+// - 支払いは「カード事前決済」か「当日会場で現金(onsite)」を選ぶ(料金は同じ・TARO 11/20)
+//   カードはBF7と同じ: 30分の仮押さえ・確定はStripeのWebhookが正本
+//   当日払いは申込の時点で枠を確保して確定(onsite=未収)。受付で受け取ったらスタッフ画面で paid にする
+//   キャンセル料への同意(cancelFeeAgreed)を必須にする
 // - 金額は必ずサーバ側でこのファイルの関数から計算する(クライアント申告額は使わない)
 import { isValidBf6Email, isValidBf6Phone, normalizeInstagramHandle } from './bf6';
 
@@ -76,10 +79,13 @@ export interface BattleEvent {
   cast: BattleCast[];
 }
 
-export type BattlePaymentStatus = 'pending' | 'paid' | 'expired' | 'canceled' | 'refunded' | 'test';
+export type BattlePaymentStatus = 'pending' | 'paid' | 'onsite' | 'expired' | 'canceled' | 'refunded' | 'test';
+export type BattlePayMethod = 'card' | 'onsite';
 
-/** 枠を消費する状態(確定+30分の仮押さえ)。 */
-export const BATTLE_HOLDING_STATUSES: BattlePaymentStatus[] = ['paid', 'pending'];
+/** 枠を消費する状態(確定+当日払いの確定+30分の仮押さえ)。 */
+export const BATTLE_HOLDING_STATUSES: BattlePaymentStatus[] = ['paid', 'onsite', 'pending'];
+/** エントリーが確定している状態(公開一覧に載る)。 */
+export const BATTLE_CONFIRMED_STATUSES: BattlePaymentStatus[] = ['paid', 'onsite'];
 
 export const BATTLE_HOLD_MINUTES = 30;
 
@@ -204,6 +210,10 @@ export interface BattleEntryInput {
   guardianName: string;
   guardianConsent: boolean;
   agreePolicy: boolean;
+  /** 支払い方法(カード事前決済／当日会場で現金) */
+  payMethod: BattlePayMethod;
+  /** 申込後のキャンセルにはキャンセル料がかかることへの同意 */
+  cancelFeeAgreed: boolean;
 }
 
 export type ValidatedBattleEntry = BattleEntryInput;
@@ -241,6 +251,8 @@ export function validateBattleEntry(raw: Partial<BattleEntryInput>, ev: BattleEv
     guardianName: clean(raw.guardianName, 60),
     guardianConsent: raw.guardianConsent === true,
     agreePolicy: raw.agreePolicy === true,
+    payMethod: raw.payMethod === 'onsite' ? 'onsite' : 'card',
+    cancelFeeAgreed: raw.cancelFeeAgreed === true,
   };
   if (!v.email || !isValidBf6Email(v.email)) return 'メールアドレスを正しく入力してください';
   if (!v.dancerName) return 'ダンサー名を入力してください';
@@ -268,6 +280,7 @@ export function validateBattleEntry(raw: Partial<BattleEntryInput>, ev: BattleEv
     v.guardianName = '';
     v.guardianConsent = false;
   }
+  if (!v.cancelFeeAgreed) return 'キャンセル料についての同意にチェックしてください';
   if (!v.agreePolicy) return 'キャンセル規定と個人情報の取り扱いへの同意にチェックしてください';
   return v;
 }
@@ -300,6 +313,7 @@ export const yen = (n: number) => `¥${n.toLocaleString()}`;
 
 export const BATTLE_STATUS_LABEL: Record<string, string> = {
   paid: '支払済',
+  onsite: '当日払い(未収)',
   pending: '決済待ち',
   expired: '期限切れ',
   canceled: 'キャンセル',
@@ -318,6 +332,7 @@ export interface BattleMailEntry {
   entryUnit: number;
   spectatorUnit: number;
   amountTotal: number;
+  paymentStatus?: string;
 }
 
 /** 確定メールの文面(Webhookで決済確定した瞬間に送る)。 */
@@ -332,14 +347,17 @@ export function buildBattleConfirmEmail(
   lines.push(`${e.dancerName} 様`);
   lines.push('');
   lines.push(`${ev.title} へのエントリーありがとうございます。`);
-  lines.push('お支払いが完了し、エントリーが確定しました!');
+  const onsite = e.paymentStatus === 'onsite';
+  lines.push(onsite ? 'エントリーが確定しました!(お支払いは当日会場で)' : 'お支払いが完了し、エントリーが確定しました!');
   lines.push('');
   lines.push(`■ 受付番号: ${receiptNo}`);
   lines.push(`■ ダンサー名: ${e.dancerName}(${e.dancerKana})`);
   for (const n of divNames) lines.push(`■ 部門: ${n} — ${yen(e.entryUnit)}`);
   if (e.spectators > 0) lines.push(`■ 同行の観覧 ${e.spectators}名 — ${yen(e.spectators * e.spectatorUnit)}`);
   if (e.spectatorsPreschool > 0) lines.push(`■ 同行の観覧(未就学児) ${e.spectatorsPreschool}名 — 無料`);
-  lines.push(`■ 合計: ${yen(e.amountTotal)}(カード決済でお支払い済み)`);
+  lines.push(onsite
+    ? `■ 合計: ${yen(e.amountTotal)}(当日、受付で現金でお支払いください。おつりの出ないようご用意いただけると助かります)`
+    : `■ 合計: ${yen(e.amountTotal)}(カード決済でお支払い済み)`);
   lines.push('');
   lines.push(`日時: ${formatJpDateLong(ev.eventDate)} ${ev.openTime}〜${ev.endTime}`);
   if (ev.openTime) lines.push(`  ${ev.openTime} 受付開始${ev.startTime ? ` / ${ev.startTime} 開始` : ''}`);
@@ -354,6 +372,7 @@ export function buildBattleConfirmEmail(
   lines.push('');
   lines.push('当日は受付で受付番号かダンサー名をお伝えください。');
   lines.push('内容の変更・キャンセルはBOOM公式LINEまでご連絡ください。');
+  if (onsite) lines.push('※お申し込み後のキャンセルには、当日払いの方もキャンセル料(エントリー料と同額)がかかります。');
   lines.push('');
   lines.push('BOOM DANCE SCHOOL');
   return { subject: `【${ev.title}】エントリー確定(受付番号 ${receiptNo})`, text: lines.join('\n') };

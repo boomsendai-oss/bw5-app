@@ -6,7 +6,7 @@ import StaffPageHeader from '@/components/StaffPageHeader';
 import { BATTLE_STATUS_LABEL, ageOn, formatBattleReceiptNo, formatJpDateLong, formatJpDateTime, isBattleAccepting, nowJstMinute, yen } from '@/lib/battle';
 import { getBattleRemaining, getCurrentBattleEvent, getBattleEvent, listBattleEntriesStaff, listBattleEvents } from '@/lib/battleDb';
 import { isAuthorizedServer } from '@/lib/eventAuth';
-import { createNextBattleEvent, saveBattleEventSettings } from './actions';
+import { createNextBattleEvent, markOnsitePaid, saveBattleEventSettings } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,8 +33,11 @@ export default async function StaffBattlePage({
 
   const [entries, remaining] = await Promise.all([listBattleEntriesStaff(ev.eventKey), getBattleRemaining(ev)]);
   const accepting = isBattleAccepting(ev, now);
-  const paid = entries.filter((x) => x.paymentStatus === 'paid');
-  const paidTotal = paid.reduce((s, x) => s + x.amountTotal, 0);
+  const confirmed = entries.filter((x) => x.paymentStatus === 'paid' || x.paymentStatus === 'onsite');
+  const paid = confirmed;
+  const paidTotal = entries.filter((x) => x.paymentStatus === 'paid').reduce((s, x) => s + x.amountTotal, 0);
+  const onsite = entries.filter((x) => x.paymentStatus === 'onsite');
+  const onsiteTotal = onsite.reduce((s, x) => s + x.amountTotal, 0);
   const pending = entries.filter((x) => x.paymentStatus === 'pending').length;
   const spectators = paid.reduce((s, x) => s + x.spectators, 0);
   const preschool = paid.reduce((s, x) => s + x.spectatorsPreschool, 0);
@@ -80,8 +83,9 @@ export default async function StaffBattlePage({
         </nav>
 
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Summary label="確定(支払済)" value={`${paid.length}人`} note={pending > 0 ? `決済待ち ${pending}件` : undefined} />
-          <Summary label="カード入金済み" value={yen(paidTotal)} />
+          <Summary label="確定" value={`${paid.length}人`} note={pending > 0 ? `決済待ち ${pending}件` : undefined} />
+          <Summary label="受け取り済み" value={yen(paidTotal)} />
+          <Summary label="当日払い(未収)" value={yen(onsiteTotal)} note={onsite.length > 0 ? `${onsite.length}件` : undefined} />
           <Summary label="同行の観覧" value={`${spectators}名`} note={preschool > 0 ? `ほか未就学児 ${preschool}名` : undefined} />
           <Summary label="申込(全状態)" value={`${entries.length}件`} />
         </section>
@@ -117,12 +121,19 @@ export default async function StaffBattlePage({
               </thead>
               <tbody>
                 {entries.map((x) => (
-                  <tr key={x.entryId} className={`border-t border-sand-200 align-top text-navy-900 ${x.paymentStatus === 'paid' ? '' : 'opacity-60'}`}>
+                  <tr key={x.entryId} className={`border-t border-sand-200 align-top text-navy-900 ${x.paymentStatus === 'paid' || x.paymentStatus === 'onsite' ? '' : 'opacity-60'}`}>
                     <td className="px-3 py-2 font-bold tabular-nums">{formatBattleReceiptNo(x.entryId, x.eventKey)}</td>
                     <td className="px-3 py-2">
-                      <span className={`rounded px-1.5 py-0.5 text-xs font-bold ${x.paymentStatus === 'paid' ? 'bg-brand-100 text-brand-800' : x.paymentStatus === 'test' ? 'bg-amber-100 text-amber-800' : 'bg-neutral-100 text-neutral-600'}`}>
+                      <span className={`rounded px-1.5 py-0.5 text-xs font-bold ${x.paymentStatus === 'paid' ? 'bg-brand-100 text-brand-800' : x.paymentStatus === 'onsite' ? 'bg-red-100 text-red-800' : x.paymentStatus === 'test' ? 'bg-amber-100 text-amber-800' : 'bg-neutral-100 text-neutral-600'}`}>
                         {BATTLE_STATUS_LABEL[x.paymentStatus] ?? x.paymentStatus}
                       </span>
+                      {x.paymentStatus === 'onsite' && (
+                        <form action={markOnsitePaid} className="mt-1.5">
+                          <input type="hidden" name="entryId" value={x.entryId} />
+                          <input type="hidden" name="e" value={ev.eventKey} />
+                          <button className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-bold text-red-700">現金を受け取った</button>
+                        </form>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <p className="font-bold">{x.dancerName}</p>

@@ -39,6 +39,8 @@ export default function BattleForm({
   const [noWin, setNoWin] = useState(false);
   const [guardianConsent, setGuardianConsent] = useState(false);
   const [agree, setAgree] = useState(false);
+  const [payMethod, setPayMethod] = useState<'card' | 'onsite'>('card');
+  const [cancelFee, setCancelFee] = useState(false);
   const [spectators, setSpectators] = useState(0);
   const [preschool, setPreschool] = useState(0);
   const [error, setError] = useState('');
@@ -74,6 +76,7 @@ export default function BattleForm({
     if (!noWin) return '「優勝未経験」の確認にチェックしてください';
     if (guardian && !f.guardianName.trim()) return '保護者の方のお名前を入力してください';
     if (guardian && !guardianConsent) return '保護者の方の同意にチェックしてください';
+    if (amount.total > 0 && !cancelFee) return 'キャンセル料についての同意にチェックしてください';
     if (!agree) return 'キャンセル規定と個人情報の取り扱いへの同意にチェックしてください';
     return '';
   }
@@ -83,7 +86,7 @@ export default function BattleForm({
     setError('');
     const res = await submitBattleEntry(ev.eventKey, {
       ...f, divisions, noWinConfirmed: noWin, spectators, spectatorsPreschool: preschool,
-      guardianConsent, agreePolicy: agree,
+      guardianConsent, agreePolicy: agree, payMethod, cancelFeeAgreed: amount.total > 0 ? cancelFee : true,
     });
     if (!res.ok) {
       setBusy(false);
@@ -126,14 +129,18 @@ export default function BattleForm({
             {preschool > 0 && <li className="flex justify-between gap-2"><span>観覧(未就学児) × {preschool}名</span><span className="font-bold">無料</span></li>}
           </ul>
           <p className="f-num mt-3 border-t-2 border-[#1d140c] pt-3 text-center text-4xl font-bold">{yen(amount.total)}</p>
-          <p className="text-center text-xs text-[#6b5a44]">カード決済(Stripe)</p>
+          <p className="text-center text-xs text-[#6b5a44]">{payMethod === 'onsite' ? '当日、受付で現金でお支払い' : 'カード決済(Stripe)'}</p>
         </BattleCard>
         {error && <DojoError>{error}</DojoError>}
         <button onClick={submit} disabled={busy} className={`w-full rounded py-4 text-lg font-black ${btnPrimaryCls}`}>
-          {busy ? '接続中…' : preview ? 'テストとして送信する(決済なし)' : `挑戦する(${yen(amount.total)}・決済へ)`}
+          {busy ? '接続中…' : preview ? 'テストとして送信する(決済なし)' : payMethod === 'onsite' ? `挑戦する(当日払い ${yen(amount.total)})` : `挑戦する(${yen(amount.total)}・決済へ)`}
         </button>
         {!preview && (
-          <p className="text-center text-xs text-[#f3eadb]/70">※ このあとカード決済画面に移動します。30分以内に決済が完了するとエントリー確定です</p>
+          <p className="text-center text-xs text-[#f3eadb]/70">
+            {payMethod === 'onsite'
+              ? '※ 送信した時点でエントリー確定です。当日、受付で現金でお支払いください'
+              : '※ このあとカード決済画面に移動します。30分以内に決済が完了するとエントリー確定です'}
+          </p>
         )}
         <button onClick={() => { setStep('input'); scrollToForm(); }} disabled={busy} className={`w-full rounded py-3.5 font-bold ${btnOnDarkCls}`}>
           入力に戻る
@@ -182,6 +189,12 @@ export default function BattleForm({
 
       <BattleCard title="出る部門" hanko={<>白帯<br />限定</>}>
         <p className="-mt-1 mb-2 text-xs text-[#6b5a44]">複数選べます(エントリー料は部門ごと)</p>
+        {f.birthdate && ev.divisions.length > 1 && ev.divisions.every((d) => isAgeEligible(d, f.birthdate, ev.eventDate)) && (
+          <p className="mb-2 rounded border border-[#b8261c]/40 bg-[#fff1ec] px-2.5 py-1.5 text-xs font-bold text-[#b8261c]">
+            開催日の年齢で、すべての部門に出られます。ダブルエントリーもOKです
+          </p>
+        )}
+        {!f.birthdate && <p className="mb-2 text-xs text-[#6b5a44]">※ 先に生年月日を入れると、出られる部門がわかります</p>}
         <div className="space-y-2.5">
           {ev.divisions.map((d) => {
             const reason = disabledReason(d.key);
@@ -243,6 +256,27 @@ export default function BattleForm({
         </BattleCard>
       )}
 
+      <BattleCard title="お支払い方法">
+        <div className="space-y-2.5">
+          {([
+            ['card', 'カードで今払う', 'このあとカード決済画面へ。決済が済むとエントリー確定'],
+            ['onsite', '当日、会場で払う(現金)', '送信した時点でエントリー確定。当日の受付で現金でお支払い'],
+          ] as const).map(([k, label, hint]) => (
+            <label
+              key={k}
+              className={`flex cursor-pointer items-start gap-2.5 rounded-md border-2 p-2.5 ${payMethod === k ? 'border-[#b8261c] bg-[#fff1ec]' : 'border-[#d8c8aa] bg-[#fff8ec]'}`}
+            >
+              <input type="radio" name="payMethod" checked={payMethod === k} onChange={() => setPayMethod(k)} className={check} />
+              <span>
+                <span className="block font-bold">{label}</span>
+                <span className="block text-xs text-[#6b5a44]">{hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-[#6b5a44]">料金はどちらも同じです</p>
+      </BattleCard>
+
       <BattleCard title="キャンセル規定・個人情報">
         {ev.cancelPolicy && <MultiLine text={ev.cancelPolicy} className="text-xs leading-relaxed" />}
         <p className="mt-2 text-xs leading-relaxed">
@@ -250,6 +284,13 @@ export default function BattleForm({
           エントリー一覧に載るのはダンサー名・所属・ジャンルだけで、本名・連絡先・生年月日は公開しません。
           当日の写真・動画をBOOMのSNS等に載せることがあります。
         </p>
+        <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
+          <input type="checkbox" checked={cancelFee} onChange={(e) => setCancelFee(e.target.checked)} className={check} />
+          <span>
+            <span className="font-bold">お申し込み後にキャンセルした場合、キャンセル料がかかることに同意します</span>
+            <span className="block text-xs text-[#6b5a44]">キャンセル料はエントリー料・観覧料と同額です(当日払いを選んだ方も同じです)</span>
+          </span>
+        </label>
         <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className={check} />
           <span className="font-bold">キャンセル規定と個人情報の取り扱いに同意します</span>

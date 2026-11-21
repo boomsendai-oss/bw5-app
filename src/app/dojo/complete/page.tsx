@@ -29,6 +29,7 @@ export default async function BattleCompletePage({ searchParams }: { searchParam
   const st = entry.paymentStatus;
   const hero =
     st === 'paid' ? { title: 'エントリー完了', subtitle: 'エントリーが確定しました。押忍!' }
+      : st === 'onsite' ? { title: 'エントリー完了', subtitle: 'エントリーが確定しました。お支払いは当日、会場で。押忍!' }
       : st === 'pending' ? { title: 'あと一歩', subtitle: '決済待ちです' }
         : st === 'expired' ? { title: '期限切れ', subtitle: '申込は無効になりました' }
           : st === 'test' ? { title: 'テスト申込', subtitle: 'スタッフ確認用のテスト申込です(決済なし)' }
@@ -39,12 +40,15 @@ export default async function BattleCompletePage({ searchParams }: { searchParam
     <BattleShell>
       <BattleHero eventTitle={ev.title} title={hero.title} subtitle={hero.subtitle} />
       <div className="space-y-4 px-[18px]">
-        {(st === 'paid' || st === 'test') && (
+        {(st === 'paid' || st === 'onsite' || st === 'test') && (
           <div className="relative rounded-md bg-[#efe4cf] p-5 text-center text-[#1d140c] shadow-[0_6px_20px_rgba(0,0,0,0.5)]">
-            {st === 'paid' && <Hanko>確定</Hanko>}
+            {(st === 'paid' || st === 'onsite') && <Hanko>確定</Hanko>}
             <p className="text-xs font-bold tracking-widest text-[#7a2a1c]">受付番号</p>
             <p className="f-num mt-1 text-4xl font-bold">{formatBattleReceiptNo(entry.entryId, entry.eventKey)}</p>
             {st === 'paid' && <p className="mt-2 text-sm font-bold">お支払い済み: {yen(entry.amountTotal)}</p>}
+            {st === 'onsite' && (
+              <p className="mt-2 text-sm font-bold">当日、受付で現金でお支払いください: {yen(entry.amountTotal)}</p>
+            )}
           </div>
         )}
         {st === 'pending' && (
