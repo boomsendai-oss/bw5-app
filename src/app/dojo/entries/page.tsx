@@ -35,19 +35,16 @@ export default async function BattleEntriesPage({ searchParams }: Props) {
   const accepting = isBattleAccepting(ev, nowJstMinute());
 
   const roundLabel = ev.title.replace(/^BOOM DOJO\s*/i, '').trim();
-  const total = entries.length;
 
   return (
     <BattleShell>
       <BattleHero
         eventTitle={ev.title}
-        title={`${roundLabel ? `${roundLabel}　` : ''}エントリー一覧`}
+        title="エントリー一覧"
+        stamp={roundLabel || undefined}
         subtitle={`${formatJpDateLong(ev.eventDate)} ${ev.venue}`}
       />
       <div className="space-y-4 px-[18px]">
-        <p className="text-center text-sm font-bold text-[#f3eadb]">
-          現在のエントリー <span className="f-num text-2xl">{total}</span> 名
-        </p>
         {/* 部門は横に並べて1画面で見比べられるように(TARO 11/22) */}
         <div className={`grid gap-2.5 ${ev.divisions.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
           {ev.divisions.map((d) => {

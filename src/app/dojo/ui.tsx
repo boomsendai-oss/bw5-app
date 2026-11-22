@@ -171,7 +171,7 @@ export function DojoRoundTabs({ rounds, current }: { current: string; rounds: { 
 }
 
 /** 下層ページ(完了画面・エントリー一覧)の小さなヘッダー。 */
-export function BattleHero({ eventTitle, title, subtitle }: { eventTitle: string; title: string; subtitle?: string }) {
+export function BattleHero({ eventTitle, title, subtitle, stamp }: { eventTitle: string; title: string; subtitle?: string; stamp?: string }) {
   return (
     <header className="relative overflow-hidden px-4 pb-6 pt-8 text-[#f3eadb]">
       <div
@@ -196,6 +196,12 @@ export function BattleHero({ eventTitle, title, subtitle }: { eventTitle: string
         {subtitle && <p className="mt-1 text-sm font-bold text-[#f3eadb]/80">{subtitle}</p>}
         <div className="mt-4 h-[3px] w-16 bg-[#b8261c]" />
       </div>
+      {/* 回の呼び方(其の一…)を、申込ページのヒーローと同じ朱のはんこで出す(TARO 11/22) */}
+      {stamp && (
+        <span className="f-brush absolute right-5 top-8 rotate-[6deg] rounded-[4px] border-[3px] border-[#c8352a] bg-[#0d0906]/40 px-1.5 py-2 text-[22px] leading-none text-[#e04a3c] [writing-mode:vertical-rl]">
+          {stamp}
+        </span>
+      )}
     </header>
   );
 }
