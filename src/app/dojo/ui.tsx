@@ -123,22 +123,26 @@ export function DojoHero({
         </p>
       </div>
 
-      {ctaHref && (
-        <a
-          href={ctaHref}
-          className="absolute left-1/2 top-[85.1%] -translate-x-1/2 whitespace-nowrap rounded-[4px] border-2 border-[#e9b3a5] bg-[#b8261c] px-[7.7cqw] py-[3.6cqw] text-[4.6cqw] font-black tracking-[0.15em] text-white shadow-[0_4px_0_#6d140e,0_0_30px_rgba(184,38,28,0.5)] active:translate-y-[2px]"
-        >
-          {ctaLabel ?? '挑戦する　ENTRY'}
-        </a>
-      )}
-      {/* ENTRYのすぐ下にエントリー一覧への入口(TARO 11/22：下まで探さなくていいように) */}
-      {entriesHref && (
-        <a
-          href={entriesHref}
-          className="absolute left-1/2 top-[93.2%] -translate-x-1/2 whitespace-nowrap rounded-[4px] border border-[#f3eadb]/60 bg-black/55 px-[5cqw] py-[1.8cqw] text-[3.4cqw] font-bold tracking-[0.08em] text-[#f3eadb] backdrop-blur-[2px]"
-        >
-          エントリー一覧を見る →
-        </a>
+      {/* ENTRYと、そのすぐ下のエントリー一覧への入口(TARO 11/22)。端末で文字の高さが変わっても重ならないよう縦に積む */}
+      {(ctaHref || entriesHref) && (
+        <div className="absolute left-1/2 top-[82.6%] flex -translate-x-1/2 flex-col items-center gap-[3.2cqw]">
+          {ctaHref && (
+            <a
+              href={ctaHref}
+              className="whitespace-nowrap rounded-[4px] border-2 border-[#e9b3a5] bg-[#b8261c] px-[7.7cqw] py-[3.4cqw] text-[4.6cqw] font-black leading-[1.2] tracking-[0.15em] text-white shadow-[0_4px_0_#6d140e,0_0_30px_rgba(184,38,28,0.5)] active:translate-y-[2px]"
+            >
+              {ctaLabel ?? '挑戦する　ENTRY'}
+            </a>
+          )}
+          {entriesHref && (
+            <a
+              href={entriesHref}
+              className="whitespace-nowrap rounded-[4px] border border-[#f3eadb]/60 bg-black/55 px-[5cqw] py-[1.7cqw] text-[3.4cqw] font-bold leading-[1.2] tracking-[0.08em] text-[#f3eadb] backdrop-blur-[2px]"
+            >
+              エントリー一覧を見る →
+            </a>
+          )}
+        </div>
       )}
     </header>
   );
