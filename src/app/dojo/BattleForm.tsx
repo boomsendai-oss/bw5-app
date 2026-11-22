@@ -67,7 +67,7 @@ export default function BattleForm({
     if (!f.dancerKana.trim()) return 'ダンサー名のよみがなを入力してください';
     if (!f.realName.trim()) return '本名を入力してください';
     if (age == null) return '開催日の年齢を数字で入力してください(例: 11)';
-    if (!f.rep.trim()) return '所属(レペゼン)を入力してください';
+    if (!f.rep.trim()) return '活動地域(レペゼン)を入力してください';
     if (!f.genre.trim()) return 'ジャンルを入力してください';
     if (!f.phone.trim()) return '電話番号を入力してください';
     if (divisions.length === 0) return '出る部門を1つ以上選んでください';
@@ -175,11 +175,11 @@ export default function BattleForm({
           {f.age.trim() !== '' && age == null && (
             <p className="-mt-2 text-xs font-bold text-[#b8261c]">年齢は数字で入れてください(例: 11)</p>
           )}
-          <BattleField label="所属(レペゼン)" required hint="チーム名・スクール名・地域など自由に。エントリー一覧に載ります">
-            <input value={f.rep} onChange={set('rep')} placeholder="例: 仙台" className={inputCls} />
-          </BattleField>
           <BattleField label="ジャンル" required hint="エントリー一覧に載ります">
             <input value={f.genre} onChange={set('genre')} placeholder="例: HIPHOP" className={inputCls} />
+          </BattleField>
+          <BattleField label="活動地域(レペゼン)" required hint="基本は活動している地域を入れてください(チーム名・スクール名など自由です)。エントリー一覧に載ります">
+            <input value={f.rep} onChange={set('rep')} placeholder="例: 仙台" className={inputCls} />
           </BattleField>
           <BattleField label="電話番号" required hint="当日連絡が取れる番号">
             <input type="tel" value={f.phone} onChange={set('phone')} placeholder="090-1234-5678" className={inputCls} autoComplete="tel" />
@@ -282,7 +282,7 @@ export default function BattleForm({
         {ev.cancelPolicy && <MultiLine text={ev.cancelPolicy} className="text-xs leading-relaxed" />}
         <p className="mt-2 text-xs leading-relaxed">
           ご入力いただいた個人情報は、このイベントの運営(受付・連絡・結果の発表)にのみ使います。
-          エントリー一覧に載るのはダンサー名・所属・ジャンルだけで、本名・年齢・連絡先は公開しません。
+          エントリー一覧に載るのはダンサー名・ジャンル・活動地域だけで、本名・年齢・連絡先は公開しません。
           当日の写真・動画をBOOMのSNS等に載せることがあります。
         </p>
         <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm">

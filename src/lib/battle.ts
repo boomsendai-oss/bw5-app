@@ -285,7 +285,7 @@ export function validateBattleEntry(
   if (!v.dancerKana) return 'ダンサー名のよみがなを入力してください';
   if (!v.realName) return '本名を入力してください';
   if (v.age == null) return '開催日の年齢を数字で入力してください(例: 11)';
-  if (!v.rep) return '所属(レペゼン)を入力してください';
+  if (!v.rep) return '活動地域(レペゼン)を入力してください';
   if (!v.genre) return 'ジャンルを入力してください';
   if (!v.phone || !isValidBf6Phone(v.phone)) return '電話番号は数字10〜11桁で入力してください';
   if (v.divisions.length === 0) return '出る部門を1つ以上選んでください';

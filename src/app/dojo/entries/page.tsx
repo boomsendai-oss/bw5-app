@@ -70,7 +70,7 @@ export default async function BattleEntriesPage({ searchParams }: Props) {
                         <span className="f-num w-5 shrink-0 text-right text-xs text-[#7a2a1c]">{i + 1}</span>
                         <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                           <span className="block text-[15px] font-black leading-tight">{x.dancerName}</span>
-                          <span className="block text-[11px] leading-snug text-[#6b5a44]">{x.rep}{x.genre && ` / ${x.genre}`}</span>
+                          <span className="block text-[11px] leading-snug text-[#6b5a44]">{[x.genre, x.rep].filter(Boolean).join(' / ')}</span>
                         </span>
                       </li>
                     ))}
