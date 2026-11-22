@@ -188,20 +188,22 @@ export function BattleHero({ eventTitle, title, subtitle, stamp }: { eventTitle:
         >
           BOOM DANCE SCHOOL PRESENTS
         </a>
-        <a href="/dojo" className="mt-3 block w-56">
-          {/* eslint-disable-next-line @next/next/no-img-element -- 静的なロゴ画像 */}
-          <img src="/dojo/logo_dojo.webp" alt={eventTitle} className="w-full" />
-        </a>
+        <div className="mt-3 flex items-center gap-3">
+          <a href="/dojo" className="block w-56 shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element -- 静的なロゴ画像 */}
+            <img src="/dojo/logo_dojo.webp" alt={eventTitle} className="w-full" />
+          </a>
+          {/* 回の呼び方(其の一…)を、ロゴのすぐ右に朱のはんこで出す(TARO 11/22) */}
+          {stamp && (
+            <span className="f-brush rotate-[6deg] rounded-[4px] border-[3px] border-[#c8352a] bg-[#0d0906]/40 px-1.5 py-2 text-[20px] leading-none text-[#e04a3c] [writing-mode:vertical-rl]">
+              {stamp}
+            </span>
+          )}
+        </div>
         <h1 className="f-brush mt-5 text-3xl text-[#f3eadb]">{title}</h1>
         {subtitle && <p className="mt-1 text-sm font-bold text-[#f3eadb]/80">{subtitle}</p>}
         <div className="mt-4 h-[3px] w-16 bg-[#b8261c]" />
       </div>
-      {/* 回の呼び方(其の一…)を、申込ページのヒーローと同じ朱のはんこで出す(TARO 11/22) */}
-      {stamp && (
-        <span className="f-brush absolute right-5 top-8 rotate-[6deg] rounded-[4px] border-[3px] border-[#c8352a] bg-[#0d0906]/40 px-1.5 py-2 text-[22px] leading-none text-[#e04a3c] [writing-mode:vertical-rl]">
-          {stamp}
-        </span>
-      )}
     </header>
   );
 }
