@@ -91,6 +91,9 @@ export default async function BattlePage({ searchParams }: Props) {
           <DojoRow k="会場">
             {ev.venue}
             {ev.venueAddress && <span className="block text-xs text-[#6b5a44]">{ev.venueAddress}</span>}
+            {ev.venue.includes('県民会館') && (
+              <span className="block text-xs font-bold text-[#b3261e]">会場は土足禁止です。室内用のシューズをお持ちください。</span>
+            )}
           </DojoRow>
           <DojoRow k="ルール">1on1{ev.moveSeconds > 0 && `・1ムーブ${ev.moveSeconds}秒`}</DojoRow>
           <DojoRow k="参加費">
