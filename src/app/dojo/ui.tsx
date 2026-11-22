@@ -107,7 +107,7 @@ export function DojoHero({
         src="/dojo/boomkun_dogi.webp"
         alt=""
         aria-hidden
-        className="absolute left-[73%] top-[76%] w-[23%] [filter:drop-shadow(0_6px_10px_rgba(0,0,0,0.7))]"
+        className="absolute left-[80.5%] top-[79%] w-[19%] [filter:drop-shadow(0_6px_10px_rgba(0,0,0,0.7))]"
       />
 
       <div className="absolute left-0 right-0 top-[67.8%] px-[4cqw] text-center">
