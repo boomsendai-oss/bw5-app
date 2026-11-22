@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { formatJpDateLong, formatJpDateTime, isBattleAccepting, nowJstMinute, yen } from '@/lib/battle';
 import { getBattleEvent, getBattleRemaining, getCurrentBattleEvent, listBattleEvents } from '@/lib/battleDb';
 import { isAuthorizedServer } from '@/lib/eventAuth';
-import { BattleCard, BattlePreviewBanner, BattleShell, BattleHero, DojoCast, DojoHero, DojoRoundTabs, DivisionName, DojoRow, MultiLine, WhiteBelt } from './ui';
+import { BattleCard, BattlePreviewBanner, BattleShell, BattleHero, DojoCast, DojoHero, DojoRoundTabs, DivisionName, DojoRow, MultiLine, WhiteBelt, btnDarkCls } from './ui';
 import BattleForm from './BattleForm';
 
 export const dynamic = 'force-dynamic';
@@ -45,6 +45,7 @@ export default async function BattlePage({ searchParams }: Props) {
   const deadlinePassed = Boolean(ev.entryDeadline) && now >= ev.entryDeadline;
   const showForm = accepting || preview;
   const md = /^\d{4}-(\d{2})-(\d{2})$/.exec(ev.eventDate);
+  const roundLabel = ev.title.replace(/^BOOM DOJO\s*/i, '').trim();
   // 切り替えタブ：今日以降の回(テスト回は出さない)。表示中の回が過去なら、それも含める
   const today = now.slice(0, 10);
   const rounds = (await listBattleEvents())
@@ -123,6 +124,12 @@ export default async function BattlePage({ searchParams }: Props) {
               </div>
             ))}
           </div>
+          <Link
+            href={`/dojo/entries?e=${encodeURIComponent(ev.eventKey)}`}
+            className={`mt-3 flex items-center justify-center gap-2 rounded py-3 text-[15px] font-black ${btnDarkCls}`}
+          >
+            {roundLabel && <span>{roundLabel}の</span>}エントリー一覧を見る<span aria-hidden>→</span>
+          </Link>
         </BattleCard>
 
         {ev.rules && (
@@ -144,9 +151,6 @@ export default async function BattlePage({ searchParams }: Props) {
           </BattleCard>
         )}
 
-        <p className="pt-2 text-center text-xs text-[#f3eadb]/70">
-          <Link href={`/dojo/entries?e=${encodeURIComponent(ev.eventKey)}`} className="underline">エントリー一覧を見る</Link>
-        </p>
       </div>
     </BattleShell>
   );
