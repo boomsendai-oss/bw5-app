@@ -128,7 +128,7 @@ export default async function BattlePage({ searchParams }: Props) {
             href={`/dojo/entries?e=${encodeURIComponent(ev.eventKey)}`}
             className={`mt-3 flex items-center justify-center gap-2 rounded py-3 text-[15px] font-black ${btnDarkCls}`}
           >
-            {roundLabel && <span>{roundLabel}の</span>}エントリー一覧を見る<span aria-hidden>→</span>
+            <span>{roundLabel ? `${roundLabel}の` : ''}エントリー一覧を見る</span><span aria-hidden>→</span>
           </Link>
         </BattleCard>
 
