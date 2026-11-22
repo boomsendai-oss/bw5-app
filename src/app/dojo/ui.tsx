@@ -45,6 +45,7 @@ export function DojoHero({
   openTime,
   ctaHref,
   ctaLabel,
+  entriesHref,
   numbering,
 }: {
   numbering?: string;
@@ -53,6 +54,7 @@ export function DojoHero({
   openTime: string;
   ctaHref?: string;
   ctaLabel?: string;
+  entriesHref?: string;
 }) {
   return (
     <header
@@ -127,6 +129,15 @@ export function DojoHero({
           className="absolute left-1/2 top-[85.1%] -translate-x-1/2 whitespace-nowrap rounded-[4px] border-2 border-[#e9b3a5] bg-[#b8261c] px-[7.7cqw] py-[3.6cqw] text-[4.6cqw] font-black tracking-[0.15em] text-white shadow-[0_4px_0_#6d140e,0_0_30px_rgba(184,38,28,0.5)] active:translate-y-[2px]"
         >
           {ctaLabel ?? '挑戦する　ENTRY'}
+        </a>
+      )}
+      {/* ENTRYのすぐ下にエントリー一覧への入口(TARO 11/22：下まで探さなくていいように) */}
+      {entriesHref && (
+        <a
+          href={entriesHref}
+          className="absolute left-1/2 top-[93.2%] -translate-x-1/2 whitespace-nowrap rounded-[4px] border border-[#f3eadb]/60 bg-black/55 px-[5cqw] py-[1.8cqw] text-[3.4cqw] font-bold tracking-[0.08em] text-[#f3eadb] backdrop-blur-[2px]"
+        >
+          エントリー一覧を見る →
         </a>
       )}
     </header>

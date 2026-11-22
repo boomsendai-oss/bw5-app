@@ -71,6 +71,7 @@ export default async function BattlePage({ searchParams }: Props) {
         venue={ev.venue}
         openTime={ev.openTime}
         ctaHref={showForm ? '#entry-form' : undefined}
+        entriesHref={`/dojo/entries?e=${encodeURIComponent(ev.eventKey)}`}
       />
 
       <div className="space-y-4 px-[18px] pt-7">
