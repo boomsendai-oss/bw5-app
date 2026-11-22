@@ -31,7 +31,7 @@ export function BattleShell({ children }: { children: ReactNode }) {
 export function DojoHero({
   dateYmd,
   venue,
-  startTime,
+  openTime,
   ctaHref,
   ctaLabel,
   numbering,
@@ -39,7 +39,7 @@ export function DojoHero({
   numbering?: string;
   dateYmd: string;
   venue: string;
-  startTime: string;
+  openTime: string;
   ctaHref?: string;
   ctaLabel?: string;
 }) {
@@ -105,7 +105,8 @@ export function DojoHero({
         </p>
         <p className="mt-[1cqw] text-[3.1cqw] tracking-[0.16em] text-[#f3eadb]/90 [text-shadow:0_1px_6px_#000]">
           {venue}
-          {startTime && <> ／ <span className="f-num">{startTime} START</span></>}
+          {/* エントリーの人に受付の時刻に来てもらうため、開始ではなく OPEN を出す(TARO 11/22) */}
+          {openTime && <> ／ <span className="f-num">{openTime} OPEN</span></>}
         </p>
       </div>
 
@@ -118,6 +119,32 @@ export function DojoHero({
         </a>
       )}
     </header>
+  );
+}
+
+/** 其の一・其の二…を切り替えるタブ(TARO 11/22：先の回もキャストと一緒に今から見られるように)。 */
+export function DojoRoundTabs({ rounds, current }: { current: string; rounds: { key: string; label: string; date: string; accepting: boolean }[] }) {
+  if (rounds.length < 2) return null;
+  return (
+    <nav aria-label="開催回" className="sticky top-0 z-20 border-b border-[#f3eadb]/15 bg-[#0d0906]/95 px-[18px] py-2.5 backdrop-blur">
+      <ul className="flex gap-2 overflow-x-auto">
+        {rounds.map((r) => {
+          const on = r.key === current;
+          return (
+            <li key={r.key} className="shrink-0">
+              <a
+                href={`/dojo?e=${encodeURIComponent(r.key)}`}
+                aria-current={on ? 'page' : undefined}
+                className={`block rounded-md border px-3 py-1.5 text-center leading-tight ${on ? 'border-[#e04a3c] bg-[#b8261c] text-white' : 'border-[#f3eadb]/30 text-[#f3eadb]/85 hover:border-[#f3eadb]/70'}`}
+              >
+                <span className="f-brush block text-[15px]">{r.label}</span>
+                <span className="f-num block text-[11px] tracking-wider">{r.date}{r.accepting ? ' 受付中' : ''}</span>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
   );
 }
 

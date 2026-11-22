@@ -5,9 +5,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { formatJpDateLong, formatJpDateTime, isBattleAccepting, nowJstMinute, yen } from '@/lib/battle';
-import { getBattleEvent, getBattleRemaining, getCurrentBattleEvent } from '@/lib/battleDb';
+import { getBattleEvent, getBattleRemaining, getCurrentBattleEvent, listBattleEvents } from '@/lib/battleDb';
 import { isAuthorizedServer } from '@/lib/eventAuth';
-import { BattleCard, BattlePreviewBanner, BattleShell, BattleHero, DojoCast, DojoHero, DivisionName, DojoRow, MultiLine, WhiteBelt } from './ui';
+import { BattleCard, BattlePreviewBanner, BattleShell, BattleHero, DojoCast, DojoHero, DojoRoundTabs, DivisionName, DojoRow, MultiLine, WhiteBelt } from './ui';
 import BattleForm from './BattleForm';
 
 export const dynamic = 'force-dynamic';
@@ -45,15 +45,30 @@ export default async function BattlePage({ searchParams }: Props) {
   const deadlinePassed = Boolean(ev.entryDeadline) && now >= ev.entryDeadline;
   const showForm = accepting || preview;
   const md = /^\d{4}-(\d{2})-(\d{2})$/.exec(ev.eventDate);
+  // 切り替えタブ：今日以降の回(テスト回は出さない)。表示中の回が過去なら、それも含める
+  const today = now.slice(0, 10);
+  const rounds = (await listBattleEvents())
+    .filter((r) => !r.eventKey.startsWith('test') && (r.eventDate >= today || r.eventKey === ev.eventKey))
+    .sort((a, b) => a.eventDate.localeCompare(b.eventDate))
+    .map((r) => {
+      const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(r.eventDate);
+      return {
+        key: r.eventKey,
+        label: r.title.replace(/^BOOM DOJO\s*/i, '').trim() || r.title,
+        date: m ? `${Number(m[1])}/${Number(m[2])}` : r.eventDate,
+        accepting: isBattleAccepting(r, now),
+      };
+    });
 
   return (
     <BattleShell>
       {preview && <BattlePreviewBanner />}
+      <DojoRoundTabs rounds={rounds} current={ev.eventKey} />
       <DojoHero
         numbering={ev.title.replace(/^BOOM DOJO\s*/i, '').trim() || undefined}
         dateYmd={ev.eventDate}
         venue={ev.venue}
-        startTime={ev.startTime}
+        openTime={ev.openTime}
         ctaHref={showForm ? '#entry-form' : undefined}
       />
 
@@ -68,7 +83,10 @@ export default async function BattlePage({ searchParams }: Props) {
         <BattleCard title="道場案内" hanko={<>白帯<br />限定</>}>
           <DojoRow k="日時">
             {md ? `${Number(md[1])}月${Number(md[2])}日` : ev.eventDate}{formatJpDateLong(ev.eventDate).replace(/^.*日/, '')}{' '}
-            {ev.openTime && `${ev.openTime}受付`}{ev.openTime && ev.startTime && ' / '}{ev.startTime && `${ev.startTime}開始`}
+            {ev.openTime && `${ev.openTime} OPEN`}{ev.openTime && ev.startTime && ' / '}{ev.startTime && `${ev.startTime} START`}
+            {ev.openTime
+              ? <span className="block text-xs text-[#6b5a44]">エントリーする方は{ev.openTime}に受付へお越しください。</span>
+              : <span className="block text-xs text-[#6b5a44]">時間は調整中です。決まり次第お知らせします。</span>}
           </DojoRow>
           <DojoRow k="会場">
             {ev.venue}
