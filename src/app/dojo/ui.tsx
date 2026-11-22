@@ -29,11 +29,11 @@ export function BattleShell({ children }: { children: ReactNode }) {
  * 位置の元は見本(mockA.html・幅390px)の数値を％に直したもの。
  */
 /**
- * 開催月の背景。奥の床に月のシンボル(12月=ツリー・1月=鏡餅とみかん・2月=豆と鬼の面・3月=桜)を
+ * 開催月の背景。奥の床に月のシンボル(12月=ツリー・1月=鏡餅とみかん・2月=豆と鬼の面・3月=ひな祭り・4月=桜)を
  * 写真になじませて置いた版。どの回かひと目でわかるように(TARO 11/22)。背景ごと替えるので電球のちらつきも一緒にかかる。
  * 用意のない月はふつうの背景。
  */
-const DOJO_SEASON_MONTHS = new Set(['12', '01', '02', '03']);
+const DOJO_SEASON_MONTHS = new Set(['12', '01', '02', '03', '04']);
 export function dojoBackground(ymd: string): string {
   const m = /^\d{4}-(\d{2})-\d{2}$/.exec(ymd)?.[1];
   return m && DOJO_SEASON_MONTHS.has(m) ? `/dojo/season/bg_m${m}.webp` : '/dojo/bg_dojo.webp';
