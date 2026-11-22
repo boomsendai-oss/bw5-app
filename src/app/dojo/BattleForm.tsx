@@ -178,7 +178,7 @@ export default function BattleForm({
           <BattleField label="ジャンル" required hint="エントリー一覧に載ります">
             <input value={f.genre} onChange={set('genre')} placeholder="例: HIPHOP" className={inputCls} />
           </BattleField>
-          <BattleField label="活動地域(レペゼン)" required hint="基本は活動している地域を入れてください(チーム名・スクール名など自由です)。エントリー一覧に載ります">
+          <BattleField label="活動地域(レペゼン)" required hint="活動地域（チーム名、スクール名など、表記は自由です）。エントリー一覧に載ります">
             <input value={f.rep} onChange={set('rep')} placeholder="例: 仙台" className={inputCls} />
           </BattleField>
           <BattleField label="電話番号" required hint="当日連絡が取れる番号">
