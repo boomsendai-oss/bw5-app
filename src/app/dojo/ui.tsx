@@ -28,6 +28,13 @@ export function BattleShell({ children }: { children: ReactNode }) {
  * 箱に対する％で置く。文字の大きさも箱の幅(cqw)に比例させるので、画面幅が変わっても紙の位置からずれない。
  * 位置の元は見本(mockA.html・幅390px)の数値を％に直したもの。
  */
+/** 開催月のシンボル画像。用意のある月だけ(無い月は出さない)。 */
+const DOJO_SEASON_MONTHS = new Set(['12', '01', '02', '03']);
+export function dojoSeasonImage(ymd: string): string | null {
+  const m = /^\d{4}-(\d{2})-\d{2}$/.exec(ymd)?.[1];
+  return m && DOJO_SEASON_MONTHS.has(m) ? `/dojo/season/m${m}.webp` : null;
+}
+
 export function DojoHero({
   dateYmd,
   venue,
@@ -43,6 +50,7 @@ export function DojoHero({
   ctaHref?: string;
   ctaLabel?: string;
 }) {
+  const season = dojoSeasonImage(dateYmd);
   return (
     <header
       className="relative w-full overflow-hidden bg-[#0d0906] bg-cover bg-top [container-type:inline-size]"
@@ -52,9 +60,11 @@ export function DojoHero({
       <style>{`
         @keyframes dojoLamp{0%,100%{opacity:1}4%{opacity:.55}6%{opacity:1}8%{opacity:.7}10%{opacity:1}47%{opacity:.95}49%{opacity:.4}50%{opacity:.9}52%{opacity:1}78%{opacity:1}79%{opacity:.6}81%{opacity:1}}
         @keyframes dojoDim{0%,100%{opacity:0}4%{opacity:.35}6%{opacity:0}8%{opacity:.2}10%{opacity:0}49%{opacity:.45}50%{opacity:.08}52%{opacity:0}79%{opacity:.25}81%{opacity:0}}
+        @keyframes dojoSym{0%,100%{filter:brightness(1) drop-shadow(0 6px 10px rgba(0,0,0,.7))}4%{filter:brightness(.62) drop-shadow(0 6px 10px rgba(0,0,0,.7))}6%{filter:brightness(1) drop-shadow(0 6px 10px rgba(0,0,0,.7))}8%{filter:brightness(.78) drop-shadow(0 6px 10px rgba(0,0,0,.7))}10%{filter:brightness(1) drop-shadow(0 6px 10px rgba(0,0,0,.7))}49%{filter:brightness(.55) drop-shadow(0 6px 10px rgba(0,0,0,.7))}50%{filter:brightness(.92) drop-shadow(0 6px 10px rgba(0,0,0,.7))}52%{filter:brightness(1) drop-shadow(0 6px 10px rgba(0,0,0,.7))}79%{filter:brightness(.72) drop-shadow(0 6px 10px rgba(0,0,0,.7))}81%{filter:brightness(1) drop-shadow(0 6px 10px rgba(0,0,0,.7))}}
         .dojo-lamp{animation:dojoLamp 7s infinite}
+        .dojo-sym{filter:drop-shadow(0 6px 10px rgba(0,0,0,.7));animation:dojoSym 7s infinite}
         .dojo-dim{animation:dojoDim 7s infinite}
-        @media (prefers-reduced-motion: reduce){.dojo-lamp,.dojo-dim{animation:none}.dojo-dim{opacity:0}}
+        @media (prefers-reduced-motion: reduce){.dojo-lamp,.dojo-dim,.dojo-sym{animation:none}.dojo-dim{opacity:0}}
       `}</style>
       <div aria-hidden className="dojo-dim pointer-events-none absolute inset-0 bg-black" />
       <div
@@ -90,13 +100,25 @@ export function DojoHero({
         <span className="pt-[2cqw] text-[2.96cqw] tracking-[0.14em] [writing-mode:vertical-rl]">心・技・ノリ</span>
       </div>
 
-      {/* 道着(ノースリーブ・白帯)のBOOMくん。ラジカセと反対側の床に立たせる(TARO 11/19) */}
+      {/* その月のシンボル(12月=ツリー・1月=鏡餅とみかん・2月=豆と鬼の面・3月=桜)。どの回かひと目でわかるように(TARO 11/22)。
+          電球のちらつきに合わせて明るさも揺らす */}
+      {season && (
+        // eslint-disable-next-line @next/next/no-img-element -- 位置を％で合わせる静的画像
+        <img
+          src={season}
+          alt=""
+          aria-hidden
+          className="dojo-sym absolute bottom-[33.6%] left-[70%] w-[21%] -translate-x-1/2"
+        />
+      )}
+
+      {/* 道着(ノースリーブ・白帯)のBOOMくん。ラジカセと反対側の床の右端に立たせる(シンボルに場所をゆずる・TARO 11/22) */}
       {/* eslint-disable-next-line @next/next/no-img-element -- 位置を％で合わせる静的画像 */}
       <img
         src="/dojo/boomkun_dogi.webp"
         alt=""
         aria-hidden
-        className="absolute left-[71%] top-[54.6%] w-[25%] [filter:drop-shadow(0_6px_10px_rgba(0,0,0,0.7))]"
+        className="absolute left-[80.5%] top-[55.5%] w-[19%] [filter:drop-shadow(0_6px_10px_rgba(0,0,0,0.7))]"
       />
 
       <div className="absolute left-0 right-0 top-[67.8%] px-[4cqw] text-center">
