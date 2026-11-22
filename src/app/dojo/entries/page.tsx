@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { formatJpDateLong, isBattleAccepting, nowJstMinute } from '@/lib/battle';
 import { getBattleEvent, getBattleRemaining, getCurrentBattleEvent, getPublicBattleEntries } from '@/lib/battleDb';
-import { BattleCard, BattleHero, BattleShell, DivisionName, btnOnDarkCls, btnPrimaryCls } from '../ui';
+import { BattleCard, BattleHero, BattleShell, btnOnDarkCls, btnPrimaryCls } from '../ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +56,7 @@ export default async function BattleEntriesPage({ searchParams }: Props) {
             return (
               <BattleCard key={d.key}>
                 <div className="border-b-2 border-[#1d140c] pb-2">
-                  <DivisionName name={d.name} note={d.note} />
+                  <EntryDivisionHead name={d.name} note={d.note} />
                   <p className="mt-1.5 flex flex-wrap items-center justify-between gap-1 text-[11px] text-[#6b5a44]">
                     <span>{list.length}名 / 定員{d.capacity}名</span>
                     <span className={`rounded border-2 px-1.5 py-0.5 text-[11px] font-bold ${left > 0 ? 'border-[#1d140c] text-[#1d140c]' : 'border-[#b8261c] text-[#b8261c]'}`}>
@@ -94,5 +94,24 @@ export default async function BattleEntriesPage({ searchParams }: Props) {
         </Link>
       </div>
     </BattleShell>
+  );
+}
+
+/** 2列で並べたとき左右の段がそろうよう、札を1行ずつ縦に積む(TARO 11/22)。 */
+function EntryDivisionHead({ name, note }: { name: string; note?: string }) {
+  const rest = name.replace(/^優勝未経験\s*/, '');
+  const m = /^(U\d+|ALL AGE)\s*(.*)$/i.exec(rest);
+  const age = m ? m[1] : '';
+  const style = m ? m[2] : rest;
+  const tag = 'inline-block whitespace-nowrap rounded-sm px-1.5 py-[2px] text-[11px] font-black leading-tight';
+  return (
+    <div className="space-y-1">
+      <span className={`${tag} bg-[#b8261c] tracking-wider text-white`}>優勝未経験</span>
+      <div className="h-[22px]">
+        {note && <span className={`${tag} border-2 border-[#1d140c] py-[1px] text-[#1d140c]`}>{note}</span>}
+      </div>
+      <p className="f-num text-[26px] font-black leading-none">{age}</p>
+      <p className="whitespace-nowrap text-[12px] font-bold leading-tight text-[#3d2e1e]">{style}</p>
+    </div>
   );
 }
