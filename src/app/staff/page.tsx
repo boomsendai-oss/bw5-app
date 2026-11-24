@@ -196,6 +196,12 @@ const CARDS: CardDef[] = [
     description: '回ごとの申込一覧・支払い状態・CSV・イベント設定(名前・料金・定員)',
   },
   {
+    href: '/staff/ws?e=my',
+    icon: Flame,
+    title: '特設ワークショップ 申込',
+    description: 'My スペシャルWS(12/22)の申込一覧・当日払いの受け取り・CSV・設定(会場・写真・紹介文)',
+  },
+  {
     href: '/staff/mellojoy',
     icon: Bell,
     title: 'メロジョイ 在庫見張り',

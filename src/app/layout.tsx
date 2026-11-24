@@ -76,7 +76,7 @@ export default function RootLayout({
                 function add(tag, attrs){var e = d.createElement(tag); for(var k in attrs){e.setAttribute(k, attrs[k]);} e.setAttribute('data-pwa-boot','1'); head.appendChild(e); return e;}
                 // theme-color もパス別: スタッフ=ネイビー / BF6=黒(イベント配色) / それ以外=BW5オレンジ
                 rm('meta[name="theme-color"]');
-                add('meta', {name: 'theme-color', content: isKiosk ? '#F4EDE5' : isStaff ? '#101040' : isBf7 ? '#0b1b36' : isDark ? '#0a0a0a' : '#f27a1a'});
+                add('meta', {name: 'theme-color', content: isKiosk ? '#F4EDE5' : p.indexOf('/ws/') === 0 ? '#16142b' : isStaff ? '#101040' : isBf7 ? '#0b1b36' : isDark ? '#0a0a0a' : '#f27a1a'});
                 // BF6当日: /bf6/crew=スタッフ / /bf6/checkin=出場者が自分で触るiPad。
                 // どちらもホーム画面に入れて使うので、start_url を自分のページにした
                 // 専用manifestを当てる。ここを通さないと main-manifest の start_url "/" が

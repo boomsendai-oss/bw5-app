@@ -28,6 +28,9 @@ import { handleRecitalWebhook } from '@/lib/recitalPayDb';
 import { parseBattleWebhookEvent } from '@/lib/battleStripe';
 import { applyBattleWebhookEvent, getBattleEvent } from '@/lib/battleDb';
 import { sendBattleConfirmEmail } from '@/lib/battleEmail';
+import { parseSpWsWebhookEvent } from '@/lib/spWsStripe';
+import { applySpWsWebhookEvent, getSpWsEvent } from '@/lib/spWsDb';
+import { sendSpWsConfirmEmail } from '@/lib/spWsEmail';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,6 +117,28 @@ export async function POST(req: NextRequest) {
   // カード決済の PaymentIntent には印(metadata)が無く、ほかの注文の処理(BF6など)に流すと誤って記録されるので、ここで受領だけ返す
   if (typeof (event as { type?: unknown })?.type === 'string' && String((event as { type: string }).type).startsWith('payment_intent.')) {
     return NextResponse.json({ received: true, result: 'payment_intent_ignored' });
+  }
+
+  // 特設ワークショップ(/ws/[slug]・metadata.sp_ws_entry_id)も同じ相乗り方式。バトルと同じ形。
+  const spWsEv = parseSpWsWebhookEvent(event);
+  if (spWsEv) {
+    try {
+      const r = await applySpWsWebhookEvent(spWsEv, payload);
+      if (r.status === 'paid') {
+        if (r.amountMismatch) console.error('[spws] amount mismatch on entry', spWsEv.entryId, 'stripe:', spWsEv.amountTotal);
+        const ev = await getSpWsEvent(r.entry.slug);
+        if (ev) await sendSpWsConfirmEmail(r.entry, r.editToken, ev);
+      } else if (r.status === 'entry_not_found') {
+        console.error('[spws] webhook entry not found. entry:', spWsEv.entryId);
+      } else if (r.status === 'not_updated' && spWsEv.type === 'checkout.session.completed') {
+        console.error('[spws] payment completed for non-pending entry (refund check). entry:', spWsEv.entryId);
+      }
+      return NextResponse.json({ received: true, result: `spws_${r.status}` });
+    } catch (e) {
+      // 500でStripeが自動リトライ(冪等なので再適用は安全)
+      console.error('[spws] webhook apply failed', e instanceof Error ? e.message : e);
+      return NextResponse.json({ error: 'apply failed' }, { status: 500 });
+    }
   }
 
   // 月1回の校内プチバトル(metadata.battle_entry_id)も同じ相乗り方式。
