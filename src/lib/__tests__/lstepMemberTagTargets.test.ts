@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decideTargets, ageOn, type MemberRow } from '../lstepMemberTagTargets';
+import { decideTargets, ageOn, recentTrialCandidates, type MemberRow } from '../lstepMemberTagTargets';
 
 const member = (id: number, over: Partial<MemberRow> = {}): MemberRow => ({
   id, hacomono_member_id: String(100 + id), full_name: `山田 太郎${id}`, full_name_kana: `ヤマダ タロウ${id}`,
@@ -55,7 +55,7 @@ describe('decideTargets', () => {
       links: [],
       trials: [
         { lstep_id: 'K', enrolled_member_id: 1, applicant_name: '佐藤花子', applicant_name_kana: 'さとう はなこ', applicant_age: 10, parent_name: null },
-        { lstep_id: 'X', enrolled_member_id: 2, applicant_name: '山田 次郎', applicant_name_kana: 'ヤマダ タロウ2', applicant_age: 36, parent_name: null },
+        { lstep_id: 'X', enrolled_member_id: 2, applicant_name: '山田 次郎', applicant_name_kana: 'ヤマダ タロウ2', applicant_age: null, parent_name: null },
       ],
       today: TODAY,
     });
@@ -113,5 +113,49 @@ describe('decideTargets', () => {
     });
     expect(r.targets).toEqual([]);
     expect(r.review[0].reason).toMatch(/中高生/);
+  });
+
+  it('案B: 漢字の氏名が違っても、カナが一致し年齢が合い、同じカナがほかにいなければ決める', () => {
+    const r = decideTargets({
+      members: [member(1, { full_name: '三浦 ひろみ' , full_name_kana: 'ミウラ ヒロミ', birthday: '1980-03-01' })], links: [],
+      trials: [{ lstep_id: 'A', enrolled_member_id: 1, applicant_name: '三浦博美', applicant_name_kana: 'ミウラヒロミ', applicant_age: 46, parent_name: null }],
+      today: TODAY,
+    });
+    expect(r.targets[0]).toMatchObject({ lstepId: 'A', kind: 'member' });
+  });
+
+  it('案B: 年齢が2以上ずれる・同じカナの会員がほかにいるときは決めない', () => {
+    const base = { full_name: '佐藤 花', full_name_kana: 'サトウ ハナ', birthday: '2000-01-01' };
+    const trial = (age: number) => ({ lstep_id: 'A', enrolled_member_id: 1, applicant_name: '佐藤華', applicant_name_kana: 'サトウハナ', applicant_age: age, parent_name: null });
+    expect(decideTargets({ members: [member(1, base)], links: [], trials: [trial(23)], today: TODAY }).targets).toEqual([]);
+    expect(decideTargets({ members: [member(1, base), member(2, { ...base, member_type: 'visitor' })], links: [], trials: [trial(26)], today: TODAY }).targets).toEqual([]);
+  });
+
+  it('案B: 推定のひもづけも、同じLINEの体験予約とカナ・年齢が合えば決める', () => {
+    const r = decideTargets({
+      members: [member(1, { birthday: '2016-05-01' })],
+      links: [{ member_id: 1, lstep_id: 'G', relation: '保護者', confidence: '推定' }],
+      trials: [{ lstep_id: 'G', enrolled_member_id: null, applicant_name: 'やまだ', applicant_name_kana: 'ヤマダタロウ1', applicant_age: 10, parent_name: 'ヤマダ ハナコ' }],
+      today: TODAY,
+    });
+    expect(r.targets).toEqual([{ lstepId: 'G', kind: 'guardian', memberRefs: ['101'], source: 'link' }]);
+    expect(r.review).toEqual([]);
+  });
+});
+
+describe('recentTrialCandidates（案A）', () => {
+  const t = (over: Record<string, unknown>) => ({ lstep_id: 'A', enrolled_member_id: null, applicant_name: 'x', applicant_name_kana: 'イシガキ ユウコ', applicant_age: 45, parent_name: null, reserved_at: '2026-10-05 18:45:00', status: '予約済', ...over });
+  it('直近21日・取り消し以外・未決定のLINEだけ、同じLINEと同じカナは1件', () => {
+    const r = recentTrialCandidates([
+      t({}), t({ reserved_at: '2026-10-06 18:45:00' }),
+      t({ lstep_id: 'B', status: 'キャンセル' }),
+      t({ lstep_id: 'C', reserved_at: '2026-09-20 10:00:00' }),
+      t({ lstep_id: 'D' }),
+      t({ lstep_id: 'E', reserved_at: '2026-10-20 10:00:00' }),
+      t({ lstep_id: 'F', parent_name: 'イシガキ' }),
+    ], new Set(['D']), TODAY);
+    expect(r.map((c) => c.lstepId)).toEqual(['A', 'F']);
+    expect(r[0]).toMatchObject({ age: 45, hasParentName: false, reservedAt: '2026-10-05' });
+    expect(r[1].hasParentName).toBe(true);
   });
 });

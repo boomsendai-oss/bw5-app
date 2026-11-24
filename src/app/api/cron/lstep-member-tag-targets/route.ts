@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAll } from '@/lib/db';
 import { todayJst } from '@/lib/dateJst';
-import { decideTargets, type MemberRow, type LinkRow, type TrialRow } from '@/lib/lstepMemberTagTargets';
+import { decideTargets, recentTrialCandidates, type MemberRow, type LinkRow, type TrialRow } from '@/lib/lstepMemberTagTargets';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -37,11 +37,14 @@ export async function GET(req: NextRequest) {
   )) as LinkRow[];
   const trials = (await getAll(
     `SELECT t.lstep_id, t.enrolled_member_id, t.applicant_name, t.applicant_name_kana, t.applicant_age,
-            f.parent_name
+            f.parent_name, t.reserved_at, t.status
        FROM trial_records t LEFT JOIN lstep_friends f ON f.lstep_id = t.lstep_id
-      WHERE t.enrolled_member_id IS NOT NULL AND t.lstep_id IS NOT NULL AND t.lstep_id <> ''`,
+      WHERE t.lstep_id IS NOT NULL AND t.lstep_id <> ''`,
   )) as TrialRow[];
 
-  const { targets, review } = decideTargets({ members, links, trials, today: todayJst() });
-  return NextResponse.json({ ok: true, targets, review });
+  const today = todayJst();
+  const { targets, review } = decideTargets({ members, links, trials, today });
+  // 案A(2026-11-24): 始まりが先の日付の契約の人を Actions 側でHACOMONOから確かめるための候補。カナと年齢だけ返す
+  const candidates = recentTrialCandidates(trials, new Set(targets.map((t) => t.lstepId)), today);
+  return NextResponse.json({ ok: true, targets, review, candidates });
 }

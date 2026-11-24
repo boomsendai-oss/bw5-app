@@ -9,6 +9,11 @@
 //   - 月額会員だけでなくチケット会員も「入会済み」に含める
 //   - 体験予約との自動照合でひもづいた人は、氏名とカナが両方とも完全一致するときだけ自動で付ける
 //   - 保護者のアカウントには本人用(4-A)を付けない(保護者用4-Bで除外される)
+//
+// TAROの決定(2026-11-24・案B): 体験予約のカナと会員のカナが一致し、年齢も合い(差1以内)、
+//   同じカナの会員がほかにいないときは、漢字の氏名が違っても・ひもづけが「推定」でも自動で決める。
+//   (案A: 始まりが先の日付の契約の人は会員名簿に載らないため、最近の体験予約を recentTrialCandidates で
+//    返し、GitHub Actions 側でHACOMONOを直接引いて確かめる)
 
 import { normalizeKana } from './linkSuggest';
 
@@ -37,6 +42,14 @@ export type TrialRow = {
   applicant_age: number | null;
   /** 体験予約の友だち情報にある保護者名(lstep_friends.parent_name)。記入があれば保護者のLINE */
   parent_name: string | null;
+  /** 'YYYY-MM-DD HH:MM:SS'(JST)。案Aの「最近の体験予約」を選ぶときだけ使う */
+  reserved_at?: string | null;
+  status?: string | null;
+};
+
+/** 案A: GitHub Actions がHACOMONOで入会済みかを確かめる、最近の体験予約 */
+export type TrialCandidate = {
+  lstepId: string; kana: string; age: number | null; hasParentName: boolean; reservedAt: string;
 };
 
 export type Target = { lstepId: string; kind: TagKind; memberRefs: string[]; source: 'link' | 'trial' };
@@ -54,6 +67,21 @@ export function ageOn(birthday: string | null, today: string): number | null {
   return age;
 }
 
+/**
+ * 案B: 体験予約の人と会員が同じ人か。カナが一致・年齢の差が1以内・同じカナの会員がほかにいない。
+ * 誕生日か体験予約の年齢が分からなければ決めない。
+ */
+export function sameByKanaAndAge(
+  m: MemberRow, t: Pick<TrialRow, 'applicant_name_kana' | 'applicant_age'>, kanaCount: Map<string, number>, today: string,
+): boolean {
+  const k = normalizeKana(t.applicant_name_kana ?? '');
+  if (k === '' || k !== normalizeKana(m.full_name_kana)) return false;
+  if ((kanaCount.get(k) ?? 0) !== 1) return false;
+  const age = ageOn(m.birthday, today);
+  if (age == null || t.applicant_age == null) return false;
+  return Math.abs(age - Number(t.applicant_age)) <= 1;
+}
+
 export function decideTargets(
   { members, links, trials, today }: { members: MemberRow[]; links: LinkRow[]; trials: TrialRow[]; today: string },
 ): { targets: Target[]; review: Review[] } {
@@ -64,6 +92,11 @@ export function decideTargets(
   );
   const byAccount = new Map<string, Target>();
   const review: Review[] = [];
+  const kanaCount = new Map<string, number>();
+  for (const m of members) {
+    const k = normalizeKana(m.full_name_kana);
+    if (k) kanaCount.set(k, (kanaCount.get(k) ?? 0) + 1);
+  }
 
   const add = (lstepId: string, kind: TagKind, ref: string, source: Target['source']) => {
     const cur = byAccount.get(lstepId);
@@ -80,6 +113,12 @@ export function decideTargets(
     if (!m || !l.lstep_id) continue;
     if (l.relation !== '本人' && l.relation !== '保護者') continue; // 講師などは対象外
     if (l.confidence !== '確実') {
+      // 案B: 同じLINEの体験予約とカナ・年齢が合えば、推定のままでも決める
+      if (trials.some((t) => t.lstep_id === l.lstep_id && sameByKanaAndAge(m, t, kanaCount, today))) {
+        add(l.lstep_id, l.relation === '本人' ? 'member' : 'guardian', m.hacomono_member_id, 'link');
+        linked.add(`${l.member_id}|${l.lstep_id}`);
+        continue;
+      }
       review.push({ lstepId: l.lstep_id, memberRef: m.hacomono_member_id, reason: 'ひもづけが「推定」のまま' });
       continue;
     }
@@ -95,7 +134,7 @@ export function decideTargets(
     const sameName = normalizeName(t.applicant_name) !== '' && normalizeName(t.applicant_name) === normalizeName(m.full_name);
     const sameKana = normalizeKana(t.applicant_name_kana ?? '') !== ''
       && normalizeKana(t.applicant_name_kana ?? '') === normalizeKana(m.full_name_kana);
-    if (!sameName || !sameKana) {
+    if ((!sameName || !sameKana) && !sameByKanaAndAge(m, t, kanaCount, today)) {
       review.push({ lstepId: t.lstep_id, memberRef: m.hacomono_member_id, reason: '体験予約と会員の氏名かカナが一致しない' });
       continue;
     }
@@ -122,4 +161,35 @@ export function decideTargets(
   const targets = [...byAccount.values()].sort((a, b) => a.lstepId.localeCompare(b.lstepId));
   const decided = new Set(targets.map((t) => t.lstepId));
   return { targets, review: review.filter((r) => !decided.has(r.lstepId)) };
+}
+
+/**
+ * 案A: 体験日が直近 days 日以内で、まだ入会の印の対象になっていない体験予約。
+ * 始まりが先の日付の契約の人は会員名簿に載らないので、Actions 側でHACOMONOを引いて確かめる。
+ * 取り消した予約・LINEの無い予約は除く。同じLINE・同じカナは1件にまとめる。
+ */
+export function recentTrialCandidates(
+  trials: TrialRow[], decided: Set<string>, today: string, days = 21,
+): TrialCandidate[] {
+  const from = new Date(`${today}T00:00:00Z`);
+  from.setUTCDate(from.getUTCDate() - days);
+  const fromYmd = from.toISOString().slice(0, 10);
+  const out: TrialCandidate[] = [];
+  const seen = new Set<string>();
+  for (const t of trials) {
+    if (!t.lstep_id || decided.has(t.lstep_id)) continue;
+    const day = (t.reserved_at ?? '').slice(0, 10);
+    if (!day || day < fromYmd || day > today) continue;
+    if ((t.status ?? '').includes('キャンセル')) continue;
+    const kana = normalizeKana(t.applicant_name_kana ?? '');
+    if (!kana) continue;
+    const key = `${t.lstep_id}|${kana}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      lstepId: t.lstep_id, kana: t.applicant_name_kana ?? '', age: t.applicant_age == null ? null : Number(t.applicant_age),
+      hasParentName: normalizeName(t.parent_name) !== '', reservedAt: day,
+    });
+  }
+  return out;
 }
