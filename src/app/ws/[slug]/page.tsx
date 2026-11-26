@@ -3,12 +3,15 @@
 // 写真が無くても見栄えするよう、講師名を大きな文字で見せる。写真URLが入ればヒーローに写真を出す。
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { formatJpDateTime, isSpWsAccepting, nowJstMinute, spWsDateParts, spWsGateError, splitLines, venueLabel, yen } from '@/lib/spWs';
+import { formatJpDateTime, isSpWsAccepting, nowJstMinute, spWsDateParts, spWsGateError, venueLabel, yen } from '@/lib/spWs';
 import { getSpWsEvent, getSpWsRemaining } from '@/lib/spWsDb';
 import { isAuthorizedServer } from '@/lib/eventAuth';
 import { MultiLine, WsCard, WsPreviewBanner, WsRow, WsShell, btnPrimaryCls } from '../ui';
 import WsForm from './WsForm';
 
+
+/** BOOM公式LINEの友だち追加(お問い合わせ先)。 */
+const OFFICIAL_LINE_URL = 'https://lin.ee/4EYB9zZ';
 export const dynamic = 'force-dynamic';
 
 type Props = { params: Promise<{ slug: string }> };
@@ -38,7 +41,6 @@ export default async function WsPage({ params }: Props) {
   const showForm = accepting || preview;
   const closedReason = spWsGateError(ev, now, remaining);
   const d = spWsDateParts(ev.eventDate);
-  const belongings = splitLines(ev.belongings);
 
   return (
     <WsShell>
@@ -95,8 +97,7 @@ export default async function WsPage({ params }: Props) {
             <div>
               <p className="text-xs font-bold text-[#6b6880]">参加費</p>
               <p className="f-num text-3xl font-bold">{yen(ev.fee)}</p>
-              <p className="text-[11px] text-[#6b6880]">会員・一般とも同じ</p>
-            </div>
+                          </div>
             <div>
               <p className="text-xs font-bold text-[#6b6880]">定員</p>
               <p className="text-sm font-bold">{remaining === 0 ? '満員' : <><span className="f-num text-3xl">{ev.capacity}</span> 名</>}</p>
@@ -152,7 +153,7 @@ export default async function WsPage({ params }: Props) {
           {ev.instructorBio && <MultiLine text={ev.instructorBio} className="mt-4 space-y-1 text-[15px] leading-relaxed" />}
         </WsCard>
 
-        <WsCard title="くわしい内容">
+        <WsCard title="詳細">
           <WsRow k="日時">{d.jp} {ev.startTime}〜{ev.endTime}</WsRow>
           <WsRow k="会場">
             <span className={ev.venue ? '' : 'font-bold text-[#c2410c]'}>{venueLabel(ev)}</span>
@@ -160,21 +161,15 @@ export default async function WsPage({ params }: Props) {
           </WsRow>
           <WsRow k="参加費">
             {yen(ev.fee)}
-            <span className="block text-xs text-[#6b6880]">BOOMの会員さんも、会員でない方も同じです。カードで先に払うか、当日会場で現金で払うかを選べます</span>
           </WsRow>
           <WsRow k="定員">{ev.capacity}名(先着順)</WsRow>
           {ev.target && <WsRow k="対象">{ev.target}</WsRow>}
-          {belongings.length > 0 && (
-            <WsRow k="持ち物">
-              <ul className="flex flex-wrap gap-1.5">
-                {belongings.map((b) => (
-                  <li key={b} className="rounded-full bg-[#f6f3ee] px-3 py-1 text-sm">{b}</li>
-                ))}
-              </ul>
-            </WsRow>
-          )}
-          {ev.entryDeadline && <WsRow k="締切">{formatJpDateTime(ev.entryDeadline)}<span className="block text-xs text-[#6b6880]">定員になりしだい締め切ります</span></WsRow>}
-          <WsRow k="お問い合わせ">{ev.contact || 'BOOM公式LINE'}</WsRow>
+          {ev.entryDeadline && <WsRow k="締切">{formatJpDateTime(ev.entryDeadline)}</WsRow>}
+          <WsRow k="お問い合わせ">
+            <a href={OFFICIAL_LINE_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-full bg-[#06c755] px-3.5 py-1.5 text-sm font-bold text-white">
+              BOOM公式LINE<span aria-hidden>→</span>
+            </a>
+          </WsRow>
         </WsCard>
 
         {showForm ? (
@@ -186,7 +181,7 @@ export default async function WsPage({ params }: Props) {
         ) : (
           <WsCard>
             <p className="font-bold">{closedReason}</p>
-            <p className="mt-1 text-sm text-[#6b6880]">お問い合わせは{ev.contact || 'BOOM公式LINE'}までどうぞ。</p>
+            <p className="mt-1 text-sm text-[#6b6880]">お問い合わせは<a href={OFFICIAL_LINE_URL} target="_blank" rel="noopener noreferrer" className="font-bold text-[#06c755] underline">BOOM公式LINE</a>までどうぞ。</p>
           </WsCard>
         )}
 

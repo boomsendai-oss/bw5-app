@@ -20,7 +20,6 @@ export default function WsForm({
 }) {
   const [step, setStep] = useState<'input' | 'confirm'>('input');
   const [f, setF] = useState({ name: '', kana: '', email: '', phone: '', age: '', guardianName: '' });
-  const [member, setMember] = useState<'member' | 'guest' | ''>('');
   const [guardianConsent, setGuardianConsent] = useState(false);
   const [payMethod, setPayMethod] = useState<'card' | 'onsite'>('card');
   const [agree, setAgree] = useState(false);
@@ -33,7 +32,6 @@ export default function WsForm({
   const amount = calcSpWsAmount(ev);
 
   function localCheck(): string {
-    if (!member) return 'BOOMの会員かどうかを選んでください';
     if (!f.name.trim()) return 'お名前を入力してください';
     if (!f.kana.trim()) return 'ふりがなを入力してください';
     if (age == null) return '年齢を数字で入力してください(例: 15)';
@@ -49,7 +47,7 @@ export default function WsForm({
     setBusy(true);
     setError('');
     const res = await submitSpWsEntry(ev.slug, {
-      ...f, age, isMember: member === 'member', guardianConsent, payMethod, agreePolicy: agree,
+      ...f, age, isMember: false, guardianConsent, payMethod, agreePolicy: agree,
     });
     if (!res.ok) {
       setBusy(false);
@@ -75,7 +73,7 @@ export default function WsForm({
         <h2 className="pt-2 text-center text-xl font-bold">入力内容の確認</h2>
         <WsCard>
           <p className="text-xl font-bold">{f.name} <span className="text-sm font-normal text-[#6b6880]">{f.kana}</span></p>
-          <p className="mt-1 text-sm">{age}歳 / {member === 'member' ? 'BOOMの会員' : 'BOOMの会員ではない'}</p>
+          <p className="mt-1 text-sm">{age}歳</p>
           <p className="text-sm text-[#6b6880]">{f.email} / {f.phone}</p>
           {guardian && <p className="text-sm text-[#6b6880]">保護者: {f.guardianName}(同意済み)</p>}
         </WsCard>
@@ -113,18 +111,6 @@ export default function WsForm({
         <h2 className="text-xl font-bold">お申し込み</h2>
         <p className="mt-1 text-xs text-[#6b6880]">1人ずつお申し込みください(1〜2分で終わります)</p>
       </div>
-
-      <WsCard title="BOOMの会員ですか？">
-        <div className="grid grid-cols-2 gap-2.5">
-          {([['member', '会員です'], ['guest', '会員ではありません']] as const).map(([k, label]) => (
-            <label key={k} className={`${choice(member === k)} items-center justify-center text-center`}>
-              <input type="radio" name="member" checked={member === k} onChange={() => setMember(k)} className="sr-only" />
-              <span className="text-sm font-bold">{label}</span>
-            </label>
-          ))}
-        </div>
-        <p className="mt-2 text-xs text-[#6b6880]">参加費はどちらも同じです</p>
-      </WsCard>
 
       <WsCard title="参加する方">
         <div className="space-y-4">
