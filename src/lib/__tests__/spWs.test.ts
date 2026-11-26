@@ -34,7 +34,7 @@ beforeAll(async () => {
 });
 
 const EV: SpWsEvent = {
-  slug: 'my', title: 'My SPECIAL WORKSHOP', subtitle: '', instructorName: 'My', instructorKana: 'さわやま', instructorFrom: 'from KOREA',
+  slug: 'my', title: 'My SPECIAL WORKSHOP', subtitle: '', instructorName: 'My', instructorKana: '', instructorFrom: 'from KOREA',
   instructorBio: '', instructorGenre: '', instructorInstagram: '', photoUrl: '', description: '',
   eventDate: '2026-12-22', startTime: '19:30', endTime: '21:00', venue: '', venueAddress: '',
   fee: 2000, capacity: 20, entryDeadline: '2026-12-21T23:59', entryOpen: true, belongings: '動きやすい服\n室内用のシューズ\n飲み物',

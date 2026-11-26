@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS sp_ws_payments (
 
 CREATE INDEX IF NOT EXISTS idx_sp_ws_payments_session ON sp_ws_payments (stripe_session_id);
 
--- My(さわやま)スペシャルワークショップ(TARO 2026-11-24決定)。会場は未定=空(画面では「調整中」と出す)。
+-- Myスペシャルワークショップ(TARO 2026-11-24決定)。会場は未定=空(画面では「調整中」と出す)。
 -- キャンセル規定は BOOM DOJO と同じ文を仮で入れる(決まったら /staff/ws の設定で直す)。
 INSERT OR IGNORE INTO sp_ws_events (
   slug, title, subtitle, instructor_name, instructor_kana, instructor_from, instructor_bio, instructor_genre, instructor_instagram,
@@ -85,7 +85,7 @@ INSERT OR IGNORE INTO sp_ws_events (
   'My SPECIAL WORKSHOP',
   'from KOREA',
   'My',
-  'さわやま',
+  '',
   'from KOREA',
   '韓国で活躍しているダンサー。年末に仙台へ帰ってくるタイミングで、一夜かぎりのスペシャルワークショップをひらきます。
 12/26(土)の BOOM DOJO 其の一 ではジャッジも担当します。',
