@@ -111,7 +111,7 @@ export default function WsForm({
       <div className="pt-2 text-center">
         <p className="f-num text-xs tracking-[0.3em] text-[#00a090]">ENTRY</p>
         <h2 className="text-xl font-bold">お申し込み</h2>
-        <p className="mt-1 text-xs text-[#6b6880]">{remaining > 0 ? `残り${remaining}枠です。` : ''}1人ずつお申し込みください(1〜2分で終わります)</p>
+        <p className="mt-1 text-xs text-[#6b6880]">1人ずつお申し込みください(1〜2分で終わります)</p>
       </div>
 
       <WsCard title="BOOMの会員ですか？">

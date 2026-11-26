@@ -6,7 +6,7 @@ import { notFound } from 'next/navigation';
 import { formatJpDateTime, isSpWsAccepting, nowJstMinute, spWsDateParts, spWsGateError, splitLines, venueLabel, yen } from '@/lib/spWs';
 import { getSpWsEvent, getSpWsRemaining } from '@/lib/spWsDb';
 import { isAuthorizedServer } from '@/lib/eventAuth';
-import { MultiLine, SeatBar, WsCard, WsPreviewBanner, WsRow, WsShell, btnPrimaryCls } from '../ui';
+import { MultiLine, WsCard, WsPreviewBanner, WsRow, WsShell, btnPrimaryCls } from '../ui';
 import WsForm from './WsForm';
 
 export const dynamic = 'force-dynamic';
@@ -47,19 +47,21 @@ export default async function WsPage({ params }: Props) {
       {/* ヒーロー: 写真があれば写真、無ければ講師名を大きな文字で */}
       <header className="relative overflow-hidden bg-[#16142b] text-white">
         {ev.photoUrl ? (
-          <>
+          <div className="relative aspect-[4/5] w-full">
             {/* eslint-disable-next-line @next/next/no-img-element -- 写真URLはDBの設定値(外部URLもありうる) */}
-            <img src={ev.photoUrl} alt={ev.instructorName} className="absolute inset-0 h-full w-full object-cover object-[50%_30%] opacity-80" />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#16142b] via-[#16142b]/40 to-transparent" aria-hidden />
-          </>
+            <img src={ev.photoUrl} alt={ev.instructorName} className="absolute inset-0 h-full w-full object-cover object-[50%_30%]" />
+            {/* 顔に文字がかからないよう、暗くするのは写真の下の方だけ */}
+            <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-[#16142b] via-[#16142b]/70 to-transparent" aria-hidden />
+            <p className="absolute left-6 top-5 text-[10px] font-bold tracking-[0.35em] text-white/80 [text-shadow:0_1px_6px_rgba(0,0,0,.7)]">BOOM DANCE SCHOOL PRESENTS</p>
+          </div>
         ) : (
           <div aria-hidden className="pointer-events-none absolute -right-10 -top-6 select-none text-[13rem] font-bold leading-none text-white/[0.05] f-num">
             {ev.instructorName}
           </div>
         )}
-        <div className={`relative px-6 ${ev.photoUrl ? 'pt-56' : 'pt-12'} pb-9`}>
-          <p className="text-[10px] font-bold tracking-[0.35em] text-white/60">BOOM DANCE SCHOOL PRESENTS</p>
-          <h1 className="mt-5">
+        <div className={`relative px-6 ${ev.photoUrl ? '-mt-14 pt-0' : 'pt-12'} pb-9`}>
+          {!ev.photoUrl && <p className="text-[10px] font-bold tracking-[0.35em] text-white/60">BOOM DANCE SCHOOL PRESENTS</p>}
+          <h1 className={ev.photoUrl ? '' : 'mt-5'}>
             <span className="f-num block text-[5.5rem] font-bold leading-[0.9] tracking-tight">{ev.instructorName || ev.title}</span>
             <span className="f-num mt-2 block text-2xl font-medium tracking-[0.18em] text-[#7fe0d2]">SPECIAL WORKSHOP</span>
           </h1>
@@ -74,7 +76,7 @@ export default async function WsPage({ params }: Props) {
         </div>
       </header>
 
-      {/* 大事な数字: 日時・料金・残り枠＋申込ボタン */}
+      {/* 大事な数字: 日時・料金・定員＋申込ボタン（残り枠は出さない・2026-11-26 TARO） */}
       <div className="relative -mt-4 px-4">
         <div className="rounded-2xl bg-white p-5 shadow-[0_10px_30px_rgba(22,20,43,0.12)]">
           <div className="flex items-end justify-between gap-3">
@@ -95,7 +97,11 @@ export default async function WsPage({ params }: Props) {
               <p className="f-num text-3xl font-bold">{yen(ev.fee)}</p>
               <p className="text-[11px] text-[#6b6880]">会員・一般とも同じ</p>
             </div>
-            <SeatBar remaining={remaining} capacity={ev.capacity} />
+            <div>
+              <p className="text-xs font-bold text-[#6b6880]">定員</p>
+              <p className="text-sm font-bold">{remaining === 0 ? '満員' : <><span className="f-num text-3xl">{ev.capacity}</span> 名</>}</p>
+              <p className="text-[11px] text-[#6b6880]">先着順</p>
+            </div>
           </div>
           <div className="mt-4 rounded-xl bg-[#f6f3ee] px-3.5 py-2.5 text-sm">
             <span className="mr-2 text-xs font-bold text-[#6b6880]">会場</span>
@@ -193,7 +199,7 @@ export default async function WsPage({ params }: Props) {
           <div className="mx-auto flex max-w-lg items-center gap-3">
             <div className="shrink-0">
               <p className="f-num text-xl font-bold leading-none">{yen(ev.fee)}</p>
-              <p className="text-[11px] text-[#6b6880]">{remaining > 0 ? `残り${remaining}枠` : '満員'}</p>
+              <p className="text-[11px] text-[#6b6880]">{remaining > 0 ? '先着順' : '満員'}</p>
             </div>
             <a href="#entry-form" className={`flex-1 rounded-full py-3.5 text-center font-bold ${btnPrimaryCls}`}>申し込む</a>
           </div>
