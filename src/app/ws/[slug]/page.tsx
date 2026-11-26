@@ -63,7 +63,7 @@ export default async function WsPage({ params }: Props) {
           {!ev.photoUrl && <p className="text-[10px] font-bold tracking-[0.35em] text-white/60">BOOM DANCE SCHOOL PRESENTS</p>}
           <h1 className={ev.photoUrl ? '' : 'mt-5'}>
             <span className="f-num block text-[5.5rem] font-bold leading-[0.9] tracking-tight">{ev.instructorName || ev.title}</span>
-            <span className="f-num mt-2 block text-2xl font-medium tracking-[0.18em] text-[#7fe0d2]">SPECIAL WORKSHOP</span>
+            <span className="f-num mt-2 block text-2xl font-medium tracking-[0.18em] text-[#ffd23f]">SPECIAL WORKSHOP</span>
           </h1>
           {(ev.instructorFrom || ev.instructorKana) && (
             <p className="mt-3 text-sm text-white/80">
@@ -84,7 +84,7 @@ export default async function WsPage({ params }: Props) {
               <p className="text-xs font-bold text-[#6b6880]">{d.year}</p>
               <p className="leading-none">
                 <span className="f-num text-[3.4rem] font-bold">{d.md}</span>
-                <span className="f-num ml-1.5 text-lg font-medium text-[#00a090]">{d.dow}</span>
+                <span className="f-num ml-1.5 text-lg font-medium text-[#ff6a2b]">{d.dow}</span>
               </p>
             </div>
             <p className="f-num pb-1 text-2xl font-medium">
@@ -143,7 +143,7 @@ export default async function WsPage({ params }: Props) {
                 {[ev.instructorKana, ev.instructorFrom].filter(Boolean).join(' / ')}
               </p>
               {ev.instructorInstagram && (
-                <a href={`https://www.instagram.com/${encodeURIComponent(ev.instructorInstagram)}/`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-sm font-bold text-[#00a090] underline">
+                <a href={`https://www.instagram.com/${encodeURIComponent(ev.instructorInstagram)}/`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-sm font-bold text-[#ff6a2b] underline">
                   @{ev.instructorInstagram}
                 </a>
               )}

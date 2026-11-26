@@ -66,8 +66,8 @@ export default function WsForm({
   }
 
   const scrollToForm = () => setTimeout(() => document.getElementById('entry-form')?.scrollIntoView({ behavior: 'smooth' }), 0);
-  const check = 'mt-0.5 h-5 w-5 shrink-0 accent-[#00a090]';
-  const choice = (on: boolean) => `flex cursor-pointer items-start gap-2.5 rounded-xl border-2 p-3 ${on ? 'border-[#00a090] bg-[#ecf8f6]' : 'border-[#e6e1d8] bg-white'}`;
+  const check = 'mt-0.5 h-5 w-5 shrink-0 accent-[#ff6a2b]';
+  const choice = (on: boolean) => `flex cursor-pointer items-start gap-2.5 rounded-xl border-2 p-3 ${on ? 'border-[#ff6a2b] bg-[#fff4e6]' : 'border-[#e6e1d8] bg-white'}`;
 
   if (step === 'confirm') {
     return (
@@ -84,7 +84,7 @@ export default function WsForm({
             <p className="text-sm font-bold">参加費</p>
             <p className="f-num text-4xl font-bold">{yen(amount)}</p>
           </div>
-          <p className="mt-1 text-right text-sm font-bold text-[#00a090]">
+          <p className="mt-1 text-right text-sm font-bold text-[#ff6a2b]">
             {payMethod === 'onsite' ? '当日、会場で現金でお支払い' : 'カードでお支払い(このあと決済画面へ)'}
           </p>
         </WsCard>
@@ -109,7 +109,7 @@ export default function WsForm({
   return (
     <section id="entry-form" className="scroll-mt-4 space-y-4">
       <div className="pt-2 text-center">
-        <p className="f-num text-xs tracking-[0.3em] text-[#00a090]">ENTRY</p>
+        <p className="f-num text-xs tracking-[0.3em] text-[#ff6a2b]">ENTRY</p>
         <h2 className="text-xl font-bold">お申し込み</h2>
         <p className="mt-1 text-xs text-[#6b6880]">1人ずつお申し込みください(1〜2分で終わります)</p>
       </div>

@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 
 export const INK = '#16142b';
 export const inputCls =
-  'w-full rounded-xl border border-[#d9d3c7] bg-white px-3.5 py-3 text-base text-[#16142b] placeholder:text-slate-400 focus:border-[#00a090] focus:outline-none focus:ring-2 focus:ring-[#00a090]/25';
-export const btnPrimaryCls = 'bg-[#16142b] text-white shadow-[0_6px_18px_rgba(22,20,43,0.25)] active:translate-y-px disabled:opacity-50';
+  'w-full rounded-xl border border-[#d9d3c7] bg-white px-3.5 py-3 text-base text-[#16142b] placeholder:text-slate-400 focus:border-[#ff6a2b] focus:outline-none focus:ring-2 focus:ring-[#ff6a2b]/25';
+export const btnPrimaryCls = 'bg-gradient-to-r from-[#ffd23f] via-[#ffb02e] to-[#ff7a3d] text-[#16142b] shadow-[0_8px_24px_rgba(255,138,61,0.45)] ring-1 ring-white/40 transition hover:brightness-105 active:translate-y-px disabled:opacity-50';
 export const btnSubCls = 'border border-[#16142b]/20 bg-white text-[#16142b] disabled:opacity-50';
 
 export function WsShell({ children }: { children: ReactNode }) {
@@ -22,7 +22,7 @@ export function WsCard({ title, children, className = '' }: { title?: string; ch
     <section className={`rounded-2xl bg-white p-5 shadow-[0_1px_0_rgba(22,20,43,0.06)] ring-1 ring-[#16142b]/5 ${className}`}>
       {title && (
         <h2 className="mb-3 flex items-center gap-2 text-[15px] font-bold tracking-wide">
-          <span className="h-4 w-1 rounded-full bg-[#00a090]" aria-hidden />
+          <span className="h-4 w-1 rounded-full bg-[#ff6a2b]" aria-hidden />
           {title}
         </h2>
       )}
@@ -79,7 +79,7 @@ export function SeatBar({ remaining, capacity }: { remaining: number; capacity: 
         </p>
       </div>
       <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-[#efeae1]">
-        <div className={`h-full rounded-full ${remaining === 0 ? 'bg-red-600' : few ? 'bg-[#ea580c]' : 'bg-[#00a090]'}`} style={{ width: `${ratio * 100}%` }} />
+        <div className={`h-full rounded-full ${remaining === 0 ? 'bg-red-600' : few ? 'bg-[#ea580c]' : 'bg-[#ff6a2b]'}`} style={{ width: `${ratio * 100}%` }} />
       </div>
       {few && <p className="mt-1 text-xs font-bold text-[#c2410c]">残りわずかです</p>}
     </div>

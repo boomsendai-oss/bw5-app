@@ -54,7 +54,7 @@ export default async function WsCompletePage({ searchParams }: { searchParams: P
             <p className="text-xs font-bold tracking-[0.25em] text-[#6b6880]">受付番号</p>
             <p className="f-num mt-1 text-5xl font-bold">{formatSpWsReceiptNo(entry, ev.slug)}</p>
             <p className="mt-2 text-xs text-[#6b6880]">当日は受付で、受付番号かお名前をお伝えください</p>
-            <p className={`mt-3 inline-block rounded-full px-3 py-1 text-sm font-bold ${st === 'onsite' ? 'bg-orange-50 text-[#c2410c]' : 'bg-[#ecf8f6] text-[#00806f]'}`}>
+            <p className={`mt-3 inline-block rounded-full px-3 py-1 text-sm font-bold ${st === 'onsite' ? 'bg-orange-50 text-[#c2410c]' : 'bg-[#fff4e6] text-[#00806f]'}`}>
               {yen(entry.amountTotal)}・{spWsPayLabel(entry)}
             </p>
           </div>
