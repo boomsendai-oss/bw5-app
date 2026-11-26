@@ -49,7 +49,7 @@ export default async function WsPage({ params }: Props) {
         {ev.photoUrl ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element -- 写真URLはDBの設定値(外部URLもありうる) */}
-            <img src={ev.photoUrl} alt={ev.instructorName} className="absolute inset-0 h-full w-full object-cover opacity-80" />
+            <img src={ev.photoUrl} alt={ev.instructorName} className="absolute inset-0 h-full w-full object-cover object-[50%_30%] opacity-80" />
             <div className="absolute inset-0 bg-gradient-to-t from-[#16142b] via-[#16142b]/40 to-transparent" aria-hidden />
           </>
         ) : (
