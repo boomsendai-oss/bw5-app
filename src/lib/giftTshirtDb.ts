@@ -42,6 +42,12 @@ export async function runGiftTshirtScan(since: string = GIFT_START_DATE): Promis
     if (c.status === 'invite_pending') summary.invite_pending += 1;
     else summary.no_line += 1;
   }
+  // あとから公式LINEとつながった人(開始前の入会者は翌朝の同期で名前が入り、そこでつながる)を「未案内」に戻す(2026-11-27)
+  await execute(
+    `UPDATE gift_tshirt_claims SET status = 'invite_pending', line_linked = 1, updated_at = datetime('now')
+     WHERE status = 'no_line' AND EXISTS (SELECT 1 FROM member_lstep_links l WHERE l.member_id = gift_tshirt_claims.boom_member_id)`,
+    [],
+  );
   return summary;
 }
 
