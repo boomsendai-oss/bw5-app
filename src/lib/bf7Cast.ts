@@ -2,7 +2,7 @@
 // ⚠️ announced=false の間は公開ページに出さない(スタッフのログイン中の下見だけに出す)。
 //    公開してよいかはTAROが決める。出すときは announced を true にするだけ。
 // 並べ方はvol.6と同じ(TARO 2026-11-27「HIROさんとFriday・YUKAで見せ方に差がある」)
-//   審査員=同じ形の大きいカードを縦に並べる(HIROさんだけ SPECIAL GUEST の印)
+//   審査員=3人を同じ大きさで横に並べる(大手のバトルと同じ型・TARO 2026-11-27)。紹介文は下で畳む
 //   DJ・MC=小さいカードを横に並べる
 export const BF7_CAST_ANNOUNCED = false;
 
@@ -15,7 +15,7 @@ export type Bf7CastMember = {
   team?: string;
   /** ジャンル / 拠点 の1行 */
   meta?: string;
-  /** public/bf7/ 以下の写真。審査員は横長(3:2)、DJ・MCは正方形。無ければ名前だけ */
+  /** public/bf7/ 以下の写真。どれも正方形。無ければ名前だけ */
   photo?: string;
   /** 切り抜き写真(背景が透明)は背景にグラデーションを敷く */
   cutout?: boolean;
@@ -30,9 +30,8 @@ export const BF7_JUDGES: Bf7CastMember[] = [
     badge: 'SPECIAL GUEST',
     name: 'HIRO',
     team: 'MIDDLE FILTER',
-    meta: 'MIDDLE SCHOOL / 大阪',
-    photo: '/bf7/guest-hiro.webp',
-    cutout: true,
+    meta: '大阪',
+    photo: '/bf7/judge-hiro-sq.webp',
     // ⚠️表記は本人の指定で「HIRO」・「牽引し広めつづける」(2026-10-21)
     bio:
       '90年代より大阪を拠点に活動。MIDDLE SCHOOL(new jack swing / 90s HIPHOP)を牽引し広めつづける、唯一無二の伝道師的存在。国内・海外のイベント、SHOW、WORKSHOP、振付、コンテスト審査まで幅広く活動している。',
@@ -42,7 +41,7 @@ export const BF7_JUDGES: Bf7CastMember[] = [
     name: 'Friday',
     team: 'flying beats / marvel zom bboyz',
     meta: 'BREAK / 山形',
-    photo: '/bf7/judge-friday-wide.webp',
+    photo: '/bf7/judge-friday-sq.webp',
     bio:
       '山形を代表する老舗crew flying beatsの3代目リーダー。宮城・福島・秋田・山形のメンバーで構成されるmarvel zom bboyzに所属し、東北・全国での受賞歴も有り。現在は若手育成に力を入れながら、自分の踊りも継続して活動中。',
   },
@@ -51,7 +50,7 @@ export const BF7_JUDGES: Bf7CastMember[] = [
     name: 'YUKA',
     team: 'Stanza',
     meta: 'POP / 山形',
-    photo: '/bf7/judge-yuka-wide.webp',
+    photo: '/bf7/judge-yuka-sq.webp',
     records: [
       'WDC 東北予選 優勝(2014・2015・2016・2017・2018)',
       "FreeStyle Session JAPAN 2016 POPPIN' SOLO BATTLE 優勝",
