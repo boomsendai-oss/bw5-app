@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 
 function LoginForm() {
-  const router = useRouter();
   const sp = useSearchParams();
   const next = sp.get('next') || '/staff/events';
   const [password, setPassword] = useState('');
@@ -24,7 +23,11 @@ function LoginForm() {
       if (!res.ok) {
         setError('パスワードが違います');
       } else {
-        router.replace(next);
+        // ページを丸ごと読み込み直す。画面の切り替えだけだと、スタッフ画面の外(例: /bf7 の下見)へ行くとき
+        // ログイン前の表示が残ったり崩れたりする(2026-11-27 TARO「ログインしても正常に表示されない」)。
+        // 行き先はこのサイトの中だけ(// で始まる外部URLは通さない)
+        const dest = next.startsWith('/') && !next.startsWith('//') ? next : '/staff/events';
+        window.location.assign(dest);
       }
     } catch {
       setError('通信エラー');
