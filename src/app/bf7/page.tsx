@@ -17,6 +17,7 @@ import { isAuthorizedServer } from '@/lib/eventAuth';
 import { BF7_CAST_ANNOUNCED } from '@/lib/bf7Cast';
 import Bf7CastList from './CastList';
 import Bf7Client from './Bf7Client';
+import Bf7StartedView from './StartedView';
 import WorkshopSection from './WorkshopSection';
 import { Bf7DetailBlock, Bf7PreviewBanner, Bf7SectionHead, Bf7Shell, ComingSoon, btnDarkCls, btnPrimaryCls } from './ui';
 
@@ -47,6 +48,23 @@ export default async function Bf7Page() {
   const [usage, entries] = started ? await Promise.all([getBf7Usage(), getPublicBf7Entries()]) : [null, []];
   const remaining = usage ? calcBf7Remaining(settings, usage).divisions : null;
   const countOf = (key: string) => entries.filter((e) => (e.divisions as string[]).includes(key)).length;
+
+  // 受付開始後(とスタッフの下見)は、DOJOと同じ型の見やすい並びで出す(TARO 2026-11-27)
+  if (started) {
+    return (
+      <Bf7Shell>
+        {preview && <Bf7PreviewBanner />}
+        <Bf7StartedView
+          settings={settings}
+          entryOpen={entryOpen}
+          ticketOpen={ticketOpen}
+          remaining={remaining}
+          countOf={countOf}
+          faqs={faqs}
+        />
+      </Bf7Shell>
+    );
+  }
 
   return (
     <Bf7Shell>
