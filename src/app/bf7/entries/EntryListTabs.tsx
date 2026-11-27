@@ -3,7 +3,8 @@
 // エントリーリストの部門タブ切り替え(vol.6の EntryListTabs と同じ見た目)。
 // vol.7にはまだキャンセル待ちが無いので、その表示は持たない。満枠は「満枠」とだけ出す。
 import { useState } from 'react';
-import { BF6_DIVISIONS, type Bf6Division } from '@/lib/bf6';
+import { type Bf6Division } from '@/lib/bf6';
+import { BF7_DIVISIONS } from '@/lib/bf7Entry';
 import type { PublicBf7Entry } from '@/lib/bf7EntryDb';
 
 export default function EntryListTabs({
@@ -15,14 +16,14 @@ export default function EntryListTabs({
   capacity: Record<Bf6Division, number>;
   accepting: boolean;
 }) {
-  const [active, setActive] = useState<Bf6Division>('beginner');
-  const activeDef = BF6_DIVISIONS.find((d) => d.key === active)!;
+  const [active, setActive] = useState<Bf6Division>('kids');
+  const activeDef = BF7_DIVISIONS.find((d) => d.key === active)!;
   const list = lists[active] ?? [];
 
   return (
     <div>
       <div className="grid grid-cols-3 gap-1.5">
-        {BF6_DIVISIONS.map((d) => {
+        {BF7_DIVISIONS.map((d) => {
           const isActive = d.key === active;
           const count = (lists[d.key] ?? []).length;
           const full = capacity[d.key] > 0 && count >= capacity[d.key];

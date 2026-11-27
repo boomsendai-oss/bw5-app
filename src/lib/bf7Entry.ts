@@ -9,6 +9,7 @@
 // 料金・定員・受付期間は bf7_settings で上書きできる(スタッフが当日まで調整できるように)。
 
 import { todayJst } from './dateJst';
+import { BF6_DIVISIONS as BF6_DIVISIONS_ALL } from './bf6';
 import {
   bf6EntryPayMethodNote,
   bf6SalesGateError,
@@ -53,8 +54,8 @@ export const DEFAULT_BF7_SETTINGS: Bf7Settings = {
     stream: 2000,
     showcase: 3000,
   },
-  // 部門と定員は未決定(2026-10-20時点)。vol.6と同じ値で置いておき、決まったら bf7_settings で上書きする
-  capacity: { beginner: 16, kids: 32, general: 32 },
+  // vol.7は小中学生部門と一般部門の2つ(2026-11-27 TARO決定)。ビギナー部門は作らないので定員0=申込できない
+  capacity: { beginner: 0, kids: 32, general: 32 },
   hallCapacity: 200,
   // ⚠️ 既定は「閉」。11/30に開けるまでは受付開始前の表示になる
   entryOpen: false,
@@ -190,3 +191,6 @@ export function formatJpDate(ymd: string): string {
   const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
   return `${Number(m[2])}/${Number(m[3])}(${WEEKDAYS[d.getUTCDay()]})`;
 }
+
+/** vol.7で募集する部門(2026-11-27 TARO決定=小中学生・一般の2つ。ビギナー部門は無し)。表示はこれだけを並べる */
+export const BF7_DIVISIONS = BF6_DIVISIONS_ALL.filter((d) => d.key !== 'beginner');

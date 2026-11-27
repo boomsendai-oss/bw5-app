@@ -9,10 +9,9 @@
 // 金額と定員は bf7_settings から取り、ページに直書きしない。スタッフのログイン中は受付前でも確認できる。
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { BF6_DIVISIONS } from '@/lib/bf6';
 import { getBf6Faqs } from '@/lib/bf6Db';
 import { pickBf7Faqs } from '@/lib/bf7';
-import { bf7EntryFeeRows, formatJpDate, isBf7EntryAccepting, isBf7SalesStarted, isBf7TicketAccepting } from '@/lib/bf7Entry';
+import { BF7_DIVISIONS, bf7EntryFeeRows, formatJpDate, isBf7EntryAccepting, isBf7SalesStarted, isBf7TicketAccepting } from '@/lib/bf7Entry';
 import { calcBf7Remaining, getBf7Settings, getBf7Usage, getPublicBf7Entries } from '@/lib/bf7EntryDb';
 import { isAuthorizedServer } from '@/lib/eventAuth';
 import { BF7_CAST_ANNOUNCED } from '@/lib/bf7Cast';
@@ -137,7 +136,7 @@ export default async function Bf7Page() {
           <Bf7DetailBlock en="DIVISION" ja="部門">
             {started ? (
               <ul className="space-y-2">
-                {BF6_DIVISIONS.map((d) => (
+                {BF7_DIVISIONS.map((d) => (
                   <li key={d.key} className="rounded-xl border border-sky-500/35 bg-sky-500/10 px-4 py-3">
                     <span className="text-base font-black text-white">{d.label}</span>
                     <span className="ml-2 text-xs font-bold text-neutral-300">{d.note}</span>
@@ -170,8 +169,8 @@ export default async function Bf7Page() {
                 {formatJpDate(settings.entryStart)} 〜 {formatJpDate(settings.entryDeadline)}
               </p>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-              {BF6_DIVISIONS.map((d) => (
+            <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+              {BF7_DIVISIONS.map((d) => (
                 <div key={d.key} className="rounded-2xl border border-sky-500/35 bg-neutral-900 p-3">
                   <p className="text-[10px] font-bold text-neutral-300">{d.label}</p>
                   <p className="mt-1 whitespace-nowrap text-base font-black text-white">
@@ -227,7 +226,7 @@ export default async function Bf7Page() {
         {started ? (
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 shadow-sm">
             <ul className="divide-y divide-neutral-800">
-              {BF6_DIVISIONS.map((d) => (
+              {BF7_DIVISIONS.map((d) => (
                 <li key={d.key} className="flex items-center justify-between py-2.5">
                   <span className="font-bold text-neutral-200">{d.label}</span>
                   <span className="text-sm font-bold text-neutral-400">
