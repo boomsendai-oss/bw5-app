@@ -42,7 +42,7 @@ export const BF7_CAST: Bf7CastMember[] = [
   },
   {
     role: 'DJ',
-    name: '太郎MAC',
+    name: 'DJ 太郎MAC',
     team: 'YURERU',
   },
   // MCはTARO(2026-11-27 TARO決定)。表記と戦績はvol.6のページと同じ
