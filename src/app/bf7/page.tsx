@@ -15,6 +15,8 @@ import { pickBf7Faqs } from '@/lib/bf7';
 import { bf7EntryFeeRows, formatJpDate, isBf7EntryAccepting, isBf7SalesStarted, isBf7TicketAccepting } from '@/lib/bf7Entry';
 import { calcBf7Remaining, getBf7Settings, getBf7Usage, getPublicBf7Entries } from '@/lib/bf7EntryDb';
 import { isAuthorizedServer } from '@/lib/eventAuth';
+import { BF7_CAST_ANNOUNCED } from '@/lib/bf7Cast';
+import Bf7CastList from './CastList';
 import Bf7Client from './Bf7Client';
 import WorkshopSection from './WorkshopSection';
 import { Bf7DetailBlock, Bf7PreviewBanner, Bf7SectionHead, Bf7Shell, ComingSoon, btnDarkCls, btnPrimaryCls } from './ui';
@@ -148,7 +150,11 @@ export default async function Bf7Page() {
           </Bf7DetailBlock>
 
           <Bf7DetailBlock en="JUDGE / DJ / MC" ja="審査員・DJ・MC">
-            <ComingSoon note="スペシャルゲストは HIRO(MIDDLE FILTER / 大阪)。審査員・DJ・MCは決まり次第お知らせします。" />
+            {BF7_CAST_ANNOUNCED || preview ? (
+              <Bf7CastList />
+            ) : (
+              <ComingSoon note="スペシャルゲストは HIRO(MIDDLE FILTER / 大阪)。審査員・DJ・MCは決まり次第お知らせします。" />
+            )}
           </Bf7DetailBlock>
         </div>
       </section>
