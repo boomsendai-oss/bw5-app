@@ -45,4 +45,13 @@ export const BF7_CAST: Bf7CastMember[] = [
     name: '太郎MAC',
     team: 'YURERU',
   },
+  // MCはTARO(2026-11-27 TARO決定)。表記と戦績はvol.6のページと同じ
+  {
+    role: 'MC',
+    name: 'TARO',
+    team: 'TARO&TAKE / BSB',
+    meta: '仙台',
+    photo: '/bf7/mc-taro.png',
+    records: ['JAPAN DANCE DELIGHT vol.25 FINALIST', 'WORLD DANCE COLOSSEUM / TOHOKU HIPHOP 優勝', 'LOOP DE DANCE 優勝'],
+  },
 ];

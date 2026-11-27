@@ -9,7 +9,7 @@ function CastCard({ m }: { m: Bf7CastMember }) {
       <div className="flex items-start gap-3">
       {m.photo && (
         /* eslint-disable-next-line @next/next/no-img-element -- 本人提供の静的画像 */
-        <img src={m.photo} alt={m.name} className="h-24 w-24 shrink-0 rounded-lg object-cover ring-1 ring-sky-500/30" />
+        <img src={m.photo} alt={m.name} className="h-24 w-24 shrink-0 rounded-lg object-cover ring-1 ring-sky-500/30 bg-gradient-to-b from-neutral-800 to-neutral-950 object-top" />
       )}
       <div className="min-w-0 flex-1">
         <p className="text-[11px] font-bold tracking-widest text-sky-400">{m.role}</p>
