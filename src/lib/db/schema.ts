@@ -476,8 +476,10 @@ export function getSchemaStatements(): InStatement[] {
     { sql: `CREATE INDEX IF NOT EXISTS idx_links_lstep ON member_lstep_links(lstep_id)`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_trial_member ON trial_records(member_id)`, args: [] },
     { sql: `CREATE INDEX IF NOT EXISTS idx_trial_lstep ON trial_records(lstep_id)`, args: [] },
-    // (lstep_id, reserved_at) の重複防止 — 体験予約CSV自動取込で同一予約が複数行入らないように
-    { sql: `CREATE UNIQUE INDEX IF NOT EXISTS uq_trial_lstep_reserved_at ON trial_records(lstep_id, reserved_at)`, args: [] },
+    // 体験予約の重複防止は台帳 20261115_trial_records_unique_name.sql の (lstep_id, reserved_at, applicant_name)。
+    // 旧 (lstep_id, reserved_at) はここで作らない（同じLINEから同じ枠の兄弟の行があると作れず、初期化全体が止まる・2026-11-27）。
+    // applicant_name 列は台帳 20260602 で足す列でここの CREATE TABLE に無いため、新しい索引もここでは作らない。
+    { sql: `DROP INDEX IF EXISTS uq_trial_lstep_reserved_at`, args: [] },
     {
       // === レッスンスケジュール管理 (Phase 1) — 通常パターン + 例外を1テーブルで表現 ===
       sql: `CREATE TABLE IF NOT EXISTS lesson_schedule (
